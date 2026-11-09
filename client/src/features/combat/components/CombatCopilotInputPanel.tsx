@@ -1,11 +1,20 @@
 import { ListPlus } from 'lucide-react'
 import { Button } from '@/shared/ui'
+import type { CopilotPreviewMode } from '../model/copilotPreview'
+
+const PREVIEW_MODE_OPTIONS: ReadonlyArray<{ value: CopilotPreviewMode; label: string }> = [
+  { value: 'auto', label: '自动' },
+  { value: 'single', label: '单个作业' },
+  { value: 'set', label: '作业集' },
+]
 
 interface CombatCopilotInputPanelProps {
   input: string
   isLoading: boolean
   isAddingToQueue?: boolean
+  previewMode: CopilotPreviewMode
   onInputChange: (value: string) => void
+  onPreviewModeChange: (mode: CopilotPreviewMode) => void
   onPreview: () => void
   onAddToQueue?: () => void
 }
@@ -14,7 +23,9 @@ export default function CombatCopilotInputPanel({
   input,
   isLoading,
   isAddingToQueue = false,
+  previewMode,
   onInputChange,
+  onPreviewModeChange,
   onPreview,
   onAddToQueue,
 }: CombatCopilotInputPanelProps) {
@@ -22,20 +33,34 @@ export default function CombatCopilotInputPanel({
     <div className="combat-copilot-input">
       <div className="combat-copilot-input-row">
         <label htmlFor="combat-copilot-uri" className="sr-only">作业链接或服务器文件路径</label>
-        <input
-          id="combat-copilot-uri"
-          type="text"
-          name="maa-copilot-uri"
-          autoComplete="off"
-          autoCorrect="off"
-          autoCapitalize="none"
-          spellCheck={false}
-          inputMode="url"
-          placeholder="prts://1234、prts://s1234、作业站链接或服务器文件路径"
-          value={input}
-          onChange={(e) => onInputChange(e.target.value)}
-          className="app-input app-native-control min-h-11 min-w-0 flex-1 font-mono control-surface"
-        />
+        <label htmlFor="combat-copilot-preview-mode" className="sr-only">识别方式</label>
+        <div className="combat-copilot-uri-field">
+          <input
+            id="combat-copilot-uri"
+            type="text"
+            name="maa-copilot-uri"
+            autoComplete="off"
+            autoCorrect="off"
+            autoCapitalize="none"
+            spellCheck={false}
+            inputMode="url"
+            placeholder="prts://1234、prts://s1234、作业站链接或服务器文件路径"
+            value={input}
+            onChange={(e) => onInputChange(e.target.value)}
+            className="combat-copilot-uri-input"
+          />
+          <select
+            id="combat-copilot-preview-mode"
+            name="maa-copilot-preview-mode"
+            value={previewMode}
+            onChange={(e) => onPreviewModeChange(e.target.value as CopilotPreviewMode)}
+            className="combat-copilot-mode-select"
+          >
+            {PREVIEW_MODE_OPTIONS.map(option => (
+              <option key={option.value} value={option.value}>{option.label}</option>
+            ))}
+          </select>
+        </div>
         <Button
           onClick={onPreview}
           disabled={isLoading || !input.trim()}

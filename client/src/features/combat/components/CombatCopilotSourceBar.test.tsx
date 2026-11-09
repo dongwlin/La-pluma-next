@@ -26,6 +26,13 @@ const setInputValue = async (input: HTMLInputElement, value: string) => {
   })
 }
 
+const setSelectValue = async (select: HTMLSelectElement, value: string) => {
+  await act(async () => {
+    Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, 'value')?.set?.call(select, value)
+    select.dispatchEvent(new Event('change', { bubbles: true }))
+  })
+}
+
 const selectFile = async (input: HTMLInputElement, selected: File) => {
   Object.defineProperty(input, 'files', { configurable: true, value: [selected] })
   await act(async () => {
@@ -129,23 +136,28 @@ describe('CombatCopilotSourceBar', () => {
     expect(onClear).toHaveBeenCalledOnce()
   })
 
-  it('reports the active recognition mode and cancels the preview when it changes', async () => {
+  it('reports the active recognition mode inside the URI field and cancels the preview when it changes', async () => {
     const onCancelPreview = vi.fn()
     const previewModeStore = createPanelStateStore<CopilotPreviewMode>('auto')
     await renderBar({ previewModeStore, onCancelPreview })
 
-    const group = container.querySelector<HTMLElement>('[role="group"][aria-label="识别方式"]')
-    expect(group).not.toBeNull()
-    const buttons = Array.from(group!.querySelectorAll<HTMLButtonElement>('button'))
-    expect(buttons.map(button => button.textContent?.trim())).toEqual(['自动', '单个作业', '作业集'])
-    expect(buttons.map(button => button.getAttribute('aria-pressed'))).toEqual(['true', 'false', 'false'])
+    const uri = container.querySelector<HTMLInputElement>('input[name="maa-copilot-uri"]')
+    const mode = container.querySelector<HTMLSelectElement>('select[name="maa-copilot-preview-mode"]')
+    expect(uri).not.toBeNull()
+    expect(mode).not.toBeNull()
+    expect(mode!.parentElement).toBe(uri!.parentElement)
+    expect(mode!.getAttribute('id')).toBe('combat-copilot-preview-mode')
+    expect(container.querySelector('label[for="combat-copilot-preview-mode"]')?.textContent)
+      .toBe('识别方式')
+    expect(Array.from(mode!.options).map(option => option.textContent?.trim()))
+      .toEqual(['自动', '单个作业', '作业集'])
+    expect(mode!.value).toBe('auto')
 
-    await click(buttons[2]!)
+    await setSelectValue(mode!, 'set')
 
     expect(onCancelPreview).toHaveBeenCalledOnce()
     expect(previewModeStore.get()).toBe('set')
-    expect(buttons[2]?.getAttribute('aria-pressed')).toBe('true')
-    expect(buttons[0]?.getAttribute('aria-pressed')).toBe('false')
+    expect(mode!.value).toBe('set')
   })
 
   it('forwards the search term and the clicked search result', async () => {

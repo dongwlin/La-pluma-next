@@ -11,12 +11,6 @@ import type {
   CombatCopilotSearchProjection,
 } from './combatPanelTypes'
 
-const PREVIEW_MODE_OPTIONS: ReadonlyArray<{ value: CopilotPreviewMode; label: string }> = [
-  { value: 'auto', label: '自动' },
-  { value: 'single', label: '单个作业' },
-  { value: 'set', label: '作业集' },
-]
-
 interface CombatCopilotSourceBarProps {
   input: string
   isLoading: boolean
@@ -66,7 +60,9 @@ export default function CombatCopilotSourceBar({
         input={input}
         isLoading={isLoading}
         isAddingToQueue={isAddingToQueue}
+        previewMode={previewMode}
         onInputChange={onInputChange}
+        onPreviewModeChange={handlePreviewModeChange}
         onPreview={onPreview}
         onAddToQueue={onAddToQueue}
       />
@@ -75,23 +71,6 @@ export default function CombatCopilotSourceBar({
         <CombatSearchPanel {...search} />
 
         <div className="combat-copilot-source-meta">
-          <div className="combat-copilot-mode" role="group" aria-label="识别方式">
-            <span className="combat-copilot-mode-label">识别方式</span>
-            <div className="combat-copilot-mode-group">
-              {PREVIEW_MODE_OPTIONS.map(option => (
-                <button
-                  key={option.value}
-                  type="button"
-                  aria-pressed={previewMode === option.value}
-                  onClick={() => handlePreviewModeChange(option.value)}
-                  className="combat-copilot-mode-button"
-                >
-                  {option.label}
-                </button>
-              ))}
-            </div>
-          </div>
-
           <div className="combat-copilot-source-actions">
             {fileImport && (
               <>
@@ -126,6 +105,7 @@ export default function CombatCopilotSourceBar({
                 <p>• 在 <a href="https://prts.plus/" target="_blank" rel="noopener noreferrer" className="brand-text hover:underline">prts.plus</a> 获取作业链接</p>
                 <p>• 单作业：<code className="combat-copilot-code">prts://1234</code>；作业集：<code className="combat-copilot-code">prts://s1234</code></p>
                 <p>• 作业站链接会自动识别，也可导入远程或本地作业文件</p>
+                <p>• 识别方式可强制按单个作业或作业集读取，默认按链接判断</p>
               </div>
             </details>
 

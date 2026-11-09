@@ -52,7 +52,8 @@ CombatTasks（页面壳：PageHeader + FloatingStatusIndicator）
    ├─ CombatModeTabs（受控分段 + 高亮测量）
    ├─ CombatExecutionProgressPanel（本次执行条目位置 / 关卡 / 已用时）
    ├─ CombatCopilotTaskPanel（普通作业卡）
-   │  ├─ CombatCopilotSourceBar（CombatCopilotInputPanel + CombatSearchPanel + 识别方式/说明/清除预览）
+   │  ├─ CombatCopilotSourceBar（CombatSearchPanel + 说明/清除预览）
+   │  │  └─ CombatCopilotInputPanel（作业链接输入 + 识别方式下拉）
    │  ├─ CombatCopilotQueuePanel（唯一作业列表 + CombatCopilotDetailLayer 详情层）
    │  ├─ CombatCopilotSetPanel（仅预览非空时渲染：续跑摘要 / 下一关 / 失败原因）
    │  └─ 参数区：CombatSettingsPanel → CombatAdvancedFields

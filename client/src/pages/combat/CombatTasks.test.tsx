@@ -506,6 +506,12 @@ const selectNativeValue = async (select: HTMLSelectElement, value: string) => {
   })
 }
 
+const setRecognitionMode = async (mode: 'auto' | 'single' | 'set') => {
+  const select = container.querySelector<HTMLSelectElement>('select[name="maa-copilot-preview-mode"]')
+  expect(select, '识别方式下拉').not.toBeNull()
+  await selectNativeValue(select as HTMLSelectElement, mode)
+}
+
 const segmentedGroup = (label: string) => {
   const group = container.querySelector<HTMLElement>(`[role="group"][aria-label="${label}"]`)
   expect(group, `${label} 分段控件`).not.toBeNull()
@@ -1741,7 +1747,7 @@ describe('CombatTasks execution', () => {
     mocks.searchParadoxCopilot.mockReturnValueOnce(deferred<any>().promise)
 
     await renderActivityMode('visible')
-    await click(buttonByText('单个作业')!)
+    await setRecognitionMode('single')
 
     const previewInput = container.querySelector<HTMLInputElement>('input[name="maa-copilot-uri"]')!
     await setInputValue(previewInput, 'prts://1234')
@@ -1828,7 +1834,7 @@ describe('CombatTasks execution', () => {
       .mockReturnValueOnce(olderPreview.promise)
       .mockReturnValueOnce(newerPreview.promise)
     await renderComponent()
-    await click(buttonByText('单个作业')!)
+    await setRecognitionMode('single')
 
     const input = container.querySelector<HTMLInputElement>('input[name="maa-copilot-uri"]')!
     await setInputValue(input, 'prts://1')
@@ -1988,7 +1994,7 @@ describe('CombatTasks execution', () => {
     await setInputValue(stageInput, '1-7')
     expect(renderCounts.setPanel).toBe(0)
 
-    await click(buttonByText('单个作业')!)
+    await setRecognitionMode('single')
     expect(renderCounts.setPanel).toBe(0)
 
     await click(buttonByAriaLabel('取消选择队列第 1 项 TEST-1')!)
@@ -1999,7 +2005,7 @@ describe('CombatTasks execution', () => {
     await renderComponent()
     const stageInput = container.querySelector<HTMLInputElement>('input[name="maa-copilot-stage-search"]')!
     await setInputValue(stageInput, '1-7')
-    await click(buttonByText('单个作业')!)
+    await setRecognitionMode('single')
 
     const modeButton = (label: string) => Array.from(
       container.querySelectorAll<HTMLButtonElement>('button[aria-pressed]'),
@@ -2011,9 +2017,10 @@ describe('CombatTasks execution', () => {
     await click(modeButton('普通作业'))
     expect(container.querySelector<HTMLInputElement>('input[name="maa-copilot-stage-search"]')?.value)
       .toBe('1-7')
+    expect(container.querySelector<HTMLSelectElement>('select[name="maa-copilot-preview-mode"]')?.value)
+      .toBe('single')
 
-    // 识别方式没有 aria 状态，用预览走哪条读取路径证明“单个作业”选择仍生效：
-    // prts.plus 链接在自动模式下同时探测作业集，单作业模式只读作业详情。
+    // prts.plus 链接在自动模式下会同时探测作业集，单作业模式只读作业详情。
     mocks.getCopilotInfo.mockResolvedValueOnce({
       success: true,
       data: { status_code: 200, data: { content: JSON.stringify({ doc: { title: '单作业预览' } }) } },
@@ -2175,7 +2182,7 @@ describe('CombatTasks execution', () => {
     mocks.resetCopilotSetProgress.mockResolvedValue({ success: false, message: '进度存储不可用' })
 
     await renderComponent()
-    await click(buttonByText('作业集')!)
+    await setRecognitionMode('set')
 
     const input = document.querySelector<HTMLInputElement>('input[name="maa-copilot-uri"]')
     expect(input).not.toBeNull()
