@@ -3,7 +3,6 @@
 import { describe, expect, it } from 'vitest'
 import {
   extractCopilotOperators,
-  formatCopilotApCost,
   readCopilotInfoPayload,
   readCopilotPlanPayload,
   readCopilotSearchResult,
@@ -253,7 +252,7 @@ describe('copilot plan payload', () => {
     })
   })
 
-  it('keeps known stage costs and reports missing costs as unknown', () => {
+  it('keeps known stage costs and drops missing costs', () => {
     const result = readCopilotPlanPayload({
       items: [
         { id: 1, stage: '1-7', apCost: 6 },
@@ -267,9 +266,6 @@ describe('copilot plan payload', () => {
     expect(result?.items[0]?.apCost).toBe(6)
     expect(result?.items[1]?.apCost).toBeUndefined()
     expect(result?.items[2]?.apCost).toBeUndefined()
-    expect(formatCopilotApCost(result?.items[0]?.apCost)).toBe('6')
-    expect(formatCopilotApCost(result?.items[1]?.apCost)).toBe('未知')
-    expect(formatCopilotApCost(result?.items[2]?.apCost)).toBe('未知')
   })
 
   it('keeps operator requirements and groups instead of dropping them', () => {

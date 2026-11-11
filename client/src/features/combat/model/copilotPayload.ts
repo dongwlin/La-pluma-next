@@ -99,11 +99,6 @@ function readGroupNames(value: unknown): string[] {
   return names
 }
 
-/** 未知的理智消耗不折算成 0：资源缺少该关卡数据时展示为“未知”。 */
-export function formatCopilotApCost(apCost: number | null | undefined): string {
-  return typeof apCost === 'number' ? String(apCost) : '未知'
-}
-
 /**
  * 兼容旧调用：`success=true` 时取 `data`，其余（PRTS 代理对象、测试直传的
  * 载荷）原样返回。失败信封不是载荷字段，解析函数会把它当作空结果。

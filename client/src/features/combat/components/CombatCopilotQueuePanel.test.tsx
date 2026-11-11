@@ -155,7 +155,7 @@ describe('CombatCopilotQueuePanel', () => {
     expect(buttonByText(container, '清空')?.disabled).toBe(true)
   })
 
-  it('renders rows with sequence, stage, cost and source badges', async () => {
+  it('renders rows with sequence, stage and source badges', async () => {
     await renderPanel({
       entries: [
         entry({ id: 'a', title: '关卡一', stage: 'TEST-1', apCost: 18, source: 'set', setId: '48990' }),
@@ -170,7 +170,8 @@ describe('CombatCopilotQueuePanel', () => {
     expect(rows[0]?.textContent).toContain('关卡一')
     expect(rows[0]?.textContent).toContain('作业集 prts://s48990')
     expect(rows[0]?.textContent).toContain('TEST-1')
-    expect(rows[0]?.textContent).toContain('理智 18')
+    expect(rows[0]?.textContent).not.toContain('理智')
+    expect(container.textContent).not.toContain('理智')
     expect(rows[1]?.textContent).toContain('TEST-2')
     expect(rows[1]?.textContent).toContain('链接')
     expect(rows[2]?.textContent).toContain('local.json')

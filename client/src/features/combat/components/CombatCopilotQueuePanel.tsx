@@ -1,7 +1,6 @@
 import { Check, ChevronDown, ChevronUp, ListChecks, RotateCcw, SkipForward, Trash2 } from 'lucide-react'
 import { Button, EmptyState, IconButton } from '@/shared/ui'
 import { firstErrorLine } from '../model/copilotDetail'
-import { formatCopilotApCost } from '../model/copilotPayload'
 import type { CopilotQueueEntry } from '../model/copilotQueue'
 import { COPILOT_DETAIL_LAYER_ID, type CombatCopilotQueueProjection } from './combatPanelTypes'
 import { describeQueueRowState, describeQueueSource, describeQueueTitle } from './copilotQueuePresentation'
@@ -169,7 +168,6 @@ export default function CombatCopilotQueuePanel({ queue, detailEntryId, onOpenDe
                     <span className="combat-copilot-mine-meta">
                       <span className="combat-copilot-mine-tag">{describeQueueSource(entry)}</span>
                       {entry.stage && <span>{entry.stage}</span>}
-                      {entry.source !== 'file' && <span>理智 {formatCopilotApCost(entry.apCost)}</span>}
                       {entry.source === 'file' && entry.fileName && <span>{entry.fileName}</span>}
                       {entry.completedModes?.map(mode => (
                         <span key={mode} className="combat-copilot-mine-tag is-complete">
