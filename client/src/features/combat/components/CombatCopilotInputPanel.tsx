@@ -1,5 +1,5 @@
 import { useRef, type ChangeEvent, type ClipboardEvent } from 'react'
-import { ListPlus, Upload } from 'lucide-react'
+import { ListPlus, Upload, X } from 'lucide-react'
 import { Button, IconButton } from '@/shared/ui'
 import ActivityIndicator from '@/shared/ui/ActivityIndicator'
 import type { CopilotPreviewMode } from '../model/copilotPreview'
@@ -35,6 +35,12 @@ export default function CombatCopilotInputPanel({
   onAddToQueue,
 }: CombatCopilotInputPanelProps) {
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const uriInputRef = useRef<HTMLInputElement>(null)
+
+  const handleClear = () => {
+    onInputChange('')
+    uriInputRef.current?.focus()
+  }
 
   const handleFileChange = (event: ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0]
@@ -68,6 +74,7 @@ export default function CombatCopilotInputPanel({
         <div className="combat-copilot-uri-field">
           <input
             id="combat-copilot-uri"
+            ref={uriInputRef}
             type="text"
             name="maa-copilot-uri"
             autoComplete="off"
@@ -81,6 +88,17 @@ export default function CombatCopilotInputPanel({
             onPaste={handlePaste}
             className="combat-copilot-uri-input"
           />
+          {input !== '' && (
+            <IconButton
+              icon={<X size={15} aria-hidden="true" />}
+              title="清除作业链接"
+              aria-label="清除作业链接"
+              size="sm"
+              disabled={isLoading || isAddingToQueue}
+              onClick={handleClear}
+              className="combat-copilot-clear-button"
+            />
+          )}
           <div className="combat-copilot-uri-trailing">
             {fileImport && (
               <>

@@ -127,7 +127,7 @@ describe('CombatCopilotSourceBar', () => {
     expect(container.querySelector('label[for="combat-stage-search"]')).not.toBeNull()
   })
 
-  it('previews the typed URI without offering a clear action', async () => {
+  it('previews the typed URI', async () => {
     const onPreview = vi.fn()
     await renderBar({ input: 'prts://1234', onPreview })
 
@@ -135,7 +135,36 @@ describe('CombatCopilotSourceBar', () => {
       .find(button => button.textContent?.trim() === '预览')!)
 
     expect(onPreview).toHaveBeenCalledOnce()
-    expect(container.textContent).not.toContain('清除预览')
+  })
+
+  it('clears the typed URI from the icon inside the field and returns focus to the input', async () => {
+    const onInputChange = vi.fn()
+    await renderBar({ input: 'prts://1234', onInputChange })
+
+    const uri = container.querySelector<HTMLInputElement>('input[name="maa-copilot-uri"]')!
+    const clear = container.querySelector<HTMLButtonElement>('button[aria-label="清除作业链接"]')
+    expect(clear).not.toBeNull()
+    expect(clear?.title).toBe('清除作业链接')
+    expect(clear?.textContent?.trim()).toBe('')
+    expect(uri.parentElement?.contains(clear!)).toBe(true)
+
+    await click(clear!)
+
+    expect(onInputChange).toHaveBeenCalledWith('')
+    expect(document.activeElement).toBe(uri)
+  })
+
+  it('hides the clear action for an empty URI and disables it while a request is in flight', async () => {
+    await renderBar({ input: '' })
+    expect(container.querySelector('button[aria-label="清除作业链接"]')).toBeNull()
+
+    await renderBar({ input: 'prts://1234', isLoading: true })
+    expect(container.querySelector<HTMLButtonElement>('button[aria-label="清除作业链接"]')?.disabled)
+      .toBe(true)
+
+    await renderBar({ input: 'prts://1234', isAddingToQueue: true })
+    expect(container.querySelector<HTMLButtonElement>('button[aria-label="清除作业链接"]')?.disabled)
+      .toBe(true)
   })
 
   it('reports the active recognition mode inside the URI field and cancels the preview when it changes', async () => {

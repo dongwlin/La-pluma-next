@@ -182,6 +182,7 @@
     box-shadow: inset 1px 0 0 var(--app-border);
   }
 
+  .combat-copilot-clear-button,
   .combat-copilot-import-button {
     align-self: center;
     border-radius: var(--app-radius-md);
