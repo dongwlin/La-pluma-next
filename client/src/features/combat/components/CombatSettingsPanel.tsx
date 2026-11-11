@@ -1,4 +1,4 @@
-import { HintTooltip } from '@/shared/ui'
+import { HintTooltip, Select } from '@/shared/ui'
 import type {
   CombatTask,
   CopilotRaid,
@@ -27,16 +27,16 @@ const FORMATION_OPTIONS: readonly CombatSegmentedOption<FormationMode>[] = [
   { value: 'off', label: '保留当前编队' },
 ]
 
-const RAID_OPTIONS: readonly CombatSegmentedOption<CopilotRaid>[] = [
+const RAID_OPTIONS: Array<{ value: CopilotRaid; label: string }> = [
+  { value: 'auto', label: '按作业标注' },
   { value: 'normal', label: '普通模式' },
   { value: 'raid', label: '突袭模式' },
   { value: 'both', label: '普通+突袭' },
 ]
 
 const SET_EXECUTION_MODE_OPTIONS: readonly CombatSegmentedOption<CopilotSetExecutionMode>[] = [
-  { value: 'app', label: '顺序执行' },
-  { value: 'manual', label: '手动逐关' },
   { value: 'cli', label: '连续执行' },
+  { value: 'manual', label: '手动逐关' },
 ]
 
 export default function CombatSettingsPanel({
@@ -66,7 +66,7 @@ export default function CombatSettingsPanel({
           <HintTooltip
             id="combat-copilot-formation-hint"
             label="编队"
-            hint="作业集拆分执行时，“自动决定”会启用自动编队；单作业会使用默认设置。"
+            hint="“自动决定”会在队列执行时启用自动编队，单作业沿用 Maa CLI 的默认设置。"
           />
         </div>
         <CombatSegmentedControl
@@ -79,30 +79,28 @@ export default function CombatSettingsPanel({
       </div>
 
       <div className="mb-3">
-        <div className="mb-1.5 flex items-center gap-1">
-          <span className="text-xs text-secondary">模式</span>
-        </div>
-        <CombatSegmentedControl
-          ariaLabel="模式"
+        <label htmlFor="combat-copilot-raid" className="mb-1.5 block text-xs text-secondary">难度</label>
+        <Select
+          id="combat-copilot-raid"
+          name="maa-copilot-raid"
           value={raid}
           options={RAID_OPTIONS}
-          onChange={onRaidChange}
-          fullWidth
+          onChange={(value) => onRaidChange(value as CopilotRaid)}
         />
       </div>
 
       <div>
         <div className="mb-1.5 flex items-center gap-1">
-          <span className="text-xs text-secondary">作业集</span>
+          <span className="text-xs text-secondary">执行方式</span>
           <HintTooltip
             id="combat-copilot-set-mode-hint"
-            label="作业集"
-            hint="顺序执行会保存进度：成功项自动移出待执行，失败项保留待重试。"
+            label="执行方式"
+            hint="连续执行会自动开始下一项。手动逐关需要在每个执行步骤后确认。"
           />
         </div>
         <CombatSegmentedControl
-          ariaLabel="作业集"
-          value={setExecutionMode}
+          ariaLabel="执行方式"
+          value={setExecutionMode === 'app' ? 'cli' : setExecutionMode}
           options={SET_EXECUTION_MODE_OPTIONS}
           onChange={onSetExecutionModeChange}
           fullWidth

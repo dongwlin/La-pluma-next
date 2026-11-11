@@ -33,11 +33,10 @@ export interface CombatExecutionActions {
   onStop: () => void
 }
 
-/** 作业集卡片额外暴露下一关与取消等待；服务端持有等待态。 */
+/** 作业集卡片额外暴露下一关；服务端持有等待态。 */
 export interface CombatCopilotExecutionActions extends CombatExecutionActions {
   isWaitingForNext: boolean
   onStartNext: () => void
-  onCancelSet: () => void
 }
 
 export interface CombatCopilotConfig {
@@ -60,6 +59,10 @@ export interface CombatCopilotPreviewProjection {
   onCancel: () => void
   onClear: () => void
 }
+
+export type CombatCopilotDetailSelection = { type: 'preview' } | { type: 'queue'; id: string }
+
+export const COPILOT_DETAIL_LAYER_ID = 'combat-copilot-detail-panel'
 
 export interface CombatCopilotFileImportProjection {
   isImporting: boolean

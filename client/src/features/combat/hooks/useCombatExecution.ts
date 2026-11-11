@@ -23,6 +23,7 @@ import {
   type CopilotQueueRunMode,
   type CopilotSetRunMode,
 } from '../api'
+import type { CopilotRaid } from '../types'
 import {
   describeCombatTaskTerminal,
   describeCopilotSetRunTerminal,
@@ -53,7 +54,7 @@ export interface CombatSetSubmission {
   setId: string
   /** 服务端模式；页面的 `app`/`cli` 都映射为 `continuous`。 */
   mode: CopilotSetRunMode
-  raid: 'normal' | 'raid' | 'both'
+  raid: CopilotRaid
   selectedIndexes: number[]
   options: Record<string, unknown>
   taskName: string

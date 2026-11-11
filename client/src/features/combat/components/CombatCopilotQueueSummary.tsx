@@ -1,17 +1,14 @@
-import { Button } from '@/shared/ui'
 import type { CopilotSetView } from '../model/copilotSetView'
 import type { CopilotSetInfo } from '../types'
 
 interface CombatCopilotQueueSummaryProps {
   preview: CopilotSetInfo
   view: CopilotSetView
-  onCancelSet: () => void
 }
 
 export default function CombatCopilotQueueSummary({
   preview,
   view,
-  onCancelSet,
 }: CombatCopilotQueueSummaryProps) {
   const { total, completed, pending, failed, stopped, skipped } = view.progress
   const nextIndex = view.resumeIndex
@@ -105,14 +102,6 @@ export default function CombatCopilotQueueSummary({
             </p>
           )}
           <p className="combat-copilot-waiting-hint">请在游戏中进入下一关界面后点击「开始下一关」。</p>
-          <Button
-            onClick={onCancelSet}
-            variant="secondary"
-            size="md"
-            className="min-h-11"
-          >
-            终止执行
-          </Button>
         </div>
       )}
     </div>

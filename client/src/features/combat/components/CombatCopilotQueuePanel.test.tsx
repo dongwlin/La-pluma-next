@@ -1,13 +1,15 @@
 // @vitest-environment jsdom
 
-import { act } from 'react'
+import { act, useState } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { CopilotDetailTarget } from '../model/copilotDetail'
 import type { CopilotQueueEntry } from '../model/copilotQueue'
 import type { CopilotQueueRunProjection } from '../model/copilotQueueRun'
 import type { CombatCopilotQueueProjection } from './combatPanelTypes'
+import CombatCopilotDetailLayer from './CombatCopilotDetailLayer'
 import CombatCopilotQueuePanel from './CombatCopilotQueuePanel'
+import { buildQueueDetailTarget } from './copilotQueuePresentation'
 
 ;(globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true
 
@@ -102,6 +104,20 @@ const buttonByText = (container: HTMLElement, text: string) => buttons(container
 const buttonByLabel = (container: HTMLElement, label: string) => buttons(container)
   .find(button => button.getAttribute('aria-label') === label)
 
+function QueueWithDetails({ projection }: { projection: CombatCopilotQueueProjection }) {
+  const [detailEntryId, setDetailEntryId] = useState<string | null>(null)
+  const detailEntry = projection.entries.find(item => item.id === detailEntryId)
+  return (
+    <>
+      <CombatCopilotQueuePanel queue={projection} detailEntryId={detailEntryId} onOpenDetail={setDetailEntryId} />
+      <CombatCopilotDetailLayer
+        target={detailEntry ? buildQueueDetailTarget(detailEntry, projection) : null}
+        onClose={() => setDetailEntryId(null)}
+      />
+    </>
+  )
+}
+
 describe('CombatCopilotQueuePanel', () => {
   let container: HTMLDivElement
   let root: Root
@@ -121,7 +137,7 @@ describe('CombatCopilotQueuePanel', () => {
 
   const renderPanel = async (props: Partial<CombatCopilotQueueProjection> = {}) => {
     await act(async () => {
-      root.render(<CombatCopilotQueuePanel queue={queue(props)} />)
+      root.render(<QueueWithDetails projection={queue(props)} />)
     })
   }
 

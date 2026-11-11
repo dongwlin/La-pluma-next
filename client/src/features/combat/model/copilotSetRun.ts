@@ -1,5 +1,6 @@
 import type { AgentRun, RunState } from '@/features/task-execution'
 import { isActiveRunState } from '@/features/task-execution'
+import type { CopilotRaid } from '../types'
 
 export type CopilotSetItemStatus = 'pending' | 'running' | 'success' | 'failed' | 'skipped' | 'stopped'
 
@@ -26,7 +27,7 @@ export interface CopilotSetRunProjection {
   setId: string | null
   name: string | null
   mode: string | null
-  raid: 'normal' | 'raid' | 'both' | null
+  raid: CopilotRaid | null
   phase: string | null
   isWaiting: boolean
   waitingForNext: boolean
@@ -66,11 +67,11 @@ function foldItemStatuses(entries: CopilotSetEntryProjection[]): Map<number, Cop
     else grouped.set(entry.itemIndex, [entry.status])
   }
   const folded = new Map<number, CopilotSetItemStatus>()
-  for (const [itemIndex, statuses] of grouped) folded.set(itemIndex, foldStatuses(statuses))
+  for (const [itemIndex, statuses] of grouped) folded.set(itemIndex, foldCopilotItemStatuses(statuses))
   return folded
 }
 
-function foldStatuses(statuses: readonly CopilotSetItemStatus[]): CopilotSetItemStatus {
+export function foldCopilotItemStatuses(statuses: readonly CopilotSetItemStatus[]): CopilotSetItemStatus {
   if (statuses.includes('running')) return 'running'
   if (statuses.includes('failed')) return 'failed'
   if (statuses.includes('stopped')) return 'stopped'
@@ -98,8 +99,8 @@ function asText(value: unknown): string | null {
   return typeof value === 'string' && value.trim() ? value : null
 }
 
-function normalizeRaid(value: string | null): 'normal' | 'raid' | 'both' | null {
-  return value === 'normal' || value === 'raid' || value === 'both' ? value : null
+function normalizeRaid(value: string | null): CopilotRaid | null {
+  return value === 'normal' || value === 'raid' || value === 'both' || value === 'auto' ? value : null
 }
 
 function normalizeItemStatus(value: unknown): CopilotSetItemStatus {

@@ -24,6 +24,8 @@ export interface CopilotQueueSetSyncResult {
   selected: Set<string>
 }
 
+type CopilotQueueSetSyncMode = 'add' | 'refresh' | 'reset'
+
 export interface UseCopilotQueueResult extends CopilotQueueState {
   add: (entries: readonly CopilotQueueEntry[]) => number
   remove: (id: string) => void
@@ -35,7 +37,8 @@ export interface UseCopilotQueueResult extends CopilotQueueState {
     setId: string,
     entries: readonly CopilotQueueEntry[],
     checkedIndexes: readonly number[],
-  ) => void
+    mode?: CopilotQueueSetSyncMode,
+  ) => number[]
 }
 
 export function syncCopilotQueueSetEntries(
@@ -44,50 +47,29 @@ export function syncCopilotQueueSetEntries(
   setId: string,
   incoming: readonly CopilotQueueEntry[],
   checkedIndexes: readonly number[],
+  mode: CopilotQueueSetSyncMode = 'add',
 ): CopilotQueueSetSyncResult {
-  const previousByIndex = new Map<number, CopilotQueueEntry>()
-  for (const entry of currentEntries) {
-    if (entry.setId === setId && entry.setItemIndex !== undefined) {
-      previousByIndex.set(entry.setItemIndex, entry)
-    }
+  const incomingByUri = new Map<string, CopilotQueueEntry>()
+  for (const entry of incoming) {
+    if (!incomingByUri.has(entry.uri)) incomingByUri.set(entry.uri, entry)
   }
-
+  const currentIds = new Set(currentEntries.map(entry => entry.id))
   const checked = new Set(checkedIndexes)
-  const merged = incoming.map(entry => {
-    const previous = entry.setItemIndex === undefined
-      ? undefined
-      : previousByIndex.get(entry.setItemIndex)
-    return previous ? { ...entry, id: previous.id, addedAt: previous.addedAt } : entry
+  const updated = currentEntries.map((entry): CopilotQueueEntry => {
+    if (entry.setId !== setId) return entry
+    const member = incomingByUri.get(entry.uri)
+    return member
+      ? { ...member, id: entry.id, addedAt: entry.addedAt }
+      : { ...entry, source: 'link', setId: undefined, setItemIndex: undefined }
   })
-  const kept = currentEntries.filter(entry => entry.setId !== setId)
-  const firstSetIndex = currentEntries.findIndex(entry => entry.setId === setId)
-  const insertAt = firstSetIndex < 0
-    ? kept.length
-    : currentEntries.slice(0, firstSetIndex).filter(entry => entry.setId !== setId).length
-  const seenUris = new Set<string>()
-  const entries = [...kept.slice(0, insertAt), ...merged, ...kept.slice(insertAt)]
-    .filter(entry => {
-      if (seenUris.has(entry.uri)) return false
-      seenUris.add(entry.uri)
-      return true
-    })
-    .slice(0, COPILOT_QUEUE_LIMIT)
-
-  const keptIds = new Set(kept.map(entry => entry.id))
-  const entryIds = new Set(entries.map(entry => entry.id))
-  const selected = new Set<string>()
-  for (const id of currentSelected) {
-    if (keptIds.has(id)) selected.add(id)
-  }
-  for (const entry of merged) {
-    if (
-      entry.setItemIndex !== undefined
-      && checked.has(entry.setItemIndex)
-      && entryIds.has(entry.id)
-    ) {
-      selected.add(entry.id)
+  const entries = mode === 'add' ? addCopilotQueueEntries(updated, incoming).entries : updated
+  const selected = new Set(entries.filter(entry => {
+    if (entry.setId !== setId || entry.setItemIndex === undefined || !incomingByUri.has(entry.uri)) {
+      return currentSelected.has(entry.id)
     }
-  }
+    return checked.has(entry.setItemIndex)
+      && (mode === 'reset' || !currentIds.has(entry.id) || currentSelected.has(entry.id))
+  }).map(entry => entry.id))
   return { entries, selected }
 }
 
@@ -169,14 +151,22 @@ export function useCopilotQueue(): UseCopilotQueueResult {
     setId: string,
     incoming: readonly CopilotQueueEntry[],
     checkedIndexes: readonly number[],
+    mode?: CopilotQueueSetSyncMode,
   ) => {
     const current = stateRef.current
-    commit(syncCopilotQueueSetEntries(
+    const next = syncCopilotQueueSetEntries(
       current.entries,
       current.selected,
       setId,
       incoming,
       checkedIndexes,
+      mode,
+    )
+    commit(next)
+    return next.entries.flatMap(entry => (
+      entry.setId === setId && entry.setItemIndex !== undefined && next.selected.has(entry.id)
+        ? [entry.setItemIndex]
+        : []
     ))
   }, [commit])
 

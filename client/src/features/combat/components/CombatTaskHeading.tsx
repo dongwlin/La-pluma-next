@@ -32,19 +32,32 @@ export function CombatRunAction({
 }: CombatRunActionProps) {
   if (isWaitingForNext) {
     return (
-      <Button
-        onClick={onStartNext}
-        disabled={!automationAvailable || isContinuing}
-        loading={isContinuing}
-        loadingText="正在开始"
-        title={!automationAvailable ? unavailableMessage : undefined}
-        variant="primary"
-        size="md"
-        icon={<ChevronRight size={16} aria-hidden="true" />}
-        className={buttonClassName}
-      >
-        开始下一关
-      </Button>
+      <div className="grid grid-cols-2 gap-2">
+        <Button
+          onClick={onStartNext}
+          disabled={!automationAvailable || isContinuing || isStopping}
+          loading={isContinuing}
+          loadingText="正在开始"
+          title={!automationAvailable ? unavailableMessage : undefined}
+          variant="primary"
+          size="md"
+          icon={<ChevronRight size={16} aria-hidden="true" />}
+          className={buttonClassName}
+        >
+          开始下一关
+        </Button>
+        <Button
+          onClick={onStop}
+          disabled={isStopping}
+          loading={isStopping}
+          loadingText="正在终止"
+          variant="secondary"
+          size="md"
+          className={buttonClassName}
+        >
+          终止执行
+        </Button>
+      </div>
     )
   }
 

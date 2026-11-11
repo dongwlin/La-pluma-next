@@ -1,5 +1,6 @@
 import type {
   CopilotDetailOperator,
+  CopilotDifficulty,
   CopilotSetItem,
 } from '../types'
 
@@ -10,10 +11,11 @@ export interface CopilotDetailTarget {
   stage?: string
   stageId?: string
   apCost?: number | null
-  sourceLabel: string
+  sourceLabel?: string
   uri?: string
   presetFormation?: boolean
   supportsRaid?: boolean
+  recommendedMode?: CopilotDifficulty
   completedModes?: Array<'normal' | 'raid'>
   operators?: CopilotDetailOperator[]
   groups?: string[]

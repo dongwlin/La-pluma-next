@@ -116,7 +116,7 @@ export function appendCombatCommandOptions(
 
   const advanced = options.advanced ?? {}
   const raidValue = normalizeRaidValue(advanced.raid)
-  if (taskId === 'copilot' && raidValue !== 'normal') {
+  if (taskId === 'copilot' && (raidValue === 'raid' || raidValue === 'both')) {
     nextArgs.push('--raid', raidValue)
   }
 

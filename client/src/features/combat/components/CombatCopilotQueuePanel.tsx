@@ -1,81 +1,10 @@
-import { useState } from 'react'
 import { Check, ChevronDown, ChevronUp, ListChecks, RotateCcw, SkipForward, Trash2 } from 'lucide-react'
 import { Button, EmptyState, IconButton } from '@/shared/ui'
-import type { CopilotDetailTarget } from '../model/copilotDetail'
+import { firstErrorLine } from '../model/copilotDetail'
 import { formatCopilotApCost } from '../model/copilotPayload'
-import type { CopilotQueueItemStatus } from '../model/copilotQueueRun'
-import type { CopilotSetItemStatus } from '../model/copilotSetRun'
-import type { CopilotQueueEntry, CopilotQueueSource } from '../model/copilotQueue'
-import CombatCopilotDetailLayer from './CombatCopilotDetailLayer'
-import type { CombatCopilotQueueProjection } from './combatPanelTypes'
-
-const SOURCE_LABELS: Record<CopilotQueueSource, string> = {
-  link: '链接',
-  set: '作业集',
-  file: '本地',
-}
-
-const STATUS_LABELS: Record<CopilotSetItemStatus, string> = {
-  pending: '待执行',
-  running: '执行中',
-  success: '已完成',
-  failed: '待重试',
-  skipped: '已跳过',
-  stopped: '已终止',
-}
-
-const QUEUE_STATUS_LABELS: Record<CopilotQueueItemStatus, string> = {
-  pending: '待执行',
-  running: '执行中',
-  success: '已完成',
-  failed: '执行失败',
-  skipped: '已跳过',
-  stopped: '已终止',
-}
-
-interface QueueRowState {
-  label: string
-  error?: string
-}
-
-function firstLine(value: string): string {
-  const line = value.split(/\r?\n/).map(part => part.trim()).find(Boolean)
-  return line ?? value.trim()
-}
-
-function describeRowState(
-  entry: CopilotQueueEntry,
-  queue: CombatCopilotQueueProjection,
-): QueueRowState {
-  const queueState = queue.queueRun?.statuses.get(entry.id)
-  if (queueState) {
-    return {
-      label: QUEUE_STATUS_LABELS[queueState.status],
-      ...(queueState.error ? { error: queueState.error } : {}),
-    }
-  }
-  if (entry.setId && entry.setId === queue.setId && entry.setItemIndex !== undefined) {
-    const status = queue.itemStatuses.get(entry.setItemIndex)
-    if (status) {
-      const error = queue.itemErrors.get(entry.setItemIndex)
-      return {
-        label: STATUS_LABELS[status],
-        ...(error ? { error } : {}),
-      }
-    }
-  }
-  if (queue.isRunning && queue.submittedEntryIds.has(entry.id)) return { label: '本次已提交' }
-  return { label: '待执行' }
-}
-
-function describeSource(entry: CopilotQueueEntry): string {
-  if (entry.source === 'set' && entry.setId) return `作业集 prts://s${entry.setId}`
-  return SOURCE_LABELS[entry.source]
-}
-
-function describeTitle(entry: CopilotQueueEntry): string {
-  return entry.title || entry.stage || entry.fileName || entry.uri
-}
+import type { CopilotQueueEntry } from '../model/copilotQueue'
+import { COPILOT_DETAIL_LAYER_ID, type CombatCopilotQueueProjection } from './combatPanelTypes'
+import { describeQueueRowState, describeQueueSource, describeQueueTitle } from './copilotQueuePresentation'
 
 function submitsAsSet(
   entries: readonly CopilotQueueEntry[],
@@ -93,41 +22,22 @@ function submitsAsSet(
   return indexes.length > 0
 }
 
-function toDetailTarget(
-  entry: CopilotQueueEntry,
-  queue: CombatCopilotQueueProjection,
-): CopilotDetailTarget {
-  const state = describeRowState(entry, queue)
-  return {
-    title: describeTitle(entry),
-    stage: entry.stage,
-    stageId: entry.stageId,
-    apCost: entry.apCost,
-    sourceLabel: describeSource(entry),
-    uri: entry.uri,
-    presetFormation: entry.presetFormation,
-    supportsRaid: entry.supportsRaid,
-    completedModes: entry.completedModes,
-    operators: entry.operatorDetails ?? entry.operators?.map(name => ({ name })),
-    groups: entry.groups,
-    statusLabel: state.label,
-    ...(state.error ? { error: state.error } : {}),
-  }
-}
-
 interface CombatCopilotQueuePanelProps {
   queue: CombatCopilotQueueProjection
+  detailEntryId: string | null
+  onOpenDetail: (entryId: string) => void
 }
 
-export default function CombatCopilotQueuePanel({ queue }: CombatCopilotQueuePanelProps) {
-  const [detailEntryId, setDetailEntryId] = useState<string | null>(null)
+export default function CombatCopilotQueuePanel({ queue, detailEntryId, onOpenDetail }: CombatCopilotQueuePanelProps) {
   const { entries, selected } = queue
   const checkedCount = entries.filter(entry => selected.has(entry.id)).length
   const locked = queue.isRunning || queue.isSubmitting
-  const detailEntry = detailEntryId
-    ? entries.find(entry => entry.id === detailEntryId) ?? null
-    : null
   const waitingForNext = queue.queueRun?.isWaiting === true
+  const nextEntry = queue.queueRun?.nextEntry
+  const nextHasBothModes = nextEntry?.mode && queue.queueRun?.taskResults.some(entry => (
+    entry.clientId === nextEntry.clientId && entry.mode !== null && entry.mode !== nextEntry.mode
+  ))
+  const nextModeLabel = nextHasBothModes ? `（${nextEntry.mode === 'raid' ? '突袭' : '普通'}）` : ''
   const failurePolicy = queue.queueRun?.failurePolicy ?? queue.failurePolicy
   const failedEntries = queue.queueRun?.isTerminal
     ? entries.filter(entry => queue.queueRun?.statuses.get(entry.id)?.status === 'failed')
@@ -186,7 +96,7 @@ export default function CombatCopilotQueuePanel({ queue }: CombatCopilotQueuePan
                     loadingText="正在开始"
                     title={!queue.automationAvailable ? queue.unavailableMessage : undefined}
                   >
-                    开始下一项
+                    开始下一项{nextModeLabel}
                   </Button>
                   <Button
                     size="sm"
@@ -219,10 +129,10 @@ export default function CombatCopilotQueuePanel({ queue }: CombatCopilotQueuePan
           <div role="list" aria-label="作业队列" className="combat-copilot-mine-list">
             {entries.map((entry, index) => {
               const checked = selected.has(entry.id)
-              const title = describeTitle(entry)
+              const title = describeQueueTitle(entry)
               const expanded = detailEntryId === entry.id
-              const state = describeRowState(entry, queue)
-              const errorLine = state.error ? firstLine(state.error) : null
+              const state = describeQueueRowState(entry, queue)
+              const errorLine = firstErrorLine(state.error)
 
               return (
                 <div
@@ -248,14 +158,16 @@ export default function CombatCopilotQueuePanel({ queue }: CombatCopilotQueuePan
 
                   <button
                     type="button"
-                    onClick={() => setDetailEntryId(entry.id)}
+                    onClick={() => onOpenDetail(entry.id)}
                     aria-expanded={expanded}
+                    aria-controls={expanded ? COPILOT_DETAIL_LAYER_ID : undefined}
+                    aria-haspopup="dialog"
                     aria-label={`查看队列第 ${index + 1} 项详情 ${title}`}
                     className="combat-copilot-mine-body"
                   >
                     <span className="combat-copilot-mine-title">{title}</span>
                     <span className="combat-copilot-mine-meta">
-                      <span className="combat-copilot-mine-tag">{describeSource(entry)}</span>
+                      <span className="combat-copilot-mine-tag">{describeQueueSource(entry)}</span>
                       {entry.stage && <span>{entry.stage}</span>}
                       {entry.source !== 'file' && <span>理智 {formatCopilotApCost(entry.apCost)}</span>}
                       {entry.source === 'file' && entry.fileName && <span>{entry.fileName}</span>}
@@ -300,11 +212,6 @@ export default function CombatCopilotQueuePanel({ queue }: CombatCopilotQueuePan
           </div>
         </>
       )}
-
-      <CombatCopilotDetailLayer
-        target={detailEntry ? toDetailTarget(detailEntry, queue) : null}
-        onClose={() => setDetailEntryId(null)}
-      />
     </section>
   )
 }

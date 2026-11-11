@@ -1,14 +1,17 @@
 import { isRecord } from '@/shared/api'
 import type {
+  CopilotDifficulty,
   CopilotDetailOperator,
   CopilotSearchItem,
   CopilotSearchResult,
   CopilotSetItem,
   ParadoxSearchResult,
 } from '../types'
+import { copilotDifficultyFromFlags, readCopilotRecommendedMode } from './copilotSelection'
 
 export interface CopilotDetail {
   readonly title: string
+  readonly recommendedMode?: CopilotDifficulty
   readonly stage?: string
   readonly operators: string
   readonly operatorDetails?: CopilotDetailOperator[]
@@ -164,10 +167,12 @@ export function readCopilotInfoPayload(value: unknown): CopilotInfoPayload {
   const stage = asText(content.stage_name)
   const operatorDetails = readOperatorDetails(content.opers)
   const groupNames = readGroupNames(content.groups)
+  const recommendedMode = copilotDifficultyFromFlags(content.difficulty)
   return {
     statusCode,
     detail: {
       title,
+      ...(recommendedMode ? { recommendedMode } : {}),
       ...(stage ? { stage } : {}),
       operators: extractCopilotOperators(content),
       ...(operatorDetails.length ? { operatorDetails } : {}),
@@ -220,6 +225,7 @@ function readPlanItem(
   const operatorDetails = readOperatorDetails(value.operators)
   const groupNames = readGroupNames(value.groups)
   const completedModes = readCompletedModes(entries, itemIndex)
+  const recommendedMode = readCopilotRecommendedMode(value.recommendedMode)
   return {
     id,
     name: stage ?? `作业 #${id}`,
@@ -230,6 +236,7 @@ function readPlanItem(
     ...(groupNames.length ? { groupNames } : {}),
     presetFormation: value.presetFormation === true,
     supportsRaid: value.supportsRaid !== false,
+    ...(recommendedMode ? { recommendedMode } : {}),
     ...(completedModes.length ? { completedModes } : {}),
     uri: `prts://${id}`,
   }

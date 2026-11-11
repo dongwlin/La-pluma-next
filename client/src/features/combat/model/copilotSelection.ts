@@ -1,4 +1,15 @@
-import type { CopilotRaid, CopilotSetItem } from '../types'
+import type { CopilotDifficulty, CopilotRaid, CopilotSetItem } from '../types'
+
+export function readCopilotRecommendedMode(value: unknown): CopilotDifficulty | undefined {
+  return value === 'normal' || value === 'raid' || value === 'both' ? value : undefined
+}
+
+export function copilotDifficultyFromFlags(value: unknown): CopilotDifficulty | undefined {
+  if (value === 0 || value === 1) return 'normal'
+  if (value === 2) return 'raid'
+  if (value === 3) return 'both'
+  return undefined
+}
 
 /** 去重、丢弃非整数并升序，作为选择写入配置与执行请求的唯一形状。 */
 export function serializeCopilotSelection(indexes: Iterable<number>): number[] {
@@ -30,8 +41,9 @@ export function requiredCopilotItemModes(
   raid: CopilotRaid,
 ): Array<'normal' | 'raid'> {
   if (copilot.presetFormation) return ['normal']
-  if (raid === 'both') return ['normal', 'raid']
-  return [raid === 'raid' ? 'raid' : 'normal']
+  const mode = raid === 'auto' ? copilot.recommendedMode : raid
+  if (mode === 'both') return ['normal', 'raid']
+  return [mode === 'raid' ? 'raid' : 'normal']
 }
 
 /** 按计划进度计算仍待执行的作业索引；已完成项不进入列表。 */

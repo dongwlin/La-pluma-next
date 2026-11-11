@@ -73,6 +73,7 @@ export function buildSingleCopilotPreview(id: string, detail: CopilotDetail): Co
     type: 'single',
     id,
     name: detail.title,
+    ...(detail.recommendedMode ? { recommendedMode: detail.recommendedMode } : {}),
     ...(detail.stage ? { stage: detail.stage } : {}),
     operators: detail.operators,
     ...(detail.operatorDetails?.length ? { operatorDetails: detail.operatorDetails } : {}),
@@ -113,6 +114,7 @@ export function buildCopilotSetItemFromDetail(id: number, detail: CopilotDetail)
   return {
     id,
     name: detail.title,
+    ...(detail.recommendedMode ? { recommendedMode: detail.recommendedMode } : {}),
     ...(detail.stage ? { stage: detail.stage } : {}),
     operators: detail.operators,
     ...(detail.operatorDetails?.length ? { operatorDetails: detail.operatorDetails } : {}),

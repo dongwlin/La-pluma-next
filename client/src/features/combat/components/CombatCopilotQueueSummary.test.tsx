@@ -2,7 +2,7 @@
 
 import { act } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import type { AgentRun, RunTaskResult } from '@/features/task-execution'
 import { readCopilotSetRunProjection } from '../model/copilotSetRun'
 import { deriveCopilotSetView, type CopilotSetView } from '../model/copilotSetView'
@@ -92,12 +92,6 @@ function createView(
   }
 }
 
-const click = async (element: HTMLElement) => {
-  await act(async () => {
-    element.dispatchEvent(new MouseEvent('click', { bubbles: true }))
-  })
-}
-
 describe('CombatCopilotQueueSummary', () => {
   let container: HTMLDivElement
   let root: Root
@@ -111,16 +105,14 @@ describe('CombatCopilotQueueSummary', () => {
   afterEach(async () => {
     await act(async () => root.unmount())
     container.remove()
-    vi.restoreAllMocks()
   })
 
-  const renderSummary = async (fixture: ViewFixture, onCancelSet = () => {}) => {
+  const renderSummary = async (fixture: ViewFixture) => {
     await act(async () => {
       root.render(
         <CombatCopilotQueueSummary
           preview={fixture.preview}
           view={fixture.view}
-          onCancelSet={onCancelSet}
         />,
       )
     })
@@ -284,14 +276,13 @@ describe('CombatCopilotQueueSummary', () => {
     expect(container.textContent).toContain('待 2')
   })
 
-  it('describes the waiting entry and offers to cancel the set', async () => {
-    const onCancelSet = vi.fn()
+  it('describes the waiting entry', async () => {
     const fixture = createView(
       [[0, 'success'], [1, 'pending'], [2, 'pending']],
       { waitingEntryIndex: 1, selected: new Set([1, 2]) },
     )
 
-    await renderSummary(fixture, onCancelSet)
+    await renderSummary(fixture)
 
     expect(container.textContent).toContain('下一关')
     expect(container.textContent).toContain('第 2 / 4 关')
@@ -300,12 +291,5 @@ describe('CombatCopilotQueueSummary', () => {
     expect(container.textContent).toContain('MAIN-2')
     expect(container.textContent).toContain('请在游戏中进入下一关界面后点击「开始下一关」。')
 
-    const cancel = Array.from(container.querySelectorAll('button'))
-      .find(button => button.textContent?.trim() === '终止执行')
-    expect(cancel?.disabled).toBe(false)
-
-    await click(cancel!)
-
-    expect(onCancelSet).toHaveBeenCalledOnce()
   })
 })

@@ -1,7 +1,9 @@
 import { isRecord } from '@/shared/api'
-import type { CopilotSetInfo } from '../types'
-import { quoteCopilotPathForInput } from '../utils/copilotUri'
+import type { CopilotQueueRunEntry } from '../api'
+import type { CopilotDifficulty, CopilotRaid, CopilotSetInfo } from '../types'
+import { parseCopilotUri, quoteCopilotPathForInput } from '../utils/copilotUri'
 import type { CopilotDetailOperator } from './copilotDetail'
+import { copilotDifficultyFromFlags } from './copilotSelection'
 
 export type CopilotQueueSource = 'link' | 'set' | 'file'
 
@@ -17,6 +19,7 @@ export interface CopilotQueueEntry {
   apCost?: number | null
   presetFormation?: boolean
   supportsRaid?: boolean
+  recommendedMode?: CopilotDifficulty
   operators?: string[]
   groups?: string[]
   operatorDetails?: CopilotDetailOperator[]
@@ -30,6 +33,7 @@ export interface CopilotQueueEntry {
 export interface CopilotQueueFileMetadata {
   title?: string
   stage?: string
+  recommendedMode?: CopilotDifficulty
   operators: string[]
   groups: string[]
 }
@@ -95,6 +99,7 @@ export function buildCopilotQueueEntries(
       apCost: item.apCost,
       presetFormation: item.presetFormation,
       supportsRaid: item.supportsRaid,
+      recommendedMode: item.recommendedMode,
       ...withCopilotNames(item.operators, item.groupNames, item.operatorDetails),
       completedModes: item.completedModes,
       setId: preview.id,
@@ -109,6 +114,7 @@ export function buildCopilotQueueEntries(
     uri: `prts://${preview.id}`,
     title: preview.name || preview.stage || `作业 #${preview.id}`,
     stage: preview.stage,
+    recommendedMode: preview.recommendedMode,
     ...withCopilotNames(preview.operators, preview.groupNames, preview.operatorDetails),
     addedAt,
   }]
@@ -134,9 +140,11 @@ export function parseCopilotQueueFileContent(content: string): CopilotQueueFileM
   }
   if (!isRecord(parsed)) return { operators: [], groups: [] }
   const documentation = isRecord(parsed.doc) ? parsed.doc : null
+  const recommendedMode = copilotDifficultyFromFlags(parsed.difficulty)
   return {
     title: readText(documentation?.title),
     stage: readText(parsed.stage_name),
+    ...(recommendedMode ? { recommendedMode } : {}),
     operators: readNamedEntries(parsed.opers),
     groups: readNamedEntries(parsed.groups),
   }
@@ -156,6 +164,7 @@ export function buildCopilotQueueEntryFromFile(
     uri: path,
     title: metadata.title ?? fallbackTitle,
     stage: metadata.stage,
+    recommendedMode: metadata.recommendedMode,
     ...(metadata.operators.length ? { operators: metadata.operators } : {}),
     ...(metadata.groups.length ? { groups: metadata.groups } : {}),
     fileName,
@@ -237,4 +246,43 @@ export function checkedCopilotQueueEntries(
 
 export function copilotQueueEntryArgument(entry: CopilotQueueEntry): string {
   return entry.source === 'file' ? quoteCopilotPathForInput(entry.uri) : entry.uri
+}
+
+function unquotePath(value: string): string {
+  const trimmed = value.trim()
+  if (trimmed.length < 2) return trimmed
+  const quote = trimmed[0]
+  if ((quote === '"' || quote === "'") && trimmed[trimmed.length - 1] === quote) {
+    return trimmed.slice(1, -1)
+  }
+  return trimmed
+}
+
+export function toCopilotQueueRunEntry(
+  entry: CopilotQueueEntry,
+  mode: CopilotRaid = 'normal',
+): CopilotQueueRunEntry | null {
+  const entryMode = entry.presetFormation ? 'normal' : mode
+  if (entry.source === 'file') {
+    const filename = unquotePath(entry.uri)
+    return filename ? { clientId: entry.id, source: 'file', filename, mode: entryMode } : null
+  }
+  const parsed = parseCopilotUri(entry.uri)
+  if (!parsed || parsed.isSet) return null
+  const copilotId = Number(parsed.id)
+  if (!Number.isInteger(copilotId) || copilotId <= 0) return null
+  return { clientId: entry.id, source: 'prts', copilotId, mode: entryMode }
+}
+
+export function toCopilotQueueRunEntries(
+  entries: readonly CopilotQueueEntry[],
+  mode: CopilotRaid = 'normal',
+  retryModes?: ReadonlyMap<string, CopilotRaid | null>,
+): CopilotQueueRunEntry[] {
+  const mapped: CopilotQueueRunEntry[] = []
+  for (const entry of entries) {
+    const runEntry = toCopilotQueueRunEntry(entry, retryModes?.get(entry.id) ?? mode)
+    if (runEntry) mapped.push(runEntry)
+  }
+  return mapped
 }

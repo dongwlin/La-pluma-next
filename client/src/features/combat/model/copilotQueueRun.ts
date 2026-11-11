@@ -3,12 +3,10 @@ import { isActiveRunState, isTerminalRunState } from '@/features/task-execution'
 import type {
   CopilotQueueEntryMode,
   CopilotQueueFailurePolicy,
-  CopilotQueueRunEntry,
   CopilotQueueRunMode,
 } from '../api'
-import { parseCopilotUri } from '../utils/copilotUri'
-import type { CopilotQueueEntry } from './copilotQueue'
-import type { TerminalNotice } from './copilotSetRun'
+import type { CopilotRaid } from '../types'
+import { foldCopilotItemStatuses, type TerminalNotice } from './copilotSetRun'
 
 export type CopilotQueueItemStatus = 'pending' | 'running' | 'success' | 'failed' | 'skipped' | 'stopped'
 
@@ -31,6 +29,7 @@ export interface CopilotQueueTaskResult {
 export interface CopilotQueueFailure {
   clientId: string | null
   stage: string | null
+  mode?: CopilotQueueEntryMode
   error: string
 }
 
@@ -144,9 +143,11 @@ function readFailures(value: unknown): CopilotQueueFailure[] {
   for (const raw of value) {
     const entry = asRecord(raw)
     if (!entry) continue
+    const mode = normalizeEntryMode(entry.mode)
     failures.push({
       clientId: asText(entry.clientId),
       stage: asText(entry.stage),
+      ...(mode ? { mode } : {}),
       error: asText(entry.error) ?? '未知错误',
     })
   }
@@ -196,18 +197,32 @@ export function readCopilotQueueRunProjection(run: AgentRun | null): CopilotQueu
     : readTaskResults(progress?.taskResults) ?? readTaskResults(summary?.taskResults)) ?? []
 
   const summaryErrors = readFailures(summary?.errors)
-  const statuses = new Map<string, CopilotQueueEntryState>()
+  const resultsByClientId = new Map<string, CopilotQueueTaskResult[]>()
   for (const entry of taskResults) {
-    statuses.set(entry.clientId, {
-      status: entry.status,
-      ...(entry.error ? { error: entry.error } : {}),
-    })
+    const results = resultsByClientId.get(entry.clientId)
+    if (results) results.push(entry)
+    else resultsByClientId.set(entry.clientId, [entry])
   }
-  for (const failure of summaryErrors) {
-    if (!failure.clientId) continue
-    const state = statuses.get(failure.clientId)
-    if (!state || state.status !== 'failed' || state.error) continue
-    statuses.set(failure.clientId, { status: state.status, error: failure.error })
+  const statuses = new Map<string, CopilotQueueEntryState>()
+  const failures: CopilotQueueFailure[] = []
+  for (const [clientId, results] of resultsByClientId) {
+    const errors: string[] = []
+    for (const entry of results) {
+      let error = entry.error
+      if (entry.status === 'failed') {
+        error ??= summaryErrors.find(failure => failure.clientId === clientId
+          && (failure.mode === entry.mode || (!failure.mode && results.length === 1)))?.error
+        failures.push({ clientId, stage: entry.stage, error: error ?? '未知错误' })
+      }
+      if (error) {
+        const modeLabel = entry.mode === 'raid' ? '突袭' : '普通'
+        errors.push(results.length > 1 && entry.mode ? `${modeLabel}：${error}` : error)
+      }
+    }
+    statuses.set(clientId, {
+      status: foldCopilotItemStatuses(results.map(entry => entry.status)),
+      ...(errors.length ? { error: errors.join('\n') } : {}),
+    })
   }
 
   const runningEntry = taskResults.find(entry => entry.status === 'running') ?? null
@@ -217,14 +232,6 @@ export function readCopilotQueueRunProjection(run: AgentRun | null): CopilotQueu
     : null
   const nextEntry = readNextEntry(progress?.nextEntry)
   const isWaiting = run.state === 'waiting'
-  const failures = taskResults
-    .filter(entry => entry.status === 'failed')
-    .map(entry => ({
-      clientId: entry.clientId,
-      stage: entry.stage,
-      error: entry.error || statuses.get(entry.clientId)?.error || '未知错误',
-    }))
-
   return {
     runId: run.runId,
     state: run.state,
@@ -258,42 +265,18 @@ export function readCopilotQueueRunProjection(run: AgentRun | null): CopilotQueu
   }
 }
 
-function unquotePath(value: string): string {
-  const trimmed = value.trim()
-  if (trimmed.length < 2) return trimmed
-  const quote = trimmed[0]
-  if ((quote === '"' || quote === "'") && trimmed[trimmed.length - 1] === quote) {
-    return trimmed.slice(1, -1)
+export function getCopilotQueueRetryModes(
+  projection: CopilotQueueRunProjection | null,
+): ReadonlyMap<string, CopilotRaid | null> {
+  const modes = new Map<string, CopilotRaid | null>()
+  if (!projection?.isTerminal) return modes
+  for (const entry of projection.taskResults) {
+    if (entry.status !== 'failed') continue
+    const previous = modes.get(entry.clientId)
+    const mode = previous && entry.mode && previous !== entry.mode ? 'both' : previous ?? entry.mode
+    modes.set(entry.clientId, mode)
   }
-  return trimmed
-}
-
-export function toCopilotQueueRunEntry(
-  entry: CopilotQueueEntry,
-  mode: CopilotQueueEntryMode = 'normal',
-): CopilotQueueRunEntry | null {
-  const entryMode: CopilotQueueEntryMode = entry.presetFormation ? 'normal' : mode
-  if (entry.source === 'file') {
-    const filename = unquotePath(entry.uri)
-    return filename ? { clientId: entry.id, source: 'file', filename, mode: entryMode } : null
-  }
-  const parsed = parseCopilotUri(entry.uri)
-  if (!parsed || parsed.isSet) return null
-  const copilotId = Number(parsed.id)
-  if (!Number.isInteger(copilotId) || copilotId <= 0) return null
-  return { clientId: entry.id, source: 'prts', copilotId, mode: entryMode }
-}
-
-export function toCopilotQueueRunEntries(
-  entries: readonly CopilotQueueEntry[],
-  mode: CopilotQueueEntryMode = 'normal',
-): CopilotQueueRunEntry[] {
-  const mapped: CopilotQueueRunEntry[] = []
-  for (const entry of entries) {
-    const runEntry = toCopilotQueueRunEntry(entry, mode)
-    if (runEntry) mapped.push(runEntry)
-  }
-  return mapped
+  return modes
 }
 
 export function describeCopilotQueueRunTerminal(

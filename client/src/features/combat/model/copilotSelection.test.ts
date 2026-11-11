@@ -53,6 +53,14 @@ describe('pending selection', () => {
     expect(pendingCopilotPlanIndexes(copilots, 'raid')).toEqual([0])
     expect(pendingCopilotPlanIndexes(copilots, 'both')).toEqual([0, 1])
   })
+
+  it('checks history against each job’s declared mode in automatic mode', () => {
+    expect(pendingCopilotPlanIndexes([
+      item({ recommendedMode: 'raid', completedModes: ['raid'] }),
+      item({ recommendedMode: 'both', completedModes: ['normal'] }),
+      item({ completedModes: ['normal'] }),
+    ], 'auto')).toEqual([1])
+  })
 })
 
 describe('restorableCopilotIndexes', () => {

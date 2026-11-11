@@ -9,6 +9,7 @@ import {
   type ApiResponse,
 } from '@/shared/api'
 import type { AgentRequestOptions } from '@/features/task-execution'
+import type { CopilotDifficulty, CopilotRaid } from '../types'
 
 const isCopilotSearchPayload = (payload: unknown): boolean =>
   isRecord(payload) && Array.isArray(payload.copilots)
@@ -91,7 +92,7 @@ export async function getCopilotSet(copilotId: string, signal?: AbortSignal): Pr
 
 export async function getCopilotSetPlan(
   copilotId: string,
-  raid: 'normal' | 'raid' | 'both' = 'normal',
+  raid: CopilotRaid = 'normal',
   signal?: AbortSignal,
 ): Promise<ApiResponse> {
   return readApiResponse(`${API_BASE_URL}/agent/copilot-sets/${encodeURIComponent(copilotId)}/plan?raid=${raid}`, {
@@ -108,7 +109,7 @@ export async function getCopilotSetPlan(
 export type CopilotSetRunMode = 'continuous' | 'manual'
 
 export interface CopilotSetExecutePayload {
-  raid: 'normal' | 'raid' | 'both'
+  raid: CopilotRaid
   selectedIndexes: number[]
   options?: Record<string, unknown>
   mode?: CopilotSetRunMode
@@ -163,11 +164,11 @@ export type CopilotQueueRunMode = CopilotSetRunMode
 
 export type CopilotQueueFailurePolicy = 'stop' | 'continue'
 
-export type CopilotQueueEntryMode = 'normal' | 'raid'
+export type CopilotQueueEntryMode = Exclude<CopilotDifficulty, 'both'>
 
 interface CopilotQueueRunEntryBase {
   clientId: string
-  mode?: CopilotQueueEntryMode
+  mode?: CopilotRaid
 }
 
 export interface CopilotQueuePrtsEntry extends CopilotQueueRunEntryBase {

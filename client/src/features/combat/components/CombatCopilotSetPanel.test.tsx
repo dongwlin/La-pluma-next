@@ -6,7 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { AgentRun, RunTaskResult } from '@/features/task-execution'
 import { readCopilotSetRunProjection } from '../model/copilotSetRun'
 import { deriveCopilotSetView, type CopilotSetView } from '../model/copilotSetView'
-import type { CopilotSetInfo, CopilotSetItem } from '../types'
+import type { CopilotSetInfo } from '../types'
 import CombatCopilotSetPanel from './CombatCopilotSetPanel'
 
 ;(globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true
@@ -97,11 +97,10 @@ describe('CombatCopilotSetPanel', () => {
   const renderPanel = async (
     view: CopilotSetView,
     options: {
-      preview?: CopilotSetInfo | null
+      preview?: CopilotSetInfo
       isRunning?: boolean
       isResetting?: boolean
       onOpenReset?: () => void
-      onCancelSet?: () => void
     } = {},
   ) => {
     await act(async () => {
@@ -111,10 +110,7 @@ describe('CombatCopilotSetPanel', () => {
           view={view}
           isRunning={options.isRunning ?? false}
           isResetting={options.isResetting ?? false}
-          isContinuing={false}
           onOpenReset={options.onOpenReset ?? noop}
-          onStartNext={noop}
-          onCancelSet={options.onCancelSet ?? noop}
         />,
       )
     })
@@ -130,9 +126,6 @@ describe('CombatCopilotSetPanel', () => {
 
     const section = container.querySelector('section[aria-label="作业集摘要"]')
     expect(section).not.toBeNull()
-    expect(section?.textContent).toContain('作业集摘要')
-    expect(section?.textContent).toContain('主线作业集')
-    expect(section?.textContent).toContain('prts://s48990')
     expect(section?.textContent).toContain('待 3')
     expect(section?.textContent).toContain('本次成功 1')
     expect(section?.textContent).toContain('历史已通关 0')
@@ -143,7 +136,7 @@ describe('CombatCopilotSetPanel', () => {
     expect(section?.querySelector('[data-copilot-item-index]')).toBeNull()
   })
 
-  it('offers the progress reset from the summary header', async () => {
+  it('offers the progress reset in the summary', async () => {
     const onOpenReset = vi.fn()
     await renderPanel(deriveView([[0, 'pending']]), { onOpenReset })
 
@@ -187,8 +180,7 @@ describe('CombatCopilotSetPanel', () => {
     expect(container.textContent).toContain('失败 1')
   })
 
-  it('describes the waiting entry and offers to cancel the set', async () => {
-    const onCancelSet = vi.fn()
+  it('describes the waiting entry', async () => {
     const projection = readCopilotSetRunProjection({
       runId: 'run-1',
       operationId: 'run_copilot_set',
@@ -213,23 +205,16 @@ describe('CombatCopilotSetPanel', () => {
       isAutoStopping: false,
     })
 
-    await renderPanel(view, { onCancelSet })
+    await renderPanel(view)
 
     expect(container.textContent).toContain('下一关')
     expect(container.textContent).toContain('第 2 / 4 关')
     expect(container.textContent).toContain('prts://102')
     expect(container.textContent).toContain('MAIN-2')
     expect(container.textContent).toContain('请在游戏中进入下一关界面后点击「开始下一关」。')
-
-    const cancel = Array.from(container.querySelectorAll('button'))
-      .find(button => button.textContent?.trim() === '终止执行')
-    expect(cancel?.disabled).toBe(false)
-    await click(cancel!)
-
-    expect(onCancelSet).toHaveBeenCalledOnce()
   })
 
-  it('renders one empty state for a preview without a usable set', async () => {
+  it('shows the explanation for a preview without a usable set', async () => {
     const emptySet: CopilotSetInfo = {
       ...preview,
       copilots: [],
@@ -247,46 +232,14 @@ describe('CombatCopilotSetPanel', () => {
 
     await renderPanel(view, { preview: emptySet, isRunning: false })
 
-    const emptyStates = container.querySelectorAll('.app-empty-state')
-    expect(emptyStates).toHaveLength(1)
-    expect(emptyStates[0]?.textContent).toContain('这套作业集暂时没有可用作业')
-    expect(container.querySelector('[role="list"]')).toBeNull()
-  })
-
-  it('keeps a compact single-job summary without a list', async () => {
-    const single: CopilotSetInfo = {
-      type: 'single',
-      id: '66',
-      name: '低配 1-7',
-      stage: '1-7',
-      operators: '桃金娘',
-      note: '来自作业链接',
-    }
-    const view = deriveCopilotSetView({
-      preview: single,
-      selected: new Set(),
-      setRun: null,
-      dismissedRunId: null,
-      raid: 'normal',
-      isWaitingForNext: false,
-      isAutoStopping: false,
-    })
-
-    await renderPanel(view, { preview: single })
-
-    expect(container.querySelector('section[aria-label="单个作业"]')).not.toBeNull()
-    expect(container.textContent).toContain('低配 1-7')
-    expect(container.textContent).toContain('1-7')
-    expect(container.textContent).toContain('桃金娘')
-    expect(container.textContent).toContain('prts://66')
-    expect(container.textContent).toContain('来自作业链接')
+    expect(container.textContent).toContain('这套作业集暂时没有可用作业')
     expect(container.querySelector('[role="list"]')).toBeNull()
   })
 
   it('marks a missing set as unknown without inventing summary facts', async () => {
     const sparseSet: CopilotSetInfo = {
       ...preview,
-      copilots: [] as CopilotSetItem[],
+      copilots: [],
     }
     const view = deriveCopilotSetView({
       preview: sparseSet,
@@ -300,7 +253,7 @@ describe('CombatCopilotSetPanel', () => {
 
     await renderPanel(view, { preview: sparseSet })
 
-    expect(container.textContent).toContain('等待作业')
+    expect(container.textContent).toContain('暂无作业明细')
     expect(container.textContent).not.toContain('理智')
   })
 })

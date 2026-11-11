@@ -11,15 +11,17 @@ import { Button, IconButton } from '@/shared/ui'
 import { Modal } from '@/shared/ui/Modal'
 import { useStatusStore } from '@/features/runtime-status'
 import type { CopilotDetailOperator, CopilotDetailTarget } from '../model/copilotDetail'
-
-export const COPILOT_DETAIL_LAYER_ID = 'combat-copilot-detail-panel'
+import { COPILOT_DETAIL_LAYER_ID } from './combatPanelTypes'
 
 const MOBILE_DETAIL_QUERY = '(max-width: 40rem)'
 
 export interface CombatCopilotDetailLayerProps {
   target: CopilotDetailTarget | null
   onClose: () => void
+  children?: ReactNode
 }
+
+const RECOMMENDED_MODE_LABELS = { normal: '普通', raid: '突袭', both: '普通+突袭' }
 
 function useMobileDetailLayout(): boolean {
   const [isMobile, setIsMobile] = useState(() => (
@@ -94,7 +96,7 @@ function DetailSection({
   )
 }
 
-function DetailBody({ target }: { target: CopilotDetailTarget }) {
+function DetailBody({ target, children }: { target: CopilotDetailTarget; children?: ReactNode }) {
   const setStatusMessage = useStatusStore(state => state.setMessage)
   const operators = target.operators ?? []
   const groups = target.groups ?? []
@@ -134,7 +136,10 @@ function DetailBody({ target }: { target: CopilotDetailTarget }) {
             {target.presetFormation ? '预设编队 · 仅普通' : '按执行设置自动编队'}
           </DetailField>
         )}
-        <DetailField label="来源">{target.sourceLabel}</DetailField>
+        {target.sourceLabel && <DetailField label="来源">{target.sourceLabel}</DetailField>}
+        {target.recommendedMode && (
+          <DetailField label="作业标注">{RECOMMENDED_MODE_LABELS[target.recommendedMode]}</DetailField>
+        )}
         {target.supportsRaid !== undefined && (
           <DetailField label="突袭">
             {target.supportsRaid ? '支持突袭' : '不支持突袭'}
@@ -208,11 +213,12 @@ function DetailBody({ target }: { target: CopilotDetailTarget }) {
           </ul>
         </DetailSection>
       )}
+      {children}
     </div>
   )
 }
 
-export default function CombatCopilotDetailLayer({ target, onClose }: CombatCopilotDetailLayerProps) {
+export default function CombatCopilotDetailLayer({ target, onClose, children }: CombatCopilotDetailLayerProps) {
   const isMobile = useMobileDetailLayout()
   const generatedId = useId().replace(/:/g, '')
   const titleId = `combat-copilot-detail-title-${generatedId}`
@@ -237,14 +243,14 @@ export default function CombatCopilotDetailLayer({ target, onClose }: CombatCopi
     }
 
     const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key !== 'Escape') return
+      if (event.key !== 'Escape' || event.defaultPrevented) return
       event.preventDefault()
       requestClose()
     }
     const handleOutsidePress = (event: MouseEvent) => {
       const panel = panelRef.current
       if (!panel || !(event.target instanceof Node)) return
-      if (panel.contains(event.target)) return
+      if (panel.contains(event.target) || (event.target instanceof Element && event.target.closest('[data-app-modal-layer]'))) return
       requestClose()
     }
 
@@ -269,7 +275,7 @@ export default function CombatCopilotDetailLayer({ target, onClose }: CombatCopi
         dialogId={COPILOT_DETAIL_LAYER_ID}
         size="lg"
       >
-        {target && <DetailBody target={target} />}
+        {target && <DetailBody target={target}>{children}</DetailBody>}
       </Modal>
     )
   }
@@ -299,7 +305,7 @@ export default function CombatCopilotDetailLayer({ target, onClose }: CombatCopi
           />
         </header>
         <div className="combat-copilot-detail-scroll">
-          <DetailBody target={target} />
+          <DetailBody target={target}>{children}</DetailBody>
         </div>
       </aside>
     </div>,

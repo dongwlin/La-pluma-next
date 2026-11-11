@@ -5,6 +5,7 @@ import {
   createCopilotQueueEntryId,
   type CopilotQueueEntry,
 } from './copilotQueue'
+import { readCopilotRecommendedMode } from './copilotSelection'
 
 export const COPILOT_QUEUE_STORAGE_KEY = 'la-pluma-copilot-queue-v1'
 
@@ -70,7 +71,8 @@ function parseCopilotQueueEntry(value: unknown): CopilotQueueEntry | null {
     stageId: readText(value.stageId),
     apCost: readApCost(value.apCost),
     presetFormation: value.presetFormation === true ? true : undefined,
-    supportsRaid: value.supportsRaid === true ? true : undefined,
+    supportsRaid: typeof value.supportsRaid === 'boolean' ? value.supportsRaid : undefined,
+    recommendedMode: readCopilotRecommendedMode(value.recommendedMode),
     operators: readStringArray(value.operators),
     groups: readStringArray(value.groups),
     operatorDetails: readOperatorDetails(value.operatorDetails),

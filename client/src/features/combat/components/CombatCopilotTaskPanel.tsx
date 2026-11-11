@@ -1,6 +1,8 @@
 import { Card } from '@/shared/ui'
+import type { CopilotDetailTarget } from '../model/copilotDetail'
 import type { CopilotSetView } from '../model/copilotSetView'
-import type { CombatTask } from '../types'
+import type { CombatTask, CopilotSetInfo } from '../types'
+import CombatCopilotDetailLayer from './CombatCopilotDetailLayer'
 import CombatCopilotQueuePanel from './CombatCopilotQueuePanel'
 import CombatCopilotSetPanel from './CombatCopilotSetPanel'
 import CombatCopilotSourceBar from './CombatCopilotSourceBar'
@@ -8,6 +10,7 @@ import CombatSettingsPanel from './CombatSettingsPanel'
 import CombatTaskHeading from './CombatTaskHeading'
 import type {
   CombatCopilotConfig,
+  CombatCopilotDetailSelection,
   CombatCopilotExecutionActions,
   CombatCopilotFileImportProjection,
   CombatCopilotPreviewProjection,
@@ -15,6 +18,7 @@ import type {
   CombatCopilotSearchProjection,
   CombatCopilotSelectionProjection,
 } from './combatPanelTypes'
+import { buildQueueDetailTarget } from './copilotQueuePresentation'
 
 interface CombatCopilotTaskPanelProps {
   task: CombatTask
@@ -26,6 +30,24 @@ interface CombatCopilotTaskPanelProps {
   queue: CombatCopilotQueueProjection
   search: CombatCopilotSearchProjection
   execution: CombatCopilotExecutionActions
+  detail: CombatCopilotDetailSelection | null
+  onOpenQueueDetail: (id: string) => void
+  onCloseDetail: () => void
+}
+
+function buildPreviewDetailTarget(preview: CopilotSetInfo): CopilotDetailTarget {
+  if (preview.type === 'set') {
+    return { title: preview.name, uri: `prts://s${preview.id}` }
+  }
+  return {
+    title: preview.name,
+    stage: preview.stage,
+    uri: `prts://${preview.id}`,
+    sourceLabel: '链接',
+    operators: preview.operatorDetails,
+    groups: preview.groupNames,
+    recommendedMode: preview.recommendedMode,
+  }
 }
 
 export default function CombatCopilotTaskPanel({
@@ -38,8 +60,15 @@ export default function CombatCopilotTaskPanel({
   queue,
   search,
   execution,
+  detail,
+  onOpenQueueDetail,
+  onCloseDetail,
 }: CombatCopilotTaskPanelProps) {
-  const previewInfo = preview.info
+  const previewInfo = detail?.type === 'preview' ? preview.info : null
+  const queueEntry = detail?.type === 'queue' ? queue.entries.find(entry => entry.id === detail.id) : undefined
+  const detailTarget = previewInfo
+    ? buildPreviewDetailTarget(previewInfo)
+    : queueEntry ? buildQueueDetailTarget(queueEntry, queue) : null
 
   return (
     <Card
@@ -78,20 +107,11 @@ export default function CombatCopilotTaskPanel({
 
       <div className="combat-copilot-body">
         <div className="combat-copilot-queue-column">
-          <CombatCopilotQueuePanel queue={queue} />
-
-          {previewInfo !== null && (
-            <CombatCopilotSetPanel
-              preview={previewInfo}
-              view={view}
-              isRunning={execution.isRunning}
-              isResetting={selection.isResetting}
-              isContinuing={execution.isContinuing}
-              onOpenReset={selection.onOpenReset}
-              onStartNext={execution.onStartNext}
-              onCancelSet={execution.onCancelSet}
-            />
-          )}
+          <CombatCopilotQueuePanel
+            queue={queue}
+            detailEntryId={queueEntry?.id ?? null}
+            onOpenDetail={onOpenQueueDetail}
+          />
         </div>
 
         <div className="combat-copilot-params">
@@ -108,6 +128,18 @@ export default function CombatCopilotTaskPanel({
           />
         </div>
       </div>
+
+      <CombatCopilotDetailLayer target={detailTarget} onClose={onCloseDetail}>
+        {previewInfo?.type === 'set' && (
+          <CombatCopilotSetPanel
+            preview={previewInfo}
+            view={view}
+            isRunning={execution.isRunning}
+            isResetting={selection.isResetting}
+            onOpenReset={selection.onOpenReset}
+          />
+        )}
+      </CombatCopilotDetailLayer>
     </Card>
   )
 }

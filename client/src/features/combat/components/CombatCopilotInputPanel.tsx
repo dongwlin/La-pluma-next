@@ -122,6 +122,7 @@ export default function CombatCopilotInputPanel({
         </div>
         <Button
           onClick={onPreview}
+          aria-haspopup="dialog"
           disabled={isLoading || !input.trim()}
           loading={isLoading}
           variant="secondary"

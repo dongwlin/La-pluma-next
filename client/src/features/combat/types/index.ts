@@ -30,7 +30,9 @@ export interface CombatTaskInputs {
 /** 作业集执行方式；`app` 是旧值，仅在加载时迁移为 `cli`。 */
 export type CopilotSetExecutionMode = 'app' | 'manual' | 'cli'
 
-export type CopilotRaid = 'normal' | 'raid' | 'both'
+export type CopilotDifficulty = 'normal' | 'raid' | 'both'
+
+export type CopilotRaid = CopilotDifficulty | 'auto'
 
 export type CopilotSetSelections = Record<string, number[]>
 
@@ -68,6 +70,7 @@ export interface CopilotSetItem {
   uri?: string
   presetFormation?: boolean
   supportsRaid?: boolean
+  recommendedMode?: CopilotDifficulty
   completedModes?: Array<'normal' | 'raid'>
 }
 
@@ -80,6 +83,7 @@ export interface CopilotSetInfo {
   operatorDetails?: CopilotDetailOperator[]
   groupNames?: string[]
   note?: string
+  recommendedMode?: CopilotDifficulty
   autoAddS?: boolean
   copilots?: CopilotSetItem[]
   currentIndex?: number

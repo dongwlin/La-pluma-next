@@ -2,12 +2,10 @@
 
 import { describe, expect, it } from 'vitest'
 import type { AgentRun, RunProgress } from '@/features/task-execution'
-import type { CopilotQueueEntry } from './copilotQueue'
+import { toCopilotQueueRunEntries, toCopilotQueueRunEntry, type CopilotQueueEntry } from './copilotQueue'
 import {
   describeCopilotQueueRunTerminal,
   readCopilotQueueRunProjection,
-  toCopilotQueueRunEntries,
-  toCopilotQueueRunEntry,
 } from './copilotQueueRun'
 
 const taskResult = (
@@ -97,6 +95,23 @@ describe('readCopilotQueueRunProjection', () => {
     expect(projection?.failures).toEqual([])
   })
 
+  it('folds results for both difficulties into one queue row', () => {
+    const projection = readCopilotQueueRunProjection(run({
+      progress: queueProgress([
+        taskResult('a', 0, 'failed', { error: '作战失败' }),
+        taskResult('a', 0, 'success', { mode: 'raid' }),
+        taskResult('b', 1, 'success'),
+        taskResult('b', 1, 'running', { mode: 'raid' }),
+        taskResult('c', 2, 'success'),
+        taskResult('c', 2, 'pending', { mode: 'raid' }),
+      ]),
+    }))
+
+    expect(projection?.statuses.get('a')).toEqual({ status: 'failed', error: '普通：作战失败' })
+    expect(projection?.statuses.get('b')).toEqual({ status: 'running' })
+    expect(projection?.statuses.get('c')).toEqual({ status: 'pending' })
+  })
+
   it('reads the terminal summary and keeps failure reasons per clientId', () => {
     const projection = readCopilotQueueRunProjection(run({
       state: 'succeeded',
@@ -182,6 +197,29 @@ describe('readCopilotQueueRunProjection', () => {
     expect(projection?.failures).toEqual([
       { clientId: 'a', stage: 'QUEUE-1', error: '缺少干员' },
     ])
+  })
+
+  it('matches both failure reasons to their own difficulty', () => {
+    const projection = readCopilotQueueRunProjection(run({
+      state: 'failed',
+      result: {
+        summary: {
+          errors: [
+            { clientId: 'a', mode: 'raid', error: '突袭导航失败' },
+            { clientId: 'a', mode: 'normal', error: '普通导航失败' },
+          ],
+          taskResults: [
+            taskResult('a', 0, 'failed'),
+            taskResult('a', 0, 'failed', { mode: 'raid' }),
+          ],
+        },
+      },
+    }))
+
+    expect(projection?.statuses.get('a')).toEqual({
+      status: 'failed',
+      error: '普通：普通导航失败\n突袭：突袭导航失败',
+    })
   })
 
   it('keeps an empty projection when progress and summary are missing', () => {

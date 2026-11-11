@@ -169,6 +169,28 @@ describe('useCopilotQueue', () => {
     expect(readStored()).toHaveLength(3)
   })
 
+  it('refreshes existing set rows without restoring removed or unchecked members', async () => {
+    const members = [setEntry('a', 0), setEntry('b', 1), setEntry('c', 2)]
+    localStorage.setItem(COPILOT_QUEUE_STORAGE_KEY, serializeCopilotQueue(members))
+    await renderQueue()
+    await run(() => {
+      latest?.move('b', 'up')
+      latest?.toggle('b')
+      latest?.remove('c')
+    })
+
+    await run(() => latest?.syncSet('48990', [
+      { ...setEntry('a-fresh', 0), completedModes: ['normal'] },
+      setEntry('b-fresh', 1),
+      setEntry('c-fresh', 2),
+    ], [1, 2], 'refresh'))
+
+    expect(latest?.entries.map(item => item.id)).toEqual(['b', 'a'])
+    expect(latest?.entries.find(item => item.id === 'a')?.completedModes).toEqual(['normal'])
+    expect(latest?.selected.size).toBe(0)
+    expect(readStored().map(item => item.id)).toEqual(['b', 'a'])
+  })
+
   it('keeps working when localStorage rejects writes', async () => {
     vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {
       throw new Error('quota exceeded')

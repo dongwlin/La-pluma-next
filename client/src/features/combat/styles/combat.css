@@ -842,11 +842,6 @@
   .combat-copilot-summary {
     display: grid;
     gap: var(--app-space-3);
-    margin: var(--app-space-card);
-    padding: var(--app-space-3);
-    border: 1px solid var(--app-border);
-    border-radius: var(--app-radius-md);
-    background: color-mix(in srgb, var(--app-surface-solid) 55%, transparent);
   }
 
   .combat-copilot-summary-head {
@@ -1008,34 +1003,9 @@
     font-size: 0.75rem;
   }
 
-  .combat-copilot-single {
-    display: grid;
-    gap: var(--app-space-3);
-    padding: var(--app-space-card);
-  }
-
-  .combat-copilot-single-head {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    gap: var(--app-space-2);
-  }
-
-  .combat-copilot-single-uri {
-    color: var(--app-accent-strong);
-    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-    font-size: 0.6875rem;
-  }
-
   .combat-copilot-empty {
     min-height: 14rem;
     padding: var(--app-space-panel);
-  }
-
-  .combat-copilot-detail {
-    padding: var(--app-space-3) var(--app-space-4);
-    border-top: 1px dashed var(--app-border);
-    background: color-mix(in srgb, var(--app-surface-solid) 40%, transparent);
   }
 
   .combat-copilot-detail-grid {
