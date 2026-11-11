@@ -28,6 +28,7 @@ await writeFile(cliCallLog, '');
 
 await writeFile(fakeCliPath, `#!${process.execPath}
 const fs = require('node:fs');
+const path = require('node:path');
 const args = process.argv.slice(2);
 if (args[0] === 'dir') {
   const dirs = {
@@ -40,6 +41,10 @@ if (args[0] === 'dir') {
   process.exit(0);
 }
 fs.appendFileSync(process.env.FAKE_MAA_LOG, args.join(' ') + '\\n');
+if (args[0] === 'run') {
+  const taskFile = path.join(process.env.FAKE_MAA_CONFIG_DIR, 'tasks', args[1] + '.toml');
+  fs.appendFileSync(process.env.FAKE_MAA_LOG, fs.readFileSync(taskFile, 'utf8') + '\\n');
+}
 const finish = () => {
   process.stdout.write('fake output\\n');
   process.exit(0);
@@ -106,6 +111,7 @@ interface QueueRunPayload {
 interface RunLookupPayload {
   runId: string;
   state: string;
+  progress?: { currentStep: number | null; totalSteps: number };
   result?: { summary?: QueueSummaryPayload };
 }
 
@@ -120,7 +126,7 @@ interface QueueSummaryPayload {
   stoppedCount: number;
   pendingCount: number;
   errors: Array<{ clientId: string; stage: string; error: string }>;
-  taskResults: Array<{ clientId: string; status: string; error?: string }>;
+  taskResults: Array<{ clientId: string; itemIndex: number; mode: string; status: string; error?: string }>;
 }
 
 function isApiSuccess(value: unknown): value is ApiSuccessResponse<unknown> {
@@ -312,6 +318,68 @@ describe('copilot queue HTTP routes', () => {
     assert.equal(terminal.result?.summary?.failurePolicy, 'continue');
   });
 
+  it('runs normal then raid for each source in a continuous queue', async () => {
+    const port = await listen(createLaPlumaApp({ env: {}, signalingGateway: stubSignalingGateway() }));
+    const baseUrl = `http://127.0.0.1:${port}`;
+
+    const response = await postJson(`${baseUrl}/api/agent/copilot-queues/execute`, queueBody({
+      entries: remoteEntries().map(entry => ({ ...entry, mode: 'both' }))
+    }));
+    assert.equal(response.status, 200);
+    const body = await readSuccess<QueueRunPayload>(response);
+    assert.equal(body.data.summary?.totalEntries, 4);
+    assert.equal(body.data.summary?.successCount, 4);
+    assert.deepEqual(body.data.summary?.taskResults.map(item => [item.clientId, item.itemIndex, item.mode, item.status]), [
+      ['queue-0', 0, 'normal', 'success'],
+      ['queue-0', 0, 'raid', 'success'],
+      ['queue-1', 1, 'normal', 'success'],
+      ['queue-1', 1, 'raid', 'success']
+    ]);
+    const cliLog = await readFile(cliCallLog, 'utf8');
+    assert.equal(cliLog.match(/^run /gm)?.length, 1);
+    assert.deepEqual(cliLog.match(/"is_raid" = (?:true|false)/g), [
+      '"is_raid" = false',
+      '"is_raid" = true',
+      '"is_raid" = false',
+      '"is_raid" = true'
+    ]);
+  });
+
+  it('skips only the raid step when waiting between modes of the same source', async () => {
+    const port = await listen(createLaPlumaApp({ env: {}, signalingGateway: stubSignalingGateway() }));
+    const baseUrl = `http://127.0.0.1:${port}`;
+    const [first, second] = remoteEntries();
+
+    const response = await postJson(`${baseUrl}/api/agent/copilot-queues/execute`, queueBody({
+      mode: 'manual',
+      entries: [{ ...first, mode: 'both' }, second]
+    }));
+    assert.equal(response.status, 200);
+    const submitted = await readSuccess<QueueRunPayload>(response);
+    const runId = submitted.data.runId;
+    assert.equal(submitted.data.state, 'waiting');
+    assert.equal(submitted.data.nextEntry?.clientId, 'queue-0');
+    assert.equal(submitted.data.nextEntry?.mode, 'raid');
+    const waiting = await waitForRunState(baseUrl, runId, ['waiting']);
+    assert.equal(waiting.progress?.currentStep, 2);
+    assert.equal(waiting.progress?.totalSteps, 3);
+
+    const skippedResponse = await postJson(`${baseUrl}/api/agent/actions/skip-copilot-queue-entry`, { runId });
+    assert.equal(skippedResponse.status, 200);
+    const skipped = await readSuccess<QueueRunPayload>(skippedResponse);
+    assert.equal(skipped.data.nextEntry?.clientId, 'queue-1');
+
+    const continued = await postJson(`${baseUrl}/api/agent/actions/continue-copilot-queue`, { runId });
+    assert.equal(continued.status, 200);
+    const finished = await readSuccess<QueueRunPayload>(continued);
+    assert.equal(finished.data.state, 'succeeded');
+    assert.deepEqual(finished.data.summary?.taskResults.map(item => [item.clientId, item.mode, item.status]), [
+      ['queue-0', 'normal', 'success'],
+      ['queue-0', 'raid', 'skipped'],
+      ['queue-1', 'raid', 'success']
+    ]);
+  });
+
   it('waits after the first manual entry and executes the next entry on continue', async () => {
     const port = await listen(createLaPlumaApp({ env: {}, signalingGateway: stubSignalingGateway() }));
     const baseUrl = `http://127.0.0.1:${port}`;
@@ -478,7 +546,7 @@ describe('copilot queue HTTP routes', () => {
       [{ entries: [{ clientId: 'bad id', source: 'prts', copilotId: 1 }] }, 'AGENT_VALIDATION_COPILOT_QUEUE_CLIENT_ID_INVALID'],
       [{ entries: [{ clientId: 'a', source: 'remote', copilotId: 1 }] }, 'AGENT_VALIDATION_COPILOT_QUEUE_SOURCE_INVALID'],
       [{ entries: [{ clientId: 'a', source: 'prts' }] }, 'AGENT_VALIDATION_COPILOT_QUEUE_COPILOT_ID_INVALID'],
-      [{ entries: [{ clientId: 'a', source: 'prts', copilotId: 1, mode: 'auto' }] }, 'AGENT_VALIDATION_COPILOT_QUEUE_ENTRY_MODE_INVALID'],
+      [{ entries: [{ clientId: 'a', source: 'prts', copilotId: 1, mode: 'unknown' }] }, 'AGENT_VALIDATION_COPILOT_QUEUE_ENTRY_MODE_INVALID'],
       [
         { entries: [{ clientId: 'a', source: 'file', filename: 'copilot-imports/a.json' }] },
         'AGENT_VALIDATION_COPILOT_QUEUE_FILENAME_INVALID'

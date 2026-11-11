@@ -46,15 +46,34 @@ if (args[0] === 'dir' && args[1] === 'resource') {
   }
   const exitDelay = Number(process.env.FAKE_RUN_EXIT_DELAY || 0);
   const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
-  const appendLoad = (file) => fs.appendFileSync(process.env.FAKE_MAA_LOG_FILE || '', 'Assistant::append_callback | SubTaskExtraInfo ' + JSON.stringify({
-    taskchain: 'Copilot',
+  const appendCallback = (callback, payload) => fs.appendFileSync(process.env.FAKE_MAA_LOG_FILE || '', 'Assistant::append_callback | ' + callback + ' ' + JSON.stringify({ taskchain: 'Copilot', ...payload }) + '\\n');
+  const appendLoad = (file) => appendCallback('SubTaskExtraInfo', {
     details: { stage_name: 'main_01-01', file_name: file },
     what: 'CopilotListLoadTaskFileSuccess'
-  }) + '\\n');
+  });
   (async () => {
-    for (const step of steps) {
-      if (step.after) await sleep(step.after);
-      appendLoad(step.file);
+    if (process.env.FAKE_RUN_QUEUE_BATCH_FAILURE) {
+      const { basename, join } = require('node:path');
+      const taskFile = join(process.env.FAKE_MAA_CONFIG_DIR, 'tasks', args[1] + '.toml');
+      const task = fs.readFileSync(taskFile, 'utf8');
+      const paths = Array.from(task.matchAll(/"filename" = ("(?:[^"\\\\]|\\\\.)*")/g), match => JSON.parse(match[1]));
+      fs.appendFileSync(process.env.FAKE_MAA_CALL_LOG, 'copilot_list ' + paths.map(path => basename(path)).join(' ') + '\\n');
+      if (exitCode) {
+        appendCallback('TaskChainStart', {});
+        for (const path of paths.slice(0, Number(process.env.FAKE_RUN_QUEUE_BATCH_FAILURE))) {
+          appendCallback('SubTaskStart', { subtask: 'MultiCopilotTask' });
+          appendLoad(path);
+        }
+        if (process.env.FAKE_RUN_QUEUE_LAST_STEP_CLEARED) {
+          appendCallback('SubTaskStart', { details: { task: 'StageDrops-Stars-3' } });
+        }
+        appendCallback('TaskChainError', {});
+      }
+    } else {
+      for (const step of steps) {
+        if (step.after) await sleep(step.after);
+        appendLoad(step.file);
+      }
     }
     if (exitDelay) await sleep(exitDelay);
   })().then(() => process.exit(exitCode), () => process.exit(1));
@@ -124,7 +143,7 @@ async function readUserTasks(configDir: string): Promise<Record<string, unknown>
   return readObject(parsed);
 }
 
-function stubPlanFetch(stageName: string): () => void {
+function stubPlanFetch(stageName: string, difficulty?: number): () => void {
   const originalFetch = globalThis.fetch;
   globalThis.fetch = async (url: string | URL | Request) => {
     const text = String(url);
@@ -132,7 +151,7 @@ function stubPlanFetch(stageName: string): () => void {
       ? { id: 1, name: 'set', copilot_ids: [10] }
       : text.includes('penguin-stats.io')
         ? []
-        : { content: JSON.stringify({ stage_name: stageName, doc: { title: 'T-1' }, opers: [{ name: 'A' }], groups: [] }) };
+        : { content: JSON.stringify({ stage_name: stageName, difficulty, doc: { title: 'T-1' }, opers: [{ name: 'A' }], groups: [] }) };
     return new Response(JSON.stringify({ status_code: 200, data }), { status: 200 });
   };
   return () => {
@@ -151,6 +170,17 @@ test('preset formation stages are normal-only candidates', () => {
     opers: [{ name: '德克萨斯' }],
     groups: []
   }), false);
+});
+
+test('automatic set mode uses the declared difficulty in the plan and progress keys', async () => {
+  const restore = stubPlanFetch('main_01-01', 2);
+  try {
+    const plan = await buildCopilotPlan(1, 'auto');
+    assert.equal(plan.items[0]?.recommendedMode, 'raid');
+    assert.deepEqual(plan.entries.map(({ key, mode }) => [key, mode]), [['0:10:raid', 'raid']]);
+  } finally {
+    restore();
+  }
 });
 
 test('current map resource maps stages directly to OCR without navigation tasks', () => {
@@ -452,17 +482,20 @@ function clearRunEnvironment(): void {
     'FAKE_RUN_EXIT_CODE',
     'FAKE_RUN_EXIT_CODES',
     'FAKE_RUN_EXIT_DELAY',
-    'FAKE_RUN_COUNTER_FILE'
+    'FAKE_RUN_COUNTER_FILE',
+    'FAKE_RUN_QUEUE_BATCH_FAILURE',
+    'FAKE_RUN_QUEUE_LAST_STEP_CLEARED'
   ]) {
     delete process.env[key];
   }
 }
 
-function stubCopilotContent(): () => void {
+function stubCopilotContent(onRequest?: () => void): () => void {
   const originalFetch = globalThis.fetch;
   globalThis.fetch = async (url: string | URL | Request) => {
     const match = String(url).match(/copilot\/get\/(\d+)$/);
     assert.ok(match, `unexpected outbound request: ${String(url)}`);
+    onRequest?.();
     const data = {
       content: JSON.stringify({
         stage_name: `main_01-0${Number(match[1]) - 99}`,
@@ -720,7 +753,7 @@ test('copilot group failure matches Windows plan paths before failing the rest',
   }
 });
 
-function stubQueueContent(stageNames: readonly string[]): {
+function stubQueueContent(stageNames: readonly string[], difficulties: readonly number[] = []): {
   restore: () => void;
   requests: string[];
 } {
@@ -738,6 +771,7 @@ function stubQueueContent(stageNames: readonly string[]): {
     const data = {
       content: JSON.stringify({
         stage_name: stageName,
+        difficulty: difficulties[index],
         doc: { title: '1-7' },
         opers: [{ name: 'A' }],
         groups: []
@@ -799,6 +833,22 @@ test('queue plan maps remote prts entries in request order', async () => {
   }
 });
 
+test('automatic queue mode follows declared difficulty and defaults to normal', async () => {
+  const stub = stubQueueContent(['main_01-01', 'main_01-02', 'main_01-03'], [2, 3]);
+  try {
+    const plan = await buildCopilotQueuePlan([
+      { clientId: 'raid', source: 'prts', copilotId: 201, mode: 'auto' },
+      { clientId: 'both', source: 'prts', copilotId: 202, mode: 'auto' },
+      { clientId: 'default', source: 'prts', copilotId: 203, mode: 'auto' }
+    ]);
+    assert.deepEqual(plan.entries.map(entry => [entry.clientId, entry.mode]), [
+      ['raid', 'raid'], ['both', 'normal'], ['both', 'raid'], ['default', 'normal']
+    ]);
+  } finally {
+    stub.restore();
+  }
+});
+
 test('queue plan reads managed local files without contacting the copilot site', async () => {
   const dataDir = join(fixtureDir, 'queue-plan-data');
   const importDir = join(dataDir, 'copilot-imports');
@@ -828,6 +878,27 @@ test('queue plan reads managed local files without contacting the copilot site',
     assert.equal(entry.mode, 'raid');
     assert.equal(entry.content?.stage_name, 'main_01-07');
     assert.equal(stub.requests.some(url => url.includes('/copilot/get/')), false);
+  } finally {
+    stub.restore();
+  }
+});
+
+test('queue plan runs preset formation once in normal mode when both modes are requested', async () => {
+  const dataDir = join(fixtureDir, 'queue-preset-data');
+  const importDir = join(dataDir, 'copilot-imports');
+  await mkdir(importDir, { recursive: true });
+  const filename = join(importDir, 'preset.json');
+  await writeFile(filename, JSON.stringify({ stage_name: 'act21mini_s01', opers: [], groups: [] }));
+  const stub = stubQueueContent([]);
+  try {
+    const plan = await buildCopilotQueuePlan([
+      { clientId: 'preset', source: 'file', filename, mode: 'both' },
+      { clientId: 'preset-raid', source: 'file', filename, mode: 'raid' }
+    ], { dataDir });
+    assert.deepEqual(plan.entries.map(entry => [entry.clientId, entry.mode, entry.presetFormation]), [
+      ['preset', 'normal', true],
+      ['preset-raid', 'raid', true]
+    ]);
   } finally {
     stub.restore();
   }
@@ -928,7 +999,7 @@ function queuePlanFileOf(queueId: string, entry: CopilotQueuePlanEntry): string 
   );
 }
 
-test('queue execution writes one plan file per entry and settles each success', async () => {
+test('queue execution sends compatible entries in one batch and settles each success', async () => {
   const queueId = 'run-success';
   const entries = queueEntriesFor();
   const restoreFetch = stubCopilotContent();
@@ -949,7 +1020,7 @@ test('queue execution writes one plan file per entry and settles each success', 
       [['queue-0', 'success'], ['queue-1', 'success']]
     );
     assert.deepEqual(outcome.completed, ['queue-0', 'queue-1']);
-    assert.equal((await readMaaCalls()).filter(line => line.startsWith('run ')).length, 2);
+    assert.equal((await readMaaCalls()).filter(line => line.startsWith('run ')).length, 1);
 
     const firstPlan: unknown = JSON.parse(await readFile(queuePlanFileOf(queueId, entries[0]), 'utf8'));
     assert.equal(readObject(firstPlan).stage_name, 'main_01-01');
@@ -966,6 +1037,7 @@ test('queue execution with stop policy keeps later entries pending after the fir
   const entries = queueEntriesFor();
   process.env.FAKE_RUN_EXIT_CODES = JSON.stringify([3, 0]);
   process.env.FAKE_RUN_COUNTER_FILE = join(fixtureDir, 'queue-run-counter');
+  process.env.FAKE_RUN_QUEUE_BATCH_FAILURE = '1';
   const restoreFetch = stubCopilotContent();
 
   try {
@@ -991,11 +1063,12 @@ test('queue execution with stop policy keeps later entries pending after the fir
   }
 });
 
-test('queue execution with continue policy records the failure and runs the next entry', async () => {
+test('queue execution with continue policy restarts after the failed step in a batch', async () => {
   const queueId = 'run-continue-policy';
-  const entries = queueEntriesFor();
+  const entries = queueEntriesFor(3);
   process.env.FAKE_RUN_EXIT_CODES = JSON.stringify([3, 0]);
   process.env.FAKE_RUN_COUNTER_FILE = join(fixtureDir, 'queue-run-counter');
+  process.env.FAKE_RUN_QUEUE_BATCH_FAILURE = '2';
   const restoreFetch = stubCopilotContent();
 
   try {
@@ -1011,20 +1084,85 @@ test('queue execution with continue policy records the failure and runs the next
     assert.equal(outcome.error, null);
     assert.deepEqual(
       outcome.statuses.map(settled => [settled.entry.clientId, settled.status]),
-      [['queue-0', 'failed'], ['queue-1', 'success']]
+      [['queue-0', 'success'], ['queue-1', 'failed'], ['queue-2', 'success']]
     );
-    assert.deepEqual(outcome.completed, ['queue-1']);
-    assert.equal((await readMaaCalls()).filter(line => line.startsWith('run ')).length, 2);
+    assert.deepEqual(outcome.completed, ['queue-0', 'queue-2']);
+    assert.deepEqual((await readMaaCalls()).filter(line => line.startsWith('copilot_list ')), [
+      'copilot_list 0-100-normal-1.json 1-101-normal-1.json 2-102-normal-1.json',
+      'copilot_list 2-102-normal-1.json'
+    ]);
   } finally {
     restoreFetch();
     clearRunEnvironment();
   }
 });
 
-test('queue execution stops before the next entry when the lifecycle asks to stop', async () => {
+test('queue execution does not restart an unconfirmed batch after a CLI failure', async () => {
+  const queueId = 'run-unknown-batch';
+  const entries = queueEntriesFor();
+  process.env.FAKE_RUN_EXIT_CODES = JSON.stringify([3, 0]);
+  process.env.FAKE_RUN_COUNTER_FILE = join(fixtureDir, 'queue-run-counter');
+  const restoreFetch = stubCopilotContent();
+  try {
+    const outcome = await executeCopilotQueueEntries({ queueId, name: '未确认的队列', entries, failurePolicy: 'continue' });
+    assert.match(String(outcome.error), /无法确认作业队列执行到了哪一步/);
+    assert.deepEqual(outcome.statuses.map(item => item.status), ['pending', 'pending']);
+    assert.equal((await readMaaCalls()).filter(line => line.startsWith('run ')).length, 1);
+  } finally {
+    restoreFetch();
+    clearRunEnvironment();
+  }
+});
+
+test('queue execution keeps a completed stage when its batch cannot exit the result screen', async () => {
+  const queueId = 'run-cleared-step';
+  const entries = queueEntriesFor();
+  process.env.FAKE_RUN_EXIT_CODES = JSON.stringify([3, 0]);
+  process.env.FAKE_RUN_COUNTER_FILE = join(fixtureDir, 'queue-run-counter');
+  process.env.FAKE_RUN_QUEUE_BATCH_FAILURE = '1';
+  process.env.FAKE_RUN_QUEUE_LAST_STEP_CLEARED = '1';
+  const restoreFetch = stubCopilotContent();
+  try {
+    const outcome = await executeCopilotQueueEntries({ queueId, name: '已通关的批次', entries, failurePolicy: 'continue' });
+    assert.equal(outcome.error, null);
+    assert.deepEqual(outcome.statuses.map(item => item.status), ['success', 'success']);
+    assert.deepEqual((await readMaaCalls()).filter(line => line.startsWith('copilot_list ')), [
+      'copilot_list 0-100-normal-1.json 1-101-normal-1.json',
+      'copilot_list 1-101-normal-1.json'
+    ]);
+  } finally {
+    restoreFetch();
+    clearRunEnvironment();
+  }
+});
+
+test('queue execution isolates entries after a confirmed failure before starting a batch', async () => {
+  const queueId = 'run-prestart-batch';
+  const entries = queueEntriesFor();
+  process.env.FAKE_RUN_EXIT_CODES = JSON.stringify([3, 0, 0]);
+  process.env.FAKE_RUN_COUNTER_FILE = join(fixtureDir, 'queue-run-counter');
+  process.env.FAKE_RUN_QUEUE_BATCH_FAILURE = '0';
+  const restoreFetch = stubCopilotContent();
+  try {
+    const outcome = await executeCopilotQueueEntries({ queueId, name: '批次启动失败', entries, failurePolicy: 'continue' });
+    assert.equal(outcome.error, null);
+    assert.deepEqual(outcome.statuses.map(item => item.status), ['success', 'success']);
+    assert.deepEqual((await readMaaCalls()).filter(line => line.startsWith('copilot_list ')), [
+      'copilot_list 0-100-normal-1.json 1-101-normal-1.json',
+      'copilot_list 0-100-normal-1.json',
+      'copilot_list 1-101-normal-1.json'
+    ]);
+  } finally {
+    restoreFetch();
+    clearRunEnvironment();
+  }
+});
+
+test('queue execution stops before the next formation batch when the lifecycle asks to stop', async () => {
   const queueId = 'run-stopped';
   const entries = queueEntriesFor();
-  let shouldStopChecks = 0;
+  entries[1].presetFormation = true;
+  let shouldStop = false;
   const restoreFetch = stubCopilotContent();
 
   try {
@@ -1034,10 +1172,8 @@ test('queue execution stops before the next entry when the lifecycle asks to sto
       entries,
       options: {},
       lifecycle: {
-        shouldStop: () => {
-          shouldStopChecks += 1;
-          return shouldStopChecks > 1;
-        }
+        shouldStop: () => shouldStop,
+        onEntrySettled: (_entry, status) => { shouldStop ||= status === 'success'; }
       }
     });
 
@@ -1049,6 +1185,24 @@ test('queue execution stops before the next entry when the lifecycle asks to sto
     );
     assert.deepEqual(outcome.completed, ['queue-0']);
     assert.equal((await readMaaCalls()).filter(line => line.startsWith('run ')).length, 1);
+  } finally {
+    restoreFetch();
+  }
+});
+
+test('queue execution does not launch MAA when stopped during batch preparation', async () => {
+  let stopped = false;
+  const restoreFetch = stubCopilotContent(() => { stopped = true; });
+  try {
+    const outcome = await executeCopilotQueueEntries({
+      queueId: 'stop-during-prepare',
+      name: '准备期间停止',
+      entries: queueEntriesFor(),
+      lifecycle: { shouldStop: () => stopped }
+    });
+    assert.equal(outcome.stopped, true);
+    assert.deepEqual(outcome.statuses.map(item => item.status), ['pending', 'pending']);
+    assert.equal((await readMaaCalls()).some(line => line.startsWith('run ')), false);
   } finally {
     restoreFetch();
   }

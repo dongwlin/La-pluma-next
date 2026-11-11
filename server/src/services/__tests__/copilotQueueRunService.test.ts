@@ -285,7 +285,9 @@ describe('copilot queue runs', () => {
     assert.equal(result.summary.successCount, 1);
     assert.deepEqual(result.summary.errors, [{
       clientId: 'queue-0',
+      itemIndex: 0,
       stage: '1-1',
+      mode: 'normal',
       error: '模拟失败'
     }]);
     assert.deepEqual(executor.executed, ['queue-0', 'queue-1']);

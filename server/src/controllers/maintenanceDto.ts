@@ -155,9 +155,9 @@ export function parseCopilotSearchQuery(query: unknown): MaintenanceCopilotSearc
   return { stage: String(source.stage || '').trim() };
 }
 
-export type MaintenanceCopilotRaid = 'normal' | 'raid' | 'both';
+export type MaintenanceCopilotRaid = 'normal' | 'raid' | 'both' | 'auto';
 
-const COPILOT_RAID_MODES: readonly MaintenanceCopilotRaid[] = ['normal', 'raid', 'both'];
+const COPILOT_RAID_MODES: readonly MaintenanceCopilotRaid[] = ['normal', 'raid', 'both', 'auto'];
 
 function isCopilotRaid(value: unknown): value is MaintenanceCopilotRaid {
   return typeof value === 'string' && (COPILOT_RAID_MODES as readonly string[]).includes(value);

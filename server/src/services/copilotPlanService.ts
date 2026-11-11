@@ -123,6 +123,8 @@ export type CopilotRaidMode = 'normal' | 'raid';
 
 export type CopilotRaid = CopilotRaidMode | 'both';
 
+export type CopilotRaidSelection = CopilotRaid | 'auto';
+
 export type CopilotContent = Record<string, unknown>;
 
 export interface StageCode {
@@ -137,6 +139,7 @@ export interface CopilotPlanItem {
   apCost: number | null;
   presetFormation: boolean;
   supportsRaid: boolean;
+  recommendedMode?: CopilotRaid;
   operators: unknown[];
   groups: unknown[];
 }
@@ -177,7 +180,7 @@ export interface CopilotQueueEntryInput {
   source: CopilotQueueSource;
   copilotId?: number;
   filename?: string;
-  mode: CopilotRaidMode;
+  mode: CopilotRaidSelection;
 }
 
 export interface CopilotQueuePlanEntry extends CopilotPlanEntry {
@@ -554,6 +557,7 @@ function buildCopilotPlanItem(
 ): CopilotPlanItem {
   const stageId = typeof content.stage_name === 'string' ? content.stage_name : '';
   const presetFormation = isPresetFormationCopilot(content);
+  const recommendedMode = readRecommendedMode(content.difficulty, presetFormation);
   return {
     id,
     stageId,
@@ -561,9 +565,22 @@ function buildCopilotPlanItem(
     apCost: stageCodes.get(stageId)?.apCost ?? null,
     presetFormation,
     supportsRaid: !presetFormation,
+    ...(recommendedMode ? { recommendedMode } : {}),
     operators: Array.isArray(content.opers) ? content.opers : [],
     groups: Array.isArray(content.groups) ? content.groups : []
   };
+}
+
+function readRecommendedMode(difficulty: unknown, presetFormation: boolean): CopilotRaid | undefined {
+  if (presetFormation || difficulty === 0 || difficulty === 1) return 'normal';
+  if (difficulty === 2) return 'raid';
+  if (difficulty === 3) return 'both';
+  return undefined;
+}
+
+function expandCopilotModes(raid: unknown): CopilotRaidMode[] {
+  if (raid === 'both') return ['normal', 'raid'];
+  return [raid === 'raid' ? 'raid' : 'normal'];
 }
 
 export async function buildCopilotPlan(setId: string | number, raid: unknown = 'normal'): Promise<CopilotPlan> {
@@ -582,11 +599,9 @@ export async function buildCopilotPlan(setId: string | number, raid: unknown = '
     stageCodes
   }));
 
-  const requestedModes: CopilotRaidMode[] = raid === 'both'
-    ? ['normal', 'raid']
-    : [raid === 'raid' ? 'raid' : 'normal'];
   const entries: CopilotPlanEntry[] = [];
   for (const [itemIndex, copilot] of copilots.entries()) {
+    const requestedModes = expandCopilotModes(raid === 'auto' ? copilot.recommendedMode : raid);
     for (const mode of requestedModes) {
       if (mode === 'raid' && !copilot.supportsRaid) continue;
       entries.push({
@@ -616,8 +631,7 @@ export interface BuildCopilotQueuePlanOptions {
 }
 
 /**
- * 队列计划：条目顺序即请求顺序，`key` 用调用方的 `clientId`，本地文件用稳定的
- * 负数占位 id（不参与远端请求，也不与真实 copilot id 冲突），理智消耗保持未知。
+ * 本地文件用负数占位 id（不参与远端请求，也不与真实 copilot id 冲突），理智消耗保持未知。
  */
 export async function buildCopilotQueuePlan(
   entries: readonly CopilotQueueEntryInput[],
@@ -634,7 +648,7 @@ export async function buildCopilotQueuePlan(
     }
   }
   const stageCodes = await loadStageCodeMap(loaded.map(item => item.content.stage_name));
-  const planEntries: CopilotQueuePlanEntry[] = loaded.map(({ entry, content }, itemIndex) => {
+  const planEntries = loaded.flatMap(({ entry, content }, itemIndex): CopilotQueuePlanEntry[] => {
     const remote = entry.source === 'prts';
     const copilotId = remote ? Number(entry.copilotId) : -(itemIndex + 1);
     const item = buildCopilotPlanItem(content, {
@@ -642,8 +656,10 @@ export async function buildCopilotQueuePlan(
       fallbackStage: remote ? `prts://${copilotId}` : '',
       stageCodes
     });
-    return {
-      key: entry.clientId,
+    const modeSelection = entry.mode === 'auto' ? item.recommendedMode : entry.mode;
+    const modes = expandCopilotModes(modeSelection === 'both' && !item.supportsRaid ? 'normal' : modeSelection);
+    return modes.map(mode => ({
+      key: modes.length > 1 && mode === 'raid' ? `${entry.clientId}/raid` : entry.clientId,
       clientId: entry.clientId,
       source: entry.source,
       itemIndex,
@@ -651,10 +667,10 @@ export async function buildCopilotQueuePlan(
       stageId: item.stageId,
       displayStage: item.stage || item.stageId,
       apCost: remote ? item.apCost : null,
-      mode: entry.mode,
+      mode,
       presetFormation: item.presetFormation,
       content
-    };
+    }));
   });
   return { entries: planEntries };
 }
@@ -857,7 +873,7 @@ function observeCopilotFileLoads({
   executionItems: readonly CopilotExecutionItem<CopilotPlanEntry>[];
   alreadyStartedKeys: readonly string[];
   onEntryStarted?: CopilotExecutionLifecycle['onEntryStarted'];
-  onEntrySettled?: CopilotExecutionLifecycle['onEntrySettled'];
+  onEntrySettled?: (entry: CopilotPlanEntry, status: CopilotEntryOutcomeStatus, error?: string) => void;
   resolveItemIndex?: (file: string) => number;
 }): () => void {
   if (!onEntryStarted && !onEntrySettled) return () => {};
@@ -1059,13 +1075,90 @@ function buildCopilotEntryOutcome({
   };
 }
 
-interface CopilotGroupOutcome {
-  statuses: CopilotEntrySettlement[];
+interface CopilotGroupOutcome<TEntry extends CopilotPlanEntry = CopilotPlanEntry> {
+  statuses: CopilotEntrySettlement<TEntry>[];
   error: unknown;
   stopped: boolean;
+  batchFailure?: 'before-start' | 'unconfirmed';
 }
 
-async function runCopilotGroup({
+const COPILOT_BATCH_LOG_BYTES = 64 * 1024 * 1024;
+
+async function settleFailedCopilotBatch<TEntry extends CopilotPlanEntry>({
+  checkpoint,
+  entries,
+  executionItems,
+  observedSuccesses,
+  commandStarted,
+  stopped,
+  error
+}: {
+  checkpoint: MaaLogCheckpoint | null;
+  entries: readonly TEntry[];
+  executionItems: readonly CopilotExecutionItem<TEntry>[];
+  observedSuccesses: ReadonlySet<string>;
+  commandStarted: boolean;
+  stopped: boolean;
+  error: unknown;
+}): Promise<CopilotGroupOutcome<TEntry>> {
+  const confirmed = new Set(observedSuccesses);
+  let current: TEntry | undefined;
+  let batchFailure: CopilotGroupOutcome['batchFailure'] = commandStarted ? 'unconfirmed' : 'before-start';
+  if (commandStarted) {
+    const log = await readMaaLogIncrement(checkpoint, COPILOT_BATCH_LOG_BYTES);
+    if (log.status === 'ok') {
+      let index = -1;
+      let loadedIndex = -1;
+      let clearedIndex = -1;
+      let starts = 0;
+      let failed = false;
+      let valid = true;
+      for (const event of parseMaaCallbackEvents(log.text, 'Copilot')) {
+        if (event.callback === 'TaskChainStart') starts += 1;
+        if (event.callback === 'TaskChainError') failed = true;
+        if (event.callback === 'SubTaskStart') {
+          if (event.subtask === 'MultiCopilotTask') index += 1;
+          const task = getCallbackDetails(event)?.task;
+          if (index === loadedIndex && (task === 'StageDrops-Stars-3' || task === 'StageDrops-Stars-Adverse')) {
+            clearedIndex = index;
+          }
+        }
+        if (event.callback !== 'SubTaskExtraInfo' || event.what !== 'CopilotListLoadTaskFileSuccess') continue;
+        const file = getCallbackDetails(event)?.file_name;
+        loadedIndex = typeof file === 'string' ? findCopilotExecutionItemIndex(executionItems, file) : -1;
+        if (loadedIndex < 0 || loadedIndex < index) valid = false;
+        index = loadedIndex;
+      }
+      if (starts === 1 && valid && (failed || stopped)) {
+        if (index === -1) batchFailure = 'before-start';
+        current = executionItems[index]?.entry;
+        if (current) {
+          batchFailure = undefined;
+          for (const entry of entries) {
+            if (entry.key === current.key) break;
+            confirmed.add(entry.key);
+          }
+          if (index === clearedIndex && executionItems[index + 1]?.entry.key !== current.key) {
+            confirmed.add(current.key);
+          }
+        }
+      }
+    }
+  }
+  const message = errorMessageOf(error) || '作业队列执行失败';
+  return {
+    statuses: entries.map(entry => {
+      if (confirmed.has(entry.key)) return { entry, status: 'success' };
+      if (entry.key === current?.key) return { entry, status: stopped ? 'stopped' : 'failed', error: message };
+      return { entry, status: 'pending' };
+    }),
+    error: stopped ? null : error,
+    stopped,
+    ...(batchFailure ? { batchFailure } : {})
+  };
+}
+
+async function runCopilotGroup<TEntry extends CopilotPlanEntry>({
   group,
   configDir,
   planDir,
@@ -1074,9 +1167,10 @@ async function runCopilotGroup({
   name,
   taskPrefix,
   taskLabel = `作业集 ${name}`,
-  lifecycle
+  lifecycle,
+  queueBatch = false
 }: {
-  group: CopilotExecutionGroup<CopilotPlanEntry>;
+  group: CopilotExecutionGroup<TEntry>;
   configDir: string;
   planDir: string;
   loopTimes: number;
@@ -1085,9 +1179,12 @@ async function runCopilotGroup({
   taskPrefix: string;
   taskLabel?: string;
   lifecycle: CopilotExecutionLifecycle;
-}): Promise<CopilotGroupOutcome> {
+  queueBatch?: boolean;
+}): Promise<CopilotGroupOutcome<TEntry>> {
   const checkpoint = await createMaaLogCheckpoint();
-  let executionItems: CopilotExecutionItem<CopilotPlanEntry>[] = [];
+  let executionItems: CopilotExecutionItem<TEntry>[] = [];
+  const observedSuccesses = new Set<string>();
+  let commandStarted = false;
   try {
     const prepared = await prepareCopilotList(group.entries, { planDir, loopTimes });
     executionItems = prepared.executionItems;
@@ -1096,13 +1193,16 @@ async function runCopilotGroup({
     }
 
     // 只有真正开始执行的条目置为 running；组内后续条目由文件加载观察逐项推进。
-    lifecycle.onEntryStarted?.(group.entries[0], [group.entries[0]]);
+    if (!queueBatch) lifecycle.onEntryStarted?.(group.entries[0], [group.entries[0]]);
     const stopObserving = observeCopilotFileLoads({
       checkpoint,
       executionItems,
       alreadyStartedKeys: [group.entries[0].key],
       onEntryStarted: lifecycle.onEntryStarted,
-      onEntrySettled: lifecycle.onEntrySettled
+      onEntrySettled: queueBatch ? (entry, status, error) => {
+        if (status === 'success') observedSuccesses.add(entry.key);
+        lifecycle.onEntrySettled?.(entry, status, error);
+      } : lifecycle.onEntrySettled
     });
     try {
       const taskId = `${taskPrefix}_${Date.now()}`;
@@ -1112,7 +1212,19 @@ async function runCopilotGroup({
         params: buildCopilotTaskParams(prepared.list, group.presetFormation === true, options)
       };
       if (group.presetFormation) await ensurePresetFormationResource(configDir);
-      await execDynamicTask(taskId, taskConfig, taskLabel, 'copilot', true, group.presetFormation || options.userResource === true);
+      await execDynamicTask(taskId, taskConfig, taskLabel, 'copilot', true, group.presetFormation || options.userResource === true, queueBatch ? {
+        lifecycle: {
+          onBeforeStart: async () => {
+            if (await lifecycle.shouldStop?.()) {
+              throw Object.assign(new Error('作业队列已停止'), { stopped: true });
+            }
+          },
+          onStarted: () => {
+            commandStarted = true;
+            lifecycle.onEntryStarted?.(group.entries[0], [group.entries[0]]);
+          }
+        }
+      } : undefined);
     } finally {
       // 观察在结算前停止：停止后未完成的日志读取不会再触发生命周期回调。
       stopObserving();
@@ -1121,11 +1233,22 @@ async function runCopilotGroup({
     // 轮末终止任务链并以非零码退出），组内条目按逐项 success 结算。
     return { statuses: group.entries.map(entry => ({ entry, status: 'success' })), error: null, stopped: false };
   } catch (error) {
+    const wasStopped = Boolean(readBooleanField(error, 'stopped')) || Boolean(await lifecycle.shouldStop?.());
+    if (queueBatch && group.entries.length > 1) {
+      return settleFailedCopilotBatch({
+        checkpoint,
+        entries: group.entries,
+        executionItems,
+        observedSuccesses,
+        commandStarted,
+        stopped: wasStopped,
+        error
+      });
+    }
     const logText = await readMaaLogSince(checkpoint).catch(() => '');
     const loadedFiles = extractLoadedCopilotFiles(logText);
     const currentFile = loadedFiles.at(-1) || '';
     const currentIndex = findCopilotExecutionItemIndex(executionItems, currentFile);
-    const wasStopped = Boolean(readBooleanField(error, 'stopped')) || Boolean(await lifecycle.shouldStop?.());
     const statuses = classifyCopilotEntryOutcomes({
       entries: group.entries,
       executionItems,
@@ -1723,11 +1846,6 @@ export interface CopilotQueueEntriesOutcome {
   loopTimes: number;
 }
 
-/**
- * 队列执行：一个租约内逐项下发单条目 Copilot 任务，条目状态由每项命令的退出
- * 结果确定。`failurePolicy=stop` 首败即停，后续条目保持 `pending`；`continue`
- * 记录失败后继续。队列不读写作业集进度，历史通关不参与执行。
- */
 export async function executeCopilotQueueEntries({
   queueId,
   name,
@@ -1759,42 +1877,61 @@ export async function executeCopilotQueueEntries({
     const planDir = join(configDir, 'copilot-plans', `queue-${queueId}`);
     await mkdir(planDir, { recursive: true });
 
-    for (const entry of entries) {
+    const attempts = groupEntries(entries);
+    for (let attemptIndex = 0; attemptIndex < attempts.length; attemptIndex += 1) {
+      const group = attempts[attemptIndex];
       if (await lifecycle.shouldStop?.()) {
         stopped = true;
         break;
       }
       const outcome = await runCopilotGroup({
-        group: { presetFormation: entry.presetFormation, entries: [entry] },
+        group,
         configDir,
         planDir,
         loopTimes,
         options,
         name,
-        taskPrefix: `copilot_queue_${queueId}_${entry.itemIndex}`,
+        taskPrefix: `copilot_queue_${queueId}_${attemptIndex}`,
         taskLabel: `作业队列 ${name}`,
-        lifecycle
+        lifecycle,
+        queueBatch: true
       });
-      const settled: CopilotEntrySettlement<CopilotQueuePlanEntry> = outcome.statuses[0]
-        ? { entry, status: outcome.statuses[0].status, error: outcome.statuses[0].error }
-        : { entry, status: 'pending' };
-      statuses.set(entry.key, settled);
-      lifecycle.onEntrySettled?.(entry, settled.status, settled.error);
-      if (settled.status === 'success') {
-        completed.push(entry.key);
-        try {
-          await recordCompletedCopilotEntries([entry], loopTimes);
-        } catch (error) {
-          failure = error;
-          break;
-        }
-        continue;
+      for (const settled of outcome.statuses) {
+        statuses.set(settled.entry.key, settled);
+        lifecycle.onEntrySettled?.(settled.entry, settled.status, settled.error);
+      }
+      const confirmed = outcome.statuses.filter(settled => settled.status === 'success').map(settled => settled.entry);
+      completed.push(...confirmed.map(entry => entry.key));
+      try {
+        await recordCompletedCopilotEntries(confirmed, loopTimes);
+      } catch (error) {
+        failure = error;
+        break;
       }
       if (outcome.stopped) {
         stopped = true;
         break;
       }
-      if (failurePolicy === 'stop') break;
+      if (outcome.batchFailure === 'before-start') {
+        attempts.splice(attemptIndex + 1, 0, ...group.entries.map(entry => ({
+          presetFormation: group.presetFormation,
+          entries: [entry]
+        })));
+        continue;
+      }
+      if (outcome.batchFailure === 'unconfirmed') {
+        failure = Object.assign(new Error('无法确认作业队列执行到了哪一步', { cause: outcome.error }), {
+          retryable: false
+        });
+        break;
+      }
+      if (!outcome.error) continue;
+      if (failurePolicy === 'stop') {
+        if (confirmed.length && !outcome.statuses.some(settled => settled.status === 'failed')) failure = outcome.error;
+        break;
+      }
+      const remaining = outcome.statuses.filter(settled => settled.status === 'pending').map(settled => settled.entry);
+      if (remaining.length) attempts.splice(attemptIndex + 1, 0, { ...group, entries: remaining });
     }
   });
 

@@ -220,10 +220,11 @@ Web UI 的「作业队列」不是作业集：用户队列以显式条目提交�
 | `manual` | 首项执行后 Run 转 `waiting`；每次 continue 执行下一项，skip 把下一个 pending 项标为 `skipped` | 仅单项执行期间持有；等待时释放 |
 
 - 队列条目 1–50 项，`clientId` 在本次请求内唯一；`source=prts` 由服务端按 `copilotId` 取作业内容，`source=file` 只接受受管目录 `copilot-imports/` 内的绝对 `.json` 路径，服务端读取并解析 `stage_name` 后写入队列计划目录，不把用户路径直接交给 MaaCore。
-- 逐项执行：每个条目一个 MAA Copilot 动态任务，因此逐项状态、失败策略、manual 续跑与跳过都可确定。本地文件写入 `copilot-plans/queue-<queueId>/`；作业集路径保持原有分组执行，不改为逐项队列。
+- `auto` 读取作业的 `difficulty`，缺省、`0` 和 `1` 为普通，`2` 为突袭，`3` 为两者。双模式按输入顺序为每个适用作业展开 `normal`、`raid` 两个相邻步骤，预设编队只展开普通。步骤共用来源的 `clientId` 和 `itemIndex`，用 `mode` 区分。计划文件写入 `copilot-plans/queue-<queueId>/`。
+- 连续模式按相邻步骤的编队配置分批，将每批作为一个 MaaCore `copilot_list` 执行。手动模式每次执行一步。连续执行失败时，服务端根据本批回调确认已完成步骤和失败位置。选择继续时从已确认的失败位置之后接续。无法确认执行位置时 Run 以执行错误结束，避免重复执行可能已经开战的步骤。
 - 队列执行不写 `copilot-progress.json`，历史通关不参与队列；这与作业集按计划进度跳过已完成项不同。
 - 运行中 `run.progress`（`enrichAgentRun` 注入）包含：`queueId`、`name`、`mode`、`failurePolicy`、`phase`（`starting`/`running`/`waiting_for_next`/`finished`/`stopped`）、`currentStep`、`totalSteps`、`currentClientId`、`currentTask`、`nextEntry`、`shouldStop`、`message` 与五类计数。`taskResults[]` 按条目给出 `clientId`、`itemIndex`、`stage`、`stageId`、`apCost`、`mode`、`status`（`pending`/`running`/`success`/`failed`/`skipped`/`stopped`）与可选 `error`。
-- 终态 `run.result.summary` 包含 `queueId`、`name`、`mode`、`failurePolicy`、`totalEntries`、成功/失败/跳过/停止/待执行计数、`durationMs`、`errors[]` 与 `taskResults[]`。`totalEntries` 是本次提交条目数，计数与 `taskResults` 必须一致。
+- 终态 `run.result.summary` 包含 `queueId`、`name`、`mode`、`failurePolicy`、`totalEntries`、成功/失败/跳过/停止/待执行计数、`durationMs`、`errors[]` 与 `taskResults[]`。`totalEntries` 统计展开后的执行步骤，最多 100 步，与 `taskResults` 长度及 `progress.totalSteps` 一致。
 - `failurePolicy=stop` 在首项失败后不再启动后续项，后续项保持 `pending`；`continue` 记录失败后继续。条目失败不把整个 Run 置为 `failed`：按策略完成执行后 Run 结算为 `succeeded`，失败事实保留在 `failedCount`、`errors` 与 `taskResults`；只有计划构建失败、持久化失败或执行级错误才使 Run 为 `failed`。该终态映射暂保留现状，是否应把“执行完成但存在失败项”改为 `failed` 待产品确认。
 - `manual` 首项完成后 Run 为 `waiting`，`progress.phase=waiting_for_next`，`nextEntry` 指向下一个 pending 项，逐项结果与计数来自同一 Run。等待期间不持有设备租约；继续时重新获取租约，被占用返回可重试的 409 `MAA_EXECUTION_BUSY`，保持 waiting 且不消耗条目。等待期间 skip 只把下一个 pending 项标为 `skipped`；没有 pending 时结算为 `succeeded`。
 - 停止复用目标 Run 停止：`waiting` 直接转 `stopped` 并保留逐项结果，未开始项保持 `pending`；`accepted` 取消；`running` 转 `stopping`，执行器在当前项结束或下一项前退出并结算为 `stopped`。停止后 continue/skip 返回 `alreadyTerminal` 或 `AGENT_COPILOT_QUEUE_NOT_WAITING`，不得启动任何条目。

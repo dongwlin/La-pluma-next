@@ -15,8 +15,8 @@ import type {
   AgentTaskDependencies,
   CopilotQueueFailurePolicy,
   CopilotQueueMode,
-  NormalizedAgentTaskRequest,
-  NormalizedCopilotQueueEntry
+  CopilotSetRaid,
+  NormalizedAgentTaskRequest
 } from '../services/agentActionService.ts';
 import {
   acquireMaaExecutionLease,
@@ -41,7 +41,7 @@ import {
   startManualCopilotQueue
 } from '../services/copilotQueueRunService.ts';
 import type { CopilotQueueLifecycle, CopilotQueuePreparedInfo } from '../services/copilotQueueRunService.ts';
-import type { CopilotExecutionLifecycle } from '../services/copilotPlanService.ts';
+import type { CopilotExecutionLifecycle, CopilotQueueEntryInput } from '../services/copilotPlanService.ts';
 import {
   beginAgentRun,
   startAgentRunForExecution,
@@ -793,7 +793,7 @@ function startCopilotBackground<TPrepared>({
 
 interface CopilotSetExecutionOptions {
   setId: string;
-  raid: 'normal' | 'raid' | 'both';
+  raid: CopilotSetRaid;
   selectedIndexes: number[];
   options: Record<string, unknown>;
   waitForCompletion: boolean;
@@ -1120,7 +1120,7 @@ interface CopilotQueueExecutionOptions {
   queueId: string;
   name: string;
   failurePolicy: CopilotQueueFailurePolicy;
-  entries: NormalizedCopilotQueueEntry[];
+  entries: CopilotQueueEntryInput[];
   options: Record<string, unknown>;
   waitForCompletion: boolean;
 }

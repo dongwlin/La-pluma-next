@@ -8,6 +8,7 @@ import {
   validateRoguelikeCommandArgs
 } from './gameTaskConfigService.ts';
 import { CopilotManagedFileInvalidError, validateManagedCopilotFileName } from './copilotFileService.ts';
+import type { CopilotQueueEntryInput, CopilotRaidSelection } from './copilotPlanService.ts';
 
 /** 仅列 maa-cli 子命令；Core 任务类型（Award/Depot/OperBox/Infrast/Recruit/Mall）走 run + taskConfig 动态通路。 */
 export const AGENT_TASK_COMMANDS = Object.freeze([
@@ -448,9 +449,9 @@ export function normalizeDailyFlowRequest(input: unknown = {}): NormalizedDailyF
 export const COPILOT_SET_MODES = Object.freeze(['continuous', 'manual'] as const);
 
 export type CopilotSetMode = (typeof COPILOT_SET_MODES)[number];
-export type CopilotSetRaid = 'normal' | 'raid' | 'both';
+export type CopilotSetRaid = CopilotRaidSelection;
 
-const COPILOT_SET_RAIDS: ReadonlySet<string> = new Set<CopilotSetRaid>(['normal', 'raid', 'both']);
+const COPILOT_SET_RAIDS: ReadonlySet<string> = new Set<CopilotSetRaid>(['normal', 'raid', 'both', 'auto']);
 
 export function normalizeCopilotSetMode(value: unknown): CopilotSetMode {
   if (value === undefined || value === null || value === '') return 'continuous';
@@ -523,24 +524,12 @@ export const COPILOT_QUEUE_FAILURE_POLICIES = Object.freeze(['stop', 'continue']
 
 export type CopilotQueueFailurePolicy = (typeof COPILOT_QUEUE_FAILURE_POLICIES)[number];
 
-export type CopilotQueueSource = 'prts' | 'file';
-
-export type CopilotQueueEntryMode = 'normal' | 'raid';
-
-export interface NormalizedCopilotQueueEntry {
-  clientId: string;
-  source: CopilotQueueSource;
-  copilotId?: number;
-  filename?: string;
-  mode: CopilotQueueEntryMode;
-}
-
 export interface NormalizedCopilotQueueExecutionRequest {
   queueId: string;
   name: string;
   mode: CopilotQueueMode;
   failurePolicy: CopilotQueueFailurePolicy;
-  entries: NormalizedCopilotQueueEntry[];
+  entries: CopilotQueueEntryInput[];
   options: Record<string, unknown>;
   waitForCompletion: boolean;
 }
@@ -601,7 +590,7 @@ function normalizeCopilotQueueFailurePolicy(value: unknown): CopilotQueueFailure
   });
 }
 
-function normalizeCopilotQueueEntry(value: unknown, index: number): NormalizedCopilotQueueEntry {
+function normalizeCopilotQueueEntry(value: unknown, index: number): CopilotQueueEntryInput {
   if (!isRecord(value)) {
     throw invalidRequest('AGENT_VALIDATION_COPILOT_QUEUE_ENTRY_INVALID', 'entries 每项必须是对象', {
       reason: 'entry_not_object',
@@ -625,8 +614,8 @@ function normalizeCopilotQueueEntry(value: unknown, index: number): NormalizedCo
     });
   }
   const mode = value.mode ?? 'normal';
-  if (mode !== 'normal' && mode !== 'raid') {
-    throw invalidRequest('AGENT_VALIDATION_COPILOT_QUEUE_ENTRY_MODE_INVALID', 'mode 必须是 normal 或 raid', {
+  if (mode !== 'normal' && mode !== 'raid' && mode !== 'both' && mode !== 'auto') {
+    throw invalidRequest('AGENT_VALIDATION_COPILOT_QUEUE_ENTRY_MODE_INVALID', 'mode 必须是 normal、raid、both 或 auto', {
       reason: 'entry_mode_invalid',
       index,
       mode
@@ -687,7 +676,7 @@ export function normalizeCopilotQueueExecutionRequest(
   }
 
   const seen = new Set<string>();
-  const normalizedEntries: NormalizedCopilotQueueEntry[] = [];
+  const normalizedEntries: CopilotQueueEntryInput[] = [];
   for (const [index, entry] of entries.entries()) {
     const normalized = normalizeCopilotQueueEntry(entry, index);
     if (seen.has(normalized.clientId)) {

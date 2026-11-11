@@ -65,7 +65,9 @@ export interface CopilotQueueNextEntry {
 
 export interface CopilotQueueSummaryError {
   clientId: string;
+  itemIndex: number;
   stage: string;
+  mode: CopilotRaidMode;
   error: string;
 }
 
@@ -445,7 +447,7 @@ function buildSummary(session: CopilotQueueSession): CopilotQueueSummary {
     durationMs: Date.now() - session.startedAt,
     errors: taskResults
       .filter(result => result.status === 'failed')
-      .map(result => ({ clientId: result.clientId, stage: result.stage, error: result.error || '' })),
+      .map(({ clientId, itemIndex, stage, mode, error }) => ({ clientId, itemIndex, stage, mode, error: error || '' })),
     taskResults
   };
 }
@@ -552,7 +554,7 @@ function copilotQueueExecutionError(
       summary,
       stopped: false
     },
-    retryable: true
+    retryable: !isRecord(outcome.error) || outcome.error.retryable !== false
   });
   return error;
 }
@@ -872,6 +874,7 @@ export function getCopilotQueueRunProgress(runId: string): CopilotQueueProgress 
   const runningEntry = session.entries.find(entry => statusOf(session, entry) === 'running') || null;
   const pendingEntry = nextPendingEntry(session);
   const currentEntry = runningEntry || pendingEntry;
+  const currentStep = currentEntry ? session.entries.indexOf(currentEntry) + 1 : null;
   const phase: CopilotQueueProgressPhase = session.phase === 'waiting' ? 'waiting_for_next' : session.phase;
   return {
     queueId: session.queueId,
@@ -879,12 +882,10 @@ export function getCopilotQueueRunProgress(runId: string): CopilotQueueProgress 
     mode: session.mode,
     failurePolicy: session.failurePolicy,
     phase,
-    currentStep: currentEntry
-      ? session.entries.findIndex(entry => entry.key === currentEntry.key) + 1
-      : null,
+    currentStep,
     totalSteps: session.entries.length,
     currentClientId: currentEntry?.clientId || null,
-    currentTask: currentEntry ? `第 ${currentEntry.itemIndex + 1} 项 ${currentEntry.displayStage}` : null,
+    currentTask: currentEntry ? `第 ${currentStep} 项 ${currentEntry.displayStage}` : null,
     nextEntry: phase === 'waiting_for_next' && pendingEntry ? nextEntryOf(pendingEntry) : null,
     shouldStop: session.stopRequested || isStopping(session.runId),
     message: phase === 'waiting_for_next'
