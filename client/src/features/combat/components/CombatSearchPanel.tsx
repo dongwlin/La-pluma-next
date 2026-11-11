@@ -65,7 +65,6 @@ export default function CombatSearchPanel({
           {!searching && '搜索'}
         </Button>
       </div>
-      <p className="combat-copilot-hint">支持关卡代号或关卡名，例如 1-7、CE-6。</p>
 
       {result && result.copilots && result.copilots.length > 0 && (
         <div className="combat-copilot-search-results">
