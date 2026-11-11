@@ -63,6 +63,7 @@ export function buildQueueDetailTarget(
   const state = describeQueueRowState(entry, queue)
   return {
     title: describeQueueTitle(entry),
+    details: entry.details,
     stage: entry.stage,
     stageId: entry.stageId,
     apCost: entry.apCost,

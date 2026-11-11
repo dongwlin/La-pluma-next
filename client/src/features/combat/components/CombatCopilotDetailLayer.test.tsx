@@ -158,7 +158,25 @@ describe('CombatCopilotDetailLayer', () => {
     expect(text).not.toContain('突袭')
     expect(text).not.toContain('失败原因')
     expect(text).not.toContain('干员需求')
+    expect(text).not.toContain('作业描述')
     expect(text).not.toContain('完成模式')
+  })
+
+  it('shows the author description with line breaks and a safe external link', async () => {
+    await renderLayer({
+      ...richTarget,
+      details: '作者：緊急失控\nhttps://www.bilibili.com/video/BV1FrWJ6nESh',
+    })
+
+    const text = dialog()?.textContent ?? ''
+    expect(text).toContain('作业描述')
+    expect(text).toContain('作者：緊急失控')
+
+    const links = Array.from(dialog()?.querySelectorAll('a') ?? [])
+    const video = links.find(link => link.textContent?.includes('BV1FrWJ6nESh'))
+    expect(video?.getAttribute('href')).toBe('https://www.bilibili.com/video/BV1FrWJ6nESh')
+    expect(video?.getAttribute('target')).toBe('_blank')
+    expect(video?.getAttribute('rel')).toBe('noopener noreferrer')
   })
 
   it('copies the job link from the detail panel', async () => {

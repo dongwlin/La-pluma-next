@@ -14,6 +14,8 @@ export interface CopilotQueueEntry {
   source: CopilotQueueSource
   uri: string
   title: string
+  /** 作业站 `doc.details` 原文；本地文件同名字段同源。 */
+  details?: string
   stage?: string
   stageId?: string
   apCost?: number | null
@@ -32,6 +34,7 @@ export interface CopilotQueueEntry {
 
 export interface CopilotQueueFileMetadata {
   title?: string
+  details?: string
   stage?: string
   recommendedMode?: CopilotDifficulty
   operators: string[]
@@ -94,6 +97,7 @@ export function buildCopilotQueueEntries(
       source: 'set',
       uri: item.uri || `prts://${item.id}`,
       title: item.name || item.stage || `作业 #${item.id}`,
+      details: item.details,
       stage: item.stage,
       stageId: item.stageId,
       apCost: item.apCost,
@@ -113,6 +117,7 @@ export function buildCopilotQueueEntries(
     source: 'link',
     uri: `prts://${preview.id}`,
     title: preview.name || preview.stage || `作业 #${preview.id}`,
+    details: preview.details,
     stage: preview.stage,
     stageId: preview.stageId,
     recommendedMode: preview.recommendedMode,
@@ -144,6 +149,7 @@ export function parseCopilotQueueFileContent(content: string): CopilotQueueFileM
   const recommendedMode = copilotDifficultyFromFlags(parsed.difficulty)
   return {
     title: readText(documentation?.title),
+    details: readText(documentation?.details),
     stage: readText(parsed.stage_name),
     ...(recommendedMode ? { recommendedMode } : {}),
     operators: readNamedEntries(parsed.opers),
@@ -171,6 +177,7 @@ export function buildCopilotQueueEntryFromFile(
     source: 'file',
     uri: path,
     title: metadata.title ?? fallbackTitle,
+    details: metadata.details,
     stage: options.stage ?? metadata.stage,
     stageId: options.stageId,
     recommendedMode: metadata.recommendedMode,

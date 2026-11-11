@@ -12,6 +12,8 @@ import { Modal } from '@/shared/ui/Modal'
 import { useStatusStore } from '@/features/runtime-status'
 import type { CopilotDetailOperator, CopilotDetailTarget } from '../model/copilotDetail'
 import { COPILOT_DETAIL_LAYER_ID } from './combatPanelTypes'
+import { DetailField, DetailSection } from './CombatCopilotDetailSection'
+import CopilotDescription from './CopilotDescription'
 
 const MOBILE_DETAIL_QUERY = '(max-width: 40rem)'
 
@@ -62,38 +64,6 @@ function requirementLabels(operator: CopilotDetailOperator): string[] {
   if (typeof operator.skillLevel === 'number') labels.push(`技能 ${operator.skillLevel}`)
   if (operator.module) labels.push(`模组 ${operator.module}`)
   return labels
-}
-
-function DetailField({
-  label,
-  children,
-  wide = false,
-}: {
-  label: string
-  children: ReactNode
-  wide?: boolean
-}) {
-  return (
-    <div className={`combat-copilot-detail-field${wide ? ' combat-copilot-detail-wide' : ''}`}>
-      <dt className="combat-copilot-detail-label">{label}</dt>
-      <dd className="combat-copilot-detail-value">{children}</dd>
-    </div>
-  )
-}
-
-function DetailSection({
-  title,
-  children,
-}: {
-  title: string
-  children: ReactNode
-}) {
-  return (
-    <section className="combat-copilot-detail-section">
-      <h3 className="combat-copilot-detail-section-title">{title}</h3>
-      {children}
-    </section>
-  )
 }
 
 function DetailBody({ target, children }: { target: CopilotDetailTarget; children?: ReactNode }) {
@@ -173,6 +143,12 @@ function DetailBody({ target, children }: { target: CopilotDetailTarget; childre
           </DetailField>
         )}
       </dl>
+
+      {target.details && (
+        <DetailSection title="作业描述">
+          <CopilotDescription text={target.details} />
+        </DetailSection>
+      )}
 
       {target.error && (
         <DetailSection title="失败原因">

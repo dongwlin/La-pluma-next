@@ -19,6 +19,8 @@ export interface CopilotDetail {
   readonly operators: string
   readonly operatorDetails?: CopilotDetailOperator[]
   readonly groupNames?: string[]
+  /** 作业站 `doc.details` 原文；只有作者填写且非空白时才存在。 */
+  readonly details?: string
 }
 
 export interface CopilotInfoPayload {
@@ -161,7 +163,9 @@ export function readCopilotInfoPayload(value: unknown): CopilotInfoPayload {
   const content = readCopilotContent(payload)
   if (!content) return { statusCode, detail: null }
 
-  const title = asText(isRecord(content.doc) ? content.doc.title : undefined) ?? '未命名作业'
+  const documentation = isRecord(content.doc) ? content.doc : null
+  const title = asText(documentation?.title) ?? '未命名作业'
+  const details = asText(documentation?.details)
   const stageId = asText(payload.stageId) ?? asText(content.stage_name)
   const stage = asText(payload.stage) ?? stageId
   const operatorDetails = readOperatorDetails(content.opers)
@@ -177,6 +181,7 @@ export function readCopilotInfoPayload(value: unknown): CopilotInfoPayload {
       operators: extractCopilotOperators(content),
       ...(operatorDetails.length ? { operatorDetails } : {}),
       ...(groupNames.length ? { groupNames } : {}),
+      ...(details ? { details } : {}),
     },
   }
 }
@@ -222,6 +227,7 @@ function readPlanItem(
   const stage = asText(value.stage)
   const stageId = asText(value.stageId)
   const apCost = asNumber(value.apCost)
+  const details = asText(value.details)
   const operatorDetails = readOperatorDetails(value.operators)
   const groupNames = readGroupNames(value.groups)
   const completedModes = readCompletedModes(entries, itemIndex)
@@ -232,6 +238,7 @@ function readPlanItem(
     ...(stage ? { stage } : {}),
     ...(stageId ? { stageId } : {}),
     ...(apCost !== null ? { apCost } : {}),
+    ...(details ? { details } : {}),
     ...(operatorDetails.length ? { operatorDetails } : {}),
     ...(groupNames.length ? { groupNames } : {}),
     presetFormation: value.presetFormation === true,

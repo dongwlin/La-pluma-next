@@ -8,6 +8,7 @@ export type { CopilotDetailOperator } from '../types'
 
 export interface CopilotDetailTarget {
   title: string
+  details?: string
   stage?: string
   stageId?: string
   apCost?: number | null
@@ -101,6 +102,7 @@ export function buildCopilotDetailTarget({
   const uri = copilot.uri ?? `prts://${copilot.id}`
   return {
     title,
+    ...(copilot.details ? { details: copilot.details } : {}),
     ...(copilot.stage ? { stage: copilot.stage } : {}),
     ...(copilot.stageId ? { stageId: copilot.stageId } : {}),
     ...(typeof copilot.apCost === 'number' ? { apCost: copilot.apCost } : {}),

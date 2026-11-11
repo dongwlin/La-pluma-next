@@ -140,6 +140,7 @@ export interface CopilotPlanItem {
   presetFormation: boolean;
   supportsRaid: boolean;
   recommendedMode?: CopilotRaid;
+  details?: string;
   operators: unknown[];
   groups: unknown[];
 }
@@ -495,6 +496,12 @@ export function getNavigationStage(copilot: unknown = {}): string {
   return readTitleStageCode(title) || title || String(content.stage_name || '');
 }
 
+function readDocDetails(content: CopilotContent): string | undefined {
+  const doc = isRecord(content.doc) ? content.doc : {};
+  const details = doc.details;
+  return typeof details === 'string' && details.trim() ? details : undefined;
+}
+
 async function loadStageCodeMap(stageIds: readonly unknown[]): Promise<Map<string, StageCode>> {
   try {
     const resourceDir = await getStageCatalogDir();
@@ -563,6 +570,7 @@ function buildCopilotPlanItem(
   const stageId = typeof content.stage_name === 'string' ? content.stage_name : '';
   const presetFormation = isPresetFormationCopilot(content);
   const recommendedMode = readRecommendedMode(content.difficulty, presetFormation);
+  const details = readDocDetails(content);
   return {
     id,
     stageId,
@@ -571,6 +579,7 @@ function buildCopilotPlanItem(
     presetFormation,
     supportsRaid: !presetFormation,
     ...(recommendedMode ? { recommendedMode } : {}),
+    ...(details ? { details } : {}),
     operators: Array.isArray(content.opers) ? content.opers : [],
     groups: Array.isArray(content.groups) ? content.groups : []
   };

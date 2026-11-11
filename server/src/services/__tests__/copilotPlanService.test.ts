@@ -184,6 +184,36 @@ test('automatic set mode uses the declared difficulty in the plan and progress k
   }
 });
 
+test('plan items carry the author description and omit blank ones', async () => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async (url: string | URL | Request) => {
+    const text = String(url);
+    const data = text.includes('/set/get')
+      ? { id: 2, name: 'set', copilot_ids: [10, 11] }
+      : text.includes('penguin-stats.io')
+        ? []
+        : {
+            content: JSON.stringify({
+              stage_name: text.endsWith('/10') ? 'main_01-07' : 'main_01-08',
+              doc: text.endsWith('/10')
+                ? { title: '1-7', details: '作者：A\nhttps://www.bilibili.com/video/BV1xx411c7mD' }
+                : { title: '1-8', details: '   ' }
+            })
+          };
+    return new Response(JSON.stringify({ status_code: 200, data }), { status: 200 });
+  };
+  try {
+    const plan = await buildCopilotPlan('2', 'normal');
+    assert.equal(
+      plan.items[0]?.details,
+      '作者：A\nhttps://www.bilibili.com/video/BV1xx411c7mD'
+    );
+    assert.equal('details' in (plan.items[1] ?? {}), false);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
 test('current map resource maps stages directly to OCR without navigation tasks', () => {
   assert.deepEqual(buildCurrentMapStageTasks(['bd-1', 'BD-2', 'BD-1']), {
     'BD-1': { text: ['BD-1'] },

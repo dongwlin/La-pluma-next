@@ -67,6 +67,7 @@ function parseCopilotQueueEntry(value: unknown): CopilotQueueEntry | null {
     source,
     uri,
     title: readText(value.title) ?? readText(value.stage) ?? readText(value.fileName) ?? uri,
+    details: readText(value.details),
     stage: readText(value.stage),
     stageId: readText(value.stageId),
     apCost: readApCost(value.apCost),

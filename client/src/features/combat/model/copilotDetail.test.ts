@@ -12,6 +12,7 @@ import {
 const item: CopilotSetItem = {
   id: 101,
   name: '第一关',
+  details: '作者：A\nhttps://www.bilibili.com/video/BV1xx411c7mD',
   stage: 'MAIN-1',
   stageId: 'main_01',
   apCost: 21,
@@ -93,6 +94,7 @@ describe('buildCopilotDetailTarget', () => {
       error: '缺少干员：桃金娘',
     })).toEqual({
       title: '第一关',
+      details: '作者：A\nhttps://www.bilibili.com/video/BV1xx411c7mD',
       stage: 'MAIN-1',
       stageId: 'main_01',
       apCost: 21,

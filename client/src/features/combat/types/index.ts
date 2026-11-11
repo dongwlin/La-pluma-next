@@ -67,6 +67,8 @@ export interface CopilotSetItem {
   operators?: string
   operatorDetails?: CopilotDetailOperator[]
   groupNames?: string[]
+  /** 作业站 `doc.details` 原文：作者填写的说明与攻略链接。 */
+  details?: string
   uri?: string
   presetFormation?: boolean
   supportsRaid?: boolean
@@ -83,6 +85,8 @@ export interface CopilotSetInfo {
   operators?: string
   operatorDetails?: CopilotDetailOperator[]
   groupNames?: string[]
+  /** 作业站 `doc.details` 原文：作者填写的说明与攻略链接。 */
+  details?: string
   note?: string
   recommendedMode?: CopilotDifficulty
   autoAddS?: boolean

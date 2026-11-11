@@ -38,6 +38,7 @@ const setPreview = (): CopilotSetInfo => ({
       stageId: 'test_1',
       apCost: 18,
       uri: 'prts://101',
+      details: '作者：A',
       supportsRaid: true,
       completedModes: ['normal'],
       operators: '能天使、[重装]',
@@ -74,6 +75,7 @@ describe('copilot queue entries', () => {
       operators: ['能天使'],
       groups: ['重装'],
       operatorDetails: [{ name: '能天使', elite: 2, level: 60 }],
+      details: '作者：A',
       completedModes: ['normal'],
       setId: '48990',
       setItemIndex: 0,
@@ -101,6 +103,7 @@ describe('copilot queue entries', () => {
       operators: '艾雅法拉、[近卫]',
       operatorDetails: [{ name: '艾雅法拉', elite: 2, level: 90 }],
       groupNames: ['近卫'],
+      details: '作者：B',
     }, 7)
 
     expect(item).toMatchObject({
@@ -112,6 +115,7 @@ describe('copilot queue entries', () => {
       operators: ['艾雅法拉'],
       groups: ['近卫'],
       operatorDetails: [{ name: '艾雅法拉', elite: 2, level: 90 }],
+      details: '作者：B',
       addedAt: 7,
     })
     expect(item?.setId).toBeUndefined()
@@ -120,19 +124,20 @@ describe('copilot queue entries', () => {
   it('reads local file metadata and keeps the file name fallback', () => {
     const metadata = parseCopilotQueueFileContent(JSON.stringify({
       stage_name: 'CE-6',
-      doc: { title: '钱本作业' },
+      doc: { title: '钱本作业', details: '作者：C' },
       opers: [{ name: '桃金娘' }, { name: '德克萨斯' }],
       groups: [{ name: '先锋' }],
     }))
     expect(metadata).toEqual({
       title: '钱本作业',
+      details: '作者：C',
       stage: 'CE-6',
       operators: ['桃金娘', '德克萨斯'],
       groups: ['先锋'],
     })
 
     const valid = buildCopilotQueueEntryFromFile('/data/a.json', 'local.json', JSON.stringify({
-      doc: { title: '本地作业' },
+      doc: { title: '本地作业', details: '作者：C' },
       stage_name: '1-7',
       opers: [{ name: '能天使' }],
     }))
@@ -140,6 +145,7 @@ describe('copilot queue entries', () => {
       source: 'file',
       uri: '/data/a.json',
       title: '本地作业',
+      details: '作者：C',
       stage: '1-7',
       operators: ['能天使'],
       fileName: 'local.json',

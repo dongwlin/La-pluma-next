@@ -138,6 +138,15 @@
     font-weight: 600;
   }
 
+  .combat-copilot-detail-description {
+    margin: 0;
+    color: var(--app-text-muted);
+    font-size: 0.875rem;
+    line-height: 1.6;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+  }
+
   .combat-copilot-detail-error {
     margin: 0;
     padding: var(--app-space-3);

@@ -141,6 +141,26 @@ describe('copilot detail payload', () => {
     expect(result.detail?.operators).toBe('桃金娘、临光、[击杀组]')
   })
 
+  it('reads the author description verbatim and drops blank ones', () => {
+    const details = '作者：緊急失控\nhttps://www.bilibili.com/video/BV1FrWJ6nESh'
+    const described = readCopilotInfoPayload(envelope({
+      status_code: 200,
+      data: {
+        content: JSON.stringify({
+          stage_name: 'TL-EX-3',
+          doc: { title: 'TL-EX-3', details },
+        }),
+      },
+    }))
+    expect(described.detail?.details).toBe(details)
+
+    const blank = readCopilotInfoPayload(envelope({
+      status_code: 200,
+      data: { content: JSON.stringify({ stage_name: '1-7', doc: { details: '  ' } }) },
+    }))
+    expect(blank.detail?.details).toBeUndefined()
+  })
+
   it('accepts an already parsed content object and falls back to the unnamed title', () => {
     const result = readCopilotInfoPayload({
       status_code: 200,
@@ -256,6 +276,17 @@ describe('copilot plan payload', () => {
         },
       ],
     })
+  })
+
+  it('keeps the author description on plan members', () => {
+    const details = '作者：A\nhttps://www.bilibili.com/video/BV1xx411c7mD'
+    const result = readCopilotPlanPayload({
+      items: [{ id: 7, details }, { id: 8, details: ' ' }],
+      entries: [],
+    })
+
+    expect(result?.items[0]?.details).toBe(details)
+    expect(result?.items[1]?.details).toBeUndefined()
   })
 
   it('normalizes missing names and accepts a raw payload', () => {

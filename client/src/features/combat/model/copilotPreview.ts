@@ -79,6 +79,7 @@ export function buildSingleCopilotPreview(id: string, detail: CopilotDetail): Co
     operators: detail.operators,
     ...(detail.operatorDetails?.length ? { operatorDetails: detail.operatorDetails } : {}),
     ...(detail.groupNames?.length ? { groupNames: detail.groupNames } : {}),
+    ...(detail.details ? { details: detail.details } : {}),
   }
 }
 
@@ -120,6 +121,7 @@ export function buildCopilotSetItemFromDetail(id: number, detail: CopilotDetail)
     operators: detail.operators,
     ...(detail.operatorDetails?.length ? { operatorDetails: detail.operatorDetails } : {}),
     ...(detail.groupNames?.length ? { groupNames: detail.groupNames } : {}),
+    ...(detail.details ? { details: detail.details } : {}),
     uri: `prts://${id}`,
   }
 }

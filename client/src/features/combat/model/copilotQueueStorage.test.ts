@@ -36,6 +36,7 @@ describe('copilot queue serialization', () => {
         setId: '48990',
         setItemIndex: 2,
         operatorDetails: [{ name: '能天使', elite: 2, level: 60 }],
+        details: '作者：A\nhttps://www.bilibili.com/video/BV1xx411c7mD',
       }),
     ]
     const parsed = parseCopilotQueue(serializeCopilotQueue(entries))
@@ -46,6 +47,7 @@ describe('copilot queue serialization', () => {
       setId: '48990',
       setItemIndex: 2,
       operatorDetails: [{ name: '能天使', elite: 2, level: 60 }],
+      details: '作者：A\nhttps://www.bilibili.com/video/BV1xx411c7mD',
     })
   })
 

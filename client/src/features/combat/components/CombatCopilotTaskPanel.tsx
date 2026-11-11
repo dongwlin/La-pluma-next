@@ -37,10 +37,15 @@ interface CombatCopilotTaskPanelProps {
 
 function buildPreviewDetailTarget(preview: CopilotSetInfo): CopilotDetailTarget {
   if (preview.type === 'set') {
-    return { title: preview.name, uri: `prts://s${preview.id}` }
+    return {
+      title: preview.name,
+      uri: `prts://s${preview.id}`,
+      ...(preview.details ? { details: preview.details } : {}),
+    }
   }
   return {
     title: preview.name,
+    ...(preview.details ? { details: preview.details } : {}),
     stage: preview.stage,
     stageId: preview.stageId,
     uri: `prts://${preview.id}`,
