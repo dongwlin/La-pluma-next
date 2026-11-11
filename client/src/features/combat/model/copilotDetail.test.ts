@@ -7,6 +7,7 @@ import {
   describeCopilotDetailStatus,
   describeCopilotDetailTitle,
   firstErrorLine,
+  readMissingDetailCopilotId,
 } from './copilotDetail'
 
 const item: CopilotSetItem = {
@@ -124,6 +125,21 @@ describe('buildCopilotDetailTarget', () => {
     expect(target.presetFormation).toBeUndefined()
     expect(target.operators).toBeUndefined()
     expect(target.error).toBeUndefined()
+  })
+})
+
+describe('readMissingDetailCopilotId', () => {
+  it('returns the copilot id only when a remote single job has no description', () => {
+    expect(readMissingDetailCopilotId({ title: '作业', uri: 'prts://101' })).toBe('101')
+    expect(readMissingDetailCopilotId({ title: '作业', uri: 'maa://101' })).toBe('101')
+    expect(readMissingDetailCopilotId({ title: '作业', uri: 'prts://101', details: '已有' })).toBeNull()
+  })
+
+  it('ignores set links, local files and empty targets', () => {
+    expect(readMissingDetailCopilotId({ title: '作业集', uri: 'prts://s48990' })).toBeNull()
+    expect(readMissingDetailCopilotId({ title: '本地', uri: '/data/a.json' })).toBeNull()
+    expect(readMissingDetailCopilotId({ title: '无链接' })).toBeNull()
+    expect(readMissingDetailCopilotId(null)).toBeNull()
   })
 })
 

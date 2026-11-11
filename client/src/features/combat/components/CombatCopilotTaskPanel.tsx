@@ -1,4 +1,5 @@
 import { Card } from '@/shared/ui'
+import { useResolvedCopilotDetailTarget } from '../hooks/useResolvedCopilotDetailTarget'
 import type { CopilotDetailTarget } from '../model/copilotDetail'
 import type { CopilotSetView } from '../model/copilotSetView'
 import type { CombatTask, CopilotSetInfo } from '../types'
@@ -72,9 +73,10 @@ export default function CombatCopilotTaskPanel({
 }: CombatCopilotTaskPanelProps) {
   const previewInfo = detail?.type === 'preview' ? preview.info : null
   const queueEntry = detail?.type === 'queue' ? queue.entries.find(entry => entry.id === detail.id) : undefined
-  const detailTarget = previewInfo
+  const baseDetailTarget = previewInfo
     ? buildPreviewDetailTarget(previewInfo)
     : queueEntry ? buildQueueDetailTarget(queueEntry, queue) : null
+  const detailTarget = useResolvedCopilotDetailTarget(baseDetailTarget)
 
   return (
     <Card

@@ -3,6 +3,7 @@ import type {
   CopilotDifficulty,
   CopilotSetItem,
 } from '../types'
+import { parseCopilotUri } from '../utils/copilotUri'
 
 export type { CopilotDetailOperator } from '../types'
 
@@ -116,6 +117,12 @@ export function buildCopilotDetailTarget({
     ...(statusLabel ? { statusLabel } : {}),
     ...(error ? { error } : {}),
   }
+}
+
+export function readMissingDetailCopilotId(target: CopilotDetailTarget | null): string | null {
+  if (!target || target.details || !target.uri) return null
+  const parsed = parseCopilotUri(target.uri)
+  return parsed && !parsed.isSet ? parsed.id : null
 }
 
 export function firstErrorLine(error: string | undefined): string | null {
