@@ -76,9 +76,9 @@ utils / config → services → controllers → routes → app.ts / server.ts
 
 - 请求体为 `{ "name"?: string, "content": string }`。`content` 必须是字符串，UTF-8 字节数不超过 2 MiB，解析后是 JSON 对象（数组与标量不接受），且包含非空字符串 `stage_name`；其余字段不参与服务端校验。
 - `name` 只用于展示：非字符串或缺失时回退 `copilot.json`；字符串去掉路径成分、仅保留安全字符并统一为 `.json` 后缀；落盘文件名固定为 `<uuid>.json`，不采用用户提供的名称。
-- 成功响应沿用统一 envelope，`data` 为 `{ path, name, bytes }`，`path` 是受管目录内的绝对路径；校验失败返回 400 `COPILOT_FILE_INVALID`，`details.reason` 标识具体校验项，不回显文件内容。
+- 成功响应沿用统一 envelope，`data` 为 `{ path, name, bytes, stage, stageId }`，`path` 是受管目录内的绝对路径；`stage` 是按资源地图表解析出的可读关卡代号，`stageId` 是作业文件里的原始标识，解析不到代号时 `stage` 回退为 `stageId`；校验失败返回 400 `COPILOT_FILE_INVALID`，`details.reason` 标识具体校验项，不回显文件内容。
 - 原始请求体超过 2 MiB 时由 JSON parser 先行拒绝，返回 413 `AGENT_REQUEST_BODY_TOO_LARGE`；service 还会独立校验 `content` 的 UTF-8 字节数不超过 2 MiB，超限时返回 400 `COPILOT_FILE_INVALID`（`reason: content_too_large`），但 HTTP 入口通常先被请求体上限拦截，因此实际可上传的 `content` 略小于 2 MiB（需为 JSON envelope 留出开销）。
-- 文件写入 `resolveAppPaths().appDataDir/copilot-imports/`，目录不存在时创建，文件权限为 `0o600`；错误与日志都不记录文件内容。路由工厂 `createCopilotFilesRouter({ saveFile? })` 与 service 的 `dataDir` 选项用于测试注入（`server/src/services/copilotFileService.ts:61-67,220-240`、`server/src/routes/copilotFiles.ts:16-23`）。
+- 文件写入 `resolveAppPaths().appDataDir/copilot-imports/`，目录不存在时创建，文件权限为 `0o600`；错误与日志都不记录文件内容。路由工厂 `createCopilotFilesRouter({ saveFile?, resolveStage? })` 与 service 的 `dataDir` 选项用于测试注入（`server/src/services/copilotFileService.ts:61-67,220-240`、`server/src/routes/copilotFiles.ts:16-25`）。
 
 ## 探针：/health 与 /readiness
 

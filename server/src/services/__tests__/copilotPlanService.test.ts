@@ -109,6 +109,7 @@ const {
   isPresetFormationCopilot,
   mergePresetFormationTasks,
   resetCopilotPlanCachesForTests,
+  resolveCopilotStageIdentity,
   setCopilotFileLoadPollIntervalForTests,
   setCopilotPlanPathPlatformForTests
 } = await import('../copilotPlanService.ts');
@@ -193,6 +194,35 @@ test('current map resource maps stages directly to OCR without navigation tasks'
 test('navigation uses the visible stage code instead of the internal stage id', () => {
   assert.equal(getNavigationStage({ stage_name: 'act21mini_04', doc: { title: 'BD-4 低配挂机' } }), 'BD-4');
   assert.equal(getNavigationStage({ stage_name: 'main_01-07', doc: { title: '1-7' } }), '1-7');
+});
+
+test('display stage resolves the resource code before the title code and the raw stage name', async () => {
+  const resourceDir = join(fixtureDir, 'display-resource');
+  const tileDir = join(resourceDir, 'Arknights-Tile-Pos');
+  await mkdir(tileDir, { recursive: true });
+  await writeFile(join(resourceDir, 'stages.json'), '[]');
+  await writeFile(
+    join(tileDir, 'act_stage_01-activities-act_stage-level_act_stage_01.json'),
+    JSON.stringify({ code: 'AT-EX-1' })
+  );
+  process.env.FAKE_MAA_RESOURCE_DIR = resourceDir;
+
+  assert.deepEqual(
+    await resolveCopilotStageIdentity({
+      status_code: 200,
+      data: { content: JSON.stringify({ stage_name: 'act_stage_01', doc: { title: '1-7 挂机' } }) }
+    }),
+    { stageId: 'act_stage_01', stage: 'AT-EX-1' }
+  );
+  assert.deepEqual(
+    await resolveCopilotStageIdentity({ content: { stage_name: 'main_99-01', doc: { title: '1-7 挂机' } } }),
+    { stageId: 'main_99-01', stage: '1-7' }
+  );
+  assert.deepEqual(
+    await resolveCopilotStageIdentity({ content: { stage_name: 'act_stage_02', doc: { title: '无代号标题' } } }),
+    { stageId: 'act_stage_02', stage: 'act_stage_02' }
+  );
+  assert.deepEqual(await resolveCopilotStageIdentity({ content: '{}' }), { stageId: '', stage: '' });
 });
 
 test('native copilot plans keep all advanced execution options', () => {

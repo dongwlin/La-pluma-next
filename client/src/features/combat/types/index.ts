@@ -79,6 +79,7 @@ export interface CopilotSetInfo {
   id: string
   name: string
   stage?: string
+  stageId?: string
   operators?: string
   operatorDetails?: CopilotDetailOperator[]
   groupNames?: string[]

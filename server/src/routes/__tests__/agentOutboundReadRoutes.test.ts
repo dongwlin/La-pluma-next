@@ -1,4 +1,6 @@
 import assert from 'node:assert/strict'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import { afterEach, describe, it } from 'node:test'
 import router from '../agent.ts'
 import type {
@@ -163,6 +165,33 @@ describe('Agent outbound read routes', () => {
     assert.equal(res.statusCode, 200)
     const data = readData<unknown>(res.body)
     assert.deepEqual(data, { status_code: 200, data: { id: 10, content: '{}' } })
+  })
+
+  it('projects the readable stage code onto copilot reads', async () => {
+    const previousResourceDir = process.env.MAA_RESOURCE_DIR
+    process.env.MAA_RESOURCE_DIR = join(tmpdir(), 'la-pluma-missing-resource')
+    try {
+      stubFetch(() => jsonResponse({
+        status_code: 200,
+        data: {
+          id: 11,
+          content: JSON.stringify({
+            stage_name: 'act55side_ex03',
+            doc: { title: '时间啊，向前！ - TL-EX-3 - 致远特维' }
+          })
+        }
+      }))
+      const res = createResponse()
+      await findHandler('get', '/copilots/:id')({ headers: {}, params: { id: '11' } }, res, createNext().next)
+
+      assert.equal(res.statusCode, 200)
+      const data = readRecord(readData(res.body), 'copilot payload')
+      assert.equal(data.stage, 'TL-EX-3')
+      assert.equal(data.stageId, 'act55side_ex03')
+    } finally {
+      if (previousResourceDir === undefined) delete process.env.MAA_RESOURCE_DIR
+      else process.env.MAA_RESOURCE_DIR = previousResourceDir
+    }
   })
 
   it('surfaces upstream http errors from copilot reads as structured outbound failures', async () => {

@@ -57,6 +57,19 @@ describe('preview builders', () => {
     })
   })
 
+  it('keeps the raw stage id alongside the readable stage code', () => {
+    expect(buildSingleCopilotPreview('12', {
+      title: '时间啊，向前！ - TL-EX-3 - 致远特维',
+      stage: 'TL-EX-3',
+      stageId: 'act55side_ex03',
+      operators: '未知',
+    })).toMatchObject({
+      type: 'single',
+      stage: 'TL-EX-3',
+      stageId: 'act55side_ex03',
+    })
+  })
+
   it('carries operator requirements and groups into a single preview', () => {
     expect(buildSingleCopilotPreview('12', {
       title: '低配 1-7',

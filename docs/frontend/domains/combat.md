@@ -132,7 +132,7 @@ CombatTasks（页面壳：PageHeader + FloatingStatusIndicator）
 ### 5. 搜索、执行与页面路径
 
 - **搜索选择**：点击普通搜索结果才会写入 `copilot.uri` 并打开预览，推荐标记帮助定位搜索结果。`copilotSearchSelection` 驱动“已选中”高亮，修改主输入会清除非匹配的高亮。结果的「加入队列」动作按 URI 读取作业信息后加入队列。
-- **JSON 作业导入**：链接输入框内的 JSON 导入按钮读取本地 JSON 文件；从文件管理器复制 JSON 文件后在输入框粘贴，文件交给同一导入通道。两条路径都提交 `POST /api/copilot-files`，成功后清空旧预览，并把 `doc.title`、`stage_name`、`opers`、`groups` 解析成队列条目的标题、关卡与干员信息并加入队列；解析失败仍按导入文件名入队，上传接口拒绝非法 JSON 时提示错误且不加入队列。输入框只承载作业链接与 JSON 文件粘贴，不再接受服务端可见的文件路径。队列 Run 提交 `source: 'file'` 与服务端受管路径，由服务端重新读取受管文件并写入队列计划目录；受管路径不参与 PRTS 预览。
+- **JSON 作业导入**：链接输入框内的 JSON 导入按钮读取本地 JSON 文件；从文件管理器复制 JSON 文件后在输入框粘贴，文件交给同一导入通道。两条路径都提交 `POST /api/copilot-files`，成功后清空旧预览，并把 `doc.title`、`opers`、`groups` 解析成队列条目的标题与干员信息，关卡优先使用上传响应里的 `stage`/`stageId`（服务端按资源解析出的代号与原始标识），缺失时才回退文件里的 `stage_name`；解析失败仍按导入文件名入队，上传接口拒绝非法 JSON 时提示错误且不加入队列。输入框只承载作业链接与 JSON 文件粘贴，不再接受服务端可见的文件路径。队列 Run 提交 `source: 'file'` 与服务端受管路径，由服务端重新读取受管文件并写入队列计划目录；受管路径不参与 PRTS 预览。
 - **执行设置**：页面提供连续执行与手动逐关，旧配置的 `app` 与 `cli` 都映射到 `continuous`，`manual` 保留逐步等待。难度选择 `auto` 时，作业集计划与显式队列由服务端读取作业的 `difficulty`；预览和详情保留可用的标注。手动指定难度使用用户的选择。
 - **队列执行**：只勾选当前预览作业集的成员，且其 `setItemIndex` 严格递增时，走作业集提交（`submitSet` → `run_copilot_set`）：连续模式一次提交整组，手动模式等待服务端 `nextEntry`；`selectedIndexes` 来自队列勾选。混合来源、重排后的集合成员或本地文件走 `submitQueue` → `run_copilot_queue`。客户端按队列顺序提交 `{ clientId, source, copilotId|filename, mode }`，每个作业的 `mode` 来自全局突袭设置，预设编队作业提交 `normal`。服务端将适用的 `both` 展开为普通和突袭两个步骤。`executionStrategy` 映射为 `failurePolicy`：`stop` 首败停止，其他值按 `continue`。
 - **停止/继续/跳过**：队列 Run 的停止复用 `stop()`；manual waiting 时「开始下一项」调用 `continueCopilotQueue`，「跳过此项」调用 `skipCopilotQueueEntry`，两者都只针对当前 `runId`，不新建 Run。重试按原 Run 的失败步骤确定作业和模式，已成功的模式不会随该作业重试。
@@ -261,13 +261,13 @@ CombatTasks（页面壳：PageHeader + FloatingStatusIndicator）
 
 | 载荷 | 兼容处理 |
 | --- | --- |
-| PRTS 代理 | 接受 `{ success, data }` 信封与直接的 `{ status_code, data }` 对象；`content` 可为 JSON 字符串或已解析对象 |
+| PRTS 代理 | 接受 `{ success, data }` 信封与直接的 `{ status_code, data }` 对象；`content` 可为 JSON 字符串或已解析对象；服务端追加的 `stage`/`stageId` 投影优先于 `stage_name` |
 | 单作业内容 | `doc.title` 缺失回退“未命名作业”；`opers`/`groups` 拼成“名字、[组名]”；无展示项为“未知” |
 | 作业集成员 | `data.copilot_ids` 接受数字或数字字符串；丢弃 0、负数、小数与重复项 |
 | 作业集计划 | `items` 与 `entries` 必须同时存在；`completed` 条目按 `itemIndex` 折叠为 `completedModes`；`stage` 缺失时名称回退“作业 #id” |
 | 搜索结果 | 接受信封/原始载荷；缺 `uri` 的条目丢弃；`recommended` 只有带 `uri` 才显示推荐；`views`/`hotScore` 缺失按 0 |
 | 作业队列存储 | `la-pluma-copilot-queue-v1` 只接受 `{ version: 1, entries: [...] }`；版本不符或 JSON 损坏返回空队列；逐项校验必填 `id`/`uri`/`source`，丢弃重复 URI，截断到 50 项 |
-| 本地作业元数据 | 文件选择或粘贴 JSON 文件的 `doc.title`、`stage_name`、`opers[].name`、`groups[].name` 缺失或非字符串时按缺省处理；解析失败仍以导入文件名为标题入队，不影响受管路径执行 |
+| 本地作业元数据 | 文件选择或粘贴 JSON 文件的 `doc.title`、`stage_name`、`opers[].name`、`groups[].name` 缺失或非字符串时按缺省处理；上传响应的 `stage`/`stageId` 缺失时回退 `stage_name`；解析失败仍以导入文件名为标题入队，不影响受管路径执行 |
 | 队列 Run 执行 | 请求体 `{ queueId?, name?, mode?, failurePolicy?, entries[], options?, waitForCompletion? }`；`entries` 为 1–50 项且 `clientId` 唯一；响应同作业集信封，新增 `queueId`/`summary`/`nextEntry`；客户端按 `clientId` 合并 `taskResults`，不按数组下标猜测状态 |
 | 队列 Run 继续/跳过 | 两者只接受 `operationId=run_copilot_queue` 且 `state=waiting` 的 Run；`MAA_EXECUTION_BUSY` 保持 waiting，`AGENT_COPILOT_QUEUE_SESSION_LOST` 需要重新提交，终态继续返回 `alreadyTerminal` |
 | 旧探测 | `prts://<id>` 的“自动”模式按单作业处理，不会猜测同 id 作业集；prts.plus 链接继续探测 |

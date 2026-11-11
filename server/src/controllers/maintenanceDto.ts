@@ -4,6 +4,7 @@ import type { MaaVersionInfo } from '../services/maaExecutionService.ts';
 import type { MaaActivityEntry, MaaActivityFailure, MaaActivityStatus } from '../services/maaActivityService.ts';
 import type { ResourceInfo, ResourceUpdateResult } from '../services/resourceUpdateService.ts';
 import type { AutoUpdateConfig } from '../services/scheduleTriggerService.ts';
+import type { CopilotStageIdentity } from '../services/copilotPlanService.ts';
 import { parseWaitForCompletion } from './executionDto.ts';
 import { resolveRequestConnection } from './requestConnection.ts';
 
@@ -292,6 +293,22 @@ export interface MaintenanceCopilotSearchEntry extends MaintenanceCopilotEntry {
 export interface MaintenanceCopilotSearchCandidate {
   entry: MaintenanceCopilotSearchEntry;
   titleStageCode: string;
+}
+
+/**
+ * 单作业代理载荷追加展示关卡投影：`stage` 为可读代号，`stageId` 为作业内容里的
+ * 原始标识。解析结果为空时保持原载荷，旧字段与 `status_code` 不变。
+ */
+export function projectCopilotStage(
+  payload: unknown,
+  stage: CopilotStageIdentity
+): unknown {
+  if (!isRecord(payload)) return payload;
+  return {
+    ...payload,
+    ...(stage.stage ? { stage: stage.stage } : {}),
+    ...(stage.stageId ? { stageId: stage.stageId } : {})
+  };
 }
 
 function copilotDocTitle(value: unknown): unknown {

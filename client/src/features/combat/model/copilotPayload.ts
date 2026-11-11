@@ -12,7 +12,10 @@ import { copilotDifficultyFromFlags, readCopilotRecommendedMode } from './copilo
 export interface CopilotDetail {
   readonly title: string
   readonly recommendedMode?: CopilotDifficulty
+  /** 展示用关卡代号；服务端未提供解析结果时回退为作业内容里的 `stage_name`。 */
   readonly stage?: string
+  /** 作业内容里的原始关卡标识（通常是内部 stageId）。 */
+  readonly stageId?: string
   readonly operators: string
   readonly operatorDetails?: CopilotDetailOperator[]
   readonly groupNames?: string[]
@@ -159,7 +162,8 @@ export function readCopilotInfoPayload(value: unknown): CopilotInfoPayload {
   if (!content) return { statusCode, detail: null }
 
   const title = asText(isRecord(content.doc) ? content.doc.title : undefined) ?? '未命名作业'
-  const stage = asText(content.stage_name)
+  const stageId = asText(payload.stageId) ?? asText(content.stage_name)
+  const stage = asText(payload.stage) ?? stageId
   const operatorDetails = readOperatorDetails(content.opers)
   const groupNames = readGroupNames(content.groups)
   const recommendedMode = copilotDifficultyFromFlags(content.difficulty)
@@ -169,6 +173,7 @@ export function readCopilotInfoPayload(value: unknown): CopilotInfoPayload {
       title,
       ...(recommendedMode ? { recommendedMode } : {}),
       ...(stage ? { stage } : {}),
+      ...(stageId ? { stageId } : {}),
       operators: extractCopilotOperators(content),
       ...(operatorDetails.length ? { operatorDetails } : {}),
       ...(groupNames.length ? { groupNames } : {}),

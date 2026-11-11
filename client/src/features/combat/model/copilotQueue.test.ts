@@ -97,6 +97,7 @@ describe('copilot queue entries', () => {
       id: '1234',
       name: '单作业',
       stage: '1-7',
+      stageId: 'main_01-07',
       operators: '艾雅法拉、[近卫]',
       operatorDetails: [{ name: '艾雅法拉', elite: 2, level: 90 }],
       groupNames: ['近卫'],
@@ -107,6 +108,7 @@ describe('copilot queue entries', () => {
       uri: 'prts://1234',
       title: '单作业',
       stage: '1-7',
+      stageId: 'main_01-07',
       operators: ['艾雅法拉'],
       groups: ['近卫'],
       operatorDetails: [{ name: '艾雅法拉', elite: 2, level: 90 }],
@@ -150,6 +152,17 @@ describe('copilot queue entries', () => {
       fileName: 'broken.json',
     })
     expect(fallback.stage).toBeUndefined()
+
+    const resolved = buildCopilotQueueEntryFromFile('/data/c.json', 'local.json', JSON.stringify({
+      doc: { title: '本地作业' },
+      stage_name: 'act55side_ex03',
+    }), { stage: 'TL-EX-3', stageId: 'act55side_ex03', addedAt: 9 })
+    expect(resolved).toMatchObject({
+      source: 'file',
+      stage: 'TL-EX-3',
+      stageId: 'act55side_ex03',
+      addedAt: 9,
+    })
   })
 
   it('quotes local file paths for the execution input', () => {

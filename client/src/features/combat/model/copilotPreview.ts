@@ -75,6 +75,7 @@ export function buildSingleCopilotPreview(id: string, detail: CopilotDetail): Co
     name: detail.title,
     ...(detail.recommendedMode ? { recommendedMode: detail.recommendedMode } : {}),
     ...(detail.stage ? { stage: detail.stage } : {}),
+    ...(detail.stageId ? { stageId: detail.stageId } : {}),
     operators: detail.operators,
     ...(detail.operatorDetails?.length ? { operatorDetails: detail.operatorDetails } : {}),
     ...(detail.groupNames?.length ? { groupNames: detail.groupNames } : {}),

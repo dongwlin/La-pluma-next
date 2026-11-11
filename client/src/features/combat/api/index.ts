@@ -23,6 +23,9 @@ export interface CopilotFileUploadPayload {
   path: string
   name?: string
   bytes?: number
+  /** 服务端按资源解析出的展示关卡代号；缺失时按文件里的 `stage_name` 展示。 */
+  stage?: string
+  stageId?: string
 }
 
 const isCopilotFileUploadPayload = (payload: unknown): payload is CopilotFileUploadPayload =>

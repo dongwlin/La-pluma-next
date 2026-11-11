@@ -482,12 +482,17 @@ export function isPresetFormationCopilot(copilot: unknown = {}): boolean {
     /_s\d+$/i.test(stageName);
 }
 
+const STAGE_CODE_PATTERN = /\b(?:[A-Z]{1,5}|\d{1,2})-(?:(?:EX|S|MO|TR)-)?\d+\b/i;
+
+function readTitleStageCode(title: string): string | undefined {
+  return title.match(STAGE_CODE_PATTERN)?.[0];
+}
+
 export function getNavigationStage(copilot: unknown = {}): string {
   const content = isRecord(copilot) ? copilot : {};
   const doc = isRecord(content.doc) ? content.doc : {};
   const title = String(doc.title || '').trim();
-  const code = title.match(/\b(?:[A-Z]{1,5}|\d{1,2})-(?:(?:EX|S|MO|TR)-)?\d+\b/i)?.[0];
-  return code || title || String(content.stage_name || '');
+  return readTitleStageCode(title) || title || String(content.stage_name || '');
 }
 
 async function loadStageCodeMap(stageIds: readonly unknown[]): Promise<Map<string, StageCode>> {
@@ -1346,6 +1351,29 @@ async function loadNativeStageCodes(stageIds: readonly string[]): Promise<Map<st
     } catch {}
   }));
   return codes;
+}
+
+/** 单作业的展示关卡：`stage` 是资源中的可读代号，`stageId` 是作业内容里的原始标识。 */
+export interface CopilotStageIdentity {
+  stageId: string;
+  stage: string;
+}
+
+/**
+ * 解析单作业的展示关卡。`payload` 接受 PRTS 单作业信封（`data.content`）或内层
+ * `{ content }`，`content` 可为 JSON 字符串或已解析对象；本地导入也传 `{ content }`。
+ * 代号优先取资源地图表，其次取文档标题中的代号；都没有时回退 `stage_name`，
+ * 避免把内部关卡 id 当作代号展示。
+ */
+export async function resolveCopilotStageIdentity(payload: unknown): Promise<CopilotStageIdentity> {
+  const source = isRecord(payload) && isRecord(payload.data) ? payload.data : payload;
+  const content = parseCopilotContent(source);
+  const stageId = typeof content.stage_name === 'string' ? content.stage_name.trim() : '';
+  if (!stageId) return { stageId: '', stage: '' };
+  const codes = await loadNativeStageCodes([stageId]);
+  const doc = isRecord(content.doc) ? content.doc : {};
+  const code = codes.get(stageId) ?? readTitleStageCode(String(doc.title || '').trim());
+  return { stageId, stage: code || stageId };
 }
 
 export interface CopilotNativeDelegationInput {

@@ -114,6 +114,7 @@ export function buildCopilotQueueEntries(
     uri: `prts://${preview.id}`,
     title: preview.name || preview.stage || `作业 #${preview.id}`,
     stage: preview.stage,
+    stageId: preview.stageId,
     recommendedMode: preview.recommendedMode,
     ...withCopilotNames(preview.operators, preview.groupNames, preview.operatorDetails),
     addedAt,
@@ -150,11 +151,18 @@ export function parseCopilotQueueFileContent(content: string): CopilotQueueFileM
   }
 }
 
+export interface CopilotQueueFileEntryOptions {
+  /** 服务端解析后的展示关卡；缺省时沿用文件里的 `stage_name`。 */
+  stage?: string
+  stageId?: string
+  addedAt?: number
+}
+
 export function buildCopilotQueueEntryFromFile(
   path: string,
   fileName: string,
   content: string,
-  addedAt = Date.now(),
+  options: CopilotQueueFileEntryOptions = {},
 ): CopilotQueueEntry {
   const metadata = parseCopilotQueueFileContent(content)
   const fallbackTitle = fileName.replace(/\.json$/i, '').trim() || path
@@ -163,12 +171,13 @@ export function buildCopilotQueueEntryFromFile(
     source: 'file',
     uri: path,
     title: metadata.title ?? fallbackTitle,
-    stage: metadata.stage,
+    stage: options.stage ?? metadata.stage,
+    stageId: options.stageId,
     recommendedMode: metadata.recommendedMode,
     ...(metadata.operators.length ? { operators: metadata.operators } : {}),
     ...(metadata.groups.length ? { groups: metadata.groups } : {}),
     fileName,
-    addedAt,
+    addedAt: options.addedAt ?? Date.now(),
   }
 }
 

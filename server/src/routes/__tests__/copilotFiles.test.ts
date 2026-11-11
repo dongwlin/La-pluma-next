@@ -10,6 +10,10 @@ import type {
   CopilotFileInput,
   CopilotFileResult
 } from '../../services/copilotFileService.ts';
+import type {
+  CopilotFileSavedResult,
+  CopilotStageResolver
+} from '../../controllers/copilotFileController.ts';
 import { createCopilotFilesRouter } from '../copilotFiles.ts';
 import {
   closeHttpServers,
@@ -28,10 +32,15 @@ after(async () => {
   await closeHttpServers(servers);
 });
 
-function createRouterApp(saveFile: (input: CopilotFileInput) => Promise<CopilotFileResult>): Express {
+const noStage: CopilotStageResolver = async () => ({ stage: '', stageId: '' });
+
+function createRouterApp(
+  saveFile: (input: CopilotFileInput) => Promise<CopilotFileResult>,
+  resolveStage: CopilotStageResolver = noStage
+): Express {
   const app = express();
   app.use(express.json({ limit: '2mb' }));
-  app.use('/api/copilot-files', createCopilotFilesRouter({ saveFile }));
+  app.use('/api/copilot-files', createCopilotFilesRouter({ saveFile, resolveStage }));
   app.use(apiErrorHandler);
   return app;
 }
@@ -65,6 +74,33 @@ describe('POST /api/copilot-files', () => {
     assert.equal(body.message, '作业文件已保存');
     assert.equal(body.meta.dryRun, false);
     assert.deepEqual(calls, [{ name: '作业.json', content: '{"stage_name":"1-7"}' }]);
+  });
+
+  it('把解析出的展示关卡随保存结果返回', async () => {
+    const saved: CopilotFileResult = {
+      path: '/managed/copilot-imports/6f9619ff-8b86-4d01-b42d-00cf4fc964ff.json',
+      name: '作业.json',
+      bytes: 30
+    };
+    const resolved: unknown[] = [];
+    const app = createRouterApp(
+      async () => saved,
+      async payload => {
+        resolved.push(payload);
+        return { stageId: 'act55side_ex03', stage: 'TL-EX-3' };
+      }
+    );
+    const port = await startHttpServer(app, servers);
+
+    const response = await postJson(baseUrl(port), {
+      name: '作业.json',
+      content: '{"stage_name":"act55side_ex03"}'
+    });
+
+    assert.equal(response.status, 200);
+    const body = await readSuccess<CopilotFileSavedResult>(response);
+    assert.deepEqual(body.data, { ...saved, stage: 'TL-EX-3', stageId: 'act55side_ex03' });
+    assert.deepEqual(resolved, [{ content: '{"stage_name":"act55side_ex03"}' }]);
   });
 
   it('非对象请求体返回 400 COPILOT_FILE_INVALID 且不调用保存', async () => {

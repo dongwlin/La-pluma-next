@@ -42,6 +42,7 @@ function buildPreviewDetailTarget(preview: CopilotSetInfo): CopilotDetailTarget 
   return {
     title: preview.name,
     stage: preview.stage,
+    stageId: preview.stageId,
     uri: `prts://${preview.id}`,
     sourceLabel: '链接',
     operators: preview.operatorDetails,

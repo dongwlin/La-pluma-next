@@ -141,7 +141,7 @@ const depot = unwrapApiResponse(result)
 | --- | --- | --- |
 | `searchCopilot(stageName, signal?)` | `GET /agent/copilot/search` | `copilots` 数组 |
 | `searchParadoxCopilot(operatorName, signal?)` | `GET /agent/paradox/search` | `copilots` 数组 |
-| `getCopilotInfo(copilotId, signal?)` | `GET /agent/copilots/:id` | PRTS 代理对象 |
+| `getCopilotInfo(copilotId, signal?)` | `GET /agent/copilots/:id` | PRTS 代理对象；服务端按资源追加 `stage`/`stageId` 展示关卡投影 |
 | `getCopilotSet(copilotId, signal?)` | `GET /agent/copilot-sets/:id` | PRTS 代理对象 |
 | `getCopilotSetPlan(copilotId, raid?, signal?)` | `GET /agent/copilot-sets/:id/plan` | `items`/`entries` 数组 |
 

@@ -40,7 +40,7 @@ import {
 import type { CoreUpdateChannel } from '../services/updateChannelService.ts';
 import { parseDepotData, parseOperBoxData } from '../services/dataParserService.ts';
 import { loadParadoxOperators, resolveStageSearchKeyword } from '../services/copilotService.ts';
-import { buildCopilotPlan, resetCopilotPlanProgress } from '../services/copilotPlanService.ts';
+import { buildCopilotPlan, resetCopilotPlanProgress, resolveCopilotStageIdentity } from '../services/copilotPlanService.ts';
 import { getActivityCompletion } from '../services/activityCompletionService.ts';
 import { createOutboundHttpClient } from '../services/outboundRequestService.ts';
 import { executeTrackedAgentAction } from './agentExecutionController.ts';
@@ -72,6 +72,7 @@ import {
   parseUpdateCoreBody,
   parseUpdateWaitForCompletion,
   projectCopilotSearchItem,
+  projectCopilotStage,
   projectParadoxCopilot,
   resolveMaintenanceConnection,
   resourceInfoFallback,
@@ -269,7 +270,8 @@ export async function readCliChangelog(req: MaintenanceRequest, res: ApiResponse
 
 export async function readCopilot(req: MaintenanceCopilotRequest, res: ApiResponseWriter): Promise<void> {
   const { data } = await outboundHttp.requestJson(`https://prts.maa.plus/copilot/get/${req.params.id}`);
-  return sendSuccess(res, req, data);
+  const stage = await resolveCopilotStageIdentity(data);
+  return sendSuccess(res, req, projectCopilotStage(data, stage));
 }
 
 export async function readCopilotSet(req: MaintenanceCopilotRequest, res: ApiResponseWriter): Promise<void> {

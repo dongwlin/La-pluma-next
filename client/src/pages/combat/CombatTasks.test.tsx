@@ -1215,10 +1215,15 @@ describe('CombatTasks execution', () => {
   it('previews an explicit PRTS single code without guessing a set with the same id', async () => {
     mocks.getCopilotInfo.mockResolvedValue({
       success: true,
-      data: { status_code: 200, data: { content: JSON.stringify({
-        stage_name: 'test_1', doc: { title: 'PRTS 单作业' }, difficulty: 3,
-        opers: [{ name: '桃金娘' }], groups: [{ name: '输出组' }],
-      }) } },
+      data: {
+        status_code: 200,
+        stage: 'TEST-1',
+        stageId: 'test_1',
+        data: { content: JSON.stringify({
+          stage_name: 'test_1', doc: { title: 'PRTS 单作业' }, difficulty: 3,
+          opers: [{ name: '桃金娘' }], groups: [{ name: '输出组' }],
+        }) },
+      },
     })
     await renderComponent()
     await setInputValue(container.querySelector<HTMLInputElement>('input[name="maa-copilot-uri"]')!, 'prts://1234')
@@ -1228,6 +1233,8 @@ describe('CombatTasks execution', () => {
     expect(mocks.getCopilotSetPlan).not.toHaveBeenCalled()
     expect(container.textContent).not.toContain('PRTS 单作业')
     expect(copilotDrawer()?.textContent).toContain('PRTS 单作业')
+    expect(copilotDrawer()?.textContent).toContain('TEST-1')
+    expect(copilotDrawer()?.textContent).toContain('test_1')
     expect(copilotDrawer()?.textContent).toContain('桃金娘')
     expect(copilotDrawer()?.textContent).toContain('输出组')
     expect(copilotDrawer()?.textContent).toContain('作业标注普通+突袭')

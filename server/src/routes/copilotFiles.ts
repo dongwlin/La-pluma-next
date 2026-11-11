@@ -6,18 +6,22 @@ import {
 } from '../controllers/copilotFileController.ts';
 import type {
   CopilotFileRequest,
-  CopilotFileSaver
+  CopilotFileSaver,
+  CopilotStageResolver
 } from '../controllers/copilotFileController.ts';
 
 export interface CopilotFilesRouterOptions {
   saveFile?: CopilotFileSaver;
+  resolveStage?: CopilotStageResolver;
 }
 
 export function createCopilotFilesRouter(options: CopilotFilesRouterOptions = {}): Router {
   const router = Router();
   router.post(
     '/',
-    asyncHandler<CopilotFileRequest, ApiResponseWriter>(createCopilotFileHandler(options.saveFile))
+    asyncHandler<CopilotFileRequest, ApiResponseWriter>(
+      createCopilotFileHandler(options.saveFile, options.resolveStage)
+    )
   );
   return router;
 }

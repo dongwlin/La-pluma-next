@@ -442,6 +442,7 @@ export default function CombatWorkspace() {
         result.data.path,
         result.data.name || file.name,
         content,
+        { stage: result.data.stage, stageId: result.data.stageId },
       )])
       if (!added) {
         setStatusMessage(COPILOT_QUEUE_FULL_MESSAGE, 'warning')

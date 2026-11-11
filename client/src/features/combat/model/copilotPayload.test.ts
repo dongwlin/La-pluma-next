@@ -109,6 +109,7 @@ describe('copilot detail payload', () => {
       detail: {
         title: '低配 1-7',
         stage: '1-7',
+        stageId: '1-7',
         operators: '桃金娘、阿米娅、[击杀组]',
         operatorDetails: [{ name: '桃金娘' }, { name: '阿米娅' }],
         groupNames: ['击杀组'],
@@ -146,7 +147,31 @@ describe('copilot detail payload', () => {
       data: { content: { stage_name: 'CE-6' } },
     })
 
-    expect(result.detail).toEqual({ title: '未命名作业', stage: 'CE-6', operators: '未知' })
+    expect(result.detail).toEqual({
+      title: '未命名作业',
+      stage: 'CE-6',
+      stageId: 'CE-6',
+      operators: '未知',
+    })
+  })
+
+  it('prefers the server-resolved stage code and keeps the raw stage id', () => {
+    const result = readCopilotInfoPayload(envelope({
+      status_code: 200,
+      stage: 'TL-EX-3',
+      stageId: 'act55side_ex03',
+      data: {
+        content: JSON.stringify({
+          stage_name: 'act55side_ex03',
+          doc: { title: '时间啊，向前！ - TL-EX-3 - 致远特维' },
+        }),
+      },
+    }))
+
+    expect(result.detail).toMatchObject({
+      stage: 'TL-EX-3',
+      stageId: 'act55side_ex03',
+    })
   })
 
   it('keeps the status code for the legacy set probe when the copilot is missing', () => {
