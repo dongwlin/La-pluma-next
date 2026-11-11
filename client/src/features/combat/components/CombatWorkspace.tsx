@@ -933,7 +933,6 @@ export default function CombatWorkspace() {
                   modeStore: panelStores.copilotPreviewMode,
                   onPreview: () => void requestCopilotPreview(undefined, true),
                   onCancel: cancelCopilotPreview,
-                  onClear: clearCopilotPreview,
                 }}
                 fileImport={copilotFileImport}
                 view={setView}

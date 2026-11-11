@@ -1,4 +1,3 @@
-import { Button } from '@/shared/ui'
 import { usePanelState } from '../hooks/usePanelState'
 import type { CopilotPreviewMode } from '../model/copilotPreview'
 import type { PanelStateStore } from '../model/panelState'
@@ -12,7 +11,6 @@ import type {
 interface CombatCopilotSourceBarProps {
   input: string
   isLoading: boolean
-  hasPreview: boolean
   isAddingToQueue?: boolean
   previewModeStore: PanelStateStore<CopilotPreviewMode>
   search: CombatCopilotSearchProjection
@@ -21,13 +19,11 @@ interface CombatCopilotSourceBarProps {
   onPreview: () => void
   onAddToQueue?: () => void
   onCancelPreview: () => void
-  onClear: () => void
 }
 
 export default function CombatCopilotSourceBar({
   input,
   isLoading,
-  hasPreview,
   isAddingToQueue = false,
   previewModeStore,
   search,
@@ -36,7 +32,6 @@ export default function CombatCopilotSourceBar({
   onPreview,
   onAddToQueue,
   onCancelPreview,
-  onClear,
 }: CombatCopilotSourceBarProps) {
   const [previewMode, setPreviewMode] = usePanelState(previewModeStore)
 
@@ -73,17 +68,6 @@ export default function CombatCopilotSourceBar({
                 <p>• 识别方式可强制按单个作业或作业集读取，默认按链接判断</p>
               </div>
             </details>
-
-            {hasPreview && (
-              <Button
-                onClick={onClear}
-                variant="ghost"
-                size="sm"
-                className="min-h-11"
-              >
-                清除预览
-              </Button>
-            )}
           </div>
         </div>
       </div>

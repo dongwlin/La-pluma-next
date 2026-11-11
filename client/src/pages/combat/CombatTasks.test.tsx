@@ -1543,13 +1543,13 @@ describe('CombatTasks execution', () => {
     mocks.uploadCopilotFile.mockResolvedValueOnce(ok({ path: '/data/copilot-files/job.json' }))
     await renderComponent()
     await previewSet()
-    expect(buttonByText('清除预览')).toBeDefined()
+    expect(document.querySelector('section[aria-label="作业集摘要"]')).not.toBeNull()
 
     await selectCopilotFile(new File(['{}'], 'job.json', { type: 'application/json' }))
 
     expect(mocks.uploadCopilotFile).not.toHaveBeenCalled()
     expect(mocks.setMessage).toHaveBeenLastCalledWith('队列已满，最多 50 个作业', 'warning')
-    expect(buttonByText('清除预览')).toBeDefined()
+    expect(document.querySelector('section[aria-label="作业集摘要"]')).not.toBeNull()
   })
 
   it('preserves the preview when the queue fills while an upload is pending', async () => {
@@ -1565,7 +1565,7 @@ describe('CombatTasks execution', () => {
     await renderComponent()
     await setInputValue(container.querySelector<HTMLInputElement>('input[name="maa-copilot-uri"]')!, 'prts://101')
     await click(buttonByText('预览')!)
-    expect(buttonByText('清除预览')).toBeDefined()
+    expect(copilotDrawer()?.textContent).toContain('另一份作业')
 
     await selectCopilotFile(new File(['{}'], 'job.json', { type: 'application/json' }))
     await click(buttonByText('加入队列')!)
@@ -1575,7 +1575,7 @@ describe('CombatTasks execution', () => {
     await flush()
 
     expect(mocks.setMessage).toHaveBeenLastCalledWith('队列已满，最多 50 个作业', 'warning')
-    expect(buttonByText('清除预览')).toBeDefined()
+    expect(copilotDrawer()?.textContent).toContain('另一份作业')
     expect(container.textContent).not.toContain('job.json')
   })
 

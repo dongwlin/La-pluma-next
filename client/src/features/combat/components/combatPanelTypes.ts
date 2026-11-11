@@ -57,7 +57,6 @@ export interface CombatCopilotPreviewProjection {
   modeStore: PanelStateStore<CopilotPreviewMode>
   onPreview: () => void
   onCancel: () => void
-  onClear: () => void
 }
 
 export type CombatCopilotDetailSelection = { type: 'preview' } | { type: 'queue'; id: string }

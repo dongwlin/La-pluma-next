@@ -21,7 +21,7 @@
 | 任务目录与模式展示项 | `features/combat/components/CombatTaskCatalog.tsx` | 名称、命令、图标、占位与描述；不读取配置/Query/执行状态 |
 | 模式分段控件的测量与键盘导航 | `features/combat/components/CombatModeTabs.tsx` | 受控组件；只持有 `useFluidTabIndicator` 的测量状态 |
 | 执行设置、编队/突袭/作业集模式与高级字段 | `components/CombatSettingsPanel.tsx`、`components/CombatAdvancedFields.tsx` | 受控表单；选项表来自 `model/combatCommands.ts` |
-| 作业来源栏（输入、预览、JSON 导入、识别方式、搜索、说明与清除预览） | `components/CombatCopilotSourceBar.tsx` + `components/CombatCopilotInputPanel.tsx` | 输入值来自配置草稿；JSON 导入按钮位于链接输入框内、识别方式下拉左侧，文件选择与从文件管理器复制后粘贴的 JSON 文件走同一上传通道；识别方式、搜索词与搜索选中项保存在面板会话存储；搜索/预览/上传/入队动作由工作区提供 |
+| 作业来源栏（输入、预览、JSON 导入、识别方式、搜索与说明） | `components/CombatCopilotSourceBar.tsx` + `components/CombatCopilotInputPanel.tsx` | 输入值来自配置草稿；JSON 导入按钮位于链接输入框内、识别方式下拉左侧，文件选择与从文件管理器复制后粘贴的 JSON 文件走同一上传通道；识别方式、搜索词与搜索选中项保存在面板会话存储；搜索/预览/上传/入队动作由工作区提供 |
 | 普通搜索与悖论搜索 | `components/CombatSearchPanel.tsx`、`components/CombatParadoxSearchPanel.tsx` | 搜索词与“已选中”高亮在面板侧；结果、取消与推荐接线由工作区提供 |
 | 本次执行的条目位置、当前关卡与已用时 | `components/CombatExecutionProgressPanel.tsx` | 只渲染 `deriveExecutionProgress`；不呈现运行状态、停止入口、逐项结果或计划计数 |
 | 作业队列（唯一列表：勾选、排序、删除、清空、等待续跑/跳过/重试入口） | `components/CombatCopilotQueuePanel.tsx` | 只渲染 `CombatCopilotQueueProjection`；行主体打开详情层；不持有第二份队列模型 |
@@ -51,7 +51,7 @@ CombatTasks（页面壳：PageHeader + FloatingStatusIndicator）
    ├─ CombatModeTabs（受控分段 + 高亮测量）
    ├─ CombatExecutionProgressPanel（本次执行条目位置 / 关卡 / 已用时）
    ├─ CombatCopilotTaskPanel（普通作业卡）
-   │  ├─ CombatCopilotSourceBar（CombatSearchPanel + 说明/清除预览）
+   │  ├─ CombatCopilotSourceBar（CombatSearchPanel + 说明）
    │  │  └─ CombatCopilotInputPanel（作业链接输入 + JSON 导入图标 + 识别方式下拉）
    │  ├─ CombatCopilotQueuePanel（唯一作业列表）
    │  ├─ CombatCopilotDetailLayer（预览 / 队列行详情 / 作业集摘要）
@@ -226,7 +226,7 @@ CombatTasks（页面壳：PageHeader + FloatingStatusIndicator）
 | `load(input, mode, raid)` | 解析目标 → 取消上一次读取 → 设置 loading → 组合读取；只有仍当前的结论写入状态 |
 | `refreshSet(setId, raid)` | 作业集 Run 终态后的静默强制重读（`force: true`）；只在当前预览仍是同一作业集时合并 `copilots`/`currentIndex` |
 | `resetProgressView(setId)` | 重置进度成功后只把当前预览的 `currentIndex` 归零，不伪造服务端计划 |
-| `clear()` | 输入变化/清除预览：取消在途读取并清空预览 |
+| `clear()` | 输入变化、导入成功或替换搜索目标：取消在途读取并清空预览 |
 | `cancel()` | 识别方式切换等场景：取消在途读取，保留已显示内容 |
 | `start()` / `stop()` | 对应 Activity 显示/隐藏或真正卸载；停止时取消本地等待并结束 loading，恢复不自动重放 |
 
@@ -280,7 +280,7 @@ CombatTasks（页面壳：PageHeader + FloatingStatusIndicator）
 - Query 观察者随 Effect 清理注销；在途读取通过 `signal` 取消，缓存保留并按 `gcTime` 回收。
 - 预览会话 `stop()` 取消在途读取并结束 loading，保留已显示预览；恢复 `start()` 不自动重放。
 - 作业队列由 `useCopilotQueue` 在初始化时读取本地存储，条目随操作同步写回；Activity 隐藏保留队列与勾选，真正刷新后重新读取条目并默认全选。
-- 详情层的选择由工作区持有。关闭抽屉保留已解析的预览，清除预览会重置对应内容。
+- 详情层的选择由工作区持有；关闭抽屉保留已解析的预览，输入变化或导入成功会重置对应内容。
 - 搜索 hook 在清理时取消在途搜索；恢复后不自动重放，成功结果仍可从 Query 缓存读取。
 - 真正卸载后重挂载会重置搜索词、识别方式与预览选择（队列条目从本地存储恢复并全选）；Query 缓存若仍新鲜可直接复用。切换作业类型只卸载卡片 DOM，工作区持有的面板会话存储会保留这些局部输入。
 - 后台 Run 与配置提交不依赖本页 Activity；隐藏不会改变运行所有权。

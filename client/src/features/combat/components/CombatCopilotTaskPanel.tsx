@@ -93,7 +93,6 @@ export default function CombatCopilotTaskPanel({
       <CombatCopilotSourceBar
         input={config.input}
         isLoading={preview.loading}
-        hasPreview={preview.info !== null}
         isAddingToQueue={queue.isAdding}
         previewModeStore={preview.modeStore}
         search={search}
@@ -102,7 +101,6 @@ export default function CombatCopilotTaskPanel({
         onPreview={preview.onPreview}
         onAddToQueue={queue.onAddCurrent}
         onCancelPreview={preview.onCancel}
-        onClear={preview.onClear}
       />
 
       <div className="combat-copilot-body">

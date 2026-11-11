@@ -71,7 +71,6 @@ const search = (overrides: Partial<CombatCopilotSearchProjection> = {}): CombatC
 interface SourceBarProps {
   input: string
   isLoading: boolean
-  hasPreview: boolean
   isAddingToQueue?: boolean
   previewModeStore: PanelStateStore<CopilotPreviewMode>
   search: CombatCopilotSearchProjection
@@ -80,20 +79,17 @@ interface SourceBarProps {
   onPreview: () => void
   onAddToQueue?: () => void
   onCancelPreview: () => void
-  onClear: () => void
 }
 
 function baseProps(overrides: Partial<SourceBarProps> = {}): SourceBarProps {
   return {
     input: '',
     isLoading: false,
-    hasPreview: false,
     previewModeStore: createPanelStateStore<CopilotPreviewMode>('auto'),
     search: search(),
     onInputChange: () => {},
     onPreview: () => {},
     onCancelPreview: () => {},
-    onClear: () => {},
     ...overrides,
   }
 }
@@ -131,24 +127,15 @@ describe('CombatCopilotSourceBar', () => {
     expect(container.querySelector('label[for="combat-stage-search"]')).not.toBeNull()
   })
 
-  it('previews the typed URI and only offers clear when a preview exists', async () => {
+  it('previews the typed URI without offering a clear action', async () => {
     const onPreview = vi.fn()
-    const onClear = vi.fn()
-    await renderBar({ input: 'prts://1234', onPreview, onClear })
+    await renderBar({ input: 'prts://1234', onPreview })
 
-    expect(container.textContent).not.toContain('清除预览')
     await click(Array.from(container.querySelectorAll('button'))
       .find(button => button.textContent?.trim() === '预览')!)
 
     expect(onPreview).toHaveBeenCalledOnce()
-
-    await renderBar({ input: 'prts://1234', hasPreview: true, onClear })
-    const clear = Array.from(container.querySelectorAll('button'))
-      .find(button => button.textContent?.trim() === '清除预览')
-    expect(clear).not.toBeUndefined()
-    await click(clear!)
-
-    expect(onClear).toHaveBeenCalledOnce()
+    expect(container.textContent).not.toContain('清除预览')
   })
 
   it('reports the active recognition mode inside the URI field and cancels the preview when it changes', async () => {
