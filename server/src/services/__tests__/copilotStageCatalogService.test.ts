@@ -11,6 +11,7 @@ const LEVELS = [
   { stage_id: 'main_01-07#f#', cat_one: '主题曲', cat_two: '第一章 黑暗时代·下', cat_three: '1-7', name: '暴君' },
   { stage_id: 'wk_melee_6', cat_one: '资源收集', cat_two: '货物运送', cat_three: 'CE-6', name: '实验原件押运' },
   { stage_id: 'main_11-05', cat_one: '主题曲', cat_two: '第十一章 淬火尘霾', cat_three: '11-6（标准）', name: '演绎文明' },
+  { stage_id: 'tough_11-05', cat_one: '主题曲', cat_two: '第十一章 淬火尘霾', cat_three: '11-6（磨难）', name: '演绎文明' },
   { stage_id: 'lt_02_01', cat_one: '保全派驻', cat_two: '塔山农业实验平台', cat_three: 'LT-2', name: '未授权区域' },
   { stage_id: 'lt_02_02', cat_one: '保全派驻', cat_two: '塔山农业实验平台', cat_three: 'LT-2', name: '临时通道' },
   { cat_one: '主题曲', cat_three: '9-9', name: '缺少 stage_id' },
@@ -25,6 +26,7 @@ describe('parseCopilotStageCatalog', () => {
       'main_01-07',
       'wk_melee_6',
       'main_11-05',
+      'tough_11-05',
       'lt_02_01',
       'lt_02_02'
     ]);
@@ -59,11 +61,21 @@ describe('matchCopilotStage', () => {
     assert.equal(match.status === 'matched' ? match.stage.stageId : '', 'wk_melee_6');
   });
 
-  it('ignores a difficulty suffix in the catalog code', () => {
-    const match = matchCopilotStage(catalog, '11-6');
+  it('matches a code written with its difficulty suffix', () => {
+    const match = matchCopilotStage(catalog, '11-6（磨难）');
 
     assert.equal(match.status, 'matched');
-    assert.equal(match.status === 'matched' ? match.stage.stageId : '', 'main_11-05');
+    assert.equal(match.status === 'matched' ? match.stage.stageId : '', 'tough_11-05');
+  });
+
+  it('lists every difficulty when the suffix is omitted', () => {
+    const match = matchCopilotStage(catalog, '11-6');
+
+    assert.equal(match.status, 'ambiguous');
+    assert.deepEqual(
+      match.status === 'ambiguous' ? match.candidates.map(entry => entry.stageId) : [],
+      ['main_11-05', 'tough_11-05']
+    );
   });
 
   it('matches a stage name', () => {

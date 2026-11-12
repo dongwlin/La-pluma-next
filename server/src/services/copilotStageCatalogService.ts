@@ -67,7 +67,7 @@ export function parseCopilotStageCatalog(payload: unknown): CopilotStageCatalogE
     if (!stageId || entries.has(stageId)) continue;
     entries.set(stageId, {
       stageId,
-      code: normalizeStageCode(readText(item.cat_three)),
+      code: readText(item.cat_three).trim(),
       name: readText(item.name).trim(),
       category: readText(item.cat_one).trim(),
       zone: readText(item.cat_two).trim()
@@ -87,6 +87,10 @@ export function matchCopilotStage(
   const upper = raw.toUpperCase();
   const exactId = catalog.find(entry => entry.stageId.toUpperCase() === upper);
   if (exactId) return { status: 'matched', stage: exactId };
+
+  const exactCode = catalog.filter(entry => entry.code && entry.code.toUpperCase() === upper);
+  if (exactCode.length === 1) return { status: 'matched', stage: exactCode[0]! };
+  if (exactCode.length > 1) return { status: 'ambiguous', candidates: exactCode };
 
   const code = normalizeStageCode(raw).toUpperCase();
   const byCode = code
