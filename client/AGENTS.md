@@ -48,7 +48,7 @@
 | 分包、Service Worker、启动壳、base path | 运行客户端构建并检查相应回归；构建已包含预缓存完整性校验，启动壳或首帧变化还需视觉检查。 |
 | 性能优化 | 使用既有性能采样协议；比较双方保持构建、数据、设备和完成语义一致，不把 DOM mutation 或 CDP 指标当作 React render/commit 次数。 |
 
-- 改动后的快速回路用 `pnpm verify:fast`（guardrails、ESLint、类型检查与 `--changed` 测试）；提交前仍运行 `pnpm verify` 覆盖样式预算与构建。Vitest 默认最多 4 个 worker，可用 `LA_PLUMA_TEST_WORKERS` 覆盖。
+- 改动后的快速回路用 `pnpm verify:fast`（guardrails、ESLint、类型检查与相对 `origin/main` 的改动测试，包含已提交改动）；提交前仍运行 `pnpm verify` 覆盖样式预算与构建。Vitest 默认最多 4 个 worker，可用 `LA_PLUMA_TEST_WORKERS` 覆盖。
 - 浏览器用例使用 `*.pw.ts`，与 Vitest 单元测试分开。
 - 测试断言可访问性、可见状态、回调/请求参数、store 与导航结果；不要锁 CSS 类名、包裹层或子元素顺序。`html.dark` 是主题契约例外，视觉效果交给浏览器像素基线。
 - 视觉与集成测试使用匹配已安装 Playwright 版本的 Docker 镜像；截图不可跨环境复用。更新样式/规模基线必须有实际清理或结构调整依据，不用重录掩盖非预期回归。
