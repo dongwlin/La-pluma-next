@@ -250,6 +250,23 @@ describe('CombatCopilotDiscoveryDialog', () => {
     expect(lastRequest(search)).toMatchObject({ keyword: '1-7', page: 1, limit: 30 })
   })
 
+  it('clears the typed keyword from the search field and keeps focus there', async () => {
+    const search = await renderDialog()
+
+    expect(document.querySelector('button[aria-label="清除搜索关键词"]')).toBeNull()
+
+    await typeInto(keywordInput(), '1-7 挂机')
+    expect(keywordInput()?.value).toBe('1-7 挂机')
+
+    await click(document.querySelector('button[aria-label="清除搜索关键词"]'))
+
+    expect(keywordInput()?.value).toBe('')
+    expect(search.keywordStore.get()).toBe('')
+    expect(search.onCancel).toHaveBeenCalled()
+    expect(document.activeElement).toBe(keywordInput())
+    expect(document.querySelector('button[aria-label="清除搜索关键词"]')).toBeNull()
+  })
+
   it('searches immediately after picking a stage and clears back to all stages', async () => {
     const search = await renderDialog()
 

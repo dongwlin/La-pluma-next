@@ -1,5 +1,5 @@
-import type { KeyboardEvent } from 'react'
-import { LayoutGrid, List, Power, Search } from 'lucide-react'
+import { useRef, type KeyboardEvent } from 'react'
+import { LayoutGrid, List, Power, Search, X } from 'lucide-react'
 import { Button, IconButton, Input, Select } from '@/shared/ui'
 import {
   COPILOT_SEARCH_ORDERS,
@@ -64,6 +64,12 @@ export default function CombatCopilotSearchBar({
   onRetryData,
 }: CombatCopilotSearchBarProps) {
   const operatorCount = countOperatorSelection(operatorSelection.included, operatorSelection.excluded)
+  const keywordFieldRef = useRef<HTMLDivElement>(null)
+
+  const handleClearKeyword = () => {
+    onKeywordChange('')
+    keywordFieldRef.current?.querySelector('input')?.focus()
+  }
 
   const handleKeywordKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
     if (event.key !== 'Enter') return
@@ -79,16 +85,28 @@ export default function CombatCopilotSearchBar({
   return (
     <section className="combat-copilot-discovery-search" aria-label="作业搜索">
       <div className="combat-copilot-discovery-search-row">
-        <Input
-          type="text"
-          className="combat-copilot-discovery-keyword"
-          aria-label="搜索作业关键词"
-          placeholder="搜索作业标题、说明"
-          value={keyword}
-          onChange={onKeywordChange}
-          onKeyDown={handleKeywordKeyDown}
-          icon={<Search size={17} strokeWidth={1.9} aria-hidden="true" />}
-        />
+        <div ref={keywordFieldRef} className="combat-copilot-discovery-keyword-field">
+          <Input
+            type="text"
+            className="combat-copilot-discovery-keyword"
+            aria-label="搜索作业关键词"
+            placeholder="搜索作业标题、说明"
+            value={keyword}
+            onChange={onKeywordChange}
+            onKeyDown={handleKeywordKeyDown}
+            icon={<Search size={17} strokeWidth={1.9} aria-hidden="true" />}
+          />
+          {keyword !== '' && (
+            <IconButton
+              icon={<X size={15} aria-hidden="true" />}
+              title="清除搜索关键词"
+              aria-label="清除搜索关键词"
+              size="sm"
+              onClick={handleClearKeyword}
+              className="combat-copilot-discovery-clear"
+            />
+          )}
+        </div>
         <Button
           variant="primary"
           size="md"

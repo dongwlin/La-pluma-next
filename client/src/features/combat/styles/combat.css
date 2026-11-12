@@ -1174,9 +1174,27 @@
     gap: var(--app-space-2);
   }
 
+  .combat-copilot-discovery-keyword-field {
+    position: relative;
+    display: flex;
+    min-width: 0;
+    flex: 1 1 auto;
+  }
+
   .combat-copilot-discovery-keyword {
     min-width: 0;
     flex: 1 1 auto;
+  }
+
+  .combat-copilot-discovery-keyword-field input {
+    padding-right: 3rem;
+  }
+
+  .combat-copilot-discovery-clear {
+    position: absolute;
+    top: 50%;
+    right: var(--app-space-1);
+    transform: translateY(-50%);
   }
 
   .combat-copilot-discovery-submit {
