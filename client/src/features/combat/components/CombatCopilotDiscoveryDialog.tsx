@@ -59,13 +59,10 @@ export default function CombatCopilotDiscoveryDialog({ search }: CombatCopilotDi
 
   useEffect(() => {
     if (!search.isOpen) return
-    const hasPreference = operatorSelection.included.length > 0
-      || operatorSelection.excluded.length > 0
-      || !operatorFilterEnabled
     writeCopilotOperatorFilterPreference({
       selection: operatorSelection,
       enabled: operatorFilterEnabled,
-      remember: operatorFilterRemember && hasPreference,
+      remember: operatorFilterRemember,
     })
   }, [operatorFilterEnabled, operatorFilterRemember, operatorSelection, search.isOpen])
 

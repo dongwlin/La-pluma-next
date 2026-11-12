@@ -74,12 +74,28 @@ export function parseCopilotOperatorFilterPreference(value: unknown): CopilotOpe
 
 export function readCopilotOperatorFilterPreference(): CopilotOperatorFilterPreference | null {
   const parsed = parseCopilotOperatorFilterPreference(readStored(COPILOT_OPERATOR_FILTER_STORAGE_KEY))
-  if (!parsed || !parsed.remember) return null
-  return parsed
+  if (!parsed) return null
+  if (parsed.remember) return parsed
+  return {
+    selection: { included: [], excluded: [] },
+    enabled: true,
+    remember: false,
+  }
 }
 
 export function writeCopilotOperatorFilterPreference(preference: CopilotOperatorFilterPreference): void {
   if (!preference.remember) {
+    writeStored(COPILOT_OPERATOR_FILTER_STORAGE_KEY, {
+      included: [],
+      excluded: [],
+      enabled: true,
+      remember: false,
+    })
+    return
+  }
+  const hasSelection = preference.selection.included.length > 0
+    || preference.selection.excluded.length > 0
+  if (!hasSelection && preference.enabled) {
     removeStored(COPILOT_OPERATOR_FILTER_STORAGE_KEY)
     return
   }

@@ -48,7 +48,7 @@ describe('copilotDiscoveryPreferences', () => {
     })
   })
 
-  it('drops the persisted operator filter when the user stops remembering it', () => {
+  it('keeps the opt-out choice without restoring the previous selection', () => {
     localStorage.setItem(COPILOT_OPERATOR_FILTER_STORAGE_KEY, JSON.stringify({
       included: ['阿米娅'],
       excluded: [],
@@ -62,19 +62,30 @@ describe('copilotDiscoveryPreferences', () => {
       remember: false,
     })
 
-    expect(localStorage.getItem(COPILOT_OPERATOR_FILTER_STORAGE_KEY)).toBeNull()
-    expect(readCopilotOperatorFilterPreference()).toBeNull()
+    expect(JSON.parse(localStorage.getItem(COPILOT_OPERATOR_FILTER_STORAGE_KEY) ?? 'null'))
+      .toMatchObject({ included: [], excluded: [], remember: false })
+    expect(readCopilotOperatorFilterPreference()).toEqual({
+      selection: { included: [], excluded: [] },
+      enabled: true,
+      remember: false,
+    })
   })
 
-  it('ignores a stored filter that opted out of remembering', () => {
+  it('drops an empty remembered filter instead of storing an empty preference', () => {
     localStorage.setItem(COPILOT_OPERATOR_FILTER_STORAGE_KEY, JSON.stringify({
       included: ['阿米娅'],
       excluded: [],
       enabled: true,
-      remember: false,
+      remember: true,
     }))
 
-    expect(readCopilotOperatorFilterPreference()).toBeNull()
+    writeCopilotOperatorFilterPreference({
+      selection: { included: [], excluded: [] },
+      enabled: true,
+      remember: true,
+    })
+
+    expect(localStorage.getItem(COPILOT_OPERATOR_FILTER_STORAGE_KEY)).toBeNull()
   })
 
   it('survives corrupt operator filter payloads and clears them', () => {
