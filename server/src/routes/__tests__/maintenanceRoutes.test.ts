@@ -331,36 +331,25 @@ describe('maintenance request narrowing', () => {
     // 非 JSON content 沿用默认标题，与旧实现的 try/catch 一致。
     assert.equal(projectParadoxCopilot({ id: 6, content: 'not-json' }).title, '无标题');
 
-    const candidate = projectCopilotSearchItem({
+    assert.deepEqual(projectCopilotSearchItem({
       id: 7,
       content: JSON.stringify({ doc: { title: '1-7 挂机' }, stage_name: 'main_01-07' }),
       views: 1,
       hot_score: 2,
       uploader_id: 'u2'
-    }, '1-7');
-    assert.deepEqual(candidate, {
-      entry: {
-        id: 7,
-        uri: 'prts://7',
-        views: 1,
-        hotScore: 2,
-        uploader: 'u2',
-        title: '1-7 挂机',
-        stageName: 'main_01-07'
-      },
-      // 旧规则的标题代号只识别 2-4 个字母加数字，'1-7 挂机' 不产生代号。
-      titleStageCode: ''
+    }, 'main_01-07'), {
+      id: 7,
+      uri: 'prts://7',
+      views: 1,
+      hotScore: 2,
+      uploader: 'u2',
+      title: '1-7 挂机',
+      stageName: 'main_01-07'
     });
-    // 带关卡代号的标题参与匹配：'MAIN-07' 归一为大写代号。
-    assert.equal(projectCopilotSearchItem({
-      id: 9,
-      content: JSON.stringify({ doc: { title: 'MAIN-07 挂机' } })
-    }, 'MAIN-07').titleStageCode, 'MAIN-07');
-    // content 缺失时改回请求关卡，且不会带出空标题代号。
-    const fallback = projectCopilotSearchItem({ id: 8 }, '1-7');
-    assert.equal(fallback.entry.title, '无标题');
-    assert.equal(fallback.entry.stageName, '1-7');
-    assert.equal(fallback.titleStageCode, '');
+    // content 缺失时沿用请求关卡，标题回退为无标题。
+    const fallback = projectCopilotSearchItem({ id: 8 }, 'main_01-07');
+    assert.equal(fallback.title, '无标题');
+    assert.equal(fallback.stageName, 'main_01-07');
   });
 
   it('reports unreadable resource versions as unknown instead of current', () => {

@@ -39,7 +39,9 @@ import {
 } from '../services/updateChannelService.ts';
 import type { CoreUpdateChannel } from '../services/updateChannelService.ts';
 import { parseDepotData, parseOperBoxData } from '../services/dataParserService.ts';
-import { loadParadoxOperators, resolveStageSearchKeyword } from '../services/copilotService.ts';
+import { loadParadoxOperators } from '../services/copilotService.ts';
+import { copilotStageCatalog } from '../services/copilotStageCatalogService.ts';
+import type { CopilotStageMatch } from '../services/copilotStageCatalogService.ts';
 import { buildCopilotPlan, resetCopilotPlanProgress, resolveCopilotStageIdentity } from '../services/copilotPlanService.ts';
 import { getActivityCompletion } from '../services/activityCompletionService.ts';
 import { createOutboundHttpClient } from '../services/outboundRequestService.ts';
@@ -84,7 +86,6 @@ import type {
   MaintenanceChangelogEntry,
   MaintenanceConfigDirectoryPayload,
   MaintenanceCopilotRequest,
-  MaintenanceCopilotSearchEntry,
   MaintenanceCopilotSearchPayload,
   MaintenanceHotUpdateResourcesPayload,
   MaintenanceHotUpdateResourcesPlan,
@@ -134,6 +135,9 @@ function sendRecognitionResult<T>(
 // 出站读取入口（changelog/copilot/paradox 查询）统一经出站端口：
 // 显式时限、取消与受限重试由端口承担，错误经 asyncHandler 进入统一错误出口。
 const outboundHttp = createOutboundHttpClient();
+
+const COPILOT_SEARCH_LIMIT = 10;
+const COPILOT_STAGE_CANDIDATE_LIMIT = 30;
 
 export async function readProfile(req: MaintenanceProfileRequest, res: ApiResponseWriter): Promise<void> {
   return sendSuccess(res, req, await getProfile(req.params.profileName));
@@ -323,38 +327,53 @@ export async function searchCopilot(req: MaintenanceRequest, res: ApiResponseWri
     return sendError(res, req, agentError('AGENT_VALIDATION_STAGE_REQUIRED', '请提供关卡名称', { statusCode: 400 }));
   }
 
-  const normalizedStage = stage.toUpperCase();
-  const searchKeyword = await resolveStageSearchKeyword(stage);
-  const allCopilots: MaintenanceCopilotSearchEntry[] = [];
-  let page = 1;
-  const maxPages = 5;
-  const targetCount = 10;
-
-  while (page <= maxPages && allCopilots.length < targetCount) {
-    const { data } = await outboundHttp.requestJson(`https://prts.maa.plus/copilot/query?level_keyword=${encodeURIComponent(searchKeyword)}&page=${page}&limit=50&order_by=hot`);
-    const result = parsePrtsCopilotQueryPayload(data);
-    if (result.statusCode !== 200 || !result.items.length) break;
-
-    for (const candidate of result.items.map(item => projectCopilotSearchItem(item, stage))) {
-      const normalizedStageName = String(candidate.entry.stageName || '').trim().toUpperCase();
-      const normalizedSearchKeyword = String(searchKeyword || '').trim().toUpperCase();
-      if (normalizedStageName === normalizedStage || normalizedStageName === normalizedSearchKeyword || candidate.titleStageCode === normalizedStage) {
-        allCopilots.push(candidate.entry);
-      }
-    }
-
-    if (!result.hasNext) break;
-    page += 1;
+  let match: CopilotStageMatch;
+  try {
+    match = await copilotStageCatalog.resolve(stage);
+  } catch (error) {
+    return sendError(res, req, agentError(
+      'AGENT_COPILOT_STAGE_CATALOG_UNAVAILABLE',
+      `无法读取作业站关卡目录: ${thrownMessage(error)}`,
+      { statusCode: 502, retryable: true, details: { stage } }
+    ));
   }
 
-  if (!allCopilots.length) {
-    return sendError(res, req, agentError('AGENT_COPILOT_NOT_FOUND', `未找到关卡"${stage}"的作业`, { statusCode: 404, details: { stage, searchKeyword } }));
+  if (match.status === 'missing') {
+    return sendError(res, req, agentError('AGENT_COPILOT_STAGE_NOT_FOUND', `作业站未收录关卡"${stage}"`, {
+      statusCode: 404,
+      details: { stage }
+    }));
+  }
+  if (match.status === 'ambiguous') {
+    return sendError(res, req, agentError('AGENT_COPILOT_STAGE_AMBIGUOUS', `代号"${stage}"对应多个关卡，请选择具体关卡`, {
+      statusCode: 400,
+      details: { stage, candidates: match.candidates.slice(0, COPILOT_STAGE_CANDIDATE_LIMIT) }
+    }));
+  }
+
+  const stageId = match.stage.stageId;
+  const { data } = await outboundHttp.requestJson(
+    `https://prts.maa.plus/copilot/query?level_keyword=${encodeURIComponent(stageId)}&page=1&limit=${COPILOT_SEARCH_LIMIT}&order_by=hot`
+  );
+  const result = parsePrtsCopilotQueryPayload(data);
+  const copilots = result.statusCode === 200
+    ? result.items
+      .map(item => projectCopilotSearchItem(item, stageId))
+      .filter(entry => String(entry.stageName).trim().toUpperCase() === stageId.toUpperCase())
+      .slice(0, COPILOT_SEARCH_LIMIT)
+    : [];
+
+  if (!copilots.length) {
+    return sendError(res, req, agentError('AGENT_COPILOT_NOT_FOUND', `未找到关卡"${stage}"的作业`, {
+      statusCode: 404,
+      details: { stage, stageId }
+    }));
   }
 
   const payload: MaintenanceCopilotSearchPayload = {
     stage,
-    copilots: allCopilots.slice(0, targetCount),
-    recommended: allCopilots[0]
+    copilots,
+    recommended: copilots[0]
   };
   return sendSuccess(res, req, payload);
 }

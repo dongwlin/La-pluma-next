@@ -12,7 +12,6 @@ import * as materialFormulas from '../fetch-material-formulas.ts';
 import * as operatorMaterials from '../fetch-operator-materials.ts';
 import * as paradox from '../fetch-paradox-operators.ts';
 import * as penguin from '../fetch-penguin-stats.ts';
-import * as stageData from '../fetch-stage-data.ts';
 import * as mergeFormulas from '../merge-formulas.ts';
 
 const serverDir = dirname(dirname(dirname(fileURLToPath(import.meta.url))));
@@ -461,87 +460,6 @@ describe('fetch-penguin-stats', () => {
   });
 });
 
-const STAGE_FIXTURE = {
-  stages: {
-    'main_01-07': {
-      code: '1-7',
-      name: '坍塌',
-      difficulty: 'NORMAL',
-      stageType: 'MAIN',
-      zoneId: 'main_1',
-      apCost: 6
-    },
-    'main_01-07#f#': {
-      code: '1-7#f#',
-      name: '坍塌',
-      difficulty: 'FOUR_STAR',
-      stageType: 'MAIN',
-      zoneId: 'main_1',
-      apCost: 6
-    },
-    'act_null': { code: 'null', name: '剧情', stageType: 'ACTIVITY' },
-    'daily_ce_5': {
-      code: 'CE-5',
-      name: '龙门币',
-      stageType: 'DAILY',
-      dangerLevel: '高',
-      dangerPoint: 10,
-      apCost: 30
-    },
-    'no_code': { name: '无代号' }
-  }
-};
-
-describe('fetch-stage-data', () => {
-  it('keeps coded stages and derives thumbnail, zone and type flags', () => {
-    const stages = stageData.parseStageData(STAGE_FIXTURE);
-
-    assert.deepEqual(Object.keys(stages), ['1-7', '1-7#f#', 'CE-5']);
-    assert.equal(
-      stages['1-7'].thumbnail,
-      'https://web.hycdn.cn/arknights/game/assets/stage_pic/main_01-07.png'
-    );
-    assert.equal(stages['1-7'].isMainStage, true);
-    assert.equal(stages['1-7#f#'].thumbnail.endsWith('main_01-07.png'), true);
-    assert.deepEqual(stages['CE-5'], {
-      id: 'daily_ce_5',
-      code: 'CE-5',
-      name: '龙门币',
-      difficulty: '',
-      dangerLevel: '高',
-      dangerPoint: 10,
-      apCost: 30,
-      stageType: 'DAILY',
-      thumbnail: 'https://web.hycdn.cn/arknights/game/assets/stage_pic/daily_ce_5.png',
-      zoneId: '',
-      isMainStage: false,
-      isActivityStage: false,
-      isResourceStage: true
-    });
-  });
-
-  it('rejects a non-object stage table', () => {
-    assert.throws(() => stageData.parseStageData({ stages: [] }), /stage_table\.json 数据格式无效/);
-  });
-
-  it('runs the fetch and write ports end to end', async () => {
-    const written: { path: string; data: string }[] = [];
-    await stageData.main({
-      fetchStageTable: async () => STAGE_FIXTURE,
-      mkdir: async () => {},
-      writeFile: async (path, data) => {
-        written.push({ path, data });
-      },
-      outputDir: '/virtual/data',
-      outputPath: '/virtual/data/stages.json'
-    });
-
-    assert.equal(written.length, 1);
-    assert.equal(written[0].path, '/virtual/data/stages.json');
-    assert.deepEqual(Object.keys(JSON.parse(written[0].data) as Record<string, unknown>), ['1-7', '1-7#f#', 'CE-5']);
-  });
-});
-
 const GAME_CHARACTERS_FIXTURE = {
   char_1001_alpha: {
     name: '阿尔法',
@@ -658,7 +576,6 @@ describe('maintenance script entry safety and targets', () => {
     'fetch-operator-materials',
     'fetch-paradox-operators',
     'fetch-penguin-stats',
-    'fetch-stage-data',
     'merge-formulas'
   ];
 
@@ -698,7 +615,6 @@ describe('maintenance script entry safety and targets', () => {
     assert.equal(allMaterials.MATERIALS_PATH, join(serverDir, 'data', 'materials.json'));
     assert.equal(paradox.OUTPUT_PATH, join(serverDir, 'data', 'paradox-operators.json'));
     assert.equal(penguin.OUTPUT_PATH, join(serverDir, 'data', 'penguin-drop-data.json'));
-    assert.equal(stageData.OUTPUT_PATH, join(serverDir, 'data', 'stages.json'));
     assert.equal(gameAssets.OUTPUT_DIR, join(serverDir, 'data'));
   });
 

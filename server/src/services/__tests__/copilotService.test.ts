@@ -3,7 +3,7 @@ import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { after, before, describe, it } from 'node:test';
-import { loadParadoxOperators, resolveStageSearchKeyword } from '../copilotService.ts';
+import { loadParadoxOperators } from '../copilotService.ts';
 import type { CopilotJsonResponse, CopilotServicePorts } from '../copilotService.ts';
 
 let rootDir: string;
@@ -16,19 +16,6 @@ after(async () => {
   await rm(rootDir, { recursive: true, force: true });
 });
 
-// 与 server/scripts/fetch-stage-data.ts 的产出同构的测试夹具
-const TEST_STAGES = {
-  '1-7': { id: 'main_01-07', code: '1-7', name: '坍塌', stageType: 'MAIN' },
-  'PR-B-1': { id: 'pro_b_1#f#', code: 'PR-B-1', name: '狙击芯片', stageType: 'WEEKLY' },
-  'IW-7': { id: 'act19side_07_perm', code: 'IW-7', name: '演习', stageType: 'ACTIVITY' }
-};
-
-async function writeStages(content: unknown): Promise<string> {
-  const filePath = join(rootDir, `stages-${Math.random().toString(16).slice(2)}.json`);
-  await writeFile(filePath, JSON.stringify(content), 'utf-8');
-  return filePath;
-}
-
 function forbiddenRequest(ports: CopilotServicePorts = {}): CopilotServicePorts {
   return {
     ...ports,
@@ -37,58 +24,6 @@ function forbiddenRequest(ports: CopilotServicePorts = {}): CopilotServicePorts 
     }
   };
 }
-
-describe('resolveStageSearchKeyword', () => {
-  it('returns an empty keyword for empty input without reading the stage table', async () => {
-    const ports = forbiddenRequest({ stagesPath: join(rootDir, 'does-not-exist.json') });
-
-    assert.equal(await resolveStageSearchKeyword('', ports), '');
-    assert.equal(await resolveStageSearchKeyword(null, ports), '');
-    assert.equal(await resolveStageSearchKeyword('   ', ports), '');
-  });
-
-  it('falls back to the trimmed input when the stage table is missing', async () => {
-    const ports = forbiddenRequest({ stagesPath: join(rootDir, 'missing-stages.json') });
-
-    assert.equal(await resolveStageSearchKeyword('  1-7  ', ports), '1-7');
-  });
-
-  it('resolves a stage key to its stage id', async () => {
-    const stagesPath = await writeStages(TEST_STAGES);
-
-    assert.equal(await resolveStageSearchKeyword('1-7', { stagesPath }), 'main_01-07');
-  });
-
-  it('resolves by display code regardless of case', async () => {
-    const stagesPath = await writeStages(TEST_STAGES);
-
-    assert.equal(await resolveStageSearchKeyword('pr-b-1', { stagesPath }), 'pro_b_1');
-  });
-
-  it('strips the MAA difficulty suffix from resolved stage ids', async () => {
-    const stagesPath = await writeStages({ 'CE-6': { id: 'wk_melee_6#f#', code: 'CE-6' } });
-
-    assert.equal(await resolveStageSearchKeyword('CE-6', { stagesPath }), 'wk_melee_6');
-  });
-
-  it('resolves by stage name', async () => {
-    const stagesPath = await writeStages(TEST_STAGES);
-
-    assert.equal(await resolveStageSearchKeyword('狙击芯片', { stagesPath }), 'pro_b_1');
-  });
-
-  it('falls back to the input when no stage matches', async () => {
-    const stagesPath = await writeStages(TEST_STAGES);
-
-    assert.equal(await resolveStageSearchKeyword('ZZ-99', { stagesPath }), 'ZZ-99');
-  });
-
-  it('falls back to the input when the stage table has an unexpected shape', async () => {
-    const stagesPath = await writeStages([{ id: 'main_01-07', code: '1-7' }]);
-
-    assert.equal(await resolveStageSearchKeyword('1-7', { stagesPath }), '1-7');
-  });
-});
 
 describe('loadParadoxOperators', () => {
   it('reads the cached operator list', async () => {

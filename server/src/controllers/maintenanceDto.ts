@@ -290,10 +290,7 @@ export interface MaintenanceCopilotSearchEntry extends MaintenanceCopilotEntry {
   stageName: unknown;
 }
 
-export interface MaintenanceCopilotSearchCandidate {
-  entry: MaintenanceCopilotSearchEntry;
-  titleStageCode: string;
-}
+
 
 /**
  * 单作业代理载荷追加展示关卡投影：`stage` 为可读代号，`stageId` 为作业内容里的
@@ -341,38 +338,29 @@ export function projectParadoxCopilot(item: Record<string, unknown>): Maintenanc
 }
 
 /**
- * 关卡作业条目：标题与关卡名来自 content 文档，标题代号用于与请求关卡匹配；
- * content 不是 JSON 时沿用默认标题与请求关卡。
+ * 关卡作业条目：标题与关卡名来自 content 文档，content 不是 JSON 时沿用默认标题与请求关卡。
  */
 export function projectCopilotSearchItem(
   item: Record<string, unknown>,
-  stage: string
-): MaintenanceCopilotSearchCandidate {
+  stageId: string
+): MaintenanceCopilotSearchEntry {
   let title: unknown = '无标题';
-  let stageName: unknown = stage;
-  let titleStageCode = '';
+  let stageName: unknown = stageId;
   try {
     const content = JSON.parse(String(item.content || '{}'));
     title = copilotDocTitle(content) || '无标题';
-    stageName = isRecord(content) && content.stage_name ? content.stage_name : stage;
-    if (typeof title === 'string') {
-      const titleMatch = title.match(/^([A-Z]{2,4}-\d+[A-Z]?)/i);
-      if (titleMatch) titleStageCode = titleMatch[1].toUpperCase();
-    }
+    stageName = isRecord(content) && content.stage_name ? content.stage_name : stageId;
   } catch {
     // 非 JSON content：沿用默认标题与请求关卡
   }
   return {
-    entry: {
-      id: item.id,
-      uri: `prts://${String(item.id)}`,
-      views: item.views,
-      hotScore: item.hot_score,
-      uploader: item.uploader_id,
-      title,
-      stageName
-    },
-    titleStageCode
+    id: item.id,
+    uri: `prts://${String(item.id)}`,
+    views: item.views,
+    hotScore: item.hot_score,
+    uploader: item.uploader_id,
+    title,
+    stageName
   };
 }
 

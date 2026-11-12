@@ -10,16 +10,9 @@ const __dirname = dirname(__filename)
 // GET 读取按端口缺省受限重试，显式时限与错误映射由端口承担。
 const outboundHttp = createOutboundHttpClient()
 
-const STAGES_PATH = join(__dirname, '../../data/stages.json')
 const PARADOX_OPERATORS_PATH = join(__dirname, '../../data/paradox-operators.json')
 const HANDBOOK_URL = 'https://raw.githubusercontent.com/Kengxxiao/ArknightsGameData/master/zh_CN/gamedata/excel/handbook_info_table.json'
 const CHARACTER_URL = 'https://raw.githubusercontent.com/Kengxxiao/ArknightsGameData/master/zh_CN/gamedata/excel/character_table.json'
-
-export interface StageRecord {
-  id?: string;
-  code?: string;
-  name?: string;
-}
 
 export interface ParadoxOperator {
   id: string;
@@ -33,7 +26,6 @@ export interface CopilotJsonResponse {
 }
 
 export interface CopilotServicePorts {
-  stagesPath?: string;
   paradoxOperatorsPath?: string;
   requestJson?: (url: string) => Promise<CopilotJsonResponse>;
 }
@@ -53,10 +45,6 @@ async function defaultRequestJson(url: string): Promise<CopilotJsonResponse> {
   return { data: result.data }
 }
 
-function normalizeStageIdForPrts(stageId = '') {
-  return String(stageId).replace(/#[fn]#/g, '')
-}
-
 async function loadLocalJson(filePath: string, fallback: unknown): Promise<unknown> {
   try {
     return JSON.parse(await readFile(filePath, 'utf-8'))
@@ -64,20 +52,6 @@ async function loadLocalJson(filePath: string, fallback: unknown): Promise<unkno
     if (errorCode(error) === 'ENOENT') return fallback
     throw error
   }
-}
-
-export function parseStageTable(value: unknown): Record<string, StageRecord> {
-  if (!isRecord(value)) return {}
-  const stages: Record<string, StageRecord> = {}
-  for (const [code, rawStage] of Object.entries(value)) {
-    if (!isRecord(rawStage)) continue
-    const stage: StageRecord = {}
-    if (typeof rawStage.id === 'string') stage.id = rawStage.id
-    if (typeof rawStage.code === 'string') stage.code = rawStage.code
-    if (typeof rawStage.name === 'string') stage.name = rawStage.name
-    stages[code] = stage
-  }
-  return stages
 }
 
 function parseParadoxOperator(value: unknown): ParadoxOperator | null {
@@ -130,29 +104,6 @@ export function parseParadoxOperators(handbook: unknown, characters: unknown): P
     })
   }
   return operators
-}
-
-/**
- * 把关卡输入解析为作业站可用的关键字：优先按关卡表解析 id，
- * 找不到时原样返回输入。关卡表缺失或结构不符时同样回退到原输入。
- */
-export async function resolveStageSearchKeyword(
-  input: unknown,
-  ports: CopilotServicePorts = {}
-): Promise<string> {
-  const raw = String(input || '').trim()
-  if (!raw) return ''
-
-  const stages = parseStageTable(await loadLocalJson(ports.stagesPath || STAGES_PATH, {}))
-  const upper = raw.toUpperCase()
-  const direct = stages[upper]
-  const stage: StageRecord | undefined = direct || Object.values(stages).find(item =>
-    String(item.code || '').toUpperCase() === upper
-    || String(item.name || '').trim() === raw
-    || String(item.id || '').toUpperCase() === upper
-  )
-
-  return stage?.id ? normalizeStageIdForPrts(stage.id) : raw
 }
 
 /**
