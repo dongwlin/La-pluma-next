@@ -103,7 +103,6 @@ const createProjection = (overrides: Partial<CombatCopilotSearchProjection> = {}
     modes: DEFAULT_COPILOT_MATCH_MODES,
   }),
   viewStore: createPanelStateStore<CombatCopilotDiscoveryView>('grid'),
-  selectionStore: createPanelStateStore<string>(''),
   stages: STAGES,
   stagesLoading: false,
   stagesError: null,
@@ -117,7 +116,7 @@ const createProjection = (overrides: Partial<CombatCopilotSearchProjection> = {}
   addingUri: null,
   onSearch: vi.fn(),
   onCancel: vi.fn(),
-  onSelectUri: vi.fn(),
+  onPreviewUri: vi.fn(),
   onAddToQueue: vi.fn(),
   onRetryData: vi.fn(),
   ...overrides,
@@ -352,11 +351,11 @@ describe('CombatCopilotDiscoveryDialog', () => {
     })
   })
 
-  it('separates card selection from adding the same job to the queue', async () => {
+  it('separates opening the preview from adding the same job to the queue', async () => {
     const search = await renderDialog()
 
     await click(findButton('查看作业 突袭 1-7 挂机'))
-    expect(search.onSelectUri).toHaveBeenCalledWith('prts://ready')
+    expect(search.onPreviewUri).toHaveBeenCalledWith('prts://ready')
     expect(search.onAddToQueue).not.toHaveBeenCalled()
 
     await click(findButton('加入队列: 突袭 1-7 挂机'))
@@ -364,12 +363,9 @@ describe('CombatCopilotDiscoveryDialog', () => {
   })
 
   it('marks the job being added and disables its queue button', async () => {
-    await renderDialog({
-      addingUri: 'prts://ready',
-      selectionStore: createPanelStateStore<string>('prts://ready'),
-    })
+    await renderDialog({ addingUri: 'prts://ready' })
 
-    expect(document.body.textContent).toContain('已选中')
+    expect(document.body.textContent).not.toContain('已选中')
 
     const addingButton = findButton('加入队列: 突袭 1-7 挂机')
     expect(addingButton.disabled).toBe(true)

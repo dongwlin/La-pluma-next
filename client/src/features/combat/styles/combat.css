@@ -1386,10 +1386,6 @@
     cursor: pointer;
   }
 
-  .combat-copilot-discovery-card.is-selected {
-    border-color: var(--app-accent);
-  }
-
   .combat-copilot-discovery-card-main {
     display: grid;
     min-width: 0;
@@ -1420,7 +1416,6 @@
     white-space: nowrap;
   }
 
-  .combat-copilot-discovery-badge.is-selected,
   .combat-copilot-discovery-badge.is-match {
     background: var(--app-accent-soft);
     color: var(--app-accent-strong);

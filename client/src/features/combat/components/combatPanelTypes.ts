@@ -129,7 +129,6 @@ export interface CombatCopilotSearchProjection {
   orderStore: PanelStateStore<CopilotSearchOrder>
   matchStore: PanelStateStore<CombatCopilotMatchSettings>
   viewStore: PanelStateStore<CombatCopilotDiscoveryView>
-  selectionStore: PanelStateStore<string>
   stages: readonly CopilotStageCandidate[]
   stagesLoading: boolean
   stagesError: string | null
@@ -143,7 +142,7 @@ export interface CombatCopilotSearchProjection {
   addingUri: string | null
   onSearch: (request: CopilotSearchRequest) => void
   onCancel: () => void
-  onSelectUri: (uri: string) => void
+  onPreviewUri: (uri: string) => void
   onAddToQueue: (uri: string) => void
   onRetryData: () => void
 }

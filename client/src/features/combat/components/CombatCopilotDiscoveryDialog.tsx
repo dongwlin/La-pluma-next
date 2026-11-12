@@ -44,7 +44,6 @@ export default function CombatCopilotDiscoveryDialog({ search }: CombatCopilotDi
   const [order, setOrder] = usePanelState(search.orderStore)
   const [match, setMatch] = usePanelState(search.matchStore)
   const [view, setView] = usePanelState(search.viewStore)
-  const [selectedUri] = usePanelState(search.selectionStore)
   const [operatorFilterOpen, setOperatorFilterOpen] = useState(false)
   const [matchOpen, setMatchOpen] = useState(false)
 
@@ -194,12 +193,11 @@ export default function CombatCopilotDiscoveryDialog({ search }: CombatCopilotDi
             key={item.id || item.uri}
             item={item}
             view={view}
-            selected={selectedUri === item.uri}
             recommended={recommendedUri === item.uri}
             adding={search.addingUri === item.uri}
             matchEnabled={match.enabled}
             ownedOperatorNames={search.ownedOperatorNames}
-            onSelect={search.onSelectUri}
+            onPreview={search.onPreviewUri}
             onAddToQueue={search.onAddToQueue}
           />
         ))}

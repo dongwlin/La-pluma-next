@@ -23,7 +23,7 @@ const ITEM: CopilotSearchItem = {
 }
 
 const renderCard = async (overrides: Partial<CopilotSearchItem> = {}) => {
-  const onSelect = vi.fn()
+  const onPreview = vi.fn()
   const onAddToQueue = vi.fn()
   const container = document.createElement('div')
   document.body.appendChild(container)
@@ -33,12 +33,11 @@ const renderCard = async (overrides: Partial<CopilotSearchItem> = {}) => {
       <CombatCopilotDiscoveryCard
         item={{ ...ITEM, ...overrides }}
         view="grid"
-        selected={false}
         recommended={false}
         adding={false}
         matchEnabled
         ownedOperatorNames={new Set(['阿米娅'])}
-        onSelect={onSelect}
+        onPreview={onPreview}
         onAddToQueue={onAddToQueue}
       />,
     )
@@ -46,7 +45,7 @@ const renderCard = async (overrides: Partial<CopilotSearchItem> = {}) => {
   return {
     container,
     root,
-    onSelect,
+    onPreview,
     onAddToQueue,
     unmount: async () => {
       await act(async () => root.unmount())
@@ -71,27 +70,27 @@ describe('CombatCopilotDiscoveryCard', () => {
     document.body.innerHTML = ''
   })
 
-  it('selects the job when the card background is clicked', async () => {
+  it('opens the preview when the card background is clicked', async () => {
     const card = await renderCard()
 
     await click(card.container.querySelector('article'))
 
-    expect(card.onSelect).toHaveBeenCalledOnce()
-    expect(card.onSelect).toHaveBeenCalledWith('prts://1')
+    expect(card.onPreview).toHaveBeenCalledOnce()
+    expect(card.onPreview).toHaveBeenCalledWith('prts://1')
     expect(card.onAddToQueue).not.toHaveBeenCalled()
     await card.unmount()
   })
 
-  it('selects the job from its text without double-firing', async () => {
+  it('opens the preview from the card text without double-firing', async () => {
     const card = await renderCard()
 
     await click(card.container.querySelector('.combat-copilot-discovery-card-title'))
 
-    expect(card.onSelect).toHaveBeenCalledOnce()
+    expect(card.onPreview).toHaveBeenCalledOnce()
     await card.unmount()
   })
 
-  it('keeps the queue action from selecting the card', async () => {
+  it('keeps the queue action from opening the preview', async () => {
     const card = await renderCard()
 
     const queueButton = Array.from(card.container.querySelectorAll('button'))
@@ -99,7 +98,7 @@ describe('CombatCopilotDiscoveryCard', () => {
     await click(queueButton ?? null)
 
     expect(card.onAddToQueue).toHaveBeenCalledWith('prts://1')
-    expect(card.onSelect).not.toHaveBeenCalled()
+    expect(card.onPreview).not.toHaveBeenCalled()
     await card.unmount()
   })
 

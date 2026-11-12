@@ -168,7 +168,6 @@ export default function CombatWorkspace() {
         modes: matchPreference?.modes ?? [...DEFAULT_COPILOT_MATCH_MODES],
       }),
       copilotSearchView: createPanelStateStore<CombatCopilotDiscoveryView>(viewPreference ?? 'grid'),
-      copilotSearchSelection: createPanelStateStore(''),
       paradoxSearchName: createPanelStateStore(''),
     }
   })
@@ -498,12 +497,7 @@ export default function CombatWorkspace() {
       ...current,
       taskInputs: { ...current.taskInputs, [taskId]: value },
     }))
-    if (taskId === 'copilot') {
-      clearCopilotPreview()
-      if (value.trim() !== panelStores.copilotSearchSelection.get()) {
-        panelStores.copilotSearchSelection.set('')
-      }
-    }
+    if (taskId === 'copilot') clearCopilotPreview()
   }
 
   const handleImportCopilotFile = async (file: File) => {
@@ -810,19 +804,14 @@ export default function CombatWorkspace() {
     await executeQueueRun(failedEntries, retryModes)
   }
 
-  const applyCopilotUri = async (uri: string) => {
+  const previewCopilotUri = async (uri: string) => {
     const normalizedUri = normalizeCopilotInput(uri).trim()
-    const selected = copilotSearchResult?.copilots.find(item => item.uri === normalizedUri)
-    updateCombatConfig(current => ({
-      ...current,
-      taskInputs: { ...current.taskInputs, copilot: normalizedUri },
-    }))
-    panelStores.copilotSearchSelection.set(normalizedUri)
+    const entry = copilotSearchResult?.copilots.find(item => item.uri === normalizedUri)
     clearCopilotPreview()
     await requestCopilotPreview(
       normalizedUri,
       true,
-      selected ? buildCopilotDiscoveryDetailTarget(selected) : null,
+      entry ? buildCopilotDiscoveryDetailTarget(entry) : null,
     )
   }
 
@@ -932,7 +921,6 @@ export default function CombatWorkspace() {
     orderStore: panelStores.copilotSearchOrder,
     matchStore: panelStores.copilotSearchMatch,
     viewStore: panelStores.copilotSearchView,
-    selectionStore: panelStores.copilotSearchSelection,
     stages,
     stagesLoading: stagesQuery.isPending,
     stagesError,
@@ -946,7 +934,7 @@ export default function CombatWorkspace() {
     addingUri: addingQueueUri,
     onSearch: request => void handleCopilotSearch(request),
     onCancel: cancelCopilotSearch,
-    onSelectUri: uri => void applyCopilotUri(uri),
+    onPreviewUri: uri => void previewCopilotUri(uri),
     onAddToQueue: uri => void handleAddSearchUriToQueue(uri),
     onRetryData: () => {
       void stagesQuery.refetch()

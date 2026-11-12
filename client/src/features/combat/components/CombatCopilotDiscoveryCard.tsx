@@ -11,24 +11,22 @@ import {
 export interface CombatCopilotDiscoveryCardProps {
   item: CopilotSearchItem
   view: CombatCopilotDiscoveryView
-  selected: boolean
   recommended: boolean
   adding: boolean
   matchEnabled: boolean
   ownedOperatorNames: ReadonlySet<string>
-  onSelect: (uri: string) => void
+  onPreview: (uri: string) => void
   onAddToQueue: (uri: string) => void
 }
 
 export default function CombatCopilotDiscoveryCard({
   item,
   view,
-  selected,
   recommended,
   adding,
   matchEnabled,
   ownedOperatorNames,
-  onSelect,
+  onPreview,
   onAddToQueue,
 }: CombatCopilotDiscoveryCardProps) {
   const title = item.title?.trim() || `作业 ${item.id}`
@@ -39,22 +37,21 @@ export default function CombatCopilotDiscoveryCard({
   const hiddenOperatorCount = operators.length - visibleOperators.length
   const matchLabel = item.match ? COPILOT_MATCH_MODE_LABELS[item.match.mode] : null
   const unrecognized = matchEnabled && !item.match
-  const hasBadges = selected || recommended || Boolean(matchLabel)
+  const hasBadges = recommended || Boolean(matchLabel)
 
   return (
     <article
-      className={`combat-copilot-discovery-card${selected ? ' is-selected' : ''} is-${view}`}
-      onClick={() => onSelect(item.uri)}
+      className={`combat-copilot-discovery-card is-${view}`}
+      onClick={() => onPreview(item.uri)}
     >
       {hasBadges && (
         <div className="combat-copilot-discovery-badges">
-          {selected && <span className="combat-copilot-discovery-badge is-selected">已选中</span>}
           {recommended && <span className="combat-copilot-discovery-badge is-recommended">推荐</span>}
           {matchLabel && (
-          <span className={`combat-copilot-discovery-badge is-match is-${item.match?.mode}`}>
-            {matchLabel}
-          </span>
-        )}
+            <span className={`combat-copilot-discovery-badge is-match is-${item.match?.mode}`}>
+              {matchLabel}
+            </span>
+          )}
         </div>
       )}
 

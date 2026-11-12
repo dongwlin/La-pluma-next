@@ -2476,7 +2476,7 @@ describe('CombatTasks execution', () => {
     expect(mocks.getCopilotSet).not.toHaveBeenCalled()
   })
 
-  it('applies a clicked search result to the input and previews it', async () => {
+  it('previews a clicked search result without touching the job input', async () => {
     mocks.getCopilotInfo.mockResolvedValueOnce({
       success: true,
       data: {
@@ -2486,6 +2486,8 @@ describe('CombatTasks execution', () => {
     })
 
     await renderComponent()
+    const input = container.querySelector<HTMLInputElement>('input[name="maa-copilot-uri"]')!
+    await setInputValue(input, 'prts://1234')
     await openDiscovery()
     mocks.searchCopilot.mockResolvedValueOnce(ok({
       stage: '1-7',
@@ -2497,11 +2499,10 @@ describe('CombatTasks execution', () => {
     const resultButton = buttonByAriaLabel('查看作业 搜索结果作业')!
     await click(resultButton)
 
-    expect(container.querySelector<HTMLInputElement>('input[name="maa-copilot-uri"]')?.value)
-      .toBe('prts://1')
+    expect(input.value).toBe('prts://1234')
     expect(mocks.getCopilotInfo).toHaveBeenCalledWith('1', expect.any(AbortSignal))
     expect(copilotDrawer()?.textContent).toContain('搜索预览')
-    expect(resultButton.closest('article')?.textContent).toContain('已选中')
+    expect(resultButton.closest('article')?.textContent).not.toContain('已选中')
   })
 
   it('renders per-item set results and the waiting progress', async () => {
