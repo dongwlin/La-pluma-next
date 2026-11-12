@@ -7,6 +7,7 @@ import {
   readCopilotPlanPayload,
   readCopilotSearchResult,
   readCopilotSetPayload,
+  readCopilotStageCandidates,
   readParadoxSearchResult,
   unwrapCopilotPayload,
 } from './copilotPayload'
@@ -87,6 +88,29 @@ describe('copilot search payload', () => {
       copilots: [{ id: '7', uri: 'prts://7', views: 1, hotScore: 5 }],
       recommended: { uri: 'prts://7' },
     })
+  })
+})
+
+describe('copilot stage candidates', () => {
+  it('reads candidate stages from ambiguous-search error details', () => {
+    expect(readCopilotStageCandidates({
+      stage: 'LT-2',
+      candidates: [
+        { stageId: 'lt_02_01', code: 'LT-2', name: '未授权区域', category: '保全派驻', zone: '塔山农业实验平台' },
+        { stageId: 'lt_02_02', code: 'LT-2', name: '临时通道' },
+        { name: '缺少标识' },
+        'not-a-record',
+      ],
+    })).toEqual([
+      { stageId: 'lt_02_01', code: 'LT-2', name: '未授权区域', category: '保全派驻', zone: '塔山农业实验平台' },
+      { stageId: 'lt_02_02', code: 'LT-2', name: '临时通道', category: '', zone: '' },
+    ])
+  })
+
+  it('returns an empty list for unrelated details', () => {
+    expect(readCopilotStageCandidates(null)).toEqual([])
+    expect(readCopilotStageCandidates({ stage: '1-7' })).toEqual([])
+    expect(readCopilotStageCandidates([])).toEqual([])
   })
 })
 

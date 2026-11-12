@@ -111,6 +111,15 @@ export interface CopilotSearchResult {
   }
 }
 
+/** 作业站关卡目录条目：`stageId` 是查询作业时使用的内部标识，`code` 是玩家可见代号。 */
+export interface CopilotStageCandidate {
+  stageId: string
+  code: string
+  name: string
+  category: string
+  zone: string
+}
+
 export interface ParadoxSearchResult {
   operator: string
   copilots: CopilotSearchItem[]

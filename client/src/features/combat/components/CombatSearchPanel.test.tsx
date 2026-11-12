@@ -49,8 +49,11 @@ describe('CombatSearchPanel', () => {
           result={result}
           searching={false}
           addingUri={null}
+          candidates={[]}
+          activeStage={null}
           onSearch={() => {}}
           onCancel={() => {}}
+          onSelectStage={() => {}}
           onSelectUri={() => {}}
           onAddToQueue={() => {}}
           {...overrides}
@@ -101,6 +104,53 @@ describe('CombatSearchPanel', () => {
     await click(other[0]!)
 
     expect(onAddToQueue).toHaveBeenCalledWith('prts://2')
+  })
+
+  it('renders every returned result instead of truncating the list', async () => {
+    const many: CopilotSearchResult = {
+      stage: '1-7',
+      copilots: Array.from({ length: 6 }, (_, index) => ({
+        id: String(index + 1),
+        uri: `prts://${index + 1}`,
+        title: `作业${index + 1}`,
+        views: 0,
+        hotScore: 0,
+      })),
+    }
+    await renderPanel({ result: many })
+
+    const addButtons = buttons().filter(button => button.textContent?.trim() === '加入队列')
+    expect(addButtons).toHaveLength(6)
+  })
+
+  it('lets the caller pick one of several stages for an ambiguous code', async () => {
+    const onSelectStage = vi.fn()
+    const candidates = [
+      { stageId: 'lt_02_01', code: 'LT-2', name: '未授权区域', category: '保全派驻', zone: '塔山农业实验平台' },
+      { stageId: 'lt_02_02', code: 'LT-2', name: '临时通道', category: '保全派驻', zone: '塔山农业实验平台' },
+    ]
+    await renderPanel({ result: null, candidates, onSelectStage })
+
+    const pick = buttons().find(button => button.textContent?.includes('未授权区域'))
+    expect(pick).not.toBeUndefined()
+    await click(pick!)
+
+    expect(onSelectStage).toHaveBeenCalledWith(candidates[0])
+  })
+
+  it('labels the resolved stage that produced the current results', async () => {
+    await renderPanel({
+      activeStage: {
+        stageId: 'lt_02_01',
+        code: 'LT-2',
+        name: '未授权区域',
+        category: '保全派驻',
+        zone: '塔山农业实验平台',
+      },
+    })
+
+    expect(container.textContent).toContain('当前关卡')
+    expect(container.textContent).toContain('未授权区域')
   })
 
   it('forwards the search term from the input', async () => {

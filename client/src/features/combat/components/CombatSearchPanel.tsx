@@ -1,7 +1,7 @@
 import { Button } from '@/shared/ui'
 import { usePanelState } from '../hooks/usePanelState'
 import type { PanelStateStore } from '../model/panelState'
-import type { CopilotSearchResult } from '../types'
+import type { CopilotSearchResult, CopilotStageCandidate } from '../types'
 
 interface CombatSearchPanelProps {
   stageStore: PanelStateStore<string>
@@ -9,8 +9,11 @@ interface CombatSearchPanelProps {
   result: CopilotSearchResult | null
   searching: boolean
   addingUri: string | null
+  candidates: readonly CopilotStageCandidate[]
+  activeStage: CopilotStageCandidate | null
   onSearch: (term: string) => void
   onCancel: () => void
+  onSelectStage: (candidate: CopilotStageCandidate) => void
   onSelectUri: (uri: string) => void
   onAddToQueue: (uri: string) => void
 }
@@ -21,8 +24,11 @@ export default function CombatSearchPanel({
   result,
   searching,
   addingUri,
+  candidates,
+  activeStage,
   onSearch,
   onCancel,
+  onSelectStage,
   onSelectUri,
   onAddToQueue,
 }: CombatSearchPanelProps) {
@@ -66,9 +72,40 @@ export default function CombatSearchPanel({
         </Button>
       </div>
 
+      {candidates.length > 0 && (
+        <div className="flex flex-col gap-1">
+          <span className="text-xs text-secondary">该代号对应多个关卡，请选择：</span>
+          <div className="combat-copilot-search-results" role="group" aria-label="匹配的关卡">
+            {candidates.map((candidate) => (
+              <div key={candidate.stageId} className="combat-copilot-search-result">
+                <button
+                  type="button"
+                  onClick={() => onSelectStage(candidate)}
+                  className="combat-copilot-search-result-main"
+                >
+                  <span className="flex min-w-0 items-center gap-2">
+                    <span className="shrink-0 font-mono text-xs brand-text">{candidate.code}</span>
+                    <span className="max-w-20 truncate text-xs text-secondary">{candidate.name}</span>
+                  </span>
+                  <span className="shrink-0 text-[11px] text-secondary">{candidate.category}</span>
+                </button>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {activeStage && (
+        <p className="flex min-w-0 items-center gap-2 text-xs text-secondary">
+          当前关卡
+          <span className="shrink-0 font-mono brand-text">{activeStage.code}</span>
+          <span className="truncate">{activeStage.name}</span>
+        </p>
+      )}
+
       {result && result.copilots && result.copilots.length > 0 && (
         <div className="combat-copilot-search-results">
-          {result.copilots.slice(0, 5).map((copilot) => {
+          {result.copilots.map((copilot) => {
             const isSelected = selectedUri === copilot.uri
             const isAdding = addingUri === copilot.uri
             return (

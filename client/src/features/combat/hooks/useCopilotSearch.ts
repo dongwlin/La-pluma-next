@@ -18,6 +18,8 @@ export type CopilotSearchOutcome<T> =
       readonly status: 'failed'
       readonly message: string
       readonly kind: ApiFailureKind | 'unknown'
+      readonly code: string
+      readonly details?: unknown
     }
   | { readonly status: 'cancelled' }
 
@@ -39,10 +41,17 @@ const SEARCH_RESOURCE: Record<SearchKind, 'copilot-search' | 'paradox-search'> =
 
 function describeSearchFailure(
   error: unknown,
-): { message: string; kind: ApiFailureKind | 'unknown' } {
-  if (error instanceof ApiRequestError) return { message: error.message, kind: error.kind }
-  if (error instanceof Error && error.message) return { message: error.message, kind: 'unknown' }
-  return { message: '搜索失败', kind: 'unknown' }
+): { message: string; kind: ApiFailureKind | 'unknown'; code: string; details?: unknown } {
+  if (error instanceof ApiRequestError) {
+    return {
+      message: error.message,
+      kind: error.kind,
+      code: error.code,
+      ...(error.details === undefined ? {} : { details: error.details }),
+    }
+  }
+  if (error instanceof Error && error.message) return { message: error.message, kind: 'unknown', code: 'UNKNOWN' }
+  return { message: '搜索失败', kind: 'unknown', code: 'UNKNOWN' }
 }
 
 function useCombatSearch<T>(kind: SearchKind): UseCopilotSearchResult<T> {

@@ -18,6 +18,7 @@ import type {
   CopilotSearchResult,
   CopilotSetExecutionMode,
   CopilotSetInfo,
+  CopilotStageCandidate,
   FormationMode,
   ParadoxSearchResult,
 } from '../types'
@@ -107,8 +108,13 @@ export interface CombatCopilotSearchProjection {
   result: CopilotSearchResult | null
   searching: boolean
   addingUri: string | null
+  /** 一个代号对应多个关卡时由调用方选择。 */
+  candidates: readonly CopilotStageCandidate[]
+  /** 当前结果对应的已选关卡；普通搜索为 null。 */
+  activeStage: CopilotStageCandidate | null
   onSearch: (term: string) => void
   onCancel: () => void
+  onSelectStage: (candidate: CopilotStageCandidate) => void
   onSelectUri: (uri: string) => void
   onAddToQueue: (uri: string) => void
 }

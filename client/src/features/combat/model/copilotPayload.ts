@@ -5,6 +5,7 @@ import type {
   CopilotSearchItem,
   CopilotSearchResult,
   CopilotSetItem,
+  CopilotStageCandidate,
   ParadoxSearchResult,
 } from '../types'
 import { copilotDifficultyFromFlags, readCopilotRecommendedMode } from './copilotSelection'
@@ -317,4 +318,21 @@ export function readParadoxSearchResult(value: unknown): ParadoxSearchResult | n
   const raw = unwrapCopilotPayload(value)
   const operator = isRecord(raw) ? asText(raw.operator) : undefined
   return { operator: operator ?? '', ...payload }
+}
+
+/** 多候选关卡列表来自错误信封的 `details`；结构不符时按空列表处理。 */
+export function readCopilotStageCandidates(value: unknown): CopilotStageCandidate[] {
+  if (!isRecord(value) || !Array.isArray(value.candidates)) return []
+  return value.candidates.flatMap(candidate => {
+    if (!isRecord(candidate)) return []
+    const stageId = asText(candidate.stageId)
+    if (!stageId) return []
+    return [{
+      stageId,
+      code: asText(candidate.code) ?? '',
+      name: asText(candidate.name) ?? '',
+      category: asText(candidate.category) ?? '',
+      zone: asText(candidate.zone) ?? '',
+    }]
+  })
 }

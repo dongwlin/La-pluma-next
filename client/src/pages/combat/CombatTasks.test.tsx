@@ -2115,6 +2115,47 @@ describe('CombatTasks execution', () => {
     expect(container.textContent).toContain('旧作业')
   })
 
+  it('lets the caller pick a stage when one code matches several records', async () => {
+    mocks.searchCopilot.mockResolvedValueOnce({
+      success: false,
+      error: '关卡"LT-2"对应多个关卡，请选择具体关卡',
+      message: '关卡"LT-2"对应多个关卡，请选择具体关卡',
+      errorInfo: {
+        code: 'AGENT_COPILOT_STAGE_AMBIGUOUS',
+        message: '关卡"LT-2"对应多个关卡，请选择具体关卡',
+        details: {
+          stage: 'LT-2',
+          candidates: [
+            { stageId: 'lt_02_01', code: 'LT-2', name: '未授权区域', category: '保全派驻', zone: '塔山农业实验平台' },
+            { stageId: 'lt_02_02', code: 'LT-2', name: '临时通道', category: '保全派驻', zone: '塔山农业实验平台' },
+          ],
+        },
+        retryable: false,
+      },
+    })
+    mocks.searchCopilot.mockResolvedValueOnce(ok({
+      stage: 'LT-2',
+      copilots: [{ id: 9, uri: 'prts://9', title: '保全作业' }],
+    }))
+
+    await renderComponent()
+    const stageInput = container.querySelector<HTMLInputElement>('input[name="maa-copilot-stage-search"]')!
+    await setInputValue(stageInput, 'LT-2')
+    await click(buttonsByText('搜索')[0]!)
+    await flush()
+
+    expect(mocks.setMessage).toHaveBeenCalledWith('该代号对应多个关卡，请选择具体关卡')
+    const candidate = Array.from(container.querySelectorAll<HTMLButtonElement>('button'))
+      .find(button => button.textContent?.includes('未授权区域'))
+    expect(candidate).toBeDefined()
+
+    await click(candidate!)
+    await flush()
+
+    expect(mocks.searchCopilot).toHaveBeenLastCalledWith('lt_02_01', expect.any(AbortSignal))
+    expect(container.textContent).toContain('保全作业')
+  })
+
   it('keeps an active run untouched by searches', async () => {
     useIdentity({ runId: 'run-combat', operationId: 'run_task', scope: 'combat' })
     api.fetchSnapshot.mockResolvedValue(ok(runSnapshot({ activeRuns: [activeRun('run-combat')] })))

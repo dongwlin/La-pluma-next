@@ -42,6 +42,7 @@ import {
 } from '../model/copilotQueue'
 import { getCopilotQueueRetryModes } from '../model/copilotQueueRun'
 import { collectCopilotItemErrors } from '../model/copilotDetail'
+import { readCopilotStageCandidates } from '../model/copilotPayload'
 import { deriveCopilotSetView } from '../model/copilotSetView'
 import { deriveExecutionProgress } from '../model/executionProgress'
 import { createPanelStateStore } from '../model/panelState'
@@ -53,6 +54,7 @@ import type {
   CopilotRaid,
   CopilotSetExecutionMode,
   CopilotSetInfo,
+  CopilotStageCandidate,
   FormationMode,
 } from '../types'
 import CombatCopilotTaskPanel from './CombatCopilotTaskPanel'
@@ -164,6 +166,8 @@ export default function CombatWorkspace() {
     copilotSearchSelection: createPanelStateStore(''),
     paradoxSearchName: createPanelStateStore(''),
   }))
+  const [stageCandidates, setStageCandidates] = useState<readonly CopilotStageCandidate[]>([])
+  const [activeStage, setActiveStage] = useState<CopilotStageCandidate | null>(null)
 
   useEffect(() => () => queueAddControllerRef.current?.abort(), [])
 
@@ -762,18 +766,26 @@ export default function CombatWorkspace() {
     }
   }
 
-  const handleSearchCopilot = async (term: string) => {
+  const runCopilotSearch = async (term: string) => {
     if (isSearchingCopilot) return
     if (!term.trim()) {
       setStatusMessage('请输入关卡名称')
       return
     }
 
+    setStageCandidates(current => (current.length ? [] : current))
     setStatusMessage('正在搜索作业...')
     const outcome = await searchCopilotJobs(term)
     if (outcome.status === 'cancelled') return
 
     if (outcome.status === 'failed') {
+      if (outcome.code === 'AGENT_COPILOT_STAGE_AMBIGUOUS') {
+        const candidates = readCopilotStageCandidates(outcome.details)
+        setActiveStage(null)
+        setStageCandidates(candidates)
+        setStatusMessage(candidates.length ? '该代号对应多个关卡，请选择具体关卡' : outcome.message)
+        return
+      }
       setStatusMessage(
         outcome.kind === 'transport' || outcome.kind === 'unknown'
           ? `搜索失败: ${outcome.message}`
@@ -789,6 +801,25 @@ export default function CombatWorkspace() {
     }
 
     setStatusMessage(`找到 ${result.copilots.length} 个作业`)
+  }
+
+  const handleSearchCopilot = async (term: string) => {
+    setActiveStage(null)
+    await runCopilotSearch(term)
+  }
+
+  const handleSelectStage = async (candidate: CopilotStageCandidate) => {
+    panelStores.copilotSearchStage.set(candidate.code)
+    setStageCandidates([])
+    setActiveStage(candidate)
+    await runCopilotSearch(candidate.stageId)
+  }
+
+  // 输入变化会在每次按键时触发取消；没有待清理内容时不制造新的渲染。
+  const handleCancelCopilotSearch = () => {
+    setStageCandidates(current => (current.length ? [] : current))
+    setActiveStage(current => (current === null ? current : null))
+    cancelCopilotSearch()
   }
 
   const applyParadoxUri = (uri: string) => {
@@ -829,8 +860,11 @@ export default function CombatWorkspace() {
     result: copilotSearchResult,
     searching: isSearchingCopilot,
     addingUri: addingQueueUri,
+    candidates: stageCandidates,
+    activeStage,
     onSearch: term => void handleSearchCopilot(term),
-    onCancel: cancelCopilotSearch,
+    onCancel: handleCancelCopilotSearch,
+    onSelectStage: candidate => void handleSelectStage(candidate),
     onSelectUri: uri => void applyCopilotUri(uri),
     onAddToQueue: uri => void handleAddSearchUriToQueue(uri),
   }
