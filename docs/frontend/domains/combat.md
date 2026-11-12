@@ -26,7 +26,7 @@
 | 干员包含/排除与匹配设置 | `components/CombatCopilotOperatorFilterDialog.tsx`、`components/CombatCopilotMatchDialog.tsx` + `model/operatorFilter.ts` | 包含/排除互斥，选项来自识别快照的已拥有/未拥有干员并支持中文名、全拼与首字母；包含区按已拥有 + 练度降序、排除区按未拥有 + 练度升序（先精英等级再干员等级），选项区最多三行并随滚动自动追加；干员按钮内的电源开关可临时停用筛选而不清空选择；“记住筛选结果”决定下次是否恢复选择（关闭时只保留开关状态）；匹配是客户端过滤，服务端 `match` 缺失时保留卡片并标注未识别 |
 | 关卡目录与持有干员快照 | `model/queries.ts`（`copilotStageCatalogQueryOptions`）+ `game-data`（`operBoxQueryOptions`） | 工作区在发现弹窗首次打开时按需读取，弹窗只消费投影；不在弹窗内另建数据源 |
 | 普通搜索与悖论搜索 | `hooks/useCopilotSearch.ts`、`components/CombatParadoxSearchPanel.tsx` | 普通搜索请求、代次与取消由工作区 hook 持有；悖论干员搜索词在面板侧；结果与推荐接线由工作区提供 |
-| 本次执行的条目位置、当前关卡与已用时 | `components/CombatExecutionProgressPanel.tsx` | 只渲染 `deriveExecutionProgress`；不呈现运行状态、停止入口、逐项结果或计划计数 |
+| 本次执行的条目位置、当前关卡、执行模式与已用时 | `components/CombatExecutionProgressPanel.tsx` | 只渲染 `deriveExecutionProgress`；不呈现运行状态、停止入口、逐项结果或计划计数 |
 | 作业队列（唯一列表：勾选、排序、删除、清空、等待续跑/跳过/重试入口） | `components/CombatCopilotQueuePanel.tsx` | 只渲染 `CombatCopilotQueueProjection`；行主体打开详情层；不持有第二份队列模型 |
 | 队列模型、本地持久化与操作 | `model/copilotQueue.ts`、`model/copilotQueueStorage.ts`、`hooks/useCopilotQueue.ts` | 条目构造、URI 去重、排序、上限与 `la-pluma-copilot-queue-v1` 读写；勾选为会话状态 |
 | 队列 Run 投影 | `model/copilotQueueRun.ts` | 从 `run.progress` 与 `run.result.summary` 读取 `clientId` 状态、下一项、失败原因与计数；不新建执行身份 |
@@ -157,7 +157,7 @@ CombatTasks（页面壳：PageHeader + FloatingStatusIndicator）
 - **队列执行**：只勾选当前预览作业集的成员，且其 `setItemIndex` 严格递增时，走作业集提交（`submitSet` → `run_copilot_set`）：连续模式一次提交整组，手动模式等待服务端 `nextEntry`；`selectedIndexes` 来自队列勾选。混合来源、重排后的集合成员或本地文件走 `submitQueue` → `run_copilot_queue`。客户端按队列顺序提交 `{ clientId, source, copilotId|filename, mode }`，每个作业的 `mode` 来自全局突袭设置，预设编队作业提交 `normal`。服务端将适用的 `both` 展开为普通和突袭两个步骤。`executionStrategy` 映射为 `failurePolicy`：`stop` 首败停止，其他值按 `continue`。
 - **停止/继续/跳过**：队列 Run 的停止复用 `stop()`；manual waiting 时「开始下一项」调用 `continueCopilotQueue`，「跳过此项」调用 `skipCopilotQueueEntry`，两者都只针对当前 `runId`，不新建 Run。重试按原 Run 的失败步骤确定作业和模式，已成功的模式不会随该作业重试。
 - **逐项结果**：set-backed 执行读取 `CopilotSetView.itemStatuses`。队列 Run 读取 `CopilotQueueRunProjection.statuses`，优先于作业集投影。同一 `clientId` 的普通与突袭步骤归到同一队列行。队列 Run 的 `summary.taskResults` 是逐项状态的唯一来源，`summary.errors` 只用于补全缺失的失败原因。
-- **本次执行与续跑进度分工**：`CombatExecutionProgressPanel` 只显示本次执行队列中的条目位置（`progress.currentStep`/`totalSteps`）、当前关卡与已用时，按“项”而不是“关”表述；运行状态与停止按钮留在执行卡片，逐项结果、历史通关与计划状态计数留在作业列表与续跑进度，不重复呈现。
+- **本次执行与续跑进度分工**：`CombatExecutionProgressPanel` 只显示本次执行队列中的条目位置（`progress.currentStep`/`totalSteps`）、当前关卡、执行模式与已用时，按“项”而不是“关”表述；both 展开的普通与突袭共用同一关卡名，模式取自当前执行条目的 `mode`（作业集读 `progress.currentEntry`，队列读该 `clientId` 的执行中逐项结果），等待下一项与单作业执行时不显示；运行状态与停止按钮留在执行卡片，逐项结果、历史通关与计划状态计数留在作业列表与续跑进度，不重复呈现。
 - **重置进度**：确认后调用 reset 端点、把全部索引放回待执行、归零预览进度、失效该作业集计划缓存，并作废旧 Run 的逐项展示。
 
 ### 6. Activity 与卸载
