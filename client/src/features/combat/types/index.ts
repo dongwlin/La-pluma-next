@@ -34,6 +34,20 @@ export type CopilotDifficulty = 'normal' | 'raid' | 'both'
 
 export type CopilotRaid = CopilotDifficulty | 'auto'
 
+/** 作业站搜索排序；服务端按同名 `orderBy` 参数透传。 */
+export type CopilotSearchOrder = 'hot' | 'latest' | 'views'
+
+/** 作业与当前持有干员的匹配结论；服务端匹配未接入前只在响应里透传。 */
+export type CopilotMatchMode = 'ready' | 'borrow' | 'train' | 'check' | 'blocked'
+
+export interface CopilotMatchSummary {
+  mode: CopilotMatchMode
+  missing: string[]
+  training: string[]
+  check: string[]
+  totalSlots: number
+}
+
 export type CopilotSetSelections = Record<string, number[]>
 
 export interface CombatAdvancedParams {
@@ -55,6 +69,37 @@ export interface CopilotDetailOperator {
   level?: number | null
   skillLevel?: number | null
   module?: string | null
+}
+
+export interface CopilotDetail {
+  readonly title: string
+  readonly recommendedMode?: CopilotDifficulty
+  /** 展示用关卡代号；服务端未提供解析结果时回退为作业内容里的 `stage_name`。 */
+  readonly stage?: string
+  /** 作业内容里的原始关卡标识（通常是内部 stageId）。 */
+  readonly stageId?: string
+  readonly operators: string
+  readonly operatorDetails?: CopilotDetailOperator[]
+  readonly groupNames?: string[]
+  /** 作业站 `doc.details` 原文；只有作者填写且非空白时才存在。 */
+  readonly details?: string
+}
+
+export interface CopilotInfoPayload {
+  /** PRTS 的 `status_code`；非 200 表示作业不存在或代理拒绝。 */
+  readonly statusCode: number | null
+  readonly detail: CopilotDetail | null
+}
+
+export interface CopilotSetPayload {
+  readonly statusCode: number | null
+  readonly ids: readonly number[]
+}
+
+export interface CopilotPlanPayload {
+  readonly setId: string
+  readonly name: string
+  readonly items: readonly CopilotSetItem[]
 }
 
 export interface CopilotSetItem {
@@ -99,12 +144,28 @@ export interface CopilotSearchItem {
   uri: string
   views: number
   hotScore: number
+  /** 作业内容里的原始关卡标识，与关卡筛选使用的 stageId 同源。 */
   stageName?: string
+  stageId?: string
+  stageCode?: string
+  stageLabel?: string
   title?: string
+  uploader?: string
+  uploadTime?: string
+  operators?: string[]
+  /** 服务端按当前持有快照给出的匹配结论；未接入时省略。 */
+  match?: CopilotMatchSummary
 }
 
 export interface CopilotSearchResult {
+  keyword?: string
   stage: string
+  stageId?: string
+  orderBy?: CopilotSearchOrder
+  page?: number
+  limit?: number
+  total?: number
+  hasNext?: boolean
   copilots: CopilotSearchItem[]
   recommended?: {
     uri: string

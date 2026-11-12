@@ -1,73 +1,67 @@
 import { isRecord } from '@/shared/api'
 import type {
-  CopilotDifficulty,
   CopilotDetailOperator,
+  CopilotInfoPayload,
+  CopilotMatchSummary,
+  CopilotPlanPayload,
   CopilotSearchItem,
   CopilotSearchResult,
   CopilotSetItem,
+  CopilotSetPayload,
   CopilotStageCandidate,
   ParadoxSearchResult,
 } from '../types'
 import { copilotDifficultyFromFlags, readCopilotRecommendedMode } from './copilotSelection'
+import { isCopilotMatchMode, isCopilotSearchOrder } from './copilotDiscovery'
 
-export interface CopilotDetail {
-  readonly title: string
-  readonly recommendedMode?: CopilotDifficulty
-  /** 展示用关卡代号；服务端未提供解析结果时回退为作业内容里的 `stage_name`。 */
-  readonly stage?: string
-  /** 作业内容里的原始关卡标识（通常是内部 stageId）。 */
-  readonly stageId?: string
-  readonly operators: string
-  readonly operatorDetails?: CopilotDetailOperator[]
-  readonly groupNames?: string[]
-  /** 作业站 `doc.details` 原文；只有作者填写且非空白时才存在。 */
-  readonly details?: string
-}
-
-export interface CopilotInfoPayload {
-  /** PRTS 的 `status_code`；非 200 表示作业不存在或代理拒绝。 */
-  readonly statusCode: number | null
-  readonly detail: CopilotDetail | null
-}
-
-export interface CopilotSetPayload {
-  readonly statusCode: number | null
-  readonly ids: readonly number[]
-}
-
-export interface CopilotPlanPayload {
-  readonly setId: string
-  readonly name: string
-  readonly items: readonly CopilotSetItem[]
-}
-
-interface CopilotSearchPayload {
-  copilots: CopilotSearchItem[]
-  recommended?: { uri: string }
-}
+export type {
+  CopilotDetail,
+  CopilotInfoPayload,
+  CopilotPlanPayload,
+  CopilotSetPayload,
+} from '../types'
 
 const asText = (value: unknown): string | undefined => (
   typeof value === 'string' && value.trim() ? value : undefined
 )
-
 const asNumber = (value: unknown): number | null => (
   typeof value === 'number' && Number.isFinite(value) ? value : null
 )
-
+const asCount = (value: unknown, minimum = 0): number | null => (
+  typeof value === 'number' && Number.isInteger(value) && value >= minimum ? value : null
+)
 const asId = (value: unknown): number | null => {
-  const numeric = typeof value === 'number'
-    ? value
-    : typeof value === 'string' && value.trim()
-      ? Number(value)
-      : NaN
+  const numeric = typeof value === 'number' || typeof value === 'string' ? Number(value) : NaN
   return Number.isInteger(numeric) && numeric > 0 ? numeric : null
 }
-
 const asModule = (value: unknown): string | null => {
   if (typeof value === 'string' && value.trim()) return value
   if (typeof value === 'number' && Number.isFinite(value)) return String(value)
   return null
 }
+
+const compactFields = <T extends Record<string, unknown>>(value: T): T => (
+  Object.fromEntries(
+    Object.entries(value).filter(([, entry]) => entry !== undefined && entry !== null && entry !== ''),
+  ) as T
+)
+
+function readUnique<T>(values: readonly unknown[], read: (value: unknown) => T | undefined): T[] {
+  const items: T[] = []
+  for (const raw of values) {
+    const item = read(raw)
+    if (item !== undefined && !items.includes(item)) items.push(item)
+  }
+  return items
+}
+
+const readGroupNames = (value: unknown): string[] => (
+  Array.isArray(value) ? readUnique(value, raw => (isRecord(raw) ? asText(raw.name) : undefined)) : []
+)
+
+const readOperators = (value: unknown): string[] => (
+  Array.isArray(value) ? readUnique(value, raw => asText(raw)) : []
+)
 
 function readOperatorDetails(value: unknown): CopilotDetailOperator[] {
   if (!Array.isArray(value)) return []
@@ -76,33 +70,17 @@ function readOperatorDetails(value: unknown): CopilotDetailOperator[] {
     if (!isRecord(raw)) continue
     const name = asText(raw.name)
     if (!name) continue
-    const requirements = isRecord(raw.requirements) ? raw.requirements : null
-    const group = asText(raw.group)
-    const elite = asNumber(requirements?.elite)
-    const level = asNumber(requirements?.level)
-    const skillLevel = asNumber(requirements?.skill_level)
-    const module = asModule(requirements?.module)
-    details.push({
+    const requirements = isRecord(raw.requirements) ? raw.requirements : {}
+    details.push(compactFields({
       name,
-      ...(group ? { group } : {}),
-      ...(elite !== null ? { elite } : {}),
-      ...(level !== null ? { level } : {}),
-      ...(skillLevel !== null ? { skillLevel } : {}),
-      ...(module !== null ? { module } : {}),
-    })
+      group: asText(raw.group),
+      elite: asNumber(requirements.elite),
+      level: asNumber(requirements.level),
+      skillLevel: asNumber(requirements.skill_level),
+      module: asModule(requirements.module),
+    }))
   }
   return details
-}
-
-function readGroupNames(value: unknown): string[] {
-  if (!Array.isArray(value)) return []
-  const names: string[] = []
-  for (const raw of value) {
-    if (!isRecord(raw)) continue
-    const name = asText(raw.name)
-    if (name && !names.includes(name)) names.push(name)
-  }
-  return names
 }
 
 /**
@@ -118,8 +96,7 @@ export function unwrapCopilotPayload(value: unknown): unknown {
 /** 从 PRTS 代理的 `data.content` 读取作业内容；接受已解析对象与 JSON 字符串。 */
 function readCopilotContent(payload: Record<string, unknown>): Record<string, unknown> | null {
   const data = isRecord(payload.data) ? payload.data : null
-  if (!data) return null
-  const content = data.content
+  const content = data?.content
   if (isRecord(content)) return content
   if (typeof content !== 'string') return null
   try {
@@ -132,21 +109,15 @@ function readCopilotContent(payload: Record<string, unknown>): Record<string, un
 
 /** 固定干员与干员组按页面既有格式拼接；没有可展示项时为“未知”。 */
 export function extractCopilotOperators(content: Record<string, unknown>): string {
-  const names: string[] = []
-  if (Array.isArray(content.opers)) {
-    for (const oper of content.opers) {
-      if (!isRecord(oper)) continue
-      const name = asText(oper.name)
-      if (name) names.push(name)
-    }
-  }
-  if (Array.isArray(content.groups)) {
-    for (const group of content.groups) {
-      if (!isRecord(group)) continue
-      const name = asText(group.name)
-      if (name) names.push(`[${name}]`)
-    }
-  }
+  const opers = Array.isArray(content.opers) ? content.opers : []
+  const groups = Array.isArray(content.groups) ? content.groups : []
+  const names = [
+    ...opers.map(oper => (isRecord(oper) ? asText(oper.name) : undefined)),
+    ...groups.map((group) => {
+      const name = isRecord(group) ? asText(group.name) : undefined
+      return name ? `[${name}]` : undefined
+    }),
+  ].filter((name): name is string => Boolean(name))
   return names.length ? names.join('、') : '未知'
 }
 
@@ -165,25 +136,21 @@ export function readCopilotInfoPayload(value: unknown): CopilotInfoPayload {
   if (!content) return { statusCode, detail: null }
 
   const documentation = isRecord(content.doc) ? content.doc : null
-  const title = asText(documentation?.title) ?? '未命名作业'
-  const details = asText(documentation?.details)
   const stageId = asText(payload.stageId) ?? asText(content.stage_name)
-  const stage = asText(payload.stage) ?? stageId
   const operatorDetails = readOperatorDetails(content.opers)
   const groupNames = readGroupNames(content.groups)
-  const recommendedMode = copilotDifficultyFromFlags(content.difficulty)
   return {
     statusCode,
-    detail: {
-      title,
-      ...(recommendedMode ? { recommendedMode } : {}),
-      ...(stage ? { stage } : {}),
-      ...(stageId ? { stageId } : {}),
+    detail: compactFields({
+      title: asText(documentation?.title) ?? '未命名作业',
+      recommendedMode: copilotDifficultyFromFlags(content.difficulty),
+      stage: asText(payload.stage) ?? stageId,
+      stageId,
       operators: extractCopilotOperators(content),
-      ...(operatorDetails.length ? { operatorDetails } : {}),
-      ...(groupNames.length ? { groupNames } : {}),
-      ...(details ? { details } : {}),
-    },
+      operatorDetails: operatorDetails.length ? operatorDetails : undefined,
+      groupNames: groupNames.length ? groupNames : undefined,
+      details: asText(documentation?.details),
+    }),
   }
 }
 
@@ -224,40 +191,31 @@ function readPlanItem(
   if (!isRecord(value)) return null
   const id = asId(value.id)
   if (id === null) return null
-
   const stage = asText(value.stage)
-  const stageId = asText(value.stageId)
-  const apCost = asNumber(value.apCost)
-  const details = asText(value.details)
   const operatorDetails = readOperatorDetails(value.operators)
   const groupNames = readGroupNames(value.groups)
   const completedModes = readCompletedModes(entries, itemIndex)
-  const recommendedMode = readCopilotRecommendedMode(value.recommendedMode)
-  return {
+  return compactFields({
     id,
     name: stage ?? `作业 #${id}`,
-    ...(stage ? { stage } : {}),
-    ...(stageId ? { stageId } : {}),
-    ...(apCost !== null ? { apCost } : {}),
-    ...(details ? { details } : {}),
-    ...(operatorDetails.length ? { operatorDetails } : {}),
-    ...(groupNames.length ? { groupNames } : {}),
+    stage,
+    stageId: asText(value.stageId),
+    apCost: asNumber(value.apCost),
+    details: asText(value.details),
+    operatorDetails: operatorDetails.length ? operatorDetails : undefined,
+    groupNames: groupNames.length ? groupNames : undefined,
     presetFormation: value.presetFormation === true,
     supportsRaid: value.supportsRaid !== false,
-    ...(recommendedMode ? { recommendedMode } : {}),
-    ...(completedModes.length ? { completedModes } : {}),
+    recommendedMode: readCopilotRecommendedMode(value.recommendedMode),
+    completedModes: completedModes.length ? completedModes : undefined,
     uri: `prts://${id}`,
-  }
+  })
 }
 
 /** 作业集计划；缺 `items` 或 `entries` 时不可用，调用方回退作业集成员列表。 */
 export function readCopilotPlanPayload(value: unknown): CopilotPlanPayload | null {
   const payload = unwrapCopilotPayload(value)
-  if (
-    !isRecord(payload)
-    || !Array.isArray(payload.items)
-    || !Array.isArray(payload.entries)
-  ) return null
+  if (!isRecord(payload) || !Array.isArray(payload.items) || !Array.isArray(payload.entries)) return null
 
   const entries = payload.entries as readonly unknown[]
   const items = payload.items
@@ -268,38 +226,52 @@ export function readCopilotPlanPayload(value: unknown): CopilotPlanPayload | nul
   return { setId, name, items }
 }
 
+function readMatch(value: unknown): CopilotMatchSummary | null {
+  if (!isRecord(value)) return null
+  const mode = value.mode
+  const totalSlots = asCount(value.totalSlots)
+  if (!isCopilotMatchMode(mode) || totalSlots === null) return null
+  return {
+    mode,
+    missing: readOperators(value.missing),
+    training: readOperators(value.training),
+    check: readOperators(value.check),
+    totalSlots,
+  }
+}
+
 function readSearchItem(value: unknown): CopilotSearchItem | null {
   if (!isRecord(value)) return null
   const uri = asText(value.uri)
   if (!uri) return null
-
   const rawId = value.id
-  const title = asText(value.title)
-  const stageName = asText(value.stageName)
-  return {
+  const operators = readOperators(value.operators)
+  return compactFields({
     id: typeof rawId === 'string' || typeof rawId === 'number' ? String(rawId) : uri,
     uri,
     views: asNumber(value.views) ?? 0,
     hotScore: asNumber(value.hotScore) ?? 0,
-    ...(stageName ? { stageName } : {}),
-    ...(title ? { title } : {}),
-  }
+    stageName: asText(value.stageName),
+    stageId: asText(value.stageId),
+    stageCode: asText(value.stageCode),
+    stageLabel: asText(value.stageLabel),
+    title: asText(value.title),
+    uploader: asText(value.uploader),
+    uploadTime: asText(value.uploadTime),
+    operators: operators.length ? operators : undefined,
+    match: readMatch(value.match) ?? undefined,
+  })
 }
 
-function readSearchPayload(value: unknown): CopilotSearchPayload | null {
+function readSearchPayload(value: unknown): Pick<CopilotSearchResult, 'copilots' | 'recommended'> | null {
   const payload = unwrapCopilotPayload(value)
   if (!isRecord(payload) || !Array.isArray(payload.copilots)) return null
 
   const copilots = payload.copilots
     .map(readSearchItem)
     .filter((item): item is CopilotSearchItem => item !== null)
-  const recommendedUri = isRecord(payload.recommended)
-    ? asText(payload.recommended.uri)
-    : undefined
-  return {
-    copilots,
-    ...(recommendedUri ? { recommended: { uri: recommendedUri } } : {}),
-  }
+  const recommendedUri = isRecord(payload.recommended) ? asText(payload.recommended.uri) : undefined
+  return { copilots, ...(recommendedUri ? { recommended: { uri: recommendedUri } } : {}) }
 }
 
 /** 普通关卡搜索结果；不可用时返回 null，由 Query 转为载荷错误。 */
@@ -307,8 +279,20 @@ export function readCopilotSearchResult(value: unknown): CopilotSearchResult | n
   const payload = readSearchPayload(value)
   if (!payload) return null
   const raw = unwrapCopilotPayload(value)
-  const stage = isRecord(raw) ? asText(raw.stage) : undefined
-  return { stage: stage ?? '', ...payload }
+  const meta = isRecord(raw) ? raw : {}
+  return {
+    stage: asText(meta.stage) ?? '',
+    ...compactFields({
+      keyword: asText(meta.keyword),
+      stageId: asText(meta.stageId),
+      orderBy: isCopilotSearchOrder(meta.orderBy) ? meta.orderBy : undefined,
+      page: asCount(meta.page, 1) ?? undefined,
+      limit: asCount(meta.limit, 1) ?? undefined,
+      total: asCount(meta.total) ?? undefined,
+      hasNext: typeof meta.hasNext === 'boolean' ? meta.hasNext : undefined,
+    }),
+    ...payload,
+  }
 }
 
 /** 悖论模拟搜索结果；形状与普通搜索一致，只把关卡名换成干员名。 */
@@ -320,19 +304,37 @@ export function readParadoxSearchResult(value: unknown): ParadoxSearchResult | n
   return { operator: operator ?? '', ...payload }
 }
 
+function readStageCandidate(value: unknown): CopilotStageCandidate | null {
+  if (!isRecord(value)) return null
+  const stageId = asText(value.stageId)
+  if (!stageId) return null
+  return {
+    stageId,
+    code: asText(value.code) ?? '',
+    name: asText(value.name) ?? '',
+    category: asText(value.category) ?? '',
+    zone: asText(value.zone) ?? '',
+  }
+}
+
 /** 多候选关卡列表来自错误信封的 `details`；结构不符时按空列表处理。 */
 export function readCopilotStageCandidates(value: unknown): CopilotStageCandidate[] {
   if (!isRecord(value) || !Array.isArray(value.candidates)) return []
-  return value.candidates.flatMap(candidate => {
-    if (!isRecord(candidate)) return []
-    const stageId = asText(candidate.stageId)
-    if (!stageId) return []
-    return [{
-      stageId,
-      code: asText(candidate.code) ?? '',
-      name: asText(candidate.name) ?? '',
-      category: asText(candidate.category) ?? '',
-      zone: asText(candidate.zone) ?? '',
-    }]
-  })
+  return value.candidates
+    .map(readStageCandidate)
+    .filter((stage): stage is CopilotStageCandidate => stage !== null)
+}
+
+/** 关卡目录载荷；非数组表示格式错误，无效项跳过，同一 stageId 只保留首个。 */
+export function readCopilotStageCatalog(value: unknown): CopilotStageCandidate[] | null {
+  if (!Array.isArray(value)) return null
+  const stages: CopilotStageCandidate[] = []
+  const seen = new Set<string>()
+  for (const raw of value) {
+    const stage = readStageCandidate(raw)
+    if (!stage || seen.has(stage.stageId)) continue
+    seen.add(stage.stageId)
+    stages.push(stage)
+  }
+  return stages
 }

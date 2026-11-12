@@ -259,7 +259,14 @@ for (const scenario of SCENARIOS) {
         await page.route('**/api/agent/config/user/automation-tasks', route => route.request().method() === 'POST'
           ? reply(route, { success: true, data: {} }) : route.fallback())
       } else if (scenario === 'copilot-search') {
-        await page.route('**/api/agent/copilot/search?stage=1-7', route => reply(route, SEARCH_RESULT))
+        await page.route('**/api/agent/copilot/search?**', route => reply(route, SEARCH_RESULT))
+        await page.route('**/api/agent/copilot/stages', route => reply(route, {
+          success: true,
+          data: [
+            { stageId: 'main_01-07', code: '1-7', name: '暴君', category: '主题曲', zone: '第一章 黑暗时代·下' },
+          ],
+        }))
+        await page.route('**/api/agent/data/operbox', route => reply(route, { success: true, data: null }))
       } else if (scenario === 'log-append') {
         await page.route('**/api/agent/logs/recent?lines=200', route => reply(route, { success: true, data: append ? APPENDED_LOGS : INITIAL_LOGS }))
       } else {
@@ -327,7 +334,8 @@ for (const scenario of SCENARIOS) {
       } else if (scenario === 'automation-keyboard') {
         await page.getByRole('button', { name: '调整启动游戏顺序，当前第 1 位', exact: true }).scrollIntoViewIfNeeded()
       } else if (scenario === 'copilot-search') {
-        await page.getByLabel('搜索关卡作业', { exact: true }).scrollIntoViewIfNeeded()
+        await page.getByRole('button', { name: '发现', exact: true }).click()
+        await page.getByLabel('搜索作业关键词', { exact: true }).scrollIntoViewIfNeeded()
       } else if (scenario === 'training-reorder') {
         await page.getByRole('button', { name: '下移艾雅法拉', exact: true }).scrollIntoViewIfNeeded()
       }
@@ -356,8 +364,8 @@ for (const scenario of SCENARIOS) {
         } else if (scenario === 'automation-keyboard') {
           await page.getByRole('button', { name: '调整启动游戏顺序，当前第 1 位', exact: true }).press('ArrowDown')
         } else if (scenario === 'copilot-search') {
-          await page.getByLabel('搜索关卡作业', { exact: true }).fill('1-7')
-          await page.getByLabel('搜索关卡作业', { exact: true }).press('Enter')
+          await page.getByLabel('搜索作业关键词', { exact: true }).fill('1-7')
+          await page.getByLabel('搜索作业关键词', { exact: true }).press('Enter')
           await expect(page.getByText('性能基线作业 5', { exact: true })).toBeVisible()
           await expect(page.getByRole('button').filter({ hasText: /性能基线作业 [1-5]/ })).toHaveCount(5)
           await expect(page.getByRole('button', { name: '搜索', exact: true })).toBeEnabled()
@@ -387,7 +395,8 @@ for (const scenario of SCENARIOS) {
       const requests = api.since(start)
       expect(requests.every(request => request.status === 200 && !request.failure)).toBe(true)
       if (scenario === 'copilot-search') {
-        expect(requests.filter(request => request.path === '/api/agent/copilot/search?stage=1-7')).toHaveLength(1)
+        expect(requests.filter(request => request.path.startsWith('/api/agent/copilot/search?')
+          && request.path.includes('document=1-7'))).toHaveLength(1)
         expect(requests.filter(request => /\/agent\/(copilots|copilot-sets)\//.test(request.path))).toEqual([])
       }
       if (scenario === 'log-append') expect(requests.filter(request => request.path === '/api/agent/logs/recent?lines=200')).toHaveLength(1)

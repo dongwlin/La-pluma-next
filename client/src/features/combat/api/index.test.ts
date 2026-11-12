@@ -1,17 +1,30 @@
 // @vitest-environment jsdom
 
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import type { CopilotSearchRequest } from '../model/copilotDiscovery'
 import {
   continueCopilotQueue,
   executeCopilotQueue,
   getCopilotInfo,
   getCopilotSet,
   getCopilotSetPlan,
+  getCopilotStages,
   searchCopilot,
   searchParadoxCopilot,
   skipCopilotQueueEntry,
   uploadCopilotFile,
 } from './index'
+
+const searchRequest = (overrides: Partial<CopilotSearchRequest> = {}): CopilotSearchRequest => ({
+  keyword: '1-7',
+  level: '',
+  includedOperators: [],
+  excludedOperators: [],
+  orderBy: 'hot',
+  page: 1,
+  limit: 30,
+  ...overrides,
+})
 
 const jsonResponse = (body: unknown, status = 200) => new Response(JSON.stringify(body), {
   status,
@@ -36,12 +49,86 @@ describe('combat resource reads', () => {
     }))
     const controller = new AbortController()
 
-    const result = await searchCopilot('1-7', controller.signal)
+    const result = await searchCopilot(searchRequest(), controller.signal)
 
-    expect(fetchCall().input).toBe('http://localhost:3000/api/agent/copilot/search?stage=1-7')
+    expect(fetchCall().input)
+      .toBe('http://localhost:3000/api/agent/copilot/search?document=1-7&level=&orderBy=hot&page=1&limit=30')
     expect(fetchCall().init.signal).toBe(controller.signal)
     expect(result.success).toBe(true)
     expect(result.data?.copilots).toHaveLength(1)
+  })
+
+  it('sends the level filter, combined operator filter and paging', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(jsonResponse({
+      success: true,
+      data: { stage: '1-7', copilots: [] },
+    }))
+
+    await searchCopilot(searchRequest({
+      keyword: '1-7',
+      level: 'main_01-07',
+      includedOperators: ['阿米娅', '凯尔希'],
+      excludedOperators: ['桃金娘'],
+      orderBy: 'latest',
+      page: 2,
+      limit: 30,
+    }))
+
+    const url = new URL(String(fetchCall().input))
+    expect(url.pathname).toBe('/api/agent/copilot/search')
+    expect(url.searchParams.get('document')).toBe('1-7')
+    expect(url.searchParams.get('level')).toBe('main_01-07')
+    expect(url.searchParams.getAll('operator')).toEqual(['阿米娅,凯尔希,~桃金娘'])
+    expect(url.searchParams.get('orderBy')).toBe('latest')
+    expect(url.searchParams.get('page')).toBe('2')
+    expect(url.searchParams.get('limit')).toBe('30')
+  })
+
+  it('omits the operator parameter when both sets are empty', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(jsonResponse({
+      success: true,
+      data: { stage: '', copilots: [] },
+    }))
+
+    await searchCopilot(searchRequest({ keyword: '', level: '' }))
+
+    const url = new URL(String(fetchCall().input))
+    expect(url.searchParams.has('operator')).toBe(false)
+    expect(url.searchParams.get('document')).toBe('')
+    expect(url.searchParams.get('level')).toBe('')
+  })
+
+  it('reads the stage catalog array and forwards its signal', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(jsonResponse({
+      success: true,
+      data: [{ stageId: 'main_01-07', code: '1-7', name: '风暴瞭望', category: '主线', zone: '切尔诺伯格' }],
+    }))
+    const controller = new AbortController()
+
+    const result = await getCopilotStages(controller.signal)
+
+    expect(fetchCall().input).toBe('http://localhost:3000/api/agent/copilot/stages')
+    expect(fetchCall().init.signal).toBe(controller.signal)
+    expect(result.success).toBe(true)
+    expect(result.data).toEqual([
+      { stageId: 'main_01-07', code: '1-7', name: '风暴瞭望', category: '主线', zone: '切尔诺伯格' },
+    ])
+  })
+
+  it('rejects a stage catalog that is not an array', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(jsonResponse({
+      success: true,
+      data: { stages: [] },
+    }))
+
+    const result = await getCopilotStages()
+
+    expect(result.success).toBe(false)
+    expect(result.errorInfo).toMatchObject({
+      code: 'INVALID_DOMAIN_PAYLOAD',
+      kind: 'contract',
+      message: '关卡目录响应格式不正确',
+    })
   })
 
   it('turns a malformed search payload into a domain failure', async () => {
@@ -115,7 +202,7 @@ describe('combat resource reads', () => {
       error: { code: 'AGENT_COPILOT_NOT_FOUND', retryable: false },
     }, 404))
 
-    const result = await searchCopilot('1-7')
+    const result = await searchCopilot(searchRequest())
 
     expect(result.success).toBe(false)
     expect(result.errorInfo).toMatchObject({

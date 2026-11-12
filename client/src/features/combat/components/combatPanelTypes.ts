@@ -14,7 +14,9 @@ import type { CopilotQueueEntry, CopilotQueueMoveDirection } from '../model/copi
 import type { CopilotQueueFailurePolicy } from '../api'
 import type { PanelStateStore } from '../model/panelState'
 import type {
+  CopilotMatchMode,
   CopilotRaid,
+  CopilotSearchOrder,
   CopilotSearchResult,
   CopilotSetExecutionMode,
   CopilotSetInfo,
@@ -22,6 +24,8 @@ import type {
   FormationMode,
   ParadoxSearchResult,
 } from '../types'
+import type { CopilotSearchRequest } from '../model/copilotDiscovery'
+import type { OperatorFilterOption, OperatorSelection } from '../model/operatorFilter'
 
 export interface CombatExecutionActions {
   automationAvailable: boolean
@@ -63,6 +67,7 @@ export interface CombatCopilotPreviewProjection {
 export type CombatCopilotDetailSelection = { type: 'preview' } | { type: 'queue'; id: string }
 
 export const COPILOT_DETAIL_LAYER_ID = 'combat-copilot-detail-panel'
+export const COPILOT_DISCOVERY_DIALOG_ID = 'combat-copilot-discovery-dialog'
 
 export interface CombatCopilotFileImportProjection {
   isImporting: boolean
@@ -102,21 +107,42 @@ export interface CombatCopilotQueueProjection {
   onRetryFailed: () => void
 }
 
+export type CombatCopilotDiscoveryView = 'grid' | 'list'
+
+export interface CombatCopilotMatchSettings {
+  enabled: boolean
+  modes: readonly CopilotMatchMode[]
+}
+
 export interface CombatCopilotSearchProjection {
-  stageStore: PanelStateStore<string>
+  isOpen: boolean
+  onOpen: () => void
+  onClose: () => void
+  keywordStore: PanelStateStore<string>
+  levelStore: PanelStateStore<string>
+  operatorStore: PanelStateStore<OperatorSelection>
+  operatorFilterEnabledStore: PanelStateStore<boolean>
+  operatorFilterRememberStore: PanelStateStore<boolean>
+  orderStore: PanelStateStore<CopilotSearchOrder>
+  matchStore: PanelStateStore<CombatCopilotMatchSettings>
+  viewStore: PanelStateStore<CombatCopilotDiscoveryView>
   selectionStore: PanelStateStore<string>
+  stages: readonly CopilotStageCandidate[]
+  stagesLoading: boolean
+  stagesError: string | null
+  operators: readonly OperatorFilterOption[]
+  operatorsLoading: boolean
+  operatorsError: string | null
+  ownedOperatorNames: ReadonlySet<string>
   result: CopilotSearchResult | null
   searching: boolean
+  refreshing: boolean
   addingUri: string | null
-  /** 一个代号对应多个关卡时由调用方选择。 */
-  candidates: readonly CopilotStageCandidate[]
-  /** 当前结果对应的已选关卡；普通搜索为 null。 */
-  activeStage: CopilotStageCandidate | null
-  onSearch: (term: string) => void
+  onSearch: (request: CopilotSearchRequest) => void
   onCancel: () => void
-  onSelectStage: (candidate: CopilotStageCandidate) => void
   onSelectUri: (uri: string) => void
   onAddToQueue: (uri: string) => void
+  onRetryData: () => void
 }
 
 export interface CombatParadoxSearchProjection {

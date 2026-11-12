@@ -7,7 +7,7 @@ import {
   type ReactNode,
 } from 'react'
 import { createPortal } from 'react-dom'
-import { Button, IconButton } from '@/shared/ui'
+import { Button, IconButton, useModalLayer } from '@/shared/ui'
 import { Modal } from '@/shared/ui/Modal'
 import { useStatusStore } from '@/features/runtime-status'
 import type { CopilotDetailOperator, CopilotDetailTarget } from '../model/copilotDetail'
@@ -20,6 +20,7 @@ const MOBILE_DETAIL_QUERY = '(max-width: 40rem)'
 export interface CombatCopilotDetailLayerProps {
   target: CopilotDetailTarget | null
   onClose: () => void
+  stacked?: boolean
   children?: ReactNode
 }
 
@@ -194,14 +195,22 @@ function DetailBody({ target, children }: { target: CopilotDetailTarget; childre
   )
 }
 
-export default function CombatCopilotDetailLayer({ target, onClose, children }: CombatCopilotDetailLayerProps) {
+export default function CombatCopilotDetailLayer({
+  target,
+  onClose,
+  stacked = false,
+  children,
+}: CombatCopilotDetailLayerProps) {
   const isMobile = useMobileDetailLayout()
   const generatedId = useId().replace(/:/g, '')
   const titleId = `combat-copilot-detail-title-${generatedId}`
   const panelRef = useRef<HTMLElement>(null)
+  const layerRef = useRef<HTMLDivElement>(null)
   const onCloseRef = useRef(onClose)
 
   const isOpen = target !== null
+
+  useModalLayer(layerRef, stacked && isOpen && !isMobile)
 
   useEffect(() => {
     onCloseRef.current = onClose
@@ -259,7 +268,7 @@ export default function CombatCopilotDetailLayer({ target, onClose, children }: 
   if (!target || typeof document === 'undefined') return null
 
   return createPortal(
-    <div className="combat-copilot-detail-layer">
+    <div ref={layerRef} className="combat-copilot-detail-layer">
       <aside
         ref={panelRef}
         id={COPILOT_DETAIL_LAYER_ID}

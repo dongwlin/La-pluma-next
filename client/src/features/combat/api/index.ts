@@ -10,9 +10,12 @@ import {
 } from '@/shared/api'
 import type { AgentRequestOptions } from '@/features/task-execution'
 import type { CopilotDifficulty, CopilotRaid } from '../types'
+import type { CopilotSearchRequest } from '../model/copilotDiscovery'
 
 const isCopilotSearchPayload = (payload: unknown): boolean =>
   isRecord(payload) && Array.isArray(payload.copilots)
+
+const isCopilotStageCatalogPayload = (payload: unknown): boolean => Array.isArray(payload)
 
 const isCopilotProxyPayload = (payload: unknown): boolean => isRecord(payload)
 
@@ -57,11 +60,36 @@ export async function uploadCopilotFile(
   })
 }
 
-export async function searchCopilot(stageName: string, signal?: AbortSignal): Promise<ApiResponse> {
-  return readApiResponse(`${API_BASE_URL}/agent/copilot/search?stage=${encodeURIComponent(stageName)}`, {
+const copilotSearchQuery = (request: CopilotSearchRequest): string => {
+  const params = new URLSearchParams({ document: request.keyword, level: request.level })
+  const operators = [
+    ...request.includedOperators,
+    ...request.excludedOperators.map(operator => `~${operator}`),
+  ]
+  if (operators.length) params.set('operator', operators.join(','))
+  params.set('orderBy', request.orderBy)
+  params.set('page', String(request.page))
+  params.set('limit', String(request.limit))
+  return params.toString()
+}
+
+export async function searchCopilot(
+  request: CopilotSearchRequest,
+  signal?: AbortSignal,
+): Promise<ApiResponse> {
+  const query = copilotSearchQuery(request)
+  return readApiResponse(`${API_BASE_URL}/agent/copilot/search?${query}`, {
     signal,
     validate: isCopilotSearchPayload,
     invalidPayloadMessage: '作业搜索结果格式不正确',
+  })
+}
+
+export async function getCopilotStages(signal?: AbortSignal): Promise<ApiResponse> {
+  return readApiResponse(`${API_BASE_URL}/agent/copilot/stages`, {
+    signal,
+    validate: isCopilotStageCatalogPayload,
+    invalidPayloadMessage: '关卡目录响应格式不正确',
   })
 }
 

@@ -4,6 +4,7 @@ import {
   getCopilotInfo,
   getCopilotSet,
   getCopilotSetPlan,
+  getCopilotStages,
   searchCopilot,
   searchParadoxCopilot,
 } from '../api'
@@ -11,13 +12,16 @@ import type {
   CopilotRaid,
   CopilotSearchResult,
   CopilotSetItem,
+  CopilotStageCandidate,
   ParadoxSearchResult,
 } from '../types'
+import { normalizeCopilotSearchRequest, type CopilotSearchRequest } from './copilotDiscovery'
 import {
   readCopilotInfoPayload,
   readCopilotPlanPayload,
   readCopilotSearchResult,
   readCopilotSetPayload,
+  readCopilotStageCatalog,
   readParadoxSearchResult,
   type CopilotInfoPayload,
   type CopilotPlanPayload,
@@ -41,13 +45,37 @@ const invalidPayloadError = (message: string): ApiRequestError => new ApiRequest
   retryable: false,
 })
 
-export const copilotSearchQueryOptions = (stage: string) => queryOptions({
-  queryKey: combatKeys.query('copilot-search', stage),
-  queryFn: async ({ signal }): Promise<CopilotSearchResult> => {
-    const payload = unwrapApiResponse(await searchCopilot(stage, signal))
-    const result = readCopilotSearchResult(payload)
-    if (!result) throw invalidPayloadError('作业搜索结果格式不正确')
-    return result
+const COPILOT_STAGE_CATALOG_STALE_TIME_MS = 30 * 60 * 1000
+
+export const copilotSearchQueryOptions = (request: CopilotSearchRequest) => {
+  const normalized = normalizeCopilotSearchRequest(request)
+  return queryOptions({
+    queryKey: combatKeys.query(
+      'copilot-search',
+      normalized.keyword,
+      normalized.level,
+      [...normalized.includedOperators],
+      [...normalized.excludedOperators],
+      normalized.orderBy,
+      normalized.page,
+      normalized.limit,
+    ),
+    queryFn: async ({ signal }): Promise<CopilotSearchResult> => {
+      const payload = unwrapApiResponse(await searchCopilot(normalized, signal))
+      const result = readCopilotSearchResult(payload)
+      if (!result) throw invalidPayloadError('作业搜索结果格式不正确')
+      return result
+    },
+  })
+}
+
+export const copilotStageCatalogQueryOptions = () => queryOptions({
+  queryKey: combatKeys.resource('copilot-stages'),
+  staleTime: COPILOT_STAGE_CATALOG_STALE_TIME_MS,
+  queryFn: async ({ signal }): Promise<CopilotStageCandidate[]> => {
+    const stages = readCopilotStageCatalog(unwrapApiResponse(await getCopilotStages(signal)))
+    if (!stages) throw invalidPayloadError('关卡目录响应格式不正确')
+    return stages
   },
 })
 

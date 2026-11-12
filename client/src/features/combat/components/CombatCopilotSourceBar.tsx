@@ -2,7 +2,7 @@ import { usePanelState } from '../hooks/usePanelState'
 import type { CopilotPreviewMode } from '../model/copilotPreview'
 import type { PanelStateStore } from '../model/panelState'
 import CombatCopilotInputPanel from './CombatCopilotInputPanel'
-import CombatSearchPanel from './CombatSearchPanel'
+import CombatCopilotDiscoveryDialog from './CombatCopilotDiscoveryDialog'
 import type {
   CombatCopilotFileImportProjection,
   CombatCopilotSearchProjection,
@@ -52,9 +52,10 @@ export default function CombatCopilotSourceBar({
         onPreviewModeChange={handlePreviewModeChange}
         onPreview={onPreview}
         onAddToQueue={onAddToQueue}
+        onOpenDiscovery={search.onOpen}
       />
 
-      <CombatSearchPanel {...search} />
+      <CombatCopilotDiscoveryDialog search={search} />
     </section>
   )
 }

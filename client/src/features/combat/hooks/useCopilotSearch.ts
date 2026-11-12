@@ -1,12 +1,13 @@
-// 显式搜索使用 `staleTime: 0`，同一搜索词再次提交也会重新读取；返回的 outcome
-// 带请求代次，被取消或被新搜索取代的 Promise 返回 `cancelled`。Activity 隐藏/卸载
-// 只取消在途搜索、不自动重放，已成功的结果仍留在 Query 缓存。
+// 作业搜索分两类 Query：默认请求在挂载时预取并按 5 分钟新鲜度复用，显式搜索使用
+// `staleTime: 0` 且每次重新读取。显式搜索返回的 outcome 带请求代次，被取消或被新
+// 搜索取代的 Promise 返回 `cancelled`；Activity 隐藏/卸载只取消在途显式搜索、不自动
+// 重放，默认缓存与已成功结果保留。`reset` 只清显式检索状态，不删除默认查询缓存。
 
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useQuery, useQueryClient, type UseQueryResult } from '@tanstack/react-query'
 import { ApiRequestError, isAbortError, type ApiFailureKind } from '@/shared/api'
 import type { CopilotSearchResult, ParadoxSearchResult } from '../types'
-import { combatKeys } from '../model/queryKeys'
+import type { CopilotSearchRequest } from '../model/copilotDiscovery'
 import {
   copilotSearchQueryOptions,
   paradoxSearchQueryOptions,
@@ -23,21 +24,29 @@ export type CopilotSearchOutcome<T> =
     }
   | { readonly status: 'cancelled' }
 
-export interface UseCopilotSearchResult<T> {
-  readonly result: T | null
+export interface UseCopilotSearchResult<TInput, TResult> {
+  readonly result: TResult | null
+  /** 显式搜索是否在途；默认查询的后台刷新不计入。 */
   readonly searching: boolean
+  /** 默认查询是否在读取；仅用于无缓存首次加载的占位。 */
+  readonly refreshing: boolean
   /** 提交一次搜索；返回本次代次是否仍当前以及成功/失败结论。 */
-  readonly search: (term: string) => Promise<CopilotSearchOutcome<T>>
-  /** 输入变化或页面隐藏时取消在途搜索；保留上次成功结果。 */
+  readonly search: (input: TInput) => Promise<CopilotSearchOutcome<TResult>>
+  /** 更新默认请求并在后台刷新；失败静默保留旧缓存。 */
+  readonly refreshDefault: (next: TInput) => void
+  /** 取消在途显式搜索；保留默认查询与上次成功结果。 */
   readonly cancel: () => void
+  /** 清空显式检索状态；保留默认查询缓存。 */
+  readonly reset: () => void
 }
 
-type SearchKind = 'copilot' | 'paradox'
-
-const SEARCH_RESOURCE: Record<SearchKind, 'copilot-search' | 'paradox-search'> = {
-  copilot: 'copilot-search',
-  paradox: 'paradox-search',
+interface CombatSearchSpec<TInput> {
+  readonly placeholder: TInput
+  readonly toOptions: (input: TInput) => Record<string, unknown>
+  readonly initialDefaultRequest?: TInput
 }
+
+const DEFAULT_STALE_TIME_MS = 5 * 60_000
 
 function describeSearchFailure(
   error: unknown,
@@ -54,41 +63,71 @@ function describeSearchFailure(
   return { message: '搜索失败', kind: 'unknown', code: 'UNKNOWN' }
 }
 
-function useCombatSearch<T>(kind: SearchKind): UseCopilotSearchResult<T> {
+function useCombatSearch<TInput, TResult>(
+  spec: CombatSearchSpec<TInput>,
+): UseCopilotSearchResult<TInput, TResult> {
+  const { placeholder, toOptions, initialDefaultRequest } = spec
   const client = useQueryClient()
-  const [term, setTerm] = useState<string | null>(null)
+  const [input, setInput] = useState<TInput | null>(null)
+  const [defaultRequest, setDefaultRequest] = useState<TInput | null>(initialDefaultRequest ?? null)
   const [pending, setPending] = useState(false)
   const generation = useRef(0)
+  const explicitKey = useRef<readonly unknown[] | null>(null)
+
+  const defaultQuery = useQuery({
+    ...toOptions(defaultRequest ?? placeholder),
+    enabled: initialDefaultRequest !== undefined,
+    staleTime: DEFAULT_STALE_TIME_MS,
+  } as never) as UseQueryResult<TResult>
 
   const query = useQuery({
-    ...(kind === 'copilot'
-      ? copilotSearchQueryOptions(term ?? '')
-      : paradoxSearchQueryOptions(term ?? '')),
-    enabled: term !== null,
-  } as never) as UseQueryResult<T>
+    ...toOptions(input ?? defaultRequest ?? placeholder),
+    enabled: input !== null,
+  } as never) as UseQueryResult<TResult>
 
   const cancel = useCallback(() => {
     generation.current += 1
     setPending(false)
-    void client.cancelQueries({ queryKey: combatKeys.resource(SEARCH_RESOURCE[kind]) })
-  }, [client, kind])
+    if (explicitKey.current) {
+      void client.cancelQueries({ queryKey: explicitKey.current, exact: true })
+    }
+  }, [client])
 
-  // Activity 隐藏与真正卸载都会走清理；不触发新搜索。
+  const reset = useCallback(() => {
+    generation.current += 1
+    setPending(false)
+    setInput(null)
+    if (explicitKey.current) {
+      void client.cancelQueries({ queryKey: explicitKey.current, exact: true })
+      explicitKey.current = null
+    }
+  }, [client])
+
+  // Activity 隐藏与真正卸载都会走清理；只取消显式搜索，不打断默认预取。
   useEffect(() => cancel, [cancel])
 
-  const search = useCallback(async (next: string): Promise<CopilotSearchOutcome<T>> => {
-    const trimmed = next.trim()
-    if (!trimmed) return { status: 'cancelled' }
+  const refreshDefault = useCallback((next: TInput) => {
+    setDefaultRequest(next)
+    void client.fetchQuery({
+      ...toOptions(next),
+      staleTime: 0,
+    } as never).catch(() => {
+      // 后台刷新失败时保留旧缓存，错误不进入显式搜索状态。
+    })
+  }, [client, toOptions])
 
+  const search = useCallback(async (next: TInput): Promise<CopilotSearchOutcome<TResult>> => {
     const requestId = ++generation.current
-    setTerm(trimmed)
+    const options = toOptions(next) as { queryKey: readonly unknown[] }
+    explicitKey.current = options.queryKey
+    setInput(next)
     setPending(true)
     try {
-      const options = kind === 'copilot'
-        ? copilotSearchQueryOptions(trimmed)
-        : paradoxSearchQueryOptions(trimmed)
       // 显式搜索总是重新读取；被取消或取代的 Promise 由代次裁决。
-      const result = await client.fetchQuery({ ...options, staleTime: 0 } as never) as T
+      const result = await client.fetchQuery({
+        ...options,
+        staleTime: 0,
+      } as never) as TResult
       if (generation.current !== requestId) return { status: 'cancelled' }
       return { status: 'success', result }
     } catch (error) {
@@ -99,20 +138,42 @@ function useCombatSearch<T>(kind: SearchKind): UseCopilotSearchResult<T> {
     } finally {
       if (generation.current === requestId) setPending(false)
     }
-  }, [client, kind])
+  }, [client, toOptions])
 
   return {
-    result: (query.data ?? null) as T | null,
+    result: query.data ?? defaultQuery.data ?? null,
     searching: pending,
+    refreshing: defaultQuery.isFetching,
     search,
+    refreshDefault,
     cancel,
+    reset,
   }
 }
 
-export function useCopilotSearch(): UseCopilotSearchResult<CopilotSearchResult> {
-  return useCombatSearch<CopilotSearchResult>('copilot')
+export function useCopilotSearch(
+  initialDefaultRequest: CopilotSearchRequest,
+): UseCopilotSearchResult<CopilotSearchRequest, CopilotSearchResult> {
+  return useCombatSearch<CopilotSearchRequest, CopilotSearchResult>({
+    placeholder: initialDefaultRequest,
+    toOptions: copilotSearchQueryOptions,
+    initialDefaultRequest,
+  })
 }
 
-export function useParadoxSearch(): UseCopilotSearchResult<ParadoxSearchResult> {
-  return useCombatSearch<ParadoxSearchResult>('paradox')
+export function useParadoxSearch(): UseCopilotSearchResult<string, ParadoxSearchResult> {
+  const searchRun = useCombatSearch<string, ParadoxSearchResult>({
+    placeholder: '',
+    toOptions: paradoxSearchQueryOptions,
+  })
+  const { search } = searchRun
+  const searchByOperator = useCallback(
+    async (name: string): Promise<CopilotSearchOutcome<ParadoxSearchResult>> => {
+      const trimmed = name.trim()
+      if (!trimmed) return { status: 'cancelled' }
+      return search(trimmed)
+    },
+    [search],
+  )
+  return { ...searchRun, search: searchByOperator }
 }

@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { useQueryClient } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { getErrorMessage } from '@/shared/api'
 import { Button, ConfirmDialog } from '@/shared/ui'
 import { useAutomationAvailability, useStatusStore } from '@/features/runtime-status'
 import { DeviceMonitorPanel } from '@/features/device-mirror'
 import { isTerminalRunState } from '@/features/task-execution'
+import { operBoxQueryOptions } from '@/features/game-data'
 import { useUserConfig } from '@/features/user-config'
 import { resetCopilotSetProgress as resetCopilotSetProgressRequest, uploadCopilotFile } from '../api'
 import { useCombatExecution } from '../hooks/useCombatExecution'
@@ -42,19 +43,34 @@ import {
 } from '../model/copilotQueue'
 import { getCopilotQueueRetryModes } from '../model/copilotQueueRun'
 import { collectCopilotItemErrors } from '../model/copilotDetail'
-import { readCopilotStageCandidates } from '../model/copilotPayload'
+import {
+  DEFAULT_COPILOT_MATCH_MODES,
+  normalizeCopilotSearchRequest,
+  type CopilotSearchRequest,
+} from '../model/copilotDiscovery'
+import {
+  readCopilotDiscoveryViewPreference,
+  readCopilotMatchPreference,
+  readCopilotOperatorFilterPreference,
+} from '../model/copilotDiscoveryPreferences'
+import type { OperatorSelection } from '../model/operatorFilter'
+import { buildOperatorFilterOptions } from '../model/operatorFilter'
 import { deriveCopilotSetView } from '../model/copilotSetView'
 import { deriveExecutionProgress } from '../model/executionProgress'
 import { createPanelStateStore } from '../model/panelState'
-import { invalidateCopilotSetPlan, loadCopilotPreview as loadCopilotPreviewData } from '../model/queries'
+import {
+  copilotStageCatalogQueryOptions,
+  invalidateCopilotSetPlan,
+  loadCopilotPreview as loadCopilotPreviewData,
+} from '../model/queries'
 import { normalizeCopilotInput, parseCopilotUri, splitCopilotInputToArgs } from '../utils/copilotUri'
 import type {
   CombatMode,
   CombatTask,
   CopilotRaid,
+  CopilotSearchOrder,
   CopilotSetExecutionMode,
   CopilotSetInfo,
-  CopilotStageCandidate,
   FormationMode,
 } from '../types'
 import CombatCopilotTaskPanel from './CombatCopilotTaskPanel'
@@ -65,8 +81,10 @@ import { getCombatTask } from './CombatTaskCatalog'
 import type {
   CombatCopilotConfig,
   CombatCopilotDetailSelection,
+  CombatCopilotDiscoveryView,
   CombatCopilotExecutionActions,
   CombatCopilotFileImportProjection,
+  CombatCopilotMatchSettings,
   CombatCopilotQueueProjection,
   CombatCopilotSearchProjection,
   CombatCopilotSelectionProjection,
@@ -128,12 +146,47 @@ export default function CombatWorkspace() {
     cancel: cancelCopilotPreview,
     clear: clearPreviewData,
   } = useCopilotPreview()
+  // 面板局部输入由工作区创建、面板订阅；工作区不订阅，因此输入不推动大列表渲染。
+  const [panelStores] = useState(() => {
+    const operatorPreference = readCopilotOperatorFilterPreference()
+    const matchPreference = readCopilotMatchPreference()
+    const viewPreference = readCopilotDiscoveryViewPreference()
+    return {
+      copilotPreviewMode: createPanelStateStore<CopilotPreviewMode>('auto'),
+      copilotSearchKeyword: createPanelStateStore(''),
+      copilotSearchLevel: createPanelStateStore(''),
+      copilotSearchOperators: createPanelStateStore<OperatorSelection>(
+        operatorPreference?.selection ?? { included: [], excluded: [] },
+      ),
+      copilotSearchOperatorsEnabled: createPanelStateStore<boolean>(operatorPreference?.enabled ?? true),
+      copilotSearchOperatorsRemember: createPanelStateStore<boolean>(operatorPreference?.remember ?? true),
+      copilotSearchOrder: createPanelStateStore<CopilotSearchOrder>('hot'),
+      copilotSearchMatch: createPanelStateStore<CombatCopilotMatchSettings>({
+        enabled: matchPreference?.enabled ?? false,
+        modes: matchPreference?.modes ?? [...DEFAULT_COPILOT_MATCH_MODES],
+      }),
+      copilotSearchView: createPanelStateStore<CombatCopilotDiscoveryView>(viewPreference ?? 'grid'),
+      copilotSearchSelection: createPanelStateStore(''),
+      paradoxSearchName: createPanelStateStore(''),
+    }
+  })
+  const buildCopilotSearchRequest = useCallback(() => {
+    const operatorSelection = panelStores.copilotSearchOperators.get()
+    const operatorFilterEnabled = panelStores.copilotSearchOperatorsEnabled.get()
+    return normalizeCopilotSearchRequest({
+      includedOperators: operatorFilterEnabled ? operatorSelection.included : [],
+      excludedOperators: operatorFilterEnabled ? operatorSelection.excluded : [],
+    })
+  }, [panelStores])
   const {
     result: copilotSearchResult,
     searching: isSearchingCopilot,
+    refreshing: isRefreshingCopilot,
     search: searchCopilotJobs,
+    refreshDefault: refreshCopilotSearchDefault,
     cancel: cancelCopilotSearch,
-  } = useCopilotSearch()
+    reset: resetCopilotSearch,
+  } = useCopilotSearch(buildCopilotSearchRequest())
   const {
     result: paradoxSearchResult,
     searching: isSearchingParadox,
@@ -159,15 +212,34 @@ export default function CombatWorkspace() {
   const reconciledRunRef = useRef<string | null>(null)
   // 用户重置进度后，旧 run 的逐项结果不再属于当前预览。
   const [dismissedRunId, setDismissedRunId] = useState<string | null>(null)
-  // 面板局部输入由工作区创建、面板订阅；工作区不订阅，因此输入不推动大列表渲染。
-  const [panelStores] = useState(() => ({
-    copilotPreviewMode: createPanelStateStore<CopilotPreviewMode>('auto'),
-    copilotSearchStage: createPanelStateStore(''),
-    copilotSearchSelection: createPanelStateStore(''),
-    paradoxSearchName: createPanelStateStore(''),
-  }))
-  const [stageCandidates, setStageCandidates] = useState<readonly CopilotStageCandidate[]>([])
-  const [activeStage, setActiveStage] = useState<CopilotStageCandidate | null>(null)
+  const [isDiscoveryOpen, setIsDiscoveryOpen] = useState(false)
+  const stagesQuery = useQuery({
+    ...copilotStageCatalogQueryOptions(),
+    enabled: isDiscoveryOpen,
+  })
+  const operBoxQuery = useQuery({
+    ...operBoxQueryOptions(),
+    enabled: isDiscoveryOpen,
+  })
+  const operatorOptions = useMemo(
+    () => buildOperatorFilterOptions(operBoxQuery.data ?? null),
+    [operBoxQuery.data],
+  )
+  const ownedOperatorNames = useMemo(
+    () => new Set(operatorOptions.filter(operator => operator.owned).map(operator => operator.name)),
+    [operatorOptions],
+  )
+  const stages = stagesQuery.data ?? []
+  const stagesError = stagesQuery.isError
+    ? (stagesQuery.error instanceof Error && stagesQuery.error.message
+        ? stagesQuery.error.message
+        : '关卡目录加载失败')
+    : null
+  const operatorsError = operBoxQuery.isError
+    ? (operBoxQuery.error instanceof Error && operBoxQuery.error.message
+        ? operBoxQuery.error.message
+        : '干员列表加载失败')
+    : null
 
   useEffect(() => () => queueAddControllerRef.current?.abort(), [])
 
@@ -766,60 +838,30 @@ export default function CombatWorkspace() {
     }
   }
 
-  const runCopilotSearch = async (term: string) => {
-    if (isSearchingCopilot) return
-    if (!term.trim()) {
-      setStatusMessage('请输入关卡名称')
-      return
-    }
-
-    setStageCandidates(current => (current.length ? [] : current))
-    setStatusMessage('正在搜索作业...')
-    const outcome = await searchCopilotJobs(term)
+  const handleCopilotSearch = async (request: CopilotSearchRequest) => {
+    const outcome = await searchCopilotJobs(request)
     if (outcome.status === 'cancelled') return
-
     if (outcome.status === 'failed') {
-      if (outcome.code === 'AGENT_COPILOT_STAGE_AMBIGUOUS') {
-        const candidates = readCopilotStageCandidates(outcome.details)
-        setActiveStage(null)
-        setStageCandidates(candidates)
-        setStatusMessage(candidates.length ? '该代号对应多个关卡，请选择具体关卡' : outcome.message)
-        return
-      }
       setStatusMessage(
         outcome.kind === 'transport' || outcome.kind === 'unknown'
           ? `搜索失败: ${outcome.message}`
           : outcome.message,
       )
-      return
     }
-
-    const { result } = outcome
-    if (!result.copilots.length) {
-      setStatusMessage('未找到作业')
-      return
-    }
-
-    setStatusMessage(`找到 ${result.copilots.length} 个作业`)
   }
 
-  const handleSearchCopilot = async (term: string) => {
-    setActiveStage(null)
-    await runCopilotSearch(term)
+  const handleOpenDiscovery = () => {
+    panelStores.copilotSearchKeyword.set('')
+    panelStores.copilotSearchLevel.set('')
+    panelStores.copilotSearchOrder.set('hot')
+    setIsDiscoveryOpen(true)
+    refreshCopilotSearchDefault(buildCopilotSearchRequest())
   }
 
-  const handleSelectStage = async (candidate: CopilotStageCandidate) => {
-    panelStores.copilotSearchStage.set(candidate.code)
-    setStageCandidates([])
-    setActiveStage(candidate)
-    await runCopilotSearch(candidate.stageId)
-  }
-
-  // 输入变化会在每次按键时触发取消；没有待清理内容时不制造新的渲染。
-  const handleCancelCopilotSearch = () => {
-    setStageCandidates(current => (current.length ? [] : current))
-    setActiveStage(current => (current === null ? current : null))
+  const handleCloseDiscovery = () => {
+    setIsDiscoveryOpen(false)
     cancelCopilotSearch()
+    resetCopilotSearch()
   }
 
   const applyParadoxUri = (uri: string) => {
@@ -855,18 +897,37 @@ export default function CombatWorkspace() {
   }
 
   const copilotSearch: CombatCopilotSearchProjection = {
-    stageStore: panelStores.copilotSearchStage,
+    isOpen: isDiscoveryOpen,
+    onOpen: handleOpenDiscovery,
+    onClose: handleCloseDiscovery,
+    keywordStore: panelStores.copilotSearchKeyword,
+    levelStore: panelStores.copilotSearchLevel,
+    operatorStore: panelStores.copilotSearchOperators,
+    operatorFilterEnabledStore: panelStores.copilotSearchOperatorsEnabled,
+    operatorFilterRememberStore: panelStores.copilotSearchOperatorsRemember,
+    orderStore: panelStores.copilotSearchOrder,
+    matchStore: panelStores.copilotSearchMatch,
+    viewStore: panelStores.copilotSearchView,
     selectionStore: panelStores.copilotSearchSelection,
+    stages,
+    stagesLoading: stagesQuery.isPending,
+    stagesError,
+    operators: operatorOptions,
+    operatorsLoading: operBoxQuery.isPending,
+    operatorsError,
+    ownedOperatorNames,
     result: copilotSearchResult,
     searching: isSearchingCopilot,
+    refreshing: isRefreshingCopilot,
     addingUri: addingQueueUri,
-    candidates: stageCandidates,
-    activeStage,
-    onSearch: term => void handleSearchCopilot(term),
-    onCancel: handleCancelCopilotSearch,
-    onSelectStage: candidate => void handleSelectStage(candidate),
+    onSearch: request => void handleCopilotSearch(request),
+    onCancel: cancelCopilotSearch,
     onSelectUri: uri => void applyCopilotUri(uri),
     onAddToQueue: uri => void handleAddSearchUriToQueue(uri),
+    onRetryData: () => {
+      void stagesQuery.refetch()
+      void operBoxQuery.refetch()
+    },
   }
 
   const copilotQueue: CombatCopilotQueueProjection = {
@@ -951,7 +1012,10 @@ export default function CombatWorkspace() {
             activeMode={activeCombatMode}
             onSelect={mode => {
               setActiveCombatMode(mode)
-              if (mode !== 'copilot') setCopilotDetail(null)
+              if (mode !== 'copilot') {
+                setCopilotDetail(null)
+                handleCloseDiscovery()
+              }
             }}
           />
 

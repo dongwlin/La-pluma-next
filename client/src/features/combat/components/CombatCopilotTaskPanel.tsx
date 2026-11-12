@@ -135,7 +135,11 @@ export default function CombatCopilotTaskPanel({
         </div>
       </div>
 
-      <CombatCopilotDetailLayer target={detailTarget} onClose={onCloseDetail}>
+      <CombatCopilotDetailLayer
+        target={detailTarget}
+        onClose={onCloseDetail}
+        stacked={search.isOpen}
+      >
         {previewInfo?.type === 'set' && (
           <CombatCopilotSetPanel
             preview={previewInfo}

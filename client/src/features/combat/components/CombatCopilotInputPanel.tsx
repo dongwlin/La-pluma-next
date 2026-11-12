@@ -1,8 +1,9 @@
 import { useRef, type ChangeEvent, type ClipboardEvent } from 'react'
-import { ListPlus, Upload, X } from 'lucide-react'
+import { Compass, ListPlus, Upload, X } from 'lucide-react'
 import { Button, IconButton } from '@/shared/ui'
 import ActivityIndicator from '@/shared/ui/ActivityIndicator'
 import type { CopilotPreviewMode } from '../model/copilotPreview'
+import { COPILOT_DISCOVERY_DIALOG_ID } from './combatPanelTypes'
 import type { CombatCopilotFileImportProjection } from './combatPanelTypes'
 
 const PREVIEW_MODE_OPTIONS: ReadonlyArray<{ value: CopilotPreviewMode; label: string }> = [
@@ -21,6 +22,7 @@ interface CombatCopilotInputPanelProps {
   onPreviewModeChange: (mode: CopilotPreviewMode) => void
   onPreview: () => void
   onAddToQueue?: () => void
+  onOpenDiscovery: () => void
 }
 
 export default function CombatCopilotInputPanel({
@@ -33,6 +35,7 @@ export default function CombatCopilotInputPanel({
   onPreviewModeChange,
   onPreview,
   onAddToQueue,
+  onOpenDiscovery,
 }: CombatCopilotInputPanelProps) {
   const fileInputRef = useRef<HTMLInputElement>(null)
   const uriInputRef = useRef<HTMLInputElement>(null)
@@ -171,6 +174,17 @@ export default function CombatCopilotInputPanel({
             {!isAddingToQueue && '加入队列'}
           </Button>
         )}
+        <Button
+          onClick={onOpenDiscovery}
+          aria-haspopup="dialog"
+          aria-controls={COPILOT_DISCOVERY_DIALOG_ID}
+          variant="secondary"
+          size="md"
+          className="shrink-0 px-3"
+          icon={<Compass size={15} aria-hidden="true" />}
+        >
+          发现
+        </Button>
         <details className="combat-copilot-help">
           <summary className="combat-copilot-help-trigger">说明</summary>
           <div className="combat-copilot-help-body">
@@ -178,6 +192,7 @@ export default function CombatCopilotInputPanel({
             <p>• 单作业：<code className="combat-copilot-code">prts://1234</code>；作业集：<code className="combat-copilot-code">prts://s1234</code></p>
             <p>• 作业站链接会自动识别，也可直接粘贴或导入本地 JSON 文件</p>
             <p>• 识别方式可强制按单个作业或作业集读取，默认按链接判断</p>
+            <p>• 点击“发现”可按关键词、关卡和干员搜索作业站作业</p>
           </div>
         </details>
       </div>

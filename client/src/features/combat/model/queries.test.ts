@@ -9,6 +9,7 @@ import {
   copilotSearchQueryOptions,
   copilotSetPlanQueryOptions,
   copilotSetQueryOptions,
+  copilotStageCatalogQueryOptions,
   invalidateCopilotSetPlan,
   loadCopilotPreview,
   paradoxSearchQueryOptions,
@@ -21,6 +22,7 @@ const mocks = vi.hoisted(() => ({
   getCopilotInfo: vi.fn(),
   getCopilotSet: vi.fn(),
   getCopilotSetPlan: vi.fn(),
+  getCopilotStages: vi.fn(),
 }))
 
 vi.mock('../api', () => mocks)
@@ -69,7 +71,17 @@ describe('combat search queries', () => {
     vi.clearAllMocks()
   })
 
-  it('caches the search result by term', async () => {
+  const request = {
+    keyword: '1-7',
+    level: '',
+    includedOperators: ['阿米娅'],
+    excludedOperators: ['桃金娘'],
+    orderBy: 'hot' as const,
+    page: 1,
+    limit: 30,
+  }
+
+  it('caches the search result by the full request identity', async () => {
     mocks.searchCopilot.mockResolvedValue(ok({
       stage: '1-7',
       copilots: [{ id: 1, uri: 'prts://1', views: 2, hotScore: 3 }],
@@ -77,20 +89,82 @@ describe('combat search queries', () => {
     }))
     const client = createQueryClient()
 
-    const result = await client.fetchQuery(copilotSearchQueryOptions('1-7'))
-    await client.fetchQuery(copilotSearchQueryOptions('1-7'))
+    const result = await client.fetchQuery(copilotSearchQueryOptions(request))
+    await client.fetchQuery(copilotSearchQueryOptions({ ...request }))
 
     expect(result.copilots).toEqual([
       { id: '1', uri: 'prts://1', views: 2, hotScore: 3 },
     ])
     expect(mocks.searchCopilot).toHaveBeenCalledOnce()
+    expect(mocks.searchCopilot).toHaveBeenCalledWith(request, expect.any(AbortSignal))
+  })
+
+  it('puts every filter, ordering and paging input in the query key', () => {
+    expect(copilotSearchQueryOptions(request).queryKey).toEqual([
+      'combat',
+      'copilot-search',
+      '1-7',
+      '',
+      ['阿米娅'],
+      ['桃金娘'],
+      'hot',
+      1,
+      30,
+    ])
+  })
+
+  it('normalizes the request before keying and reading', async () => {
+    mocks.searchCopilot.mockResolvedValue(ok({ stage: '1-7', copilots: [] }))
+    const client = createQueryClient()
+    const options = copilotSearchQueryOptions({
+      keyword: ' 1-7 ',
+      level: '  ',
+      includedOperators: [' 阿米娅 ', '阿米娅'],
+      excludedOperators: ['阿米娅', '桃金娘', '桃金娘'],
+      orderBy: 'latest',
+      page: 2,
+      limit: 0,
+    })
+
+    expect(options.queryKey).toEqual([
+      'combat',
+      'copilot-search',
+      '1-7',
+      '',
+      ['阿米娅'],
+      ['桃金娘'],
+      'latest',
+      2,
+      30,
+    ])
+    await client.fetchQuery(options)
+    expect(mocks.searchCopilot).toHaveBeenCalledWith({
+      keyword: '1-7',
+      level: '',
+      includedOperators: ['阿米娅'],
+      excludedOperators: ['桃金娘'],
+      orderBy: 'latest',
+      page: 2,
+      limit: 30,
+    }, expect.any(AbortSignal))
+  })
+
+  it('fetches a new page when the request changes', async () => {
+    mocks.searchCopilot.mockResolvedValue(ok({ stage: '1-7', copilots: [] }))
+    const client = createQueryClient()
+
+    await client.fetchQuery(copilotSearchQueryOptions(request))
+    await client.fetchQuery(copilotSearchQueryOptions({ ...request, orderBy: 'latest' }))
+    await client.fetchQuery(copilotSearchQueryOptions({ ...request, page: 2 }))
+
+    expect(mocks.searchCopilot).toHaveBeenCalledTimes(3)
   })
 
   it('cancels the fetch with the Query signal', async () => {
-    const request = deferred<ApiResponse>()
-    mocks.searchCopilot.mockReturnValueOnce(request.promise)
+    const pending = deferred<ApiResponse>()
+    mocks.searchCopilot.mockReturnValueOnce(pending.promise)
     const client = createQueryClient()
-    const options = copilotSearchQueryOptions('CE-6')
+    const options = copilotSearchQueryOptions({ ...request, keyword: 'CE-6' })
 
     const fetching = client.fetchQuery(options).catch(error => error)
     await Promise.resolve()
@@ -99,6 +173,31 @@ describe('combat search queries', () => {
     await client.cancelQueries({ queryKey: options.queryKey })
     expect(signal.aborted).toBe(true)
     await fetching
+  })
+
+  it('reads the stage catalog under a shared key with a 30 minute fresh window', async () => {
+    mocks.getCopilotStages.mockResolvedValue(ok([
+      { stageId: 'main_01-07', code: '1-7', name: '风暴瞭望', category: '主线', zone: '切尔诺伯格' },
+    ]))
+    const client = createQueryClient()
+    const options = copilotStageCatalogQueryOptions()
+
+    expect(options.queryKey).toEqual(['combat', 'copilot-stages'])
+    expect(options.staleTime).toBe(30 * 60 * 1000)
+    await expect(client.fetchQuery(options)).resolves.toEqual([
+      { stageId: 'main_01-07', code: '1-7', name: '风暴瞭望', category: '主线', zone: '切尔诺伯格' },
+    ])
+    expect(mocks.getCopilotStages).toHaveBeenCalledWith(expect.any(AbortSignal))
+  })
+
+  it('turns a malformed stage catalog into a domain failure', async () => {
+    mocks.getCopilotStages.mockResolvedValue(ok({ stages: [] }))
+
+    await expect(createQueryClient().fetchQuery(copilotStageCatalogQueryOptions()))
+      .rejects.toMatchObject({
+        code: 'INVALID_DOMAIN_PAYLOAD',
+        message: '关卡目录响应格式不正确',
+      })
   })
 
   it('forwards the signal for paradox search and keeps the operator name', async () => {

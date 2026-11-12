@@ -8,6 +8,7 @@ import {
   readCopilotSearchResult,
   readCopilotSetPayload,
   readCopilotStageCandidates,
+  readCopilotStageCatalog,
   readParadoxSearchResult,
   unwrapCopilotPayload,
 } from './copilotPayload'
@@ -76,6 +77,95 @@ describe('copilot search payload', () => {
     expect(readCopilotSearchResult(null)).toBeNull()
   })
 
+  it('reads the extended card fields and filters unusable list values', () => {
+    const result = readCopilotSearchResult(envelope({
+      keyword: '1-7',
+      stage: '1-7',
+      stageId: 'main_01-07',
+      orderBy: 'views',
+      page: 2,
+      limit: 30,
+      total: 41,
+      hasNext: true,
+      copilots: [{
+        id: 5,
+        uri: 'prts://5',
+        views: 1,
+        hotScore: 2,
+        stageName: '1-7',
+        stageId: 'main_01-07',
+        stageCode: '1-7',
+        stageLabel: '风暴瞭望',
+        uploader: '博士',
+        uploadTime: '2026-01-01 10:00:00',
+        operators: ['阿米娅', '凯尔希', '', 7, '阿米娅'],
+        match: {
+          mode: 'borrow',
+          missing: ['凯尔希'],
+          training: [],
+          check: ['桃金娘', '桃金娘'],
+          totalSlots: 12,
+        },
+      }],
+    }))
+
+    expect(result).toEqual({
+      keyword: '1-7',
+      stage: '1-7',
+      stageId: 'main_01-07',
+      orderBy: 'views',
+      page: 2,
+      limit: 30,
+      total: 41,
+      hasNext: true,
+      copilots: [{
+        id: '5',
+        uri: 'prts://5',
+        views: 1,
+        hotScore: 2,
+        stageName: '1-7',
+        stageId: 'main_01-07',
+        stageCode: '1-7',
+        stageLabel: '风暴瞭望',
+        uploader: '博士',
+        uploadTime: '2026-01-01 10:00:00',
+        operators: ['阿米娅', '凯尔希'],
+        match: { mode: 'borrow', missing: ['凯尔希'], training: [], check: ['桃金娘'], totalSlots: 12 },
+      }],
+    })
+  })
+
+  it('omits invalid paging and match values instead of guessing', () => {
+    const result = readCopilotSearchResult(envelope({
+      stage: '1-7',
+      orderBy: 'popular',
+      page: 0,
+      limit: 1.5,
+      total: -1,
+      hasNext: 'yes',
+      copilots: [
+        { uri: 'prts://1', match: { mode: 'unknown', totalSlots: 12 } },
+        { uri: 'prts://2', match: { mode: 'ready', totalSlots: '12' } },
+        { uri: 'prts://3', match: { mode: 'ready', totalSlots: 12, missing: '阿米娅' } },
+      ],
+    }))
+
+    expect(result).toEqual({
+      stage: '1-7',
+      copilots: [
+        { id: 'prts://1', uri: 'prts://1', views: 0, hotScore: 0 },
+        { id: 'prts://2', uri: 'prts://2', views: 0, hotScore: 0 },
+        {
+          id: 'prts://3',
+          uri: 'prts://3',
+          views: 0,
+          hotScore: 0,
+          match: { mode: 'ready', missing: [], training: [], check: [], totalSlots: 12 },
+        },
+      ],
+    })
+  })
+
   it('reads paradox payloads with the operator name', () => {
     const result = readParadoxSearchResult(envelope({
       operator: '古米',
@@ -111,6 +201,26 @@ describe('copilot stage candidates', () => {
     expect(readCopilotStageCandidates(null)).toEqual([])
     expect(readCopilotStageCandidates({ stage: '1-7' })).toEqual([])
     expect(readCopilotStageCandidates([])).toEqual([])
+  })
+})
+
+describe('copilot stage catalog', () => {
+  it('reads the catalog array and keeps the first entry per stageId', () => {
+    expect(readCopilotStageCatalog([
+      { stageId: 'main_01-07', code: '1-7', name: '风暴瞭望', category: '主线', zone: '切尔诺伯格' },
+      { stageId: 'main_01-07', code: '1-7', name: '重复条目' },
+      { name: '缺少标识' },
+      'not-a-record',
+      null,
+    ])).toEqual([
+      { stageId: 'main_01-07', code: '1-7', name: '风暴瞭望', category: '主线', zone: '切尔诺伯格' },
+    ])
+  })
+
+  it('treats an empty catalog as valid and a non-array as invalid', () => {
+    expect(readCopilotStageCatalog([])).toEqual([])
+    expect(readCopilotStageCatalog({ stages: [] })).toBeNull()
+    expect(readCopilotStageCatalog(null)).toBeNull()
   })
 })
 

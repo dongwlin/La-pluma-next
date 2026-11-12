@@ -3,10 +3,15 @@
 import { act } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { DEFAULT_COPILOT_MATCH_MODES } from '../model/copilotDiscovery'
+import type { OperatorSelection } from '../model/operatorFilter'
 import type { CopilotPreviewMode } from '../model/copilotPreview'
 import { createPanelStateStore, type PanelStateStore } from '../model/panelState'
+import type { CopilotSearchOrder } from '../types'
 import type {
+  CombatCopilotDiscoveryView,
   CombatCopilotFileImportProjection,
+  CombatCopilotMatchSettings,
   CombatCopilotSearchProjection,
 } from './combatPanelTypes'
 import CombatCopilotSourceBar from './CombatCopilotSourceBar'
@@ -16,13 +21,6 @@ import CombatCopilotSourceBar from './CombatCopilotSourceBar'
 const click = async (element: HTMLElement) => {
   await act(async () => {
     element.dispatchEvent(new MouseEvent('click', { bubbles: true }))
-  })
-}
-
-const setInputValue = async (input: HTMLInputElement, value: string) => {
-  await act(async () => {
-    Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set?.call(input, value)
-    input.dispatchEvent(new Event('input', { bubbles: true }))
   })
 }
 
@@ -56,18 +54,37 @@ const pasteClipboard = async (
 }
 
 const search = (overrides: Partial<CombatCopilotSearchProjection> = {}): CombatCopilotSearchProjection => ({
-  stageStore: createPanelStateStore(''),
+  isOpen: false,
+  onOpen: () => {},
+  onClose: () => {},
+  keywordStore: createPanelStateStore(''),
+  levelStore: createPanelStateStore(''),
+  operatorStore: createPanelStateStore<OperatorSelection>({ included: [], excluded: [] }),
+  operatorFilterEnabledStore: createPanelStateStore<boolean>(true),
+  operatorFilterRememberStore: createPanelStateStore<boolean>(true),
+  orderStore: createPanelStateStore<CopilotSearchOrder>('hot'),
+  matchStore: createPanelStateStore<CombatCopilotMatchSettings>({
+    enabled: false,
+    modes: [...DEFAULT_COPILOT_MATCH_MODES],
+  }),
+  viewStore: createPanelStateStore<CombatCopilotDiscoveryView>('grid'),
   selectionStore: createPanelStateStore(''),
+  stages: [],
+  stagesLoading: false,
+  stagesError: null,
+  operators: [],
+  operatorsLoading: false,
+  operatorsError: null,
+  ownedOperatorNames: new Set(),
   result: null,
   searching: false,
+  refreshing: false,
   addingUri: null,
-  candidates: [],
-  activeStage: null,
   onSearch: () => {},
   onCancel: () => {},
-  onSelectStage: () => {},
   onSelectUri: () => {},
   onAddToQueue: () => {},
+  onRetryData: () => {},
   ...overrides,
 })
 
@@ -119,15 +136,29 @@ describe('CombatCopilotSourceBar', () => {
     })
   }
 
-  it('keeps both named source inputs and their labels mounted', async () => {
+  it('keeps the URI source input and adds the discovery action', async () => {
     await renderBar({ input: 'prts://1234' })
 
     const uri = container.querySelector<HTMLInputElement>('input[name="maa-copilot-uri"]')
-    const stage = container.querySelector<HTMLInputElement>('input[name="maa-copilot-stage-search"]')
     expect(uri?.value).toBe('prts://1234')
-    expect(stage).not.toBeNull()
     expect(container.querySelector('label[for="combat-copilot-uri"]')).not.toBeNull()
-    expect(container.querySelector('label[for="combat-stage-search"]')).not.toBeNull()
+    expect(container.querySelector('input[name="maa-copilot-stage-search"]')).toBeNull()
+
+    const discovery = Array.from(container.querySelectorAll<HTMLButtonElement>('button'))
+      .find(button => button.textContent?.trim() === '发现')
+    expect(discovery).not.toBeUndefined()
+    expect(discovery?.getAttribute('aria-haspopup')).toBe('dialog')
+    expect(discovery?.getAttribute('aria-controls')).toBe('combat-copilot-discovery-dialog')
+  })
+
+  it('opens the discovery dialog from the toolbar', async () => {
+    const onOpen = vi.fn()
+    await renderBar({ search: search({ onOpen }) })
+
+    await click(Array.from(container.querySelectorAll<HTMLButtonElement>('button'))
+      .find(button => button.textContent?.trim() === '发现')!)
+
+    expect(onOpen).toHaveBeenCalledOnce()
   })
 
   it('previews the typed URI', async () => {
@@ -192,36 +223,6 @@ describe('CombatCopilotSourceBar', () => {
     expect(onCancelPreview).toHaveBeenCalledOnce()
     expect(previewModeStore.get()).toBe('set')
     expect(mode!.value).toBe('set')
-  })
-
-  it('forwards the search term and the clicked search result', async () => {
-    const onSearch = vi.fn()
-    const onSelectUri = vi.fn()
-    const projection = search({
-      selectionStore: createPanelStateStore('prts://1'),
-      result: {
-        stage: '1-7',
-        copilots: [
-          { id: '1', uri: 'prts://1', title: '搜索结果作业', views: 0, hotScore: 0 },
-        ],
-      },
-      onSearch,
-      onSelectUri,
-    })
-    await renderBar({ search: projection })
-
-    const stageInput = container.querySelector<HTMLInputElement>('input[name="maa-copilot-stage-search"]')!
-    await setInputValue(stageInput, '1-7')
-    await click(Array.from(container.querySelectorAll('button'))
-      .find(button => button.textContent?.trim() === '搜索')!)
-
-    expect(onSearch).toHaveBeenCalledWith('1-7')
-
-    await click(Array.from(container.querySelectorAll<HTMLButtonElement>('button'))
-      .find(button => button.textContent?.includes('搜索结果作业'))!)
-
-    expect(onSelectUri).toHaveBeenCalledWith('prts://1')
-    expect(container.textContent).toContain('已选中')
   })
 
   it('adds the typed URI to the queue without replacing the preview action', async () => {
