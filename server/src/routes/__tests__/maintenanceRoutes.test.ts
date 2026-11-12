@@ -5,8 +5,11 @@ import type { Server } from 'node:http';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { after, afterEach, describe, it } from 'node:test';
-import type { TestContext } from 'node:test';
-import type { MaintenanceUpdateCliPlan, MaintenanceUpdateCorePlan } from '../../controllers/maintenanceDto.ts';
+import type {
+  MaintenanceCopilotSearchPayload,
+  MaintenanceUpdateCliPlan,
+  MaintenanceUpdateCorePlan
+} from '../../controllers/maintenanceDto.ts';
 import {
   closeHttpServers,
   postJson,
@@ -187,25 +190,6 @@ function jsonResponse(body: unknown, status = 200): Response {
   });
 }
 
-/**
- * 运行时出站守卫：只允许用例自身的 127.0.0.1 回环请求，其他地址记录后失败。
- * 经 t.mock.method 安装并在用例结束恢复，不在源码层改写全局 fetch 声明。
- */
-function guardOutboundFetch(t: TestContext): { external: string[] } {
-  const realFetch = globalThis.fetch;
-  const external: string[] = [];
-  t.mock.method(globalThis, 'fetch', async (input: string | URL | Request, init?: RequestInit) => {
-    const href = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
-    const url = new URL(href);
-    if (url.hostname !== '127.0.0.1') {
-      external.push(url.href);
-      throw new Error(`unexpected outbound request: ${url.host}`);
-    }
-    return realFetch(input, init);
-  });
-  return { external };
-}
-
 afterEach(async () => {
   await closeHttpServers(servers);
 });
@@ -267,8 +251,71 @@ describe('maintenance request narrowing', () => {
     assert.deepEqual(parseParadoxSearchQuery({ name: '  干员A ' }), { name: '干员A' });
     assert.deepEqual(parseParadoxSearchQuery({}), { name: '' });
     assert.deepEqual(parseParadoxSearchQuery(undefined), { name: '' });
-    assert.deepEqual(parseCopilotSearchQuery({ stage: ' 1-7 ' }), { stage: '1-7' });
-    assert.deepEqual(parseCopilotSearchQuery({}), { stage: '' });
+    assert.deepEqual(parseCopilotSearchQuery({ stage: ' 1-7 ' }), {
+      document: '',
+      stage: '1-7',
+      orderBy: 'hot',
+      includeOperators: [],
+      excludeOperators: [],
+      page: 1,
+      limit: 20
+    });
+    assert.deepEqual(parseCopilotSearchQuery(undefined), {
+      document: '',
+      stage: '',
+      orderBy: 'hot',
+      includeOperators: [],
+      excludeOperators: [],
+      page: 1,
+      limit: 20
+    });
+  });
+
+  it('normalizes the copilot search filters and paging', () => {
+    assert.deepEqual(parseCopilotSearchQuery({
+      document: ' 挂机 ',
+      level: ' 1-7 ',
+      stage: 'ignored',
+      orderBy: 'views',
+      operator: ' Amiya , ~Kal\'tsit, Amiya,~Kal\'tsit, ,~ ',
+      page: '3',
+      limit: '50'
+    }), {
+      document: '挂机',
+      stage: '1-7',
+      orderBy: 'views',
+      includeOperators: ['Amiya'],
+      excludeOperators: ["Kal'tsit"],
+      page: 3,
+      limit: 50
+    });
+    assert.equal(parseCopilotSearchQuery({ stage: '1-7' }).stage, '1-7');
+    assert.equal(parseCopilotSearchQuery({ level: '1-7', stage: '2-7' }).stage, '1-7');
+    assert.equal(parseCopilotSearchQuery({ orderBy: 'latest' }).orderBy, 'latest');
+    for (const orderBy of ['upload_time', 'bogus', ['views'], undefined]) {
+      assert.equal(parseCopilotSearchQuery({ orderBy }).orderBy, 'hot');
+    }
+    const defaults = parseCopilotSearchQuery({ page: 0, limit: 100 });
+    assert.equal(defaults.page, 1);
+    assert.equal(defaults.limit, 50);
+    assert.equal(parseCopilotSearchQuery({ page: 'bogus', limit: 'bogus' }).page, 1);
+    assert.equal(parseCopilotSearchQuery({ page: 'bogus', limit: 'bogus' }).limit, 20);
+  });
+
+  it('merges repeated operator params and caps include/exclude lists', () => {
+    const merged = parseCopilotSearchQuery({
+      operator: ['Amiya,Exusiai', 'Amiya', '~Kal\'tsit']
+    });
+    assert.deepEqual(merged.includeOperators, ['Amiya', 'Exusiai']);
+    assert.deepEqual(merged.excludeOperators, ["Kal'tsit"]);
+
+    const includes = Array.from({ length: 21 }, (_, index) => `in-${index}`);
+    const excludes = Array.from({ length: 21 }, (_, index) => `~out-${index}`);
+    const capped = parseCopilotSearchQuery({ operator: [...includes, ...excludes].join(',') });
+    assert.equal(capped.includeOperators.length, 20);
+    assert.equal(capped.includeOperators.at(-1), 'in-19');
+    assert.equal(capped.excludeOperators.length, 20);
+    assert.equal(capped.excludeOperators.at(-1), 'out-19');
   });
 
   it('falls back to the normal raid for unknown plan modes', () => {
@@ -296,10 +343,11 @@ describe('maintenance request narrowing', () => {
   });
 
   it('narrows the PRTS query envelope and its non-array list', () => {
-    assert.deepEqual(parsePrtsCopilotQueryPayload({ status_code: 200, data: { data: [] } }), {
+    assert.deepEqual(parsePrtsCopilotQueryPayload({ status_code: 200, data: { data: [], total: 12 } }), {
       statusCode: 200,
       items: [],
-      hasNext: false
+      hasNext: false,
+      total: 12
     });
     assert.deepEqual(parsePrtsCopilotQueryPayload({ status_code: 500, data: { data: [{ id: 1 }, 'skip'], has_next: 1 } }), {
       statusCode: 500,
@@ -308,6 +356,12 @@ describe('maintenance request narrowing', () => {
     });
     // 非数组列表落到未找到分支，与旧实现的 `.length` 判定一致。
     assert.deepEqual(parsePrtsCopilotQueryPayload({ status_code: 200, data: { data: { id: 1 } } }).items, []);
+    // total 只透传有限数字，字符串、缺失与非有限值都不补字段。
+    assert.equal('total' in parsePrtsCopilotQueryPayload({ status_code: 200, data: { data: [], total: '12' } }), false);
+    assert.equal('total' in parsePrtsCopilotQueryPayload({
+      status_code: 200,
+      data: { data: [], total: Number.POSITIVE_INFINITY }
+    }), false);
     for (const payload of [undefined, null, 'text', [1, 2]]) {
       assert.throws(() => parsePrtsCopilotQueryPayload(payload), TypeError);
     }
@@ -330,26 +384,70 @@ describe('maintenance request narrowing', () => {
     });
     // 非 JSON content 沿用默认标题，与旧实现的 try/catch 一致。
     assert.equal(projectParadoxCopilot({ id: 6, content: 'not-json' }).title, '无标题');
+  });
 
+  it('projects search entries with normalized stage ids and catalog labels', () => {
+    const stageIndex = new Map([['MAIN_01-07', {
+      stageId: 'main_01-07',
+      code: '1-7',
+      name: '暴君',
+      category: '主题曲',
+      zone: '第一章'
+    }]]);
     assert.deepEqual(projectCopilotSearchItem({
-      id: 7,
-      content: JSON.stringify({ doc: { title: '1-7 挂机' }, stage_name: 'main_01-07' }),
-      views: 1,
-      hot_score: 2,
-      uploader_id: 'u2'
-    }, 'main_01-07'), {
-      id: 7,
-      uri: 'prts://7',
-      views: 1,
-      hotScore: 2,
-      uploader: 'u2',
-      title: '1-7 挂机',
-      stageName: 'main_01-07'
+      id: 9,
+      content: JSON.stringify({
+        doc: { title: '1-7 速刷' },
+        stage_name: 'main_01-07#f#',
+        opers: [{ name: 'Amiya' }, { name: 'Amiya' }, { name: "Kal'tsit" }, { name: '  ' }, {}]
+      }),
+      views: 10,
+      hot_score: 20,
+      uploader: 'doctor',
+      uploader_id: 'u9',
+      upload_time: '2026-11-01T00:00:00.000Z'
+    }, { stageIndex }), {
+      id: 9,
+      uri: 'prts://9',
+      views: 10,
+      hotScore: 20,
+      title: '1-7 速刷',
+      stageName: 'main_01-07#f#',
+      stageId: 'main_01-07',
+      stageCode: '1-7',
+      stageLabel: '暴君',
+      operators: ['Amiya', "Kal'tsit"],
+      uploader: 'doctor',
+      uploadTime: '2026-11-01T00:00:00.000Z'
     });
-    // content 缺失时沿用请求关卡，标题回退为无标题。
-    const fallback = projectCopilotSearchItem({ id: 8 }, 'main_01-07');
+  });
+
+  it('falls back when content and catalog entries are unavailable', () => {
+    const fallback = projectCopilotSearchItem({ id: 8 }, { stageId: 'main_01-07' });
     assert.equal(fallback.title, '无标题');
     assert.equal(fallback.stageName, 'main_01-07');
+    assert.equal(fallback.stageId, 'main_01-07');
+    assert.equal(fallback.stageCode, '');
+    assert.equal(fallback.stageLabel, '');
+    assert.deepEqual(fallback.operators, []);
+    assert.equal('uploader' in fallback, false);
+
+    const notJson = projectCopilotSearchItem({ id: 6, content: 'not-json' });
+    assert.equal(notJson.title, '无标题');
+    assert.equal(notJson.stageName, '');
+    assert.equal(notJson.stageId, '');
+
+    assert.equal(projectCopilotSearchItem({ id: 10, uploader: '', uploader_id: 42 }).uploader, '42');
+    assert.equal(projectCopilotSearchItem({ id: 11, uploader: '  ', uploader_id: 'u11' }).uploader, 'u11');
+  });
+
+  it('caps projected operator names at 30', () => {
+    const opers = Array.from({ length: 31 }, (_, index) => ({ name: `oper-${index}` }));
+    const capped = projectCopilotSearchItem({
+      id: 13,
+      content: JSON.stringify({ opers })
+    });
+    assert.deepEqual(capped.operators, opers.slice(0, 30).map(oper => oper.name));
   });
 
   it('reports unreadable resource versions as unknown instead of current', () => {
@@ -382,6 +480,7 @@ describe('moved maintenance routes keep HTTP contracts', () => {
       ['POST', '/copilot-sets/1/reset-progress'],
       ['GET', '/paradox/search?name=x'],
       ['GET', '/copilot/search?stage=1-7'],
+      ['GET', '/copilot/stages'],
       ['GET', '/paradox/operators'],
       ['GET', '/schedules/status'],
       ['GET', '/schedules/execution'],
@@ -899,8 +998,29 @@ describe('moved maintenance routes keep HTTP contracts', () => {
     await assert.rejects(readFile(join(maaConfigDir, 'profiles', 'nonobject.toml'), 'utf-8'), { code: 'ENOENT' });
   });
 
-  it('rejects missing search parameters before any outbound request', async t => {
-    const outbound = guardOutboundFetch(t);
+  it('keeps the paradox name requirement but browses copilots without filters', async t => {
+    const realFetch = globalThis.fetch;
+    const outboundCalls: string[] = [];
+    t.mock.method(globalThis, 'fetch', async (input: string | URL | Request, init?: RequestInit) => {
+      const href = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
+      const url = new URL(href);
+      if (url.hostname === '127.0.0.1') return realFetch(input, init);
+      outboundCalls.push(url.href);
+      if (url.pathname === '/arknights/level') {
+        return jsonResponse({
+          status_code: 200,
+          data: [{ stage_id: 'main_01-07', cat_one: '主题曲', cat_two: '第一章', cat_three: '1-7', name: '暴君' }]
+        });
+      }
+      return jsonResponse({
+        status_code: 200,
+        data: {
+          data: [{ id: 1, content: JSON.stringify({ stage_name: 'main_01-07', doc: { title: '1-7 挂机' } }) }],
+          total: 1,
+          has_next: false
+        }
+      });
+    });
     const port = await startHttpServer(createLaPlumaApp({ env: {} }), servers);
     const baseUrl = `http://127.0.0.1:${port}/api/agent`;
 
@@ -908,11 +1028,83 @@ describe('moved maintenance routes keep HTTP contracts', () => {
     assert.equal(missingName.status, 400);
     assert.equal((await readError(missingName)).error.code, 'AGENT_VALIDATION_OPERATOR_NAME_REQUIRED');
 
-    const missingStage = await fetch(`${baseUrl}/copilot/search`);
-    assert.equal(missingStage.status, 400);
-    assert.equal((await readError(missingStage)).error.code, 'AGENT_VALIDATION_STAGE_REQUIRED');
+    const browse = await fetch(`${baseUrl}/copilot/search`);
+    assert.equal(browse.status, 200);
+    const body = await readSuccess<{
+      keyword: string;
+      stage: string;
+      orderBy: string;
+      page: number;
+      limit: number;
+      total: number;
+      hasNext: boolean;
+      copilots: Array<{ stageCode: string; stageLabel: string }>;
+    }>(browse);
+    assert.equal(body.data.keyword, '');
+    assert.equal(body.data.stage, '');
+    assert.equal(body.data.orderBy, 'hot');
+    assert.equal(body.data.page, 1);
+    assert.equal(body.data.limit, 20);
+    assert.equal(body.data.total, 1);
+    assert.equal(body.data.hasNext, false);
+    assert.equal(body.data.copilots[0]?.stageCode, '1-7');
+    assert.equal(body.data.copilots[0]?.stageLabel, '暴君');
+    assert.deepEqual(outboundCalls.map(url => new URL(url).pathname), ['/copilot/query', '/arknights/level']);
+  });
 
-    assert.deepEqual(outbound.external, []);
+  it('matches search results against the latest owned-operator snapshot when available', async t => {
+    const realFetch = globalThis.fetch;
+    t.mock.method(globalThis, 'fetch', async (input: string | URL | Request, init?: RequestInit) => {
+      const href = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
+      const url = new URL(href);
+      if (url.hostname === '127.0.0.1') return realFetch(input, init);
+      if (url.pathname === '/arknights/level') {
+        return jsonResponse({
+          status_code: 200,
+          data: [{ stage_id: 'main_01-07', cat_one: '主题曲', cat_two: '第一章', cat_three: '1-7', name: '暴君' }]
+        });
+      }
+      return jsonResponse({
+        status_code: 200,
+        data: {
+          data: [{
+            id: 77,
+            content: JSON.stringify({
+              stage_name: 'main_01-07',
+              doc: { title: '1-7 挂机' },
+              opers: [{ name: '阿米娅', requirements: { elite: 2, level: 90 } }]
+            })
+          }],
+          total: 1,
+          has_next: false
+        }
+      });
+    });
+
+    const operboxPath = join(trainingDataDir, 'operbox.json');
+    await mkdir(trainingDataDir, { recursive: true });
+    await writeFile(operboxPath, JSON.stringify({
+      timestamp: '2026-11-12T00:00:00.000Z',
+      operCount: 1,
+      data: [{ id: 'char_1001_amiya', name: '阿米娅', rarity: 5, elite: 2, level: 90 }]
+    }), 'utf-8');
+
+    const port = await startHttpServer(createLaPlumaApp({ env: {} }), servers);
+    const baseUrl = `http://127.0.0.1:${port}/api/agent`;
+
+    const withSnapshot = await readSuccess<MaintenanceCopilotSearchPayload>(await fetch(`${baseUrl}/copilot/search`));
+    assert.deepEqual(withSnapshot.data.copilots[0]?.match, {
+      mode: 'ready',
+      missing: [],
+      training: [],
+      check: [],
+      totalSlots: 1
+    });
+    assert.deepEqual(withSnapshot.data.recommended, withSnapshot.data.copilots[0]);
+
+    await rm(operboxPath);
+    const withoutSnapshot = await readSuccess<MaintenanceCopilotSearchPayload>(await fetch(`${baseUrl}/copilot/search`));
+    assert.equal('match' in (withoutSnapshot.data.copilots[0] ?? {}), false);
   });
 
   it('maps a non-array changelog payload to the preserved upstream error', async t => {

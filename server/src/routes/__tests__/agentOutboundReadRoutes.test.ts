@@ -90,6 +90,8 @@ function jsonResponse(body: unknown, status = 200): Response {
 const originalFetch = globalThis.fetch
 let fetchCalls: Array<{ url: string; init: RequestInit }> = []
 
+process.env.LA_PLUMA_TRAINING_DATA_DIR = join(tmpdir(), `la-pluma-outbound-read-${process.pid}`)
+
 type FetchHandler = (url: string, init: RequestInit) => Response | Promise<Response>
 
 function stubFetch(handler: FetchHandler): void {
@@ -274,7 +276,7 @@ describe('Agent outbound read routes', () => {
     assert.deepEqual(error.details, { operator: '干员A', stageId: 'a1' })
   })
 
-  it('resolves a stage code through the prts level catalog before searching', async () => {
+  it('browses the global hot list without any filters', async () => {
     stubFetch(url => {
       if (url === 'https://prts.maa.plus/arknights/level') {
         return jsonResponse({
@@ -285,40 +287,198 @@ describe('Agent outbound read routes', () => {
           ]
         })
       }
-      assert.equal(
-        url,
-        'https://prts.maa.plus/copilot/query?level_keyword=main_01-07&page=1&limit=10&order_by=hot'
-      )
+      const query = new URL(url).searchParams
+      assert.deepEqual([...query.keys()], ['order_by', 'page', 'limit'])
+      assert.equal(query.get('order_by'), 'hot')
+      assert.equal(query.get('page'), '1')
+      assert.equal(query.get('limit'), '20')
       return jsonResponse({
         status_code: 200,
         data: {
-          data: [
-            {
-              id: 3,
-              content: JSON.stringify({ stage_name: 'main_01-07', doc: { title: '1-7 挂机' } }),
-              views: 1,
-              hot_score: 2,
-              uploader_id: 'u1'
-            },
-            {
-              id: 4,
-              content: JSON.stringify({ stage_name: 'main_01-08', doc: { title: '错位关卡' } }),
-              views: 1,
-              hot_score: 1,
-              uploader_id: 'u1'
-            }
-          ]
+          total: 120,
+          has_next: true,
+          data: [{
+            id: 31,
+            content: JSON.stringify({
+              stage_name: 'main_01-07#f#',
+              doc: { title: '1-7 挂机' },
+              opers: [{ name: 'Amiya' }]
+            }),
+            views: 7,
+            hot_score: 8,
+            uploader: 'doctor',
+            uploader_id: 'u31',
+            upload_time: '2026-11-01T00:00:00.000Z'
+          }]
         }
       })
     })
     const res = createResponse()
-    await findHandler('get', '/copilot/search')({ headers: {}, query: { stage: '1-7' } }, res, createNext().next)
+    await findHandler('get', '/copilot/search')({ headers: {} }, res, createNext().next)
 
     assert.equal(res.statusCode, 200)
     const data = readData<MaintenanceCopilotSearchPayload>(res.body)
-    assert.deepEqual(data.copilots.map(item => item.uri), ['prts://3'])
-    assert.equal(data.copilots[0].stageName, 'main_01-07')
-    assert.equal(fetchCalls.length, 2)
+    assert.equal(data.keyword, '')
+    assert.equal(data.stage, '')
+    assert.equal('stageId' in data, false)
+    assert.equal(data.orderBy, 'hot')
+    assert.equal(data.page, 1)
+    assert.equal(data.limit, 20)
+    assert.equal(data.total, 120)
+    assert.equal(data.hasNext, true)
+    assert.deepEqual(data.copilots, [{
+      id: 31,
+      uri: 'prts://31',
+      views: 7,
+      hotScore: 8,
+      title: '1-7 挂机',
+      stageName: 'main_01-07#f#',
+      stageId: 'main_01-07',
+      stageCode: '1-7',
+      stageLabel: '暴君',
+      operators: ['Amiya'],
+      uploader: 'doctor',
+      uploadTime: '2026-11-01T00:00:00.000Z'
+    }])
+    assert.equal(data.recommended, data.copilots[0])
+    assert.deepEqual(fetchCalls.map(call => new URL(call.url).pathname), ['/copilot/query', '/arknights/level'])
+  })
+
+  it('resolves a level code and passes document, operator and sort filters upstream', async () => {
+    stubFetch(url => {
+      if (url === 'https://prts.maa.plus/arknights/level') {
+        return jsonResponse({
+          status_code: 200,
+          data: [{ stage_id: 'main_01-07', cat_one: '主题曲', cat_two: '第一章', cat_three: '1-7', name: '暴君' }]
+        })
+      }
+      const query = new URL(url).searchParams
+      assert.equal(query.get('document'), '挂机')
+      assert.equal(query.get('level_keyword'), 'main_01-07')
+      assert.equal(query.get('operator'), "Amiya,Exusiai,~Kal'tsit")
+      assert.deepEqual(query.getAll('operator'), ["Amiya,Exusiai,~Kal'tsit"])
+      assert.equal(query.get('order_by'), 'views')
+      assert.equal(query.get('page'), '2')
+      assert.equal(query.get('limit'), '50')
+      return jsonResponse({ status_code: 200, data: { data: [], has_next: false } })
+    })
+    const res = createResponse()
+    await findHandler('get', '/copilot/search')({
+      headers: {},
+      query: {
+        document: ' 挂机 ',
+        level: '1-7',
+        orderBy: 'views',
+        operator: [' Amiya,Exusiai ', 'Amiya', '~Kal\'tsit'],
+        page: '2',
+        limit: '50'
+      }
+    }, res, createNext().next)
+
+    assert.equal(res.statusCode, 200)
+    const data = readData<MaintenanceCopilotSearchPayload>(res.body)
+    assert.equal(data.keyword, '挂机')
+    assert.equal(data.stage, '1-7')
+    assert.equal(data.stageId, 'main_01-07')
+    assert.equal(data.orderBy, 'views')
+    assert.equal(data.page, 2)
+    assert.equal(data.limit, 50)
+    assert.deepEqual(data.copilots, [])
+    assert.equal('recommended' in data, false)
+    assert.equal(data.hasNext, false)
+    assert.equal('total' in data, false)
+  })
+
+  it('maps the latest order to id and accepts stage as the level alias', async () => {
+    stubFetch(url => {
+      if (url === 'https://prts.maa.plus/arknights/level') {
+        return jsonResponse({
+          status_code: 200,
+          data: [{ stage_id: 'main_01-07', cat_one: '主题曲', cat_two: '第一章', cat_three: '1-7', name: '暴君' }]
+        })
+      }
+      const query = new URL(url).searchParams
+      assert.equal(query.get('level_keyword'), 'main_01-07')
+      assert.equal(query.get('order_by'), 'id')
+      return jsonResponse({
+        status_code: 200,
+        data: { data: [{ id: 22, content: JSON.stringify({ stage_name: 'main_01-07' }) }] }
+      })
+    })
+    const res = createResponse()
+    await findHandler('get', '/copilot/search')({
+      headers: {},
+      query: { stage: 'main_01-07', orderBy: 'latest' }
+    }, res, createNext().next)
+
+    assert.equal(res.statusCode, 200)
+    const data = readData<MaintenanceCopilotSearchPayload>(res.body)
+    assert.equal(data.stage, 'main_01-07')
+    assert.equal(data.stageId, 'main_01-07')
+    assert.equal(data.orderBy, 'latest')
+    assert.deepEqual(fetchCalls.map(call => new URL(call.url).pathname), ['/copilot/query', '/arknights/level'])
+  })
+
+  it('keeps the search results when only the label catalog is unavailable', async () => {
+    stubFetch(url => {
+      if (url === 'https://prts.maa.plus/arknights/level') {
+        return jsonResponse({ message: 'boom' }, 500)
+      }
+      return jsonResponse({
+        status_code: 200,
+        data: { data: [{ id: 23, content: JSON.stringify({ stage_name: 'main_01-07' }) }] }
+      })
+    })
+    const res = createResponse()
+    await findHandler('get', '/copilot/search')({
+      headers: {},
+      query: { stage: 'main_01-07' }
+    }, res, createNext().next)
+
+    assert.equal(res.statusCode, 200)
+    const data = readData<MaintenanceCopilotSearchPayload>(res.body)
+    assert.equal(data.stageId, 'main_01-07')
+    assert.equal(data.copilots.length, 1)
+    assert.equal(data.copilots[0].stageId, 'main_01-07')
+    assert.equal(data.copilots[0].stageCode, '')
+    assert.equal(data.copilots[0].stageLabel, '')
+  })
+
+  it('serves the copilot stage catalog through the read endpoint', async () => {
+    stubFetch(url => {
+      assert.equal(url, 'https://prts.maa.plus/arknights/level')
+      return jsonResponse({
+        status_code: 200,
+        data: [
+          { stage_id: 'main_01-07', cat_one: '主题曲', cat_two: '第一章', cat_three: '1-7', name: '暴君' },
+          { stage_id: 'wk_melee_6', cat_one: '资源收集', cat_two: '货物运送', cat_three: 'CE-6', name: '实验原件押运' }
+        ]
+      })
+    })
+    const res = createResponse()
+    await findHandler('get', '/copilot/stages')({ headers: {} }, res, createNext().next)
+
+    assert.equal(res.statusCode, 200)
+    const data = readData<Array<Record<string, unknown>>>(res.body)
+    assert.deepEqual(data, [
+      { stageId: 'main_01-07', code: '1-7', name: '暴君', category: '主题曲', zone: '第一章' },
+      { stageId: 'wk_melee_6', code: 'CE-6', name: '实验原件押运', category: '资源收集', zone: '货物运送' }
+    ])
+    assert.equal(fetchCalls.length, 1)
+  })
+
+  it('maps stage catalog read failures to the shared unavailable error', async () => {
+    stubFetch(() => jsonResponse({ message: 'boom' }, 500))
+    const res = createResponse()
+    await findHandler('get', '/copilot/stages')({ headers: {} }, res, createNext().next)
+
+    assert.equal(res.statusCode, 502)
+    const envelope = readRecord(res.body, 'error envelope')
+    assert.match(String(envelope.message), /^无法读取作业站关卡目录: /)
+    const error = readErrorBody(res.body)
+    assert.equal(error.code, 'AGENT_COPILOT_STAGE_CATALOG_UNAVAILABLE')
+    assert.equal(error.retryable, true)
+    assert.deepEqual(error.details, {})
   })
 
   it('reuses one level catalog across searches', async () => {
@@ -351,7 +511,7 @@ describe('Agent outbound read routes', () => {
       })
     })
     const res = createResponse()
-    await findHandler('get', '/copilot/search')({ headers: {}, query: { stage: 'ZZ-99' } }, res, createNext().next)
+    await findHandler('get', '/copilot/search')({ headers: {}, query: { level: 'ZZ-99' } }, res, createNext().next)
 
     assert.equal(res.statusCode, 404)
     assert.equal(readErrorBody(res.body).code, 'AGENT_COPILOT_STAGE_NOT_FOUND')
@@ -370,7 +530,7 @@ describe('Agent outbound read routes', () => {
       })
     })
     const res = createResponse()
-    await findHandler('get', '/copilot/search')({ headers: {}, query: { stage: 'LT-2' } }, res, createNext().next)
+    await findHandler('get', '/copilot/search')({ headers: {}, query: { level: 'LT-2' } }, res, createNext().next)
 
     assert.equal(res.statusCode, 400)
     const error = readErrorBody(res.body)
@@ -384,7 +544,7 @@ describe('Agent outbound read routes', () => {
   it('maps level catalog failures to a retryable agent error', async () => {
     stubFetch(() => jsonResponse({ message: 'boom' }, 500))
     const res = createResponse()
-    await findHandler('get', '/copilot/search')({ headers: {}, query: { stage: '1-7' } }, res, createNext().next)
+    await findHandler('get', '/copilot/search')({ headers: {}, query: { level: '1-7' } }, res, createNext().next)
 
     assert.equal(res.statusCode, 502)
     const error = readErrorBody(res.body)

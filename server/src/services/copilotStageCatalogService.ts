@@ -44,7 +44,7 @@ function readText(value: unknown): string {
 /**
  * 作业站以 `#f#` 区分普通与突袭关卡，作业内容里的 `stage_name` 始终不含后缀。
  */
-function normalizeStageId(value: string): string {
+export function normalizeCopilotStageId(value: string): string {
   return value.replace(/#[fn]#/g, '');
 }
 
@@ -63,7 +63,7 @@ export function parseCopilotStageCatalog(payload: unknown): CopilotStageCatalogE
 
   for (const item of list) {
     if (!isRecord(item)) continue;
-    const stageId = normalizeStageId(readText(item.stage_id).trim());
+    const stageId = normalizeCopilotStageId(readText(item.stage_id).trim());
     if (!stageId || entries.has(stageId)) continue;
     entries.set(stageId, {
       stageId,
@@ -156,7 +156,7 @@ export function createCopilotStageCatalog(ports: CopilotStageCatalogPorts = {}):
   return {
     load,
     resolve: async input => {
-      const stageId = normalizeStageId(String(input ?? '').trim().toLowerCase());
+      const stageId = normalizeCopilotStageId(String(input ?? '').trim().toLowerCase());
       if (STAGE_ID_INPUT.test(stageId)) {
         return { status: 'matched', stage: { stageId, code: '', name: '', category: '', zone: '' } };
       }

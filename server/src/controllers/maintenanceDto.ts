@@ -1,10 +1,15 @@
 import type { ApiRequestLike } from '../utils/apiHelper.ts';
+import { resolveBoundedInteger } from '../utils/numericQueryHelper.ts';
 import type { ConnectionProfile } from '../services/connectionService.ts';
 import type { MaaVersionInfo } from '../services/maaExecutionService.ts';
 import type { MaaActivityEntry, MaaActivityFailure, MaaActivityStatus } from '../services/maaActivityService.ts';
 import type { ResourceInfo, ResourceUpdateResult } from '../services/resourceUpdateService.ts';
 import type { AutoUpdateConfig } from '../services/scheduleTriggerService.ts';
 import type { CopilotStageIdentity } from '../services/copilotPlanService.ts';
+import type { CopilotStageCatalogEntry } from '../services/copilotStageCatalogService.ts';
+import { normalizeCopilotStageId } from '../services/copilotStageCatalogService.ts';
+import { resolveCopilotMatch } from '../services/copilotMatchService.ts';
+import type { CopilotMatchSummary, OwnedOperatorSnapshot } from '../services/copilotMatchService.ts';
 import { parseWaitForCompletion } from './executionDto.ts';
 import { resolveRequestConnection } from './requestConnection.ts';
 
@@ -147,13 +152,74 @@ export function parseParadoxSearchQuery(query: unknown): MaintenanceParadoxSearc
   return { name: String(source.name || '').trim() };
 }
 
+export type MaintenanceCopilotSearchOrder = 'hot' | 'latest' | 'views';
+
+const COPILOT_SEARCH_ORDERS: readonly MaintenanceCopilotSearchOrder[] = ['hot', 'latest', 'views'];
+const COPILOT_SEARCH_OPERATOR_LIMIT = 20;
+const COPILOT_SEARCH_DEFAULT_LIMIT = 20;
+const COPILOT_SEARCH_MAX_LIMIT = 50;
+
 export interface MaintenanceCopilotSearchInput {
+  document: string;
   stage: string;
+  orderBy: MaintenanceCopilotSearchOrder;
+  includeOperators: string[];
+  excludeOperators: string[];
+  page: number;
+  limit: number;
+}
+
+function isCopilotSearchOrder(value: unknown): value is MaintenanceCopilotSearchOrder {
+  return typeof value === 'string' && (COPILOT_SEARCH_ORDERS as readonly string[]).includes(value);
+}
+
+function readCopilotSearchText(value: unknown): string {
+  const scalar = Array.isArray(value) ? value[0] : value;
+  return scalar === undefined || scalar === null ? '' : String(scalar).trim();
+}
+
+function readCopilotSearchBoundedInteger(value: unknown, defaultValue: number, max: number): number {
+  if (value === undefined || value === null || value === '') return defaultValue;
+  return resolveBoundedInteger(value, { defaultValue, min: 1, max });
+}
+
+/**
+ * 重复参数先合并成一个字符串再拆分：上游按单个逗号串区分包含与 `~` 排除项，
+ * 分开传多个 operator 参数会让排除项失效。
+ */
+function readCopilotSearchOperators(value: unknown): { include: string[]; exclude: string[] } {
+  const raw = Array.isArray(value) ? value : value === undefined ? [] : [value];
+  const merged = raw
+    .filter(entry => entry !== undefined && entry !== null)
+    .map(entry => String(entry))
+    .join(',');
+  const include = new Set<string>();
+  const exclude = new Set<string>();
+  for (const part of merged.split(',')) {
+    const name = part.trim();
+    if (!name) continue;
+    const excluded = name.startsWith('~');
+    const operator = (excluded ? name.slice(1) : name).trim();
+    if (!operator) continue;
+    const bucket = excluded ? exclude : include;
+    if (bucket.size < COPILOT_SEARCH_OPERATOR_LIMIT) bucket.add(operator);
+  }
+  return { include: [...include], exclude: [...exclude] };
 }
 
 export function parseCopilotSearchQuery(query: unknown): MaintenanceCopilotSearchInput {
   const source = isRecord(query) ? query : {};
-  return { stage: String(source.stage || '').trim() };
+  const orderBy = typeof source.orderBy === 'string' ? source.orderBy.trim() : '';
+  const operators = readCopilotSearchOperators(source.operator);
+  return {
+    document: readCopilotSearchText(source.document),
+    stage: readCopilotSearchText(source.level) || readCopilotSearchText(source.stage),
+    orderBy: isCopilotSearchOrder(orderBy) ? orderBy : 'hot',
+    includeOperators: operators.include,
+    excludeOperators: operators.exclude,
+    page: readCopilotSearchBoundedInteger(source.page, 1, Number.MAX_SAFE_INTEGER),
+    limit: readCopilotSearchBoundedInteger(source.limit, COPILOT_SEARCH_DEFAULT_LIMIT, COPILOT_SEARCH_MAX_LIMIT)
+  };
 }
 
 export type MaintenanceCopilotRaid = 'normal' | 'raid' | 'both' | 'auto';
@@ -263,6 +329,7 @@ export interface PrtsCopilotQueryPayload {
   statusCode: unknown;
   items: Record<string, unknown>[];
   hasNext: boolean;
+  total?: number;
 }
 
 export function parsePrtsCopilotQueryPayload(value: unknown): PrtsCopilotQueryPayload {
@@ -270,10 +337,12 @@ export function parsePrtsCopilotQueryPayload(value: unknown): PrtsCopilotQueryPa
     throw new TypeError('PRTS 作业查询响应不是对象');
   }
   const body = isRecord(value.data) ? value.data : {};
+  const total = body.total;
   return {
     statusCode: value.status_code,
     items: Array.isArray(body.data) ? body.data.filter(isRecord) : [],
-    hasNext: Boolean(body.has_next)
+    hasNext: Boolean(body.has_next),
+    ...(typeof total === 'number' && Number.isFinite(total) ? { total } : {})
   };
 }
 
@@ -286,11 +355,21 @@ export interface MaintenanceCopilotEntry {
   title: unknown;
 }
 
-export interface MaintenanceCopilotSearchEntry extends MaintenanceCopilotEntry {
+export interface MaintenanceCopilotSearchEntry {
+  id: unknown;
+  uri: string;
+  views: unknown;
+  hotScore: unknown;
+  title: unknown;
   stageName: unknown;
+  stageId: string;
+  stageCode: string;
+  stageLabel: string;
+  operators: string[];
+  uploader?: string;
+  uploadTime?: string;
+  match?: CopilotMatchSummary;
 }
-
-
 
 /**
  * 单作业代理载荷追加展示关卡投影：`stage` 为可读代号，`stageId` 为作业内容里的
@@ -337,30 +416,80 @@ export function projectParadoxCopilot(item: Record<string, unknown>): Maintenanc
   };
 }
 
+const COPILOT_OPERATOR_LIMIT = 30;
+
+interface CopilotContentFields {
+  title: unknown;
+  stageName: unknown;
+  operators: string[];
+  parsed: Record<string, unknown> | null;
+}
+
+function readCopilotContentFields(content: unknown): CopilotContentFields {
+  try {
+    const parsed: unknown = JSON.parse(String(content || '{}'));
+    const operators = new Set<string>();
+    if (isRecord(parsed) && Array.isArray(parsed.opers)) {
+      for (const oper of parsed.opers) {
+        if (operators.size >= COPILOT_OPERATOR_LIMIT) break;
+        if (!isRecord(oper) || typeof oper.name !== 'string') continue;
+        const name = oper.name.trim();
+        if (name) operators.add(name);
+      }
+    }
+    return {
+      title: copilotDocTitle(parsed),
+      stageName: isRecord(parsed) ? parsed.stage_name : undefined,
+      operators: [...operators],
+      parsed: isRecord(parsed) ? parsed : null
+    };
+  } catch {
+    return { title: undefined, stageName: undefined, operators: [], parsed: null };
+  }
+}
+
+function copilotUploaderName(uploader: unknown, uploaderId: unknown): string | undefined {
+  if (typeof uploader === 'string' && uploader.trim()) return uploader;
+  if (uploaderId === undefined || uploaderId === null) return undefined;
+  return String(uploaderId);
+}
+
+export interface CopilotSearchProjectionOptions {
+  stageId?: string;
+  stageIndex?: ReadonlyMap<string, CopilotStageCatalogEntry>;
+  ownedOperators?: ReadonlyMap<string, OwnedOperatorSnapshot>;
+}
+
 /**
  * 关卡作业条目：标题与关卡名来自 content 文档，content 不是 JSON 时沿用默认标题与请求关卡。
  */
 export function projectCopilotSearchItem(
   item: Record<string, unknown>,
-  stageId: string
+  options: CopilotSearchProjectionOptions = {}
 ): MaintenanceCopilotSearchEntry {
-  let title: unknown = '无标题';
-  let stageName: unknown = stageId;
-  try {
-    const content = JSON.parse(String(item.content || '{}'));
-    title = copilotDocTitle(content) || '无标题';
-    stageName = isRecord(content) && content.stage_name ? content.stage_name : stageId;
-  } catch {
-    // 非 JSON content：沿用默认标题与请求关卡
-  }
+  const content = readCopilotContentFields(item.content);
+  const stageName = content.stageName || options.stageId || '';
+  const stageId = normalizeCopilotStageId(String(stageName));
+  const stageEntry = stageId ? options.stageIndex?.get(stageId.toUpperCase()) : undefined;
+  const uploader = copilotUploaderName(item.uploader, item.uploader_id);
+  const uploadTime = typeof item.upload_time === 'string' ? item.upload_time : undefined;
+  const match = options.ownedOperators && content.parsed
+    ? resolveCopilotMatch(content.parsed, options.ownedOperators)
+    : null;
   return {
     id: item.id,
     uri: `prts://${String(item.id)}`,
     views: item.views,
     hotScore: item.hot_score,
-    uploader: item.uploader_id,
-    title,
-    stageName
+    title: content.title || '无标题',
+    stageName,
+    stageId,
+    stageCode: stageEntry?.code ?? '',
+    stageLabel: stageEntry?.name ?? '',
+    operators: content.operators,
+    ...(uploader === undefined ? {} : { uploader }),
+    ...(uploadTime === undefined ? {} : { uploadTime }),
+    ...(match ? { match } : {})
   };
 }
 
@@ -372,9 +501,16 @@ export interface MaintenanceParadoxSearchPayload {
 }
 
 export interface MaintenanceCopilotSearchPayload {
+  keyword: string;
   stage: string;
+  stageId?: string;
+  orderBy: MaintenanceCopilotSearchOrder;
+  page: number;
+  limit: number;
+  total?: number;
+  hasNext: boolean;
   copilots: MaintenanceCopilotSearchEntry[];
-  recommended: MaintenanceCopilotSearchEntry;
+  recommended?: MaintenanceCopilotSearchEntry;
 }
 
 /** 维护动作计划：dryRun 只返回这些计划，不触发真实更新。 */
