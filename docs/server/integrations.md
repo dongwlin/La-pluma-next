@@ -69,7 +69,9 @@ MAA CLI 可执行文件路径在模块导入时按 `MAA_CLI_PATH` 解析一次�
 - `readLogFile` 先对日志目录与请求路径取 `realpath`，再按目录边界判定与扩展名检查：只允许日志目录内的 `.log` 文件，目录外符号链接与悬空目标都被拒绝（`server/src/services/maaLogFileService.ts:268-278,337-349`）。
 - 日志内容从文件尾部按 64 KB 分块读取，单次最多 2 MB；窗口起始于行中间时丢弃首行残片。`totalLines` 按 split 语义分块统计换行数；行数上限 `MAX_LOG_FILE_LINES` 5000（`server/src/services/maaLogFileService.ts:24,27,284-329,337-381`）。
 - `cleanupLogs` 按修改时间从新到旧累加，把超出保留上限的文件删除；上限限定 1–1024 MB（`server/src/services/maaLogFileService.ts:229-262`）。
-- 执行前检查点 `createMaaLogCheckpoint` 记录 `asst.log` 的路径、当前字节数、文件身份与检查点边界前 256 字节的 SHA-256 摘要，失败返回 null 不抛错；`readMaaLogIncrement` 只读取检查点之后新增的字节（最多 `maxBytes`）并标明完整性：`ok` 为全部新增内容，`unreadable` 为检查点或文件不可读，`truncated` 为文件回绕变小、超出单次读取上限或短读导致的尾部部分内容，`rotated` 为检查点指向的日志已被替换或原地重写（dev/ino 或边界前内容摘要变化）且不再返回文本。调度中的回调结果读取依赖这对检查点与增量读取，不把旧任务日志算入当前结果；依赖「没读到某类回调」下结论或把统计当整次执行落盘的调用方只在 `ok` 时采信增量内容，截断或轮转时改用可核对的完整 CLI 摘要或任务内累计回调，无法确认的字段保持缺失（`server/src/services/maaLogFileService.ts:188-283`）。
+- `createMaaLogCheckpoint` 在执行前记录 `asst.log` 的路径、字节数、文件身份（`dev/ino`）和检查点边界前最多 256 字节的 SHA-256 摘要。`readMaaLogIncrement` 在文件身份与内容边界可验证时读取检查点之后的新增字节（`server/src/services/maaLogFileService.ts`）。
+- MaaCore 将 `asst.log` 改名为 `asst.bak.log` 后，增量读取先核对备份的文件身份。检查点偏移大于零时还要求边界摘要匹配。核验通过后，按顺序读取备份从检查点偏移到文件末尾的内容和新 `asst.log` 从头开始的内容。两段共用 `maxBytes` 上限，默认取最后 2 MiB。备份缺失或核验失败时返回空文本。
+- `ok` 表示从原文件完整读取新增字节。文件原地变小、超出读取上限或短读时返回 `truncated`。文件被替换或原地重写时返回 `rotated`，从备份恢复的两段内容均在上限内完整读取时也保留此状态。检查点缺失或文件读取失败时返回 `unreadable`。轮转或截断后仍可采信实际读到的回调。依赖完整日志来判断回调是否缺失或计算整次执行统计时，只接受 `ok`，也可根据完整 CLI 摘要或任务内累计回调补充可确认的字段。
 - 调试截图列表从 MAA 状态目录的 `debug/` 读取图片文件；响应只暴露文件名，不返回服务器绝对路径（`server/src/services/maaLogFileService.ts:386-424`）。
 
 ## 活动查询与本地任务缓存
@@ -138,9 +140,9 @@ MAA CLI 可执行文件路径在模块导入时按 `MAA_CLI_PATH` 解析一次�
 
 overlay 与命令行参数的优先级依据 maa-cli 仓库源码：预设命令在 `crates/maa-cli/src/run/preset/mod.rs` 按 `json`、`yaml`、`yml`、`toml` 的顺序取第一个存在的 overlay 文件作为任务默认值；`crates/maa-cli/src/run/preset/copilot.rs` 随后把用户布尔开关与默认值取或（`use_sanity_potion`、`add_trust`、`ignore_requirements`、`formation`），数字与字符串参数只在用户显式给出时才覆盖，预设会重写的 `copilot_list`、`formation` 等键之外的内容（含 `filename`）原样保留。`maa run <task file>` 直接解析任务文件、不读取 overlay，这是现有流程不受影响的原因。委托资格读取同一份生效 overlay：overlay 里与用户选项冲突且 CLI 无法显式改回的值（关闭的开关被设为 `true`、用户为 0/空而 overlay 非 0/非空、未知参数）判为 `overlay-conflict`；YAML 格式无法在服务端解析、overlay 不可读或格式损坏时判为 `overlay-unreadable`，两者都沿现有动态执行路径。
 
-原生失败时，只有在日志检查点可用且尚未出现任何 `CopilotListLoadTaskFileSuccess`——即没有跳转关卡、也没有开始战斗——才回退到现有流程；游戏启动、编队等前置步骤可能已经执行，但回退不会重复消耗理智或重复结算关卡。一旦观察到计划文件加载，就按原有规则结算失败，不再重跑。停止请求不算原生失败，按停止结算。日志被轮转（检查点文件身份或边界前内容摘要变化）时无法确认是否开战，同样不回退。
+原生失败后，仅在增量日志状态为 `ok`、未出现 `CopilotListLoadTaskFileSuccess` 且没有条目已结算为成功时回退到现有流程。计划文件加载发生在跳转关卡与开始战斗之前，这项检查避免重复消耗理智或重复结算关卡。轮转恢复的回调可用于确认实际发生的加载。回退仍要求状态为 `ok`，因为跨轮转时可能缺失加载回调。停止请求按停止结算（`server/src/services/copilotPlanService.ts`）。
 
-原生命令把下载的作业文件写在 maa-cli 共享缓存 `<cache>/copilot/<id>.json`，缓存命中时不会校验远端内容；现有流程则每次执行都重新获取计划内容。原生委托在启动命令前删除本次条目的对应缓存文件（`invalidateCachedCopilotFiles`），让命令重新下载，保证原生路径与计划构建使用同一份作业内容；其它 copilot 缓存文件不受影响。删除失败时按原生失败处理，日志检查点可用时回退到现有流程，不会带着可能过期的缓存执行。
+原生命令把下载的作业文件写在 maa-cli 共享缓存 `<cache>/copilot/<id>.json`，缓存命中时不会校验远端内容；现有流程则每次执行都重新获取计划内容。原生委托在启动命令前删除本次条目的对应缓存文件（`invalidateCachedCopilotFiles`），让命令重新下载，保证原生路径与计划构建使用同一份作业内容；其它 copilot 缓存文件不受影响。删除失败时按原生失败处理，并按上述条件判断是否回退。
 
 委托结果写在 `CopilotEntriesOutcome.delegation` 并透传到作业集 `summary.delegation`。`outcome` 显式给出最终走向：`native-succeeded`、`native-failed`、`native-stopped` 表示原生路径直接收尾；`fallback-succeeded`、`fallback-failed`、`fallback-stopped` 表示原生失败后已回退到现有流程，并按现有流程的结果收尾。`attempted` 恒为 `true`，`fallback` 为真表示发生过回退，`nativeError` 保留原生失败信息（仅回退时出现）；这些兼容字段保留给旧客户端，判断走向以 `outcome` 为准。回退成功后整体仍是成功；回退后现有流程也失败时 `outcome` 为 `fallback-failed`，与原生直接失败的 `native-failed` 区分。未委托的原因只在调试日志中记录。
 
