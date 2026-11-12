@@ -185,7 +185,7 @@ CombatTasks（页面壳：PageHeader + FloatingStatusIndicator）
 
 | 资源 | 端点与参数语义 | 域内读取策略 |
 | --- | --- | --- |
-| 普通搜索 | `GET /agent/copilot/search?stage=`，已提交的关卡搜索词 | 每次显式搜索重读；输入变化取消；失败时保留同一搜索词的上次结果 |
+| 普通搜索 | `GET /agent/copilot/search?stage=`，已提交的关卡搜索词；服务端先解析为作业站 `stage_id` | 每次显式搜索重读；输入变化取消；失败时保留同一搜索词的上次结果 |
 | 悖论搜索 | `GET /agent/paradox/search?name=`，已提交的干员搜索词 | 同上 |
 | 单作业详情 | `GET /agent/copilots/:id`，PRTS 作业 id | 预览按钮复用新鲜缓存 |
 | 作业集成员 | `GET /agent/copilot-sets/:id`，作业集 id | 仅在计划不可用/为空时读取，复用新鲜缓存 |
@@ -217,6 +217,8 @@ CombatTasks（页面壳：PageHeader + FloatingStatusIndicator）
 - `AbortError`/取消：不展示为失败。
 
 同一提交词再次搜索失败时，Query 保留上一次成功结果并提示错误。切换提交词时新 key 没有旧数据，列表清空。普通作业搜索的推荐项显示在结果中，点击结果才修改输入并打开预览。
+
+普通搜索的关卡解析由服务端完成，客户端不再维护本地关卡表：作业站关卡目录（`/arknights/level`）按代号、关卡名与内部标识匹配出 `stage_id`，目录本身按 TTL 缓存，刷新失败沿用上一份。一个代号对应多个关卡（如保全派驻的 `LT-*`）时返回 400 `AGENT_COPILOT_STAGE_AMBIGUOUS`，`details.candidates` 为候选清单；面板列出候选项，选中后按该 `stage_id` 重新搜索，并在结果上方标注当前关卡。目录未收录的输入返回 404 `AGENT_COPILOT_STAGE_NOT_FOUND`，不会再去查询作业；目录读取失败返回 502 `AGENT_COPILOT_STAGE_CATALOG_UNAVAILABLE`。
 
 ### 4. 预览：会话与取消
 
