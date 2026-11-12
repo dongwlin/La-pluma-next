@@ -8,5 +8,6 @@ export { default as HintTooltip } from './HintTooltip.tsx'
 export { default as Switch } from './Switch.tsx'
 
 export { ConfirmDialog } from './Modal.tsx'
+export { useModalLayer } from './modalLayer.ts'
 export { default as Loading, PageSkeleton } from './Loading.tsx'
 export { default as EmptyState } from './EmptyState.tsx'

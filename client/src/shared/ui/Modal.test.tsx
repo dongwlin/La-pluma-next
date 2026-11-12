@@ -1,9 +1,11 @@
 // @vitest-environment jsdom
 
-import { act } from 'react'
+import { act, useRef } from 'react'
+import { createPortal } from 'react-dom'
 import { createRoot, type Root } from 'react-dom/client'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { ConfirmDialog, Modal } from './Modal'
+import { useModalLayer } from './modalLayer'
 
 ;(globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true
 
@@ -190,5 +192,80 @@ describe('Modal placement', () => {
     expect(document.getElementById(dialog?.getAttribute('aria-labelledby') || '')?.textContent)
       .toBe('作业详情')
     expect(document.body.textContent).toContain('Sheet 内容')
+  })
+})
+
+describe('useModalLayer', () => {
+  beforeEach(() => {
+    window.matchMedia = vi.fn().mockImplementation((query: string) => ({
+      matches: query === '(prefers-reduced-motion: reduce)',
+      media: query,
+      onchange: null,
+      addListener: vi.fn(),
+      removeListener: vi.fn(),
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+      dispatchEvent: vi.fn(),
+    }))
+    container = document.createElement('div')
+    document.body.appendChild(container)
+    root = createRoot(container)
+  })
+
+  afterEach(async () => {
+    await act(async () => root.unmount())
+    container.remove()
+    document.body.style.overflow = ''
+    vi.restoreAllMocks()
+  })
+
+  function StackedLayer({ enabled }: { enabled: boolean }) {
+    const ref = useRef<HTMLDivElement>(null)
+    useModalLayer(ref, enabled)
+    return createPortal(
+      <div ref={ref} data-testid="stacked-layer">
+        <button type="button">图层操作</button>
+      </div>,
+      document.body,
+    )
+  }
+
+  it('stacks a registered layer above an open modal and releases it on disable', async () => {
+    const onClose = vi.fn()
+    const render = async (enabled: boolean) => {
+      await act(async () => {
+        root.render(
+          <>
+            <Modal isOpen onClose={onClose} title="发现作业"><p>作业内容</p></Modal>
+            <StackedLayer enabled={enabled} />
+          </>,
+        )
+      })
+    }
+
+    await render(false)
+    const modalLayer = document.querySelector<HTMLElement>('.app-modal-layer')
+    const layer = document.querySelector<HTMLElement>('[data-testid="stacked-layer"]')
+    expect(modalLayer).not.toBeNull()
+    expect(layer).not.toBeNull()
+    expect(modalLayer?.style.zIndex).toBe('80')
+    expect(layer?.getAttribute('data-app-modal-layer')).toBeNull()
+
+    await render(true)
+    expect(layer?.style.zIndex).toBe('81')
+    expect(modalLayer?.inert).toBe(true)
+    expect(modalLayer?.getAttribute('aria-hidden')).toBe('true')
+    expect(layer?.inert).toBe(false)
+
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))
+    expect(onClose).not.toHaveBeenCalled()
+
+    await render(false)
+    expect(modalLayer?.inert).toBe(false)
+    expect(modalLayer?.getAttribute('aria-hidden')).toBeNull()
+    expect(layer?.style.zIndex).toBe('')
+
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))
+    expect(onClose).toHaveBeenCalledOnce()
   })
 })

@@ -10,6 +10,13 @@ import {
 } from 'react'
 import { createPortal } from 'react-dom'
 import Button, { IconButton } from './Button'
+import {
+  isTopModal,
+  lockBackground,
+  registerModal,
+  unregisterModal,
+  unlockBackground,
+} from './modalLayer'
 
 interface ModalProps {
   isOpen: boolean
@@ -47,70 +54,6 @@ const FOCUSABLE_SELECTOR = [
   '[contenteditable="true"]',
   '[tabindex]:not([tabindex="-1"])',
 ].join(',')
-
-const modalStack: string[] = []
-const modalLayers = new Map<string, HTMLElement>()
-const backgroundState = new Map<HTMLElement, { inert: boolean; ariaHidden: string | null }>()
-let scrollLockCount = 0
-let previousBodyOverflow = ''
-
-function updateModalStack() {
-  const topId = modalStack[modalStack.length - 1]
-  modalLayers.forEach((layer, id) => {
-    const isTop = id === topId
-    layer.inert = !isTop
-    if (isTop) layer.removeAttribute('aria-hidden')
-    else layer.setAttribute('aria-hidden', 'true')
-  })
-}
-
-function registerModal(id: string, layer: HTMLElement) {
-  modalStack.push(id)
-  modalLayers.set(id, layer)
-  updateModalStack()
-}
-
-function unregisterModal(id: string) {
-  const index = modalStack.lastIndexOf(id)
-  if (index >= 0) modalStack.splice(index, 1)
-  modalLayers.delete(id)
-  updateModalStack()
-}
-
-function lockBackground() {
-  if (scrollLockCount === 0) {
-    previousBodyOverflow = document.body.style.overflow
-    document.body.style.overflow = 'hidden'
-
-    Array.from(document.body.children).forEach(child => {
-      if (!(child instanceof HTMLElement) || child.dataset.appModalLayer === 'true') return
-      backgroundState.set(child, {
-        inert: child.inert,
-        ariaHidden: child.getAttribute('aria-hidden'),
-      })
-      child.inert = true
-      child.setAttribute('aria-hidden', 'true')
-    })
-  }
-  scrollLockCount += 1
-}
-
-function unlockBackground() {
-  scrollLockCount = Math.max(0, scrollLockCount - 1)
-  if (scrollLockCount > 0) return
-
-  document.body.style.overflow = previousBodyOverflow
-  backgroundState.forEach((state, element) => {
-    element.inert = state.inert
-    if (state.ariaHidden === null) element.removeAttribute('aria-hidden')
-    else element.setAttribute('aria-hidden', state.ariaHidden)
-  })
-  backgroundState.clear()
-}
-
-function isTopModal(id: string) {
-  return modalStack[modalStack.length - 1] === id
-}
 
 function getFocusableElements(container: HTMLElement) {
   return Array.from(container.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR))

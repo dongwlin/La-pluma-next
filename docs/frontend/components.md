@@ -240,6 +240,8 @@ import { ConfirmDialog, Loading } from '@/shared/ui'
 
 `Modal` 的 `placement` 默认为 `center`（既有居中弹层）；传 `sheet` 时改为贴底 Sheet，最大高度 `85dvh`、顶部连续圆角并预留底部安全区，焦点陷阱、背景 `inert`、Esc、滚动锁与焦点归还保持与居中弹层一致。`dialogId` 可选，用于让触发元素的 `aria-controls` 指向对话框根节点。
 
+`useModalLayer(ref, enabled?)` 由 `shared/ui` 导出，用于把已有 portal 图层登记进同一个 Modal 栈：登记期间按栈序分配 `z-index`，非顶层弹窗自动设为 `inert`/`aria-hidden`，停用后移除内联层级并恢复原样式。它只负责图层栈，不创建弹窗；普通 `Modal` 仍自行管理背景锁与焦点陷阱。桌面端作业详情抽屉叠在“发现作业”弹窗之上时使用该能力。
+
 ```tsx
 <Modal
   isOpen={open}
