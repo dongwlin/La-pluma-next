@@ -21,8 +21,11 @@
 | 任务目录与模式展示项 | `features/combat/components/CombatTaskCatalog.tsx` | 名称、命令、图标、占位与描述；不读取配置/Query/执行状态 |
 | 模式分段控件的测量与键盘导航 | `features/combat/components/CombatModeTabs.tsx` | 受控组件；只持有 `useFluidTabIndicator` 的测量状态 |
 | 执行设置、编队/突袭/作业集模式与高级字段 | `components/CombatSettingsPanel.tsx`、`components/CombatAdvancedFields.tsx` | 受控表单；选项表来自 `model/combatCommands.ts` |
-| 作业来源栏（输入、预览、JSON 导入、识别方式、搜索与说明） | `components/CombatCopilotSourceBar.tsx` + `components/CombatCopilotInputPanel.tsx` | 输入值来自配置草稿；JSON 导入按钮位于链接输入框内、识别方式下拉左侧，文件选择与从文件管理器复制后粘贴的 JSON 文件走同一上传通道；识别方式、搜索词与搜索选中项保存在面板会话存储；搜索/预览/上传/入队动作由工作区提供 |
-| 普通搜索与悖论搜索 | `components/CombatSearchPanel.tsx`、`components/CombatParadoxSearchPanel.tsx` | 搜索词与“已选中”高亮在面板侧；结果、取消与推荐接线由工作区提供 |
+| 作业来源栏（链接输入、预览、JSON 导入、识别方式、发现与说明） | `components/CombatCopilotSourceBar.tsx` + `components/CombatCopilotInputPanel.tsx` | 输入值来自配置草稿；JSON 导入按钮位于链接输入框内、识别方式下拉左侧，文件选择与从文件管理器复制后粘贴的 JSON 文件走同一上传通道；识别方式保存在面板会话存储；“发现”只打开独立弹窗，不在来源栏内嵌搜索 |
+| 发现作业弹窗（关键词、关卡、干员、排序、视图与结果卡片） | `components/CombatCopilotDiscoveryDialog.tsx` + `CombatCopilotSearchBar.tsx`、`CombatCopilotDiscoveryCard.tsx`、`CombatCopilotStageSelect.tsx` | 工作区在页面挂载时按已保存的干员偏好后台预取默认热度列表并缓存；打开弹窗先展示缓存，再在后台刷新，刷新不显示 loading、不阻塞输入；关键词/关卡/排序每次打开重置，干员包含/排除、匹配设置与视图按界面偏好恢复；请求统一经 `normalizeCopilotSearchRequest`，关卡/干员/排序变化立即重搜，视图与匹配模式只影响本地展示；整张卡片可点击选中 |
+| 干员包含/排除与匹配设置 | `components/CombatCopilotOperatorFilterDialog.tsx`、`components/CombatCopilotMatchDialog.tsx` + `model/operatorFilter.ts` | 包含/排除互斥，选项来自识别快照的已拥有/未拥有干员并支持中文名、全拼与首字母；包含区按已拥有 + 练度降序、排除区按未拥有 + 练度升序（先精英等级再干员等级），选项区最多三行并随滚动自动追加；干员按钮内的电源开关可临时停用筛选而不清空选择；“记住筛选结果”决定是否写入界面偏好；匹配是客户端过滤，服务端 `match` 缺失时保留卡片并标注未识别 |
+| 关卡目录与持有干员快照 | `model/queries.ts`（`copilotStageCatalogQueryOptions`）+ `game-data`（`operBoxQueryOptions`） | 工作区在发现弹窗首次打开时按需读取，弹窗只消费投影；不在弹窗内另建数据源 |
+| 普通搜索与悖论搜索 | `hooks/useCopilotSearch.ts`、`components/CombatParadoxSearchPanel.tsx` | 普通搜索请求、代次与取消由工作区 hook 持有；悖论干员搜索词在面板侧；结果与推荐接线由工作区提供 |
 | 本次执行的条目位置、当前关卡与已用时 | `components/CombatExecutionProgressPanel.tsx` | 只渲染 `deriveExecutionProgress`；不呈现运行状态、停止入口、逐项结果或计划计数 |
 | 作业队列（唯一列表：勾选、排序、删除、清空、等待续跑/跳过/重试入口） | `components/CombatCopilotQueuePanel.tsx` | 只渲染 `CombatCopilotQueueProjection`；行主体打开详情层；不持有第二份队列模型 |
 | 队列模型、本地持久化与操作 | `model/copilotQueue.ts`、`model/copilotQueueStorage.ts`、`hooks/useCopilotQueue.ts` | 条目构造、URI 去重、排序、上限与 `la-pluma-copilot-queue-v1` 读写；勾选为会话状态 |
@@ -37,9 +40,9 @@
 
 维护约束：
 
-- 不改变 `/agent/copilot/*`、`/agent/copilot-sets/*` 等既有端点、Query key、配置 key、既有本地存储键或 wire 形状；新增的 `/api/copilot-files` 是 Web UI 专用上传入口，不进入 Agent manifest，也不改变执行参数；新增的 `la-pluma-copilot-queue-v1` 只服务本地作业队列；新增的 `/agent/copilot-queues/execute`、`/agent/actions/continue-copilot-queue`、`/agent/actions/skip-copilot-queue-entry` 是 Web UI 专用的队列 Run 入口，不进入 Agent manifest，也不改变作业集路径。
+- 不改变 `/agent/copilot-sets/*` 等既有端点、配置 key、既有本地存储键或执行 wire 形状；`/agent/copilot/search` 保留 `stage` 作为 `level` 别名，新增可选 `document`/`level`/`operator`/`orderBy`/`page`/`limit` 与响应字段（`stageId`/`stageCode`/`stageLabel`/`uploader`/`uploadTime`/`operators`/`match`/`total`/`hasNext` 等），旧调用方不传新参数时行为不变。新增的 `/agent/copilot/stages` 是只读关卡目录，`/api/copilot-files` 与 `/agent/copilot-queues/*` 是 Web UI 专用入口，均不进入 Agent manifest。新增的 `la-pluma-copilot-queue-v1` 只服务本地作业队列。
 - 不改变三种作业集执行方式的服务端映射：`app`/`cli` → `continuous`，`manual` → `manual`。
-- 不把搜索词、识别方式、选中索引写进配置或 localStorage；不新增跨页共享。
+- 不把搜索词、关卡、排序、搜索选中项或识别方式写进配置或 localStorage；干员筛选（含启用状态与记住开关）、匹配模式与网格/列表视图只作为界面偏好写入 `la-pluma-copilot-operator-filter-v1`、`la-pluma-copilot-operator-match-v1`、`la-pluma-copilot-discovery-view-v1`，不进入配置通道或 Query key；不新增跨页共享。
 - 作业输入与搜索的 `name`、状态文案、关键 `aria-*` 契约与配置 key 保持稳定；执行参数中编队与执行方式为分段控件、难度为下拉框，字段语义不变；DOM/CSS 类名随布局调整。作业输入与搜索在前，队列卡居中，执行参数在后，窄容器按阅读顺序纵向排列。
 - 页面壳不包含业务状态机；工作区是唯一领域容器，面板只接收投影。
 
@@ -51,9 +54,13 @@ CombatTasks（页面壳：PageHeader + FloatingStatusIndicator）
    ├─ CombatModeTabs（受控分段 + 高亮测量）
    ├─ CombatExecutionProgressPanel（本次执行条目位置 / 关卡 / 已用时）
    ├─ CombatCopilotTaskPanel（普通作业卡）
-   │  ├─ CombatCopilotSourceBar（CombatCopilotInputPanel + CombatSearchPanel）
-   │  │  ├─ CombatCopilotInputPanel（作业链接输入 + JSON 导入图标 + 识别方式下拉 + 预览 / 加入队列 / 说明）
-   │  │  └─ CombatSearchPanel（关卡搜索）
+   │  ├─ CombatCopilotSourceBar（CombatCopilotInputPanel + CombatCopilotDiscoveryDialog）
+   │  │  ├─ CombatCopilotInputPanel（作业链接输入 + JSON 导入图标 + 识别方式下拉 + 预览 / 加入队列 / 发现 / 说明）
+   │  │  └─ CombatCopilotDiscoveryDialog（关键词 + 关卡 + 干员 + 排序 + 视图 + 匹配）
+   │  │     ├─ CombatCopilotSearchBar / CombatCopilotStageSelect
+   │  │     ├─ CombatCopilotDiscoveryCard（网格/列表）
+   │  │     ├─ CombatCopilotOperatorFilterDialog（包含/排除）
+   │  │     └─ CombatCopilotMatchDialog（匹配模式）
    │  ├─ CombatCopilotQueuePanel（唯一作业列表）
    │  ├─ CombatCopilotDetailLayer（预览 / 队列行详情 / 作业集摘要）
    │  └─ 参数区：CombatSettingsPanel → CombatAdvancedFields
@@ -69,9 +76,12 @@ CombatTasks（页面壳：PageHeader + FloatingStatusIndicator）
 | 当前作业类型 | `CombatWorkspace` | 改变展示卡片 | 保留 | 回到 `copilot` |
 | 配置草稿、pending 与提交队列 | `user-config` 协调器 | 不重建 | 保留；不重新读取已 hydrate 的草稿 | 应用级通道继续持有 |
 | 预览对象、loading、请求代次 | `CopilotPreviewSession`（工作区实例） | 保留；卡片重建不取消当前预览 | `stop()` 取消在途读取、保留已显示预览；恢复不自动重放 | 新会话；预览清空 |
-| 搜索词、搜索选中项、识别方式、悖论搜索词 | 工作区创建的面板会话存储 | 保留（存储不随卡片卸载） | 保留 | 重置 |
+| 关键词、关卡、排序、搜索选中项、识别方式、悖论搜索词 | 工作区创建的面板会话存储 | 保留（存储不随弹窗/卡片卸载） | 保留 | 重置 |
+| 干员包含/排除与启用状态、匹配模式、视图 | 工作区 store + `la-pluma-copilot-operator-filter-v1` / `la-pluma-copilot-operator-match-v1` / `la-pluma-copilot-discovery-view-v1` | 保留 | 保留 | 从界面偏好恢复 |
+| 关卡目录与持有干员快照 | `copilotStageCatalogQueryOptions` / `operBoxQueryOptions`（工作区订阅） | 保留缓存 | 保留；不自动重放 | 重新读取 |
 | 本地作业文件导入（选择文件或粘贴 JSON 文件）在途 | `CombatWorkspace` 本地状态 + ref | 保留 | 保留 | 重置 |
-| 搜索结果、loading、取消代次 | `useCopilotSearch`/`useParadoxSearch`（工作区实例） | 保留 | 清理取消在途搜索；恢复不自动重放 | 重置 |
+| 显式搜索结果、loading、取消代次 | `useCopilotSearch`/`useParadoxSearch`（工作区实例） | 关闭发现弹窗时清空显式结果 | 清理取消在途搜索；恢复不自动重放 | 重置 |
+| 默认发现列表缓存与后台刷新 | `useCopilotSearch` 的默认 Query（工作区实例） | 保留 | 清理取消在途刷新；恢复不自动重放 | 页面挂载时重新预取 |
 | 作业队列条目与勾选 | `useCopilotQueue`（工作区实例）+ `localStorage['la-pluma-copilot-queue-v1']` | 保留 | 保留；条目已持久化，勾选为会话状态 | 从本地存储恢复条目并全选 |
 | 详情层打开项 | `CombatCopilotQueuePanel` 局部状态（按队列条目 id） | 重置 | 保留 | 重置 |
 | 作业集待执行索引 | `CombatWorkspace` 本地状态 + `copilotSetSelections` 配置 | 保留 | 保留 | 重置；预览成功后按计划进度恢复并同步到作业队列 |
@@ -89,21 +99,29 @@ CombatTasks（页面壳：PageHeader + FloatingStatusIndicator）
 
 ### 3. 局部状态与渲染隔离
 
-`model/panelState.ts` 提供最小的会话存储：`get`/`set`/`subscribe`，相同值不通知。工作区用 `useState` 创建四个 store：
+`model/panelState.ts` 提供最小的会话存储：`get`/`set`/`subscribe`，相同值不通知。工作区用 `useState` 创建十一个 store：
 
 | store | 订阅方 | 工作区写入点 |
 | --- | --- | --- |
 | `copilotPreviewMode` | `CombatCopilotSourceBar` | 无；工作区在预览时读取当前值 |
-| `copilotSearchStage` | `CombatSearchPanel` | 无 |
-| `copilotSearchSelection` | `CombatSearchPanel` | 输入变化或应用搜索 URI 时清空/设置为规范化 URI |
+| `copilotSearchKeyword` | `CombatCopilotDiscoveryDialog` | 无；弹窗内输入 |
+| `copilotSearchLevel` | `CombatCopilotDiscoveryDialog` | 无；关卡筛选器写入 |
+| `copilotSearchOperators` | `CombatCopilotDiscoveryDialog` | 无；包含/排除弹窗写入 |
+| `copilotSearchOperatorsEnabled` | `CombatCopilotDiscoveryDialog` | 无；干员按钮内的电源开关写入 |
+| `copilotSearchOperatorsRemember` | `CombatCopilotDiscoveryDialog` | 无；确认筛选时写入 |
+| `copilotSearchOrder` | `CombatCopilotDiscoveryDialog` | 无 |
+| `copilotSearchMatch` | `CombatCopilotDiscoveryDialog` | 无；匹配设置写入 |
+| `copilotSearchView` | `CombatCopilotDiscoveryDialog` | 无；网格/列表切换写入 |
+| `copilotSearchSelection` | `CombatCopilotDiscoveryDialog` | 输入变化或应用搜索 URI 时清空/设置为规范化 URI |
 | `paradoxSearchName` | `CombatParadoxSearchPanel` | 无 |
 
 工作区本身**不订阅**这些 store，因此：
 
-- 在搜索框输入、输入悖论干员名或切换识别方式时，只重渲染对应面板；作业队列、配置表单与另一张作业卡不重渲染。
-- 输入变化仍调用搜索 hook 的 `cancel()` 取消在途 Query；旧响应只写旧 key。
+- 在发现弹窗输入关键词、切换关卡/干员/排序/视图/匹配，或输入悖论干员名、切换识别方式时，只重渲染对应面板/弹窗；作业队列、配置表单与另一张作业卡不重渲染。
+- 工作区挂载即后台预取默认发现列表；打开弹窗时只重置关键词/关卡/排序并触发一次后台刷新，首次打开按需读取关卡目录与持有干员快照，不在来源栏内联搜索。
+- 输入变化仍调用搜索 hook 的 `cancel()` 取消在途的显式搜索；默认列表的后台刷新不会被输入或显式搜索打断，也不覆盖显式搜索结果；旧响应只写旧 key。
 - 点击搜索结果会更新配置输入、写入搜索选中项并触发预览，这些动作本身需要工作区与作业队列更新，属于相关更新。
-- 切换作业类型会卸载卡片 DOM，但 store 由工作区持有，重新进入时搜索词、识别方式与搜索选中项保持不变。
+- 切换作业类型会卸载卡片 DOM，但 store 由工作区持有；识别方式与干员/匹配/视图界面偏好保留，关键词/关卡/排序在下次打开发现时重置。
 
 回归：`CombatTasks.test.tsx` 的 “keeps the set list out of local search and recognition-mode renders” 用列表组件渲染计数验证输入不推动列表；同文件的模式切换用例验证局部状态跨卡片卸载保留。`panelState.test.ts` 覆盖通知、相同值与退订。
 
@@ -132,7 +150,8 @@ CombatTasks（页面壳：PageHeader + FloatingStatusIndicator）
 
 ### 5. 搜索、执行与页面路径
 
-- **搜索选择**：点击普通搜索结果才会写入 `copilot.uri` 并打开预览，推荐标记帮助定位搜索结果。`copilotSearchSelection` 驱动“已选中”高亮，修改主输入会清除非匹配的高亮。结果的「加入队列」动作按 URI 读取作业信息后加入队列。
+- **默认列表**：进入作业页后由默认 Query 在后台预取热度列表并缓存；打开发现先渲染缓存，再后台刷新同一请求 key，刷新期间不显示 loading、不阻塞输入，失败时保留缓存。关键词、关卡与排序在打开时重置，干员包含/排除、匹配模式与视图按界面偏好恢复。
+- **搜索选择**：发现弹窗以关键词（`document`）、关卡（`level`）、干员包含/排除（`operator`，排除项 `~` 前缀）与排序（`hot`/`latest`/`views`）请求作业站；点击卡片才写入 `copilot.uri` 并打开预览，推荐标记帮助定位结果。`copilotSearchSelection` 驱动“已选中”高亮，修改主输入会清除非匹配的高亮。弹窗保持打开，详情抽屉按 Modal 图层栈叠在其上；关闭抽屉后仍停留在原结果列表。结果的「加入队列」动作按 URI 读取作业信息后加入队列。匹配模式只过滤当前已加载结果，不改变服务端排序或结果总数。
 - **JSON 作业导入**：链接输入框内的 JSON 导入按钮读取本地 JSON 文件；从文件管理器复制 JSON 文件后在输入框粘贴，文件交给同一导入通道。两条路径都提交 `POST /api/copilot-files`，成功后清空旧预览，并把 `doc.title`、`opers`、`groups` 解析成队列条目的标题与干员信息，关卡优先使用上传响应里的 `stage`/`stageId`（服务端按资源解析出的代号与原始标识），缺失时才回退文件里的 `stage_name`；解析失败仍按导入文件名入队，上传接口拒绝非法 JSON 时提示错误且不加入队列。输入框只承载作业链接与 JSON 文件粘贴，不再接受服务端可见的文件路径。队列 Run 提交 `source: 'file'` 与服务端受管路径，由服务端重新读取受管文件并写入队列计划目录；受管路径不参与 PRTS 预览。
 - **执行设置**：页面提供连续执行与手动逐关，旧配置的 `app` 与 `cli` 都映射到 `continuous`，`manual` 保留逐步等待。难度选择 `auto` 时，作业集计划与显式队列由服务端读取作业的 `difficulty`；预览和详情保留可用的标注。手动指定难度使用用户的选择。
 - **队列执行**：只勾选当前预览作业集的成员，且其 `setItemIndex` 严格递增时，走作业集提交（`submitSet` → `run_copilot_set`）：连续模式一次提交整组，手动模式等待服务端 `nextEntry`；`selectedIndexes` 来自队列勾选。混合来源、重排后的集合成员或本地文件走 `submitQueue` → `run_copilot_queue`。客户端按队列顺序提交 `{ clientId, source, copilotId|filename, mode }`，每个作业的 `mode` 来自全局突袭设置，预设编队作业提交 `normal`。服务端将适用的 `both` 展开为普通和突袭两个步骤。`executionStrategy` 映射为 `failurePolicy`：`stop` 首败停止，其他值按 `continue`。
@@ -164,7 +183,7 @@ CombatTasks（页面壳：PageHeader + FloatingStatusIndicator）
 | 内容 | 唯一归属 | 说明 |
 | --- | --- | --- |
 | 搜索/详情/计划的只读端点、载荷解析与 query key | `features/combat/model/queries.ts`、`queryKeys.ts`、`copilotPayload.ts` | 只保存服务端只读资源；不写执行状态 |
-| 搜索的提交与取消语义 | `features/combat/hooks/useCopilotSearch.ts` | 搜索词由搜索面板通过工作区会话存储持有；hook 提供代次与取消 |
+| 搜索的提交与取消语义 | `features/combat/hooks/useCopilotSearch.ts` | 搜索请求（关键词/关卡/干员/排序/分页）由发现弹窗通过工作区会话存储组装；hook 提供默认请求预取、后台刷新、显式搜索的代次与取消 |
 | 预览请求裁决与当前展示 | `features/combat/model/copilotPreviewSession.ts` + `hooks/useCopilotPreview.ts` | 计划优先、成员回退、旧响应裁决、Activity 取消 |
 | 预览目标与展示对象构造 | `features/combat/model/copilotPreview.ts` | 单作业/作业集/旧探测与提示文本 |
 | 作业集选择 | `features/combat/model/copilotSelection.ts` | 序列化、待执行求差、按计划进度恢复 |
@@ -185,7 +204,8 @@ CombatTasks（页面壳：PageHeader + FloatingStatusIndicator）
 
 | 资源 | 端点与参数语义 | 域内读取策略 |
 | --- | --- | --- |
-| 普通搜索 | `GET /agent/copilot/search?stage=`，已提交的关卡搜索词；服务端先解析为作业站 `stage_id` | 每次显式搜索重读；输入变化取消；失败时保留同一搜索词的上次结果 |
+| 普通搜索 | `GET /agent/copilot/search?document=&level=&operator=&orderBy=&page=&limit=`；`operator` 以逗号分隔、`~名称` 表示排除，服务端透传作业站 | 默认请求在进入作战页时预取并缓存 5 分钟；打开发现后台刷新且不进入显式 loading；每次显式搜索重读，关键词变化取消，失败时保留上次成功结果；筛选/排序变化也会重读 |
+| 关卡目录 | `GET /agent/copilot/stages`，服务端缓存的作业站关卡目录 | 发现弹窗首次打开时读取，30 分钟内复用；失败可重试 |
 | 悖论搜索 | `GET /agent/paradox/search?name=`，已提交的干员搜索词 | 同上 |
 | 单作业详情 | `GET /agent/copilots/:id`，PRTS 作业 id | 预览按钮复用新鲜缓存 |
 | 作业集成员 | `GET /agent/copilot-sets/:id`，作业集 id | 仅在计划不可用/为空时读取，复用新鲜缓存 |
@@ -194,7 +214,7 @@ CombatTasks（页面壳：PageHeader + FloatingStatusIndicator）
 关键规则：
 
 - **key 只放影响响应的输入。** 识别方式（自动/单个/作业集）、预览按钮、选中索引与搜索框的未提交文字都不进入 key。
-- **搜索词是缓存身份。** 切换关卡或干员得到新的 key；旧 key 的迟到响应只能写入旧缓存，当前页面只读新 key。
+- **搜索请求是缓存身份。** 关键词、关卡、干员包含/排除、排序与分页共同组成 key；旧 key 的迟到响应只能写入旧缓存，当前页面只读新 key。
 - **预览不建立第二份 key。** 组合读取通过 `fetchQuery` 使用上面的资源 key，不额外缓存“预览结果”。预览当前展示哪一次请求由会话裁决。
 - **不轮询。** 搜索与预览都没有 `refetchInterval`；Activity 显示时按 Query 默认新鲜度重取，不自动重放用户操作。
 - **写后只失效受影响的 key。** 重置进度成功后失效该作业集的 `copilot-set-plan` 前缀；作业集 Run 终态后的进度刷新把新计划写回同一 key。PRTS 作业内容没有跨页写入，不需要失效端口。
@@ -216,9 +236,9 @@ CombatTasks（页面壳：PageHeader + FloatingStatusIndicator）
 - `transport` 或未知错误：展示 `搜索失败: <message>`。
 - `AbortError`/取消：不展示为失败。
 
-同一提交词再次搜索失败时，Query 保留上一次成功结果并提示错误。切换提交词时新 key 没有旧数据，列表清空。普通作业搜索的推荐项显示在结果中，点击结果才修改输入并打开预览。
+同一提交词再次搜索失败时，Query 保留上一次成功结果并提示错误。切换提交词时新 key 没有旧数据，列表清空。默认列表的后台刷新失败只保留旧缓存，不覆盖显式结果，也不在弹窗内显示错误。普通作业搜索的推荐项显示在结果中，点击结果才修改输入并打开预览。
 
-普通搜索的关卡解析由服务端完成，客户端不再维护本地关卡表：作业站关卡目录（`/arknights/level`）按代号、关卡名与内部标识匹配出 `stage_id`，目录本身按 TTL 缓存，刷新失败沿用上一份。一个代号对应多个关卡（如保全派驻的 `LT-*`）时返回 400 `AGENT_COPILOT_STAGE_AMBIGUOUS`，`details.candidates` 为候选清单；面板列出候选项，选中后按该 `stage_id` 重新搜索，并在结果上方标注当前关卡。目录未收录的输入返回 404 `AGENT_COPILOT_STAGE_NOT_FOUND`，不会再去查询作业；目录读取失败返回 502 `AGENT_COPILOT_STAGE_CATALOG_UNAVAILABLE`。
+关卡筛选由发现弹窗的关卡目录下拉完成：客户端从 `/agent/copilot/stages` 读取服务端缓存的作业站目录（30 分钟 TTL，失败可重试），选中条目后以内部 `stageId` 请求 `/agent/copilot/search?level=`。下拉项对 `code`/`name`/`zone` 去重后展示，首次渲染 50 条并在滚动近底时继续追加，直到全部过滤结果都可访问；客户端不再维护本地关卡表，也不在结果上方展示候选关卡。服务端仍保留 `level` 的 code/name 解析与 400 `AGENT_COPILOT_STAGE_AMBIGUOUS`（`details.candidates`）、404 `AGENT_COPILOT_STAGE_NOT_FOUND`、502 `AGENT_COPILOT_STAGE_CATALOG_UNAVAILABLE`，供其他调用方使用；目录查不到时搜索结果仍成功返回，只是缺少 `stageCode`/`stageLabel` 展示字段。
 
 ### 4. 预览：会话与取消
 

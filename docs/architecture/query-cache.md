@@ -128,7 +128,8 @@ key 中只放服务端资源身份：筛选/排序等会改变响应的输入放
 | 资源源 `resourceSourceQueryOptions()` | `['settings','resource-source']` | 默认；面板不可见时 `enabled: false`；保存成功后主动重取同一 key |
 | 版本 `versionQueryOptions()` | `['settings','version']` | 默认 |
 | 配置目录 `configDirectoryQueryOptions()` | `['settings','config-directory']` | 默认；目录卡片是唯一观察者 |
-| 普通搜索 `copilotSearchQueryOptions(stage)` | `['combat','copilot-search',stage]` | 显式搜索 `fetchQuery({ staleTime: 0 })` |
+| 普通搜索 `copilotSearchQueryOptions(request)` | `['combat','copilot-search',keyword,level,[included],[excluded],orderBy,page,limit]` | 显式搜索 `fetchQuery({ staleTime: 0 })`；默认请求在进入作战页时预取并缓存 5 分钟，打开发现时后台刷新 |
+| 关卡目录 `copilotStageCatalogQueryOptions()` | `['combat','copilot-stages']` | 30 分钟 `staleTime`；发现弹窗打开时按需读取 |
 | 悖论搜索 `paradoxSearchQueryOptions(name)` | `['combat','paradox-search',name]` | 同上 |
 | 单作业 `copilotInfoQueryOptions(id)` | `['combat','copilot',id]` | 默认；强制预览读取 `staleTime: 0` |
 | 作业集 `copilotSetQueryOptions(id)` | `['combat','copilot-set',id]` | 同上 |
