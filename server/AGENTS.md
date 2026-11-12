@@ -47,7 +47,7 @@
 | 定向回归示例 | `node --test server/src/services/__tests__/maaCallbackService.test.ts` |
 | 覆盖率检查 | `pnpm --filter la-pluma-next-server test:coverage` |
 
-`build` 仅执行语法检查（`node --check` 逐个解析 `.ts`，同时拒绝不可擦除语法，不依赖 TypeScript 编译器，只装生产依赖时也能运行）；类型检查由 `typecheck` 独立承担，覆盖全部 TS 文件（`tsconfig.json` 的 `include`/`exclude` 为静态范围声明）；`guardrails` 承担类型与依赖职责检查，只约束正确性不变量，不引入格式或风格规则。`verify` 依次运行 `guardrails`、`check`、`typecheck`、`test`。常规测试入口逐文件、逐进程串行运行；不要为提速随意改成共享进程并行，以免模块单例和环境变量相互污染。`test:coverage` 与 `test` 使用同一批测试文件和同样的逐文件进程隔离，统计范围固定为 `**/*.ts` 排除 `**/__tests__/**`，阈值是只升不降的渐进下限；Node 只统计被测试加载过的文件，覆盖率不能替代行为测试。
+`build` 仅执行语法检查（`node --check` 逐个解析 `.ts`，同时拒绝不可擦除语法，不依赖 TypeScript 编译器，只装生产依赖时也能运行）；类型检查由 `typecheck` 独立承担，覆盖全部 TS 文件（`tsconfig.json` 的 `include`/`exclude` 为静态范围声明）；`guardrails` 承担类型与依赖职责检查，只约束正确性不变量，不引入格式或风格规则。`verify` 依次运行 `guardrails`、`check`、`typecheck`、`test`。常规测试入口逐文件、逐进程运行，默认最多 4 个进程并发，可用 `LA_PLUMA_TEST_CONCURRENCY` 调整；每个文件仍在独立进程中执行，不要改成共享进程并行，以免模块单例和环境变量相互污染。`test:coverage` 与 `test` 使用同一批测试文件和同样的逐文件进程隔离，统计范围固定为 `**/*.ts` 排除 `**/__tests__/**`，阈值是只升不降的渐进下限；Node 只统计被测试加载过的文件，覆盖率不能替代行为测试。
 
 - 测试使用 `node:test`，断言默认 `node:assert/strict`（存量个别文件仍在用 `node:assert`，新测试不沿用）；放在相关模块的 `__tests__/*.test.ts`；新增文件须符合测试入口的发现规则，TS 测试同样只使用可擦除语法。
 - 执行、持久化或子进程测试沿用临时目录、假 CLI 和依赖注入；隔离 Run 存储、执行锁、养成数据等路径，清理单例并恢复环境变量。模块导入时读取的环境变量须在导入前设置。

@@ -11,6 +11,7 @@ import viteConfig, {
   createWebManifest,
   createWorkboxConfig,
   normalizeBasePath,
+  resolveTestWorkers,
 } from './vite.config.ts'
 import { BOOT_THEME_COLORS, createBootScript } from './src/shared/theme/bootTheme.ts'
 
@@ -107,6 +108,43 @@ describe('development server configuration', () => {
 
   it.each(['backend:3100', 'ftp://backend.example', 'http://backend.example/api', 'http://backend.example?token=value'])('rejects invalid backend origin %s', (target) => {
     expect(() => createViteConfig('/', { LA_PLUMA_DEV_API_TARGET: target })).toThrow('LA_PLUMA_DEV_API_TARGET')
+  })
+})
+
+describe('vitest worker cap', () => {
+  afterEach(() => {
+    vi.unstubAllEnvs()
+  })
+
+  it('caps the default worker count and follows lower parallelism', () => {
+    expect(resolveTestWorkers(undefined, 16)).toBe(4)
+    expect(resolveTestWorkers(undefined, 2)).toBe(2)
+    expect(resolveTestWorkers(undefined, 1)).toBe(1)
+  })
+
+  it('accepts an explicit override and rejects invalid values', () => {
+    expect(resolveTestWorkers('6', 16)).toBe(6)
+    expect(resolveTestWorkers(' 3 ', 16)).toBe(3)
+
+    for (const value of ['0', '-1', '1.5', 'abc']) {
+      expect(() => resolveTestWorkers(value, 16)).toThrow('LA_PLUMA_TEST_WORKERS')
+    }
+  })
+
+  it('reads the environment override in the shared configuration', () => {
+    vi.stubEnv('LA_PLUMA_TEST_WORKERS', '2')
+
+    expect(createViteConfig('/').test.maxWorkers).toBe(2)
+  })
+
+  it('keeps the default bounded when the environment override is empty', () => {
+    vi.stubEnv('LA_PLUMA_TEST_WORKERS', '')
+
+    const maxWorkers = createViteConfig('/').test.maxWorkers
+
+    expect(Number.isInteger(maxWorkers)).toBe(true)
+    expect(maxWorkers).toBeGreaterThan(0)
+    expect(maxWorkers).toBeLessThanOrEqual(4)
   })
 })
 

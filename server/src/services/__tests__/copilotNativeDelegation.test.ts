@@ -115,8 +115,9 @@ const readTaskToml = () => {
     }
     if (process.env.FAKE_NATIVE_ROTATE_LOG) {
       const logFile = process.env.FAKE_MAA_LOG_FILE || '';
-      fs.renameSync(logFile, logFile + '.1');
-      fs.writeFileSync(logFile, 'x'.repeat(Number(process.env.FAKE_NATIVE_ROTATE_SIZE || 4096)));
+      fs.appendFileSync(logFile, 'log before rotation\\n');
+      fs.renameSync(logFile, path.join(path.dirname(logFile), 'asst.bak.log'));
+      fs.writeFileSync(logFile, 'log after rotation\\n'.repeat(256));
     }
     const copilotCacheDir = path.join(process.env.MAA_CACHE_DIR || '', 'copilot');
     for (const uri of args.slice(1)) {
@@ -227,9 +228,9 @@ beforeEach(async () => {
   delete process.env.FAKE_NATIVE_LOG_UNREADABLE;
   delete process.env.FAKE_NATIVE_TRUNCATE_LOG;
   delete process.env.FAKE_NATIVE_ROTATE_LOG;
-  delete process.env.FAKE_NATIVE_ROTATE_SIZE;
   await writeFile(maaCallLog, '');
   await rm(maaAsstLog, { recursive: true, force: true });
+  await rm(join(maaLogDir, 'asst.bak.log'), { force: true });
   await writeFile(maaAsstLog, '');
   await setConnectionClientType(null);
   await rm(progressPath, { force: true });
@@ -823,10 +824,9 @@ describe('copilot native delegation execution', () => {
     );
   });
 
-  test('does not fall back when the log rotated and the new file grew past the checkpoint', async () => {
+  test('does not fall back when both sides of a MaaCore log rotation can be read', async () => {
     setNativeDelegationEnabled(true);
     process.env.FAKE_NATIVE_ROTATE_LOG = '1';
-    process.env.FAKE_NATIVE_ROTATE_SIZE = '4096';
     process.env.FAKE_NATIVE_EXIT_CODE = '1';
     process.env.FAKE_RUN_LOADS = runLoads(planFiles());
     await writeFile(maaAsstLog, 'checkpoint-before-native');

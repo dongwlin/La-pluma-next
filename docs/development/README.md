@@ -179,9 +179,16 @@ pnpm --filter la-pluma-next-client guardrails:size-baseline
 # 全仓 guardrails + lint + 样式预算 + 类型 + 测试 + 构建（本地完整检查入口）
 pnpm verify
 
+# 前端快速回路：guardrails + lint + 类型检查 + 相对 origin/main 的改动测试（不含样式预算、构建与服务端）
+pnpm verify:fast
+
 # 样式预算可单独定位；视觉基线需配合 pnpm verify 运行
 pnpm --filter la-pluma-next-client stylelint:ratchet
 pnpm visual
 ```
+
+`lint` 与 `stylelint:ratchet` 复用本地缓存（`.eslintcache`、`.stylelintcache`，已忽略）；客户端 Vitest 默认最多 4 个 worker，服务端测试默认最多 4 个并发进程，分别用 `LA_PLUMA_TEST_WORKERS` 与 `LA_PLUMA_TEST_CONCURRENCY` 调整。并发只降低同时运行的进程数，不改变逐文件进程隔离。
+
+`verify:fast` 的测试以 `origin/main` 为固定基线，分支上的提交仍会被覆盖；只检查未提交改动时直接运行 `pnpm --filter la-pluma-next-client exec vitest run --changed`。基线 ref 不存在时命令会报错，需先 fetch 或显式传入可用 ref。
 
 `eslint-plugin-react-hooks` 固定在 7.0.1：7.1 的 `recommended` 新增了 React Compiler 规则（如 `set-state-in-effect`、`purity`），现有代码仍有 19 处命中。等这些写法单独迁移后再放宽版本范围。

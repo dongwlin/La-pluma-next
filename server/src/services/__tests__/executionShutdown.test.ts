@@ -98,7 +98,8 @@ afterEach(async () => {
   }
   if (previousLockPath === undefined) delete process.env.LA_PLUMA_MAA_LOCK_FILE;
   else process.env.LA_PLUMA_MAA_LOCK_FILE = previousLockPath;
-  await rm(testDir, { recursive: true, force: true });
+  // 存储关闭后仍可能有在途写入落盘，删除目录时重试避免 ENOTEMPTY 竞态。
+  await rm(testDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 50 });
 });
 
 function isRecord(value: unknown): value is Record<string, unknown> {

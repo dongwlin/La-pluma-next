@@ -34,6 +34,7 @@ const { results } = await stylelint.lint({
   cwd: clientRoot,
   files: GLOB,
   formatter: 'json',
+  cache: true,
 })
 
 const current = new Map<string, FileViolations>()

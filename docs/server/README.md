@@ -108,7 +108,7 @@ utils / config → services → controllers → routes → app.ts / server.ts
 | 覆盖率检查 | `pnpm --filter la-pluma-next-server test:coverage` |
 | 全部质量检查 | `pnpm --filter la-pluma-next-server verify` |
 
-`test` 逐文件、逐进程执行测试，避免模块单例与环境变量相互污染；`test:coverage` 使用同一批测试文件与同样的进程隔离。定向回归可直接 `node --test` 单个测试文件，例如 `node --test server/src/services/__tests__/maaCallbackService.test.ts`（`server/scripts/run-tests.ts:6-9`、`server/scripts/testFiles.ts:4-8`）。
+`test` 逐文件、逐进程执行测试，避免模块单例与环境变量相互污染；默认最多 4 个进程并发，可用 `LA_PLUMA_TEST_CONCURRENCY` 调整，输出仍按文件顺序归并打印。`test:coverage` 使用同一批测试文件与同样的逐文件进程隔离，但保持串行统计。定向回归可直接 `node --test` 单个测试文件，例如 `node --test server/src/services/__tests__/maaCallbackService.test.ts`（`server/scripts/run-tests.ts`、`server/scripts/testFiles.ts:4-8`）。
 
 ## 延伸阅读
 

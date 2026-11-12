@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
 import { readdir, stat, unlink, realpath, open } from 'node:fs/promises';
-import { extname, isAbsolute, join, relative, resolve, sep } from 'node:path';
+import { basename, dirname, extname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { createLogger } from '../utils/logger.ts';
 import { resolveBoundedInteger } from '../utils/numericQueryHelper.ts';
 import { resolveMaaPaths } from '../config/paths.ts';
@@ -60,6 +60,7 @@ export interface MaaLogFileStats {
 const LOG_ANCHOR_BYTES = 256;
 
 export interface MaaLogFileHandle {
+  stat?(): Promise<MaaLogFileStats>;
   read(
     buffer: Buffer,
     offset: number,
@@ -78,6 +79,11 @@ export interface MaaLogCheckpointPorts {
 export interface MaaLogReadPorts {
   stat?(path: string): Promise<MaaLogFileStats>;
   open?(path: string, flags: 'r'): Promise<MaaLogFileHandle>;
+}
+
+interface OpenMaaLog {
+  handle: MaaLogFileHandle;
+  stats: MaaLogFileStats;
 }
 
 export interface MaaLogFileContent {
@@ -169,6 +175,10 @@ function readLogIdentity(stats: MaaLogFileStats): MaaLogFileIdentity | null {
   return { dev, ino };
 }
 
+function sameLogIdentity(first: MaaLogFileIdentity, second: MaaLogFileIdentity | null): boolean {
+  return second !== null && first.dev === second.dev && first.ino === second.ino;
+}
+
 function digestBytes(bytes: Buffer): string {
   return createHash('sha256').update(bytes).digest('hex');
 }
@@ -193,40 +203,25 @@ export async function createMaaLogCheckpoint(
   const openFile = ports.open || open;
   try {
     const logPath = join(await resolveLogDir(), 'asst.log');
-    const logStats = await statFile(logPath);
-    const checkpoint: MaaLogCheckpoint = { logPath, size: logStats.size };
-    const identity = readLogIdentity(logStats);
-    if (identity) checkpoint.identity = identity;
     const handle = await openFile(logPath, 'r');
     try {
-      const anchor = await readLogAnchor(handle, logStats.size);
+      const logStats = await (handle.stat?.() ?? statFile(logPath));
+      const checkpoint: MaaLogCheckpoint = { logPath, size: logStats.size };
+      const identity = readLogIdentity(logStats);
+      if (identity) checkpoint.identity = identity;
+      const anchor = await readLogAnchor(handle, checkpoint.size);
       if (anchor) checkpoint.anchor = anchor;
+      return checkpoint;
     } finally {
       await handle.close();
     }
-    return checkpoint;
   } catch (error) {
     logger.debug('无法创建 Maa 日志检查点', { error: error instanceof Error ? error.message : String(error) });
     return null;
   }
 }
 
-/**
- * 校验文件仍是从检查点开始持续追加的同一份日志：身份不同说明文件被替换，
- * 检查点边界前的内容摘要不同说明同一 inode 被截断后重新写入。两种情况下依赖
- * 「检查点后新增内容」的结论都不成立。
- */
-async function matchesCheckpointFile(
-  handle: MaaLogFileHandle,
-  checkpoint: MaaLogCheckpoint,
-  stats: MaaLogFileStats
-): Promise<boolean> {
-  if (checkpoint.identity) {
-    const identity = readLogIdentity(stats);
-    if (identity && (identity.dev !== checkpoint.identity.dev || identity.ino !== checkpoint.identity.ino)) {
-      return false;
-    }
-  }
+async function matchesCheckpointAnchor(handle: MaaLogFileHandle, checkpoint: MaaLogCheckpoint): Promise<boolean> {
   const anchor = checkpoint.anchor;
   if (!anchor) return true;
   const buffer = Buffer.alloc(anchor.length);
@@ -234,12 +229,81 @@ async function matchesCheckpointFile(
   return bytesRead === anchor.length && digestBytes(buffer) === anchor.sha256;
 }
 
+async function isCurrentLog(
+  path: string,
+  stats: MaaLogFileStats,
+  statFile: NonNullable<MaaLogReadPorts['stat']>
+): Promise<boolean> {
+  const identity = readLogIdentity(stats);
+  if (!identity) return true;
+  const current = await statFile(path);
+  return current.size >= stats.size && sameLogIdentity(identity, readLogIdentity(current));
+}
+
+async function readLogSegment(
+  handle: MaaLogFileHandle,
+  buffer: Buffer,
+  offset: number,
+  length: number,
+  end: number
+): Promise<number> {
+  if (length === 0) return 0;
+  const { bytesRead } = await handle.read(buffer, offset, length, end - length);
+  return bytesRead;
+}
+
+async function readRotatedLog(
+  checkpoint: MaaLogCheckpoint,
+  current: OpenMaaLog,
+  maxBytes: number,
+  ports: Required<MaaLogReadPorts>
+): Promise<MaaLogIncrement> {
+  const rotated: MaaLogIncrement = { status: 'rotated', text: '' };
+  if (!checkpoint.identity || (checkpoint.size > 0 && !checkpoint.anchor) || basename(checkpoint.logPath) !== 'asst.log') {
+    return rotated;
+  }
+
+  const backupPath = join(dirname(checkpoint.logPath), 'asst.bak.log');
+  const backup = await ports.open(backupPath, 'r').catch((error: unknown) => {
+    if (error instanceof Error && 'code' in error && error.code === 'ENOENT') return null;
+    throw error;
+  });
+  if (!backup) return rotated;
+
+  try {
+    const backupStats = await (backup.stat?.() ?? ports.stat(backupPath));
+    if (backupStats.size < checkpoint.size
+      || !sameLogIdentity(checkpoint.identity, readLogIdentity(backupStats))
+      || !(await matchesCheckpointAnchor(backup, checkpoint))) {
+      return rotated;
+    }
+
+    const availableBackupBytes = backupStats.size - checkpoint.size;
+    const activeBytes = Math.min(current.stats.size, maxBytes);
+    const backupBytes = Math.min(availableBackupBytes, maxBytes - activeBytes);
+    const buffer = Buffer.alloc(backupBytes + activeBytes);
+    const backupRead = await readLogSegment(backup, buffer, 0, backupBytes, backupStats.size);
+    const activeRead = await readLogSegment(current.handle, buffer, backupBytes, activeBytes, current.stats.size);
+    if (!(await isCurrentLog(checkpoint.logPath, current.stats, ports.stat))) return rotated;
+
+    const complete = backupBytes === availableBackupBytes && activeBytes === current.stats.size
+      && backupRead === backupBytes && activeRead === activeBytes;
+    const start = backupRead === backupBytes ? 0 : backupBytes;
+    return {
+      status: complete ? 'rotated' : 'truncated',
+      text: buffer.subarray(start, backupBytes + activeRead).toString('utf-8')
+    };
+  } finally {
+    await backup.close();
+  }
+}
+
 /**
  * 读取检查点之后的增量日志并标明完整性：`ok` 表示拿到了全部新增字节，
  * `unreadable` 表示检查点或文件不可读，`truncated` 表示只拿到部分新增内容
- * （文件回绕变小、超出单次读取上限或单次读取不足），`rotated` 表示检查点
- * 指向的日志已被替换或原地重写，新增字节不再属于同一份日志。依赖「没有读到
- * 某类回调」下结论的调用方只能接受 `ok`。
+ * （文件回绕变小、超出单次读取上限或单次读取不足）。`rotated` 表示日志已替换
+ * 或重写，可携带从轮转备份恢复的新增内容。依赖「没有读到某类回调」下结论的
+ * 调用方只能接受 `ok`。
  */
 export async function readMaaLogIncrement(
   checkpoint: MaaLogCheckpoint | null,
@@ -251,22 +315,23 @@ export async function readMaaLogIncrement(
   const statFile = ports.stat || stat;
   const openFile = ports.open || open;
   try {
-    const logStats = await statFile(checkpoint.logPath);
-    if (logStats.size < checkpoint.size) return { status: 'truncated', text: '' };
-
     const handle = await openFile(checkpoint.logPath, 'r');
     try {
-      if (!(await matchesCheckpointFile(handle, checkpoint, logStats))) {
+      const logStats = await (handle.stat?.() ?? statFile(checkpoint.logPath));
+      const identity = readLogIdentity(logStats);
+      if (checkpoint.identity && identity && !sameLogIdentity(checkpoint.identity, identity)) {
+        return await readRotatedLog(checkpoint, { handle, stats: logStats }, maxBytes, { stat: statFile, open: openFile });
+      }
+      if (logStats.size < checkpoint.size) return { status: 'truncated', text: '' };
+      if (!(await matchesCheckpointAnchor(handle, checkpoint))) {
         return { status: 'rotated', text: '' };
       }
-      if (logStats.size === checkpoint.size) return { status: 'ok', text: '' };
 
       const availableBytes = logStats.size - checkpoint.size;
       const bytesToRead = Math.min(availableBytes, maxBytes);
-      const start = logStats.size - bytesToRead;
       const buffer = Buffer.alloc(bytesToRead);
-      let bytesRead = 0;
-      ({ bytesRead } = await handle.read(buffer, 0, bytesToRead, start));
+      const bytesRead = await readLogSegment(handle, buffer, 0, bytesToRead, logStats.size);
+      if (!(await isCurrentLog(checkpoint.logPath, logStats, statFile))) return { status: 'rotated', text: '' };
       const complete = bytesToRead === availableBytes && bytesRead === bytesToRead;
       return { status: complete ? 'ok' : 'truncated', text: buffer.subarray(0, bytesRead).toString('utf-8') };
     } finally {

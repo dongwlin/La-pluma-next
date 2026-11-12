@@ -4,6 +4,7 @@ import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
 import { VitePWA } from 'vite-plugin-pwa'
 import type { ManifestOptions } from 'vite-plugin-pwa'
+import { availableParallelism } from 'node:os'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { BOOT_THEME_COLORS, createBootScript } from './src/shared/theme/bootTheme.ts'
@@ -17,6 +18,22 @@ export const normalizeBasePath = (value = '/') => {
 
   const withLeadingSlash = trimmed.startsWith('/') ? trimmed : `/${trimmed}`
   return `${withLeadingSlash.replace(/\/+$/, '')}/`
+}
+
+export const DEFAULT_TEST_WORKERS = 4
+
+export const resolveTestWorkers = (
+  value: string | undefined,
+  parallelism: number = availableParallelism()
+): number => {
+  const trimmed = value?.trim()
+  if (!trimmed) return Math.max(1, Math.min(DEFAULT_TEST_WORKERS, parallelism))
+  if (!/^[1-9]\d*$/.test(trimmed)) throw new Error('LA_PLUMA_TEST_WORKERS must be a positive integer')
+  return Number(trimmed)
+}
+
+export interface ClientViteConfig extends UserConfig {
+  test: { maxWorkers: number }
 }
 
 export const createNavigateFallbackDenylist = (basePath: string): RegExp[] => {
@@ -236,12 +253,15 @@ const resolveDevApiTarget = (env: Record<string, string | undefined>): string =>
   return target.origin
 }
 
-export const createViteConfig = (basePath: string, env: Record<string, string | undefined> = {}): UserConfig => ({
+export const createViteConfig = (basePath: string, env: Record<string, string | undefined> = {}): ClientViteConfig => ({
   base: basePath,
   resolve: {
     alias: {
       '@': path.resolve(__dirname, './src')
     }
+  },
+  test: {
+    maxWorkers: resolveTestWorkers(process.env.LA_PLUMA_TEST_WORKERS)
   },
   plugins: [
     createDevPwaSupportPlugin(basePath),
