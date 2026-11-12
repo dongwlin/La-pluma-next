@@ -176,6 +176,11 @@ export const apiFixtures: ApiFixture[] = [
       copilotSetSelections: {},
     }),
   },
+  // 战斗工作区挂载即预取默认作业搜索，空结果对应默认关闭的发现弹窗。
+  {
+    path: '/agent/copilot/search',
+    payload: ok({ copilots: [], total: 0, page: 1, hasNext: false }),
+  },
   {
     path: '/agent/config/user/roguelike-tasks',
     payload: ok({
