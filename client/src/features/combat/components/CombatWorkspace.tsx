@@ -343,8 +343,8 @@ export default function CombatWorkspace() {
   })
 
   const executionProgress = useMemo(
-    () => deriveExecutionProgress(trackedRun, setRun),
-    [trackedRun, setRun],
+    () => deriveExecutionProgress(trackedRun, setRun, queueRun),
+    [trackedRun, setRun, queueRun],
   )
 
   const queueItemErrors = useMemo(() => {

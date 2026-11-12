@@ -1,5 +1,7 @@
 import type { AgentRun, RunState } from '@/features/task-execution'
 import { isActiveRunState } from '@/features/task-execution'
+import type { CopilotQueueEntryMode } from '../api'
+import type { CopilotQueueRunProjection } from './copilotQueueRun'
 import type { CopilotSetRunProjection } from './copilotSetRun'
 
 /**
@@ -20,7 +22,9 @@ export interface ExecutionProgressView {
   name: string | null
   /** 正在执行的关卡；等待下一关或单作业执行时为 null。 */
   stage: string | null
-  /** 本次第 N/M 个执行条目；只有作业集且服务端给出队列位置时提供。 */
+  /** 正在执行条目的模式：both 展开的普通与突袭共用同一个关卡名，只能靠它区分。 */
+  mode: CopilotQueueEntryMode | null
+  /** 本次第 N/M 个执行条目；作业集与作业队列由服务端给出队列位置时提供。 */
   step: ExecutionProgressStep | null
   /** 活动用法：面板用 startedAtMs 推进已用时；终态直接用 durationMs。 */
   startedAtMs: number | null
@@ -43,10 +47,12 @@ function asCount(value: unknown): number | null {
     : null
 }
 
-function readEntryStage(value: unknown): string | null {
-  const entry = asRecord(value)
-  if (!entry) return null
+function readEntryStage(entry: Record<string, unknown>): string | null {
   return asText(entry.displayStage) ?? asText(entry.stage)
+}
+
+function readEntryMode(value: unknown): CopilotQueueEntryMode | null {
+  return value === 'normal' || value === 'raid' ? value : null
 }
 
 function readTimestampMs(value: unknown): number | null {
@@ -57,30 +63,41 @@ function readTimestampMs(value: unknown): number | null {
 
 /**
  * 读取当前被跟踪 Run 的本次执行进度。Run 缺失时返回 null（面板整块隐藏）；
- * 作业集相关字段只对 `run_copilot_set` 投影，其它操作一律为 null。
+ * 条目位置、关卡与模式只对作业集与作业队列投影，其它操作一律为 null。
  */
 export function deriveExecutionProgress(
   run: AgentRun | null,
   setRun: CopilotSetRunProjection | null,
+  queueRun: CopilotQueueRunProjection | null = null,
 ): ExecutionProgressView | null {
   if (!run || typeof run.runId !== 'string' || !run.runId) return null
 
   const progress = asRecord(run.progress)
-  const set = run.operationId === 'run_copilot_set' ? setRun : null
   const state = run.state
+  const set = run.operationId === 'run_copilot_set' ? setRun : null
+  const queue = run.operationId === 'run_copilot_queue' ? queueRun : null
+  const composite = set !== null || queue !== null
 
-  // 作业名只用于没有条目进度的单作业；作业集名称由列表与续跑进度展示。
-  const name = set ? null : asText(progress?.currentTask)
+  // 作业名只用于没有条目进度的单作业；作业集与队列的名称由列表与续跑进度展示。
+  const name = composite ? null : asText(progress?.currentTask)
 
-  const runningEntry = set?.entries.find(entry => entry.status === 'running') ?? null
-  const stage = set
-    ? readEntryStage(progress?.currentEntry) ?? runningEntry?.stage ?? null
-    : null
+  // 服务端的 currentEntry 只有作业集带；队列的当前条目来自逐项结果。
+  const currentEntry = asRecord(progress?.currentEntry)
+  const runningSetEntry = set?.entries.find(entry => entry.status === 'running') ?? null
+  const runningQueueEntry = queue?.taskResults.find(entry => entry.status === 'running') ?? null
+  const stage = (currentEntry ? readEntryStage(currentEntry) : null)
+    ?? runningSetEntry?.stage
+    ?? runningQueueEntry?.stage
+    ?? null
+  const mode = (currentEntry ? readEntryMode(currentEntry.mode) : null)
+    ?? readEntryMode(runningSetEntry?.mode)
+    ?? runningQueueEntry?.mode
+    ?? null
 
   // 条目位置只取服务端的队列编号：作业条目索引在 both 模式下与执行序号不同，
   // 不能互相替代。
   let step: ExecutionProgressStep | null = null
-  if (set) {
+  if (composite) {
     const current = asCount(progress?.currentStep)
     if (current !== null && current > 0) {
       step = { current, total: asCount(progress?.totalSteps) }
@@ -94,6 +111,7 @@ export function deriveExecutionProgress(
     isActive: isActiveRunState(state),
     name,
     stage,
+    mode,
     step,
     startedAtMs: readTimestampMs(run.startedAt),
     durationMs: asCount(run.durationMs),
