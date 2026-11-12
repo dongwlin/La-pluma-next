@@ -72,11 +72,13 @@ export default function CombatCopilotTaskPanel({
   onCloseDetail,
 }: CombatCopilotTaskPanelProps) {
   const previewInfo = detail?.type === 'preview' ? preview.info : null
+  const pendingTarget = detail?.type === 'preview' ? preview.pendingTarget : null
   const queueEntry = detail?.type === 'queue' ? queue.entries.find(entry => entry.id === detail.id) : undefined
   const baseDetailTarget = previewInfo
     ? buildPreviewDetailTarget(previewInfo)
-    : queueEntry ? buildQueueDetailTarget(queueEntry, queue) : null
+    : pendingTarget ?? (queueEntry ? buildQueueDetailTarget(queueEntry, queue) : null)
   const detailTarget = useResolvedCopilotDetailTarget(baseDetailTarget)
+  const detailLoading = detail?.type === 'preview' && previewInfo === null && preview.loading
 
   return (
     <Card
@@ -137,6 +139,7 @@ export default function CombatCopilotTaskPanel({
 
       <CombatCopilotDetailLayer
         target={detailTarget}
+        loading={detailLoading}
         onClose={onCloseDetail}
         stacked={search.isOpen}
       >

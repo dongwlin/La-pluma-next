@@ -3,6 +3,7 @@ import {
   type CopilotMatchMode,
 } from '../model/copilotDiscovery'
 import type { CopilotSearchItem, CopilotStageCandidate } from '../types'
+import type { CopilotDetailTarget } from '../model/copilotDetail'
 import type { CombatCopilotMatchSettings } from './combatPanelTypes'
 
 export const COPILOT_DISCOVERY_OPERATOR_LIMIT = 5
@@ -80,6 +81,32 @@ export function describeCopilotStage(
   const code = stageCode || stageId || stageName || '未知关卡'
   const label = stageLabel || (stageName && stageName !== code ? stageName : '')
   return { code, label: label || null }
+}
+
+/**
+ * 列表条目到详情抽屉目标的投影：卡片数据已含说明与练度要求，
+ * 点开时先按它渲染，详情响应回来后再由预览数据覆盖。
+ */
+export function buildCopilotDiscoveryDetailTarget(item: CopilotSearchItem): CopilotDetailTarget {
+  const stage = describeCopilotStage(item)
+  const hasStage = Boolean(stripCopilotStageSuffix(item.stageCode)
+    || stripCopilotStageSuffix(item.stageId)
+    || stripCopilotStageSuffix(item.stageName))
+  const operators = item.operatorDetails?.length
+    ? item.operatorDetails
+    : item.operators?.map(name => ({ name }))
+  const stageId = stripCopilotStageSuffix(item.stageId)
+  return {
+    title: item.title?.trim() || `作业 ${item.id}`,
+    ...(item.details ? { details: item.details } : {}),
+    ...(hasStage ? { stage: stage.code } : {}),
+    ...(stageId ? { stageId } : {}),
+    uri: item.uri,
+    sourceLabel: '链接',
+    ...(operators?.length ? { operators } : {}),
+    ...(item.groupNames?.length ? { groups: item.groupNames } : {}),
+    ...(item.recommendedMode ? { recommendedMode: item.recommendedMode } : {}),
+  }
 }
 
 function pad(value: number): string {

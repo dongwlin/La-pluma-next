@@ -1,6 +1,5 @@
 import { isRecord } from '@/shared/api'
 import type {
-  CopilotDetailOperator,
   CopilotInfoPayload,
   CopilotMatchSummary,
   CopilotPlanPayload,
@@ -13,6 +12,16 @@ import type {
 } from '../types'
 import { copilotDifficultyFromFlags, readCopilotRecommendedMode } from './copilotSelection'
 import { isCopilotMatchMode, isCopilotSearchOrder } from './copilotDiscovery'
+import {
+  asCount,
+  asId,
+  asNumber,
+  asText,
+  compactFields,
+  readGroupNames,
+  readOperatorDetails,
+  readOperators,
+} from '../utils/copilotPayloadFields'
 
 export type {
   CopilotDetail,
@@ -20,68 +29,6 @@ export type {
   CopilotPlanPayload,
   CopilotSetPayload,
 } from '../types'
-
-const asText = (value: unknown): string | undefined => (
-  typeof value === 'string' && value.trim() ? value : undefined
-)
-const asNumber = (value: unknown): number | null => (
-  typeof value === 'number' && Number.isFinite(value) ? value : null
-)
-const asCount = (value: unknown, minimum = 0): number | null => (
-  typeof value === 'number' && Number.isInteger(value) && value >= minimum ? value : null
-)
-const asId = (value: unknown): number | null => {
-  const numeric = typeof value === 'number' || typeof value === 'string' ? Number(value) : NaN
-  return Number.isInteger(numeric) && numeric > 0 ? numeric : null
-}
-const asModule = (value: unknown): string | null => {
-  if (typeof value === 'string' && value.trim()) return value
-  if (typeof value === 'number' && Number.isFinite(value)) return String(value)
-  return null
-}
-
-const compactFields = <T extends Record<string, unknown>>(value: T): T => (
-  Object.fromEntries(
-    Object.entries(value).filter(([, entry]) => entry !== undefined && entry !== null && entry !== ''),
-  ) as T
-)
-
-function readUnique<T>(values: readonly unknown[], read: (value: unknown) => T | undefined): T[] {
-  const items: T[] = []
-  for (const raw of values) {
-    const item = read(raw)
-    if (item !== undefined && !items.includes(item)) items.push(item)
-  }
-  return items
-}
-
-const readGroupNames = (value: unknown): string[] => (
-  Array.isArray(value) ? readUnique(value, raw => (isRecord(raw) ? asText(raw.name) : undefined)) : []
-)
-
-const readOperators = (value: unknown): string[] => (
-  Array.isArray(value) ? readUnique(value, raw => asText(raw)) : []
-)
-
-function readOperatorDetails(value: unknown): CopilotDetailOperator[] {
-  if (!Array.isArray(value)) return []
-  const details: CopilotDetailOperator[] = []
-  for (const raw of value) {
-    if (!isRecord(raw)) continue
-    const name = asText(raw.name)
-    if (!name) continue
-    const requirements = isRecord(raw.requirements) ? raw.requirements : {}
-    details.push(compactFields({
-      name,
-      group: asText(raw.group),
-      elite: asNumber(requirements.elite),
-      level: asNumber(requirements.level),
-      skillLevel: asNumber(requirements.skill_level),
-      module: asModule(requirements.module),
-    }))
-  }
-  return details
-}
 
 /**
  * 兼容旧调用：`success=true` 时取 `data`，其余（PRTS 代理对象、测试直传的
@@ -246,6 +193,8 @@ function readSearchItem(value: unknown): CopilotSearchItem | null {
   if (!uri) return null
   const rawId = value.id
   const operators = readOperators(value.operators)
+  const operatorDetails = readOperatorDetails(value.operatorDetails)
+  const groupNames = readOperators(value.groupNames)
   return compactFields({
     id: typeof rawId === 'string' || typeof rawId === 'number' ? String(rawId) : uri,
     uri,
@@ -260,6 +209,10 @@ function readSearchItem(value: unknown): CopilotSearchItem | null {
     uploadTime: asText(value.uploadTime),
     operators: operators.length ? operators : undefined,
     match: readMatch(value.match) ?? undefined,
+    details: asText(value.details),
+    operatorDetails: operatorDetails.length ? operatorDetails : undefined,
+    groupNames: groupNames.length ? groupNames : undefined,
+    recommendedMode: readCopilotRecommendedMode(value.recommendedMode),
   })
 }
 

@@ -166,6 +166,53 @@ describe('copilot search payload', () => {
     })
   })
 
+  it('reads the preview fields the list carries for the detail drawer', () => {
+    const result = readCopilotSearchResult(envelope({
+      stage: 'TL-EX-8',
+      copilots: [{
+        id: 9,
+        uri: 'prts://9',
+        title: '时间啊，向前！',
+        details: '作者：萨拉托加\nhttps://www.bilibili.com/video/BV1x8WJ6oE3H/',
+        recommendedMode: 'both',
+        groupNames: ['输出组', '', '输出组'],
+        operatorDetails: [
+          { name: '圣聆初雪', group: '输出组', elite: 2, level: 60, skillLevel: 10, module: '-1' },
+          { name: '桃金娘', elite: 2, level: 70, skillLevel: 7 },
+        ],
+      }],
+    }))
+
+    expect(result?.copilots[0]).toMatchObject({
+      details: '作者：萨拉托加\nhttps://www.bilibili.com/video/BV1x8WJ6oE3H/',
+      recommendedMode: 'both',
+      groupNames: ['输出组'],
+      operatorDetails: [
+        { name: '圣聆初雪', group: '输出组', elite: 2, level: 60, skillLevel: 10, module: '-1' },
+        { name: '桃金娘', elite: 2, level: 70, skillLevel: 7 },
+      ],
+    })
+  })
+
+  it('omits preview fields the list did not carry and rejects unknown modes', () => {
+    const result = readCopilotSearchResult(envelope({
+      stage: '1-7',
+      copilots: [
+        { id: 1, uri: 'prts://1', details: '   ', recommendedMode: 'extreme' },
+        { id: 2, uri: 'prts://2', operatorDetails: 'nope', groupNames: ['输出组'] },
+      ],
+    }))
+
+    expect(result?.copilots[0]).toEqual({ id: '1', uri: 'prts://1', views: 0, hotScore: 0 })
+    expect(result?.copilots[1]).toEqual({
+      id: '2',
+      uri: 'prts://2',
+      views: 0,
+      hotScore: 0,
+      groupNames: ['输出组'],
+    })
+  })
+
   it('reads paradox payloads with the operator name', () => {
     const result = readParadoxSearchResult(envelope({
       operator: '古米',

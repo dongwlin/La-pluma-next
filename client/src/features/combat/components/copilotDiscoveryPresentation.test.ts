@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { DEFAULT_COPILOT_MATCH_MODES } from '../model/copilotDiscovery'
 import type { CopilotSearchItem, CopilotStageCandidate } from '../types'
 import {
+  buildCopilotDiscoveryDetailTarget,
   deriveCopilotStageOption,
   describeCopilotStage,
   filterCopilotSearchItems,
@@ -147,6 +148,58 @@ describe('formatCopilotUploadTime', () => {
     expect(formatCopilotUploadTime(undefined)).toBeNull()
     expect(formatCopilotUploadTime('')).toBeNull()
     expect(formatCopilotUploadTime('not-a-date')).toBeNull()
+  })
+})
+
+describe('buildCopilotDiscoveryDetailTarget', () => {
+  it('projects the list entry into a full detail target', () => {
+    expect(buildCopilotDiscoveryDetailTarget(item({
+      id: '9',
+      uri: 'prts://9',
+      title: '时间啊，向前！',
+      stageCode: 'TL-EX-8',
+      stageLabel: '静谧黑暗',
+      stageId: 'act55side_ex08',
+      details: '作者：萨拉托加',
+      recommendedMode: 'both',
+      groupNames: ['输出组'],
+      operatorDetails: [
+        { name: '圣聆初雪', group: '输出组', elite: 2, level: 60, skillLevel: 10, module: '-1' },
+      ],
+    }))).toEqual({
+      title: '时间啊，向前！',
+      details: '作者：萨拉托加',
+      stage: 'TL-EX-8',
+      stageId: 'act55side_ex08',
+      uri: 'prts://9',
+      sourceLabel: '链接',
+      operators: [
+        { name: '圣聆初雪', group: '输出组', elite: 2, level: 60, skillLevel: 10, module: '-1' },
+      ],
+      groups: ['输出组'],
+      recommendedMode: 'both',
+    })
+  })
+
+  it('falls back to bare operator names and omits facts the entry lacks', () => {
+    const target = buildCopilotDiscoveryDetailTarget(item({
+      title: '  ',
+      operators: ['阿米娅', '凯尔希'],
+    }))
+    expect(target).toEqual({
+      title: '作业 1',
+      uri: 'prts://1',
+      sourceLabel: '链接',
+      operators: [{ name: '阿米娅' }, { name: '凯尔希' }],
+    })
+  })
+
+  it('prefers the projected requirements over the bare names', () => {
+    const target = buildCopilotDiscoveryDetailTarget(item({
+      operators: ['阿米娅'],
+      operatorDetails: [{ name: '阿米娅', elite: 2 }],
+    }))
+    expect(target.operators).toEqual([{ name: '阿米娅', elite: 2 }])
   })
 })
 

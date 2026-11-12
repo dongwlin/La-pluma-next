@@ -31,7 +31,7 @@
 | 队列模型、本地持久化与操作 | `model/copilotQueue.ts`、`model/copilotQueueStorage.ts`、`hooks/useCopilotQueue.ts` | 条目构造、URI 去重、排序、上限与 `la-pluma-copilot-queue-v1` 读写；勾选为会话状态 |
 | 队列 Run 投影 | `model/copilotQueueRun.ts` | 从 `run.progress` 与 `run.result.summary` 读取 `clientId` 状态、下一项、失败原因与计数；不新建执行身份 |
 | 作业集摘要（续跑目标、下一关、计数与失败原因） | `components/CombatCopilotSetPanel.tsx`（内部 `CombatCopilotQueueSummary`） | 作业集预览时在详情层内渲染 |
-| 作业详情层 | `components/CombatCopilotDetailLayer.tsx` + `model/copilotDetail.ts` | 普通作业预览、作业集摘要和队列行共用详情层。桌面非模态抽屉，手机 Sheet |
+| 作业详情层 | `components/CombatCopilotDetailLayer.tsx` + `model/copilotDetail.ts` | 普通作业预览、作业集摘要和队列行共用详情层。桌面非模态抽屉，手机 Sheet；目标未就绪时先渲染抽屉壳与加载态 |
 | 保全派驻 / 悖论模拟卡片 | `components/CombatSpecialTaskPanel.tsx` | 输入、URI 计数、高级字段、搜索与概览；不创建执行状态 |
 | 卡片头部与运行/停止按钮 | `components/CombatTaskHeading.tsx` | 共享两种卡片的标题与执行投影 |
 | 作业集视图派生 | `model/copilotSetView.ts` | 纯模型：当前 Run 归属、按模式判定完成、待执行求差、续跑目标与下一关 |
@@ -40,7 +40,7 @@
 
 维护约束：
 
-- 不改变 `/agent/copilot-sets/*` 等既有端点、配置 key、既有本地存储键或执行 wire 形状；`/agent/copilot/search` 保留 `stage` 作为 `level` 别名，新增可选 `document`/`level`/`operator`/`orderBy`/`page`/`limit` 与响应字段（`stageId`/`stageCode`/`stageLabel`/`uploader`/`uploadTime`/`operators`/`match`/`total`/`hasNext` 等），旧调用方不传新参数时行为不变。新增的 `/agent/copilot/stages` 是只读关卡目录，`/api/copilot-files` 与 `/agent/copilot-queues/*` 是 Web UI 专用入口，均不进入 Agent manifest。新增的 `la-pluma-copilot-queue-v1` 只服务本地作业队列。
+- 不改变 `/agent/copilot-sets/*` 等既有端点、配置 key、既有本地存储键或执行 wire 形状；`/agent/copilot/search` 保留 `stage` 作为 `level` 别名，新增可选 `document`/`level`/`operator`/`orderBy`/`page`/`limit` 与响应字段（`stageId`/`stageCode`/`stageLabel`/`uploader`/`uploadTime`/`operators`/`match`/`details`/`operatorDetails`/`groupNames`/`recommendedMode`/`total`/`hasNext` 等），旧调用方不传新参数时行为不变。新增的 `/agent/copilot/stages` 是只读关卡目录，`/api/copilot-files` 与 `/agent/copilot-queues/*` 是 Web UI 专用入口，均不进入 Agent manifest。新增的 `la-pluma-copilot-queue-v1` 只服务本地作业队列。
 - 不改变三种作业集执行方式的服务端映射：`app`/`cli` → `continuous`，`manual` → `manual`。
 - 不把搜索词、关卡、排序、搜索选中项或识别方式写进配置或 localStorage；干员筛选（含启用状态与记住开关）、匹配模式与网格/列表视图只作为界面偏好写入 `la-pluma-copilot-operator-filter-v1`、`la-pluma-copilot-operator-match-v1`、`la-pluma-copilot-discovery-view-v1`，不进入配置通道或 Query key；不新增跨页共享。
 - 作业输入与搜索的 `name`、状态文案、关键 `aria-*` 契约与配置 key 保持稳定；执行参数中编队与执行方式为分段控件、难度为下拉框，字段语义不变；DOM/CSS 类名随布局调整。作业输入与搜索在前，队列卡居中，执行参数在后，窄容器按阅读顺序纵向排列。
@@ -151,7 +151,7 @@ CombatTasks（页面壳：PageHeader + FloatingStatusIndicator）
 ### 5. 搜索、执行与页面路径
 
 - **默认列表**：进入作业页后由默认 Query 在后台预取热度列表并缓存；打开发现先渲染缓存，再后台刷新同一请求 key，刷新期间不显示 loading、不阻塞输入，失败时保留缓存。关键词、关卡与排序在打开时重置，干员包含/排除、匹配模式与视图按界面偏好恢复。
-- **搜索选择**：发现弹窗以关键词（`document`）、关卡（`level`）、干员包含/排除（`operator`，排除项 `~` 前缀）与排序（`hot`/`latest`/`views`）请求作业站；点击卡片才写入 `copilot.uri` 并打开预览，推荐标记帮助定位结果。`copilotSearchSelection` 驱动“已选中”高亮，修改主输入会清除非匹配的高亮。弹窗保持打开，详情抽屉按 Modal 图层栈叠在其上；关闭抽屉后仍停留在原结果列表。结果的「加入队列」动作按 URI 读取作业信息后加入队列。匹配模式只过滤当前已加载结果，不改变服务端排序或结果总数。
+- **搜索选择**：发现弹窗以关键词（`document`）、关卡（`level`）、干员包含/排除（`operator`，排除项 `~` 前缀）与排序（`hot`/`latest`/`views`）请求作业站；点击卡片才写入 `copilot.uri` 并打开预览，推荐标记帮助定位结果。列表条目已带说明、干员练度与分组，点击即以条目数据打开抽屉，随后的详情读取用于校验与补齐；详情未回来前抽屉先出壳与加载态，不用空白等待。`copilotSearchSelection` 驱动“已选中”高亮，修改主输入会清除非匹配的高亮。弹窗保持打开，详情抽屉按 Modal 图层栈叠在其上；关闭抽屉后仍停留在原结果列表。结果的「加入队列」动作按 URI 读取作业信息后加入队列。匹配模式只过滤当前已加载结果，不改变服务端排序或结果总数。
 - **JSON 作业导入**：链接输入框内的 JSON 导入按钮读取本地 JSON 文件；从文件管理器复制 JSON 文件后在输入框粘贴，文件交给同一导入通道。两条路径都提交 `POST /api/copilot-files`，成功后清空旧预览，并把 `doc.title`、`opers`、`groups` 解析成队列条目的标题与干员信息，关卡优先使用上传响应里的 `stage`/`stageId`（服务端按资源解析出的代号与原始标识），缺失时才回退文件里的 `stage_name`；解析失败仍按导入文件名入队，上传接口拒绝非法 JSON 时提示错误且不加入队列。输入框只承载作业链接与 JSON 文件粘贴，不再接受服务端可见的文件路径。队列 Run 提交 `source: 'file'` 与服务端受管路径，由服务端重新读取受管文件并写入队列计划目录；受管路径不参与 PRTS 预览。
 - **执行设置**：页面提供连续执行与手动逐关，旧配置的 `app` 与 `cli` 都映射到 `continuous`，`manual` 保留逐步等待。难度选择 `auto` 时，作业集计划与显式队列由服务端读取作业的 `difficulty`；预览和详情保留可用的标注。手动指定难度使用用户的选择。
 - **队列执行**：只勾选当前预览作业集的成员，且其 `setItemIndex` 严格递增时，走作业集提交（`submitSet` → `run_copilot_set`）：连续模式一次提交整组，手动模式等待服务端 `nextEntry`；`selectedIndexes` 来自队列勾选。混合来源、重排后的集合成员或本地文件走 `submitQueue` → `run_copilot_queue`。客户端按队列顺序提交 `{ clientId, source, copilotId|filename, mode }`，每个作业的 `mode` 来自全局突袭设置，预设编队作业提交 `normal`。服务端将适用的 `both` 展开为普通和突袭两个步骤。`executionStrategy` 映射为 `failurePolicy`：`stop` 首败停止，其他值按 `continue`。
@@ -322,7 +322,7 @@ CombatTasks（页面壳：PageHeader + FloatingStatusIndicator）
 - 作业队列：URI 去重、50 项上限、上移/下移与删除只改顺序或成员；作业集同步按 `setItemIndex` 复用既有 id 与位置，历史已通关成员保留但不勾选；本地存储版本不符或损坏时回到空队列。
 - 执行路径：仅当前预览作业集的勾选成员且索引递增时走 `run_copilot_set`；混合来源、重排或本地文件走 `run_copilot_queue`（`submitQueue`），同一 Run 返回逐步状态。队列为空时可直接运行输入的单作业，非空队列无勾选时提示选择。
 - 队列 Run：`run_copilot_queue` 的 `queueRun.statuses` 按 `clientId` 覆盖行状态，`nextEntry` 驱动 manual 的开始下一项/跳过，终态 `failed` 条目驱动重试失败项；`failurePolicy=stop|continue` 来自 `executionStrategy`，不改变作业集路径。
-- 详情层：上方预览成功或点击队列行时打开同一个详情层。桌面为非模态抽屉且焦点可归还，手机使用 Sheet 的模态焦点契约。作业集续跑摘要放在详情层，页面只有一个作业列表。
+- 详情层：上方预览成功或点击队列行时打开同一个详情层。点击列表卡片时抽屉立即用条目数据打开，详情响应到达或失败后清空这份乐观目标；预览成功前先显示抽屉壳与加载态。桌面为非模态抽屉且焦点可归还，手机使用 Sheet 的模态焦点契约。作业集续跑摘要放在详情层，页面只有一个作业列表。
 - 局部状态隔离：搜索/识别方式输入不推动作业集列表渲染，面板会话跨卡片卸载保留。
 
 ### 验证命令

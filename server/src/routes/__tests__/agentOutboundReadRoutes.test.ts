@@ -337,6 +337,7 @@ describe('Agent outbound read routes', () => {
       stageCode: '1-7',
       stageLabel: '暴君',
       operators: ['Amiya'],
+      operatorDetails: [{ name: 'Amiya' }],
       uploader: 'doctor',
       uploadTime: '2026-11-01T00:00:00.000Z'
     }])

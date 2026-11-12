@@ -43,6 +43,7 @@ import {
 } from '../model/copilotQueue'
 import { getCopilotQueueRetryModes } from '../model/copilotQueueRun'
 import { collectCopilotItemErrors } from '../model/copilotDetail'
+import type { CopilotDetailTarget } from '../model/copilotDetail'
 import {
   DEFAULT_COPILOT_MATCH_MODES,
   normalizeCopilotSearchRequest,
@@ -91,6 +92,7 @@ import type {
   CombatExecutionActions,
   CombatParadoxSearchProjection,
 } from './combatPanelTypes'
+import { buildCopilotDiscoveryDetailTarget } from './copilotDiscoveryPresentation'
 
 /** 协调器加载完成前的渲染默认值；与迁移前的初始 state 一致。 */
 const DEFAULT_COMBAT_CONFIG = createDefaultCombatDraft()
@@ -195,7 +197,12 @@ export default function CombatWorkspace() {
   } = useParadoxSearch()
   const [activeCombatMode, setActiveCombatMode] = useState<CombatMode>('copilot')
   const [copilotDetail, setCopilotDetail] = useState<CombatCopilotDetailSelection | null>(null)
+  const [pendingPreviewTarget, setPendingPreviewTarget] = useState<CopilotDetailTarget | null>(null)
+  const pendingPreviewRequestRef = useRef(0)
+  // 作废在途请求前先推进序号：被取代的响应不得清掉新请求的乐观目标。
   const clearCopilotPreview = useCallback(() => {
+    pendingPreviewRequestRef.current += 1
+    setPendingPreviewTarget(null)
     clearPreviewData()
     setCopilotDetail(current => current?.type === 'preview' ? null : current)
   }, [clearPreviewData])
@@ -561,39 +568,51 @@ export default function CombatWorkspace() {
     }))
   }
 
-  const requestCopilotPreview = useCallback(async (rawValue?: string, openDetails = false) => {
+  const requestCopilotPreview = useCallback(async (
+    rawValue?: string,
+    openDetails = false,
+    pendingTarget: CopilotDetailTarget | null = null,
+  ) => {
+    const requestId = ++pendingPreviewRequestRef.current
     const raid = normalizeRaidValue(advancedParams.copilot?.raid)
-    if (openDetails) setCopilotDetail({ type: 'preview' })
+    if (openDetails) {
+      setPendingPreviewTarget(pendingTarget)
+      setCopilotDetail({ type: 'preview' })
+    }
     setStatusMessage('正在获取作业信息...')
-    const outcome = await loadCopilotPreview({
-      input: rawValue ?? (taskInputs['copilot'] || ''),
-      mode: panelStores.copilotPreviewMode.get(),
-      raid,
-    })
-    if (outcome.status === 'cancelled') return outcome
+    try {
+      const outcome = await loadCopilotPreview({
+        input: rawValue ?? (taskInputs['copilot'] || ''),
+        mode: panelStores.copilotPreviewMode.get(),
+        raid,
+      })
+      if (outcome.status === 'cancelled') return outcome
 
-    if (outcome.status === 'ready') {
-      if (outcome.preview.type === 'set') {
-        const setId = outcome.preview.id
-        const indexes = restorableCopilotIndexes(outcome.preview.copilots ?? [], raid, copilotSetSelections[setId])
-        const selected = syncQueueSet(setId, buildCopilotQueueEntries(outcome.preview), indexes)
-        saveSelectedCopilotIndexes(selected, setId)
+      if (outcome.status === 'ready') {
+        if (outcome.preview.type === 'set') {
+          const setId = outcome.preview.id
+          const indexes = restorableCopilotIndexes(outcome.preview.copilots ?? [], raid, copilotSetSelections[setId])
+          const selected = syncQueueSet(setId, buildCopilotQueueEntries(outcome.preview), indexes)
+          saveSelectedCopilotIndexes(selected, setId)
+        }
+        setStatusMessage(outcome.message)
+        return outcome
       }
+
+      if (outcome.status === 'failed') {
+        setStatusMessage(
+          outcome.kind === 'transport' || outcome.kind === 'unknown'
+            ? `网络错误: ${outcome.message}`
+            : outcome.message,
+        )
+        return outcome
+      }
+
       setStatusMessage(outcome.message)
       return outcome
+    } finally {
+      if (pendingPreviewRequestRef.current === requestId) setPendingPreviewTarget(null)
     }
-
-    if (outcome.status === 'failed') {
-      setStatusMessage(
-        outcome.kind === 'transport' || outcome.kind === 'unknown'
-          ? `网络错误: ${outcome.message}`
-          : outcome.message,
-      )
-      return outcome
-    }
-
-    setStatusMessage(outcome.message)
-    return outcome
   }, [
     advancedParams.copilot?.raid,
     loadCopilotPreview,
@@ -793,13 +812,18 @@ export default function CombatWorkspace() {
 
   const applyCopilotUri = async (uri: string) => {
     const normalizedUri = normalizeCopilotInput(uri).trim()
+    const selected = copilotSearchResult?.copilots.find(item => item.uri === normalizedUri)
     updateCombatConfig(current => ({
       ...current,
       taskInputs: { ...current.taskInputs, copilot: normalizedUri },
     }))
     panelStores.copilotSearchSelection.set(normalizedUri)
     clearCopilotPreview()
-    await requestCopilotPreview(normalizedUri, true)
+    await requestCopilotPreview(
+      normalizedUri,
+      true,
+      selected ? buildCopilotDiscoveryDetailTarget(selected) : null,
+    )
   }
 
   const handleSearchParadox = async (operatorName: string) => {
@@ -1029,6 +1053,7 @@ export default function CombatWorkspace() {
                 preview={{
                   info: preview,
                   loading: isLoadingSet,
+                  pendingTarget: pendingPreviewTarget,
                   modeStore: panelStores.copilotPreviewMode,
                   onPreview: () => void requestCopilotPreview(undefined, true),
                   onCancel: cancelCopilotPreview,

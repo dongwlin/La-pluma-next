@@ -417,9 +417,50 @@ describe('maintenance request narrowing', () => {
       stageCode: '1-7',
       stageLabel: '暴君',
       operators: ['Amiya', "Kal'tsit"],
+      operatorDetails: [{ name: 'Amiya' }, { name: "Kal'tsit" }],
       uploader: 'doctor',
       uploadTime: '2026-11-01T00:00:00.000Z'
     });
+  });
+
+  it('carries the preview fields the list needs instead of dropping them', () => {
+    const entry = projectCopilotSearchItem({
+      id: 12,
+      content: JSON.stringify({
+        difficulty: 3,
+        doc: { title: 'TL-EX-8', details: '作者：萧然Q\nhttps://www.bilibili.com/video/BV1x8WJ6oE3H/' },
+        groups: [{ name: '输出组' }, { name: '输出组' }, { name: '  ' }, {}],
+        opers: [
+          { name: '圣聆初雪', group: '输出组', requirements: { elite: 2, level: 60, skill_level: 10, module: -1 } },
+          { name: '桃金娘', requirements: { elite: 2, level: 70, skill_level: 7 } }
+        ]
+      })
+    });
+    assert.equal(entry.details, '作者：萧然Q\nhttps://www.bilibili.com/video/BV1x8WJ6oE3H/');
+    assert.equal(entry.recommendedMode, 'both');
+    assert.deepEqual(entry.groupNames, ['输出组']);
+    assert.deepEqual(entry.operatorDetails, [
+      { name: '圣聆初雪', group: '输出组', elite: 2, level: 60, skillLevel: 10, module: '-1' },
+      { name: '桃金娘', elite: 2, level: 70, skillLevel: 7 }
+    ]);
+  });
+
+  it('maps the difficulty flag and omits preview fields the content does not carry', () => {
+    const mode = (difficulty: unknown) => projectCopilotSearchItem({
+      id: 14,
+      content: JSON.stringify({ difficulty })
+    }).recommendedMode;
+    assert.equal(mode(0), 'normal');
+    assert.equal(mode(1), 'normal');
+    assert.equal(mode(2), 'raid');
+    assert.equal(mode(3), 'both');
+    assert.equal(mode(9), undefined);
+
+    const bare = projectCopilotSearchItem({ id: 15, content: JSON.stringify({ doc: { title: '无说明' } }) });
+    assert.equal('details' in bare, false);
+    assert.equal('operatorDetails' in bare, false);
+    assert.equal('groupNames' in bare, false);
+    assert.equal('recommendedMode' in bare, false);
   });
 
   it('falls back when content and catalog entries are unavailable', () => {
@@ -441,13 +482,14 @@ describe('maintenance request narrowing', () => {
     assert.equal(projectCopilotSearchItem({ id: 11, uploader: '  ', uploader_id: 'u11' }).uploader, 'u11');
   });
 
-  it('caps projected operator names at 30', () => {
+  it('caps projected operator names and requirements at 30', () => {
     const opers = Array.from({ length: 31 }, (_, index) => ({ name: `oper-${index}` }));
     const capped = projectCopilotSearchItem({
       id: 13,
       content: JSON.stringify({ opers })
     });
     assert.deepEqual(capped.operators, opers.slice(0, 30).map(oper => oper.name));
+    assert.deepEqual(capped.operatorDetails?.map(detail => detail.name), opers.slice(0, 30).map(oper => oper.name));
   });
 
   it('reports unreadable resource versions as unknown instead of current', () => {

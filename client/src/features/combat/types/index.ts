@@ -155,6 +155,12 @@ export interface CopilotSearchItem {
   operators?: string[]
   /** 服务端按当前持有快照给出的匹配结论；未接入时省略。 */
   match?: CopilotMatchSummary
+  /** 作者填写的说明与攻略链接，列表条目自带，点开卡片时无需再取详情。 */
+  details?: string
+  /** 每名干员的练度要求；与卡片只显示名字的 `operators` 同源。 */
+  operatorDetails?: CopilotDetailOperator[]
+  groupNames?: string[]
+  recommendedMode?: CopilotDifficulty
 }
 
 export interface CopilotSearchResult {

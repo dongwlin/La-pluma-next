@@ -355,6 +355,18 @@ export interface MaintenanceCopilotEntry {
   title: unknown;
 }
 
+export type MaintenanceCopilotRecommendedMode = 'normal' | 'raid' | 'both';
+
+/** 单个干员的练度要求：字段名与客户端 `CopilotDetailOperator` 对齐。 */
+export interface CopilotOperatorDetail {
+  name: string;
+  group?: string;
+  elite?: number;
+  level?: number;
+  skillLevel?: number;
+  module?: string;
+}
+
 export interface MaintenanceCopilotSearchEntry {
   id: unknown;
   uri: string;
@@ -369,6 +381,10 @@ export interface MaintenanceCopilotSearchEntry {
   uploader?: string;
   uploadTime?: string;
   match?: CopilotMatchSummary;
+  details?: string;
+  operatorDetails?: CopilotOperatorDetail[];
+  groupNames?: string[];
+  recommendedMode?: MaintenanceCopilotRecommendedMode;
 }
 
 /**
@@ -454,6 +470,76 @@ function copilotUploaderName(uploader: unknown, uploaderId: unknown): string | u
   return String(uploaderId);
 }
 
+function copilotRequirementNumber(value: unknown): number | undefined {
+  return typeof value === 'number' && Number.isFinite(value) ? value : undefined;
+}
+
+/** `module` 在上游是数字占位（-1 表示未装备），保持与客户端 `asModule` 相同的字符串化。 */
+function copilotRequirementModule(value: unknown): string | undefined {
+  if (typeof value === 'string' && value.trim()) return value;
+  if (typeof value === 'number' && Number.isFinite(value)) return String(value);
+  return undefined;
+}
+
+function readCopilotOperatorDetail(value: unknown): CopilotOperatorDetail | null {
+  if (!isRecord(value)) return null;
+  const name = typeof value.name === 'string' ? value.name.trim() : '';
+  if (!name) return null;
+  const requirements = isRecord(value.requirements) ? value.requirements : {};
+  const group = typeof value.group === 'string' && value.group.trim() ? value.group.trim() : undefined;
+  const elite = copilotRequirementNumber(requirements.elite);
+  const level = copilotRequirementNumber(requirements.level);
+  const skillLevel = copilotRequirementNumber(requirements.skill_level);
+  const module = copilotRequirementModule(requirements.module);
+  return {
+    name,
+    ...(group === undefined ? {} : { group }),
+    ...(elite === undefined ? {} : { elite }),
+    ...(level === undefined ? {} : { level }),
+    ...(skillLevel === undefined ? {} : { skillLevel }),
+    ...(module === undefined ? {} : { module })
+  };
+}
+
+/** 与 `operators` 同源、同上限：列表条目只带前 30 个干员的练度要求。 */
+function readCopilotOperatorDetails(parsed: Record<string, unknown> | null): CopilotOperatorDetail[] {
+  if (!parsed || !Array.isArray(parsed.opers)) return [];
+  const details: CopilotOperatorDetail[] = [];
+  const names = new Set<string>();
+  for (const oper of parsed.opers) {
+    if (details.length >= COPILOT_OPERATOR_LIMIT) break;
+    const detail = readCopilotOperatorDetail(oper);
+    if (!detail || names.has(detail.name)) continue;
+    names.add(detail.name);
+    details.push(detail);
+  }
+  return details;
+}
+
+function readCopilotGroupNames(parsed: Record<string, unknown> | null): string[] {
+  if (!parsed || !Array.isArray(parsed.groups)) return [];
+  const names: string[] = [];
+  for (const group of parsed.groups) {
+    if (!isRecord(group) || typeof group.name !== 'string') continue;
+    const name = group.name.trim();
+    if (name && !names.includes(name)) names.push(name);
+  }
+  return names;
+}
+
+function copilotRecommendedMode(value: unknown): MaintenanceCopilotRecommendedMode | undefined {
+  if (value === 0 || value === 1) return 'normal';
+  if (value === 2) return 'raid';
+  if (value === 3) return 'both';
+  return undefined;
+}
+
+function copilotDocDetails(value: unknown): string | undefined {
+  if (!isRecord(value) || !isRecord(value.doc)) return undefined;
+  const details = value.doc.details;
+  return typeof details === 'string' && details.trim() ? details : undefined;
+}
+
 export interface CopilotSearchProjectionOptions {
   stageId?: string;
   stageIndex?: ReadonlyMap<string, CopilotStageCatalogEntry>;
@@ -462,6 +548,8 @@ export interface CopilotSearchProjectionOptions {
 
 /**
  * 关卡作业条目：标题与关卡名来自 content 文档，content 不是 JSON 时沿用默认标题与请求关卡。
+ * 同时投影预览所需的说明、干员练度与分组：上游查询已返回完整 content，列表阶段带上这些字段
+ * 后，点开卡片无需再为同一份数据发起一次详情请求。
  */
 export function projectCopilotSearchItem(
   item: Record<string, unknown>,
@@ -476,6 +564,10 @@ export function projectCopilotSearchItem(
   const match = options.ownedOperators && content.parsed
     ? resolveCopilotMatch(content.parsed, options.ownedOperators)
     : null;
+  const details = copilotDocDetails(content.parsed);
+  const operatorDetails = readCopilotOperatorDetails(content.parsed);
+  const groupNames = readCopilotGroupNames(content.parsed);
+  const recommendedMode = content.parsed ? copilotRecommendedMode(content.parsed.difficulty) : undefined;
   return {
     id: item.id,
     uri: `prts://${String(item.id)}`,
@@ -489,7 +581,11 @@ export function projectCopilotSearchItem(
     operators: content.operators,
     ...(uploader === undefined ? {} : { uploader }),
     ...(uploadTime === undefined ? {} : { uploadTime }),
-    ...(match ? { match } : {})
+    ...(match ? { match } : {}),
+    ...(details === undefined ? {} : { details }),
+    ...(operatorDetails.length ? { operatorDetails } : {}),
+    ...(groupNames.length ? { groupNames } : {}),
+    ...(recommendedMode === undefined ? {} : { recommendedMode })
   };
 }
 

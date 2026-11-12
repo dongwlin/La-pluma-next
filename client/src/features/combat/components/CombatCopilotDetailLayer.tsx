@@ -7,7 +7,7 @@ import {
   type ReactNode,
 } from 'react'
 import { createPortal } from 'react-dom'
-import { Button, IconButton, useModalLayer } from '@/shared/ui'
+import { Button, IconButton, Loading, useModalLayer } from '@/shared/ui'
 import { Modal } from '@/shared/ui/Modal'
 import { useStatusStore } from '@/features/runtime-status'
 import type { CopilotDetailOperator, CopilotDetailTarget } from '../model/copilotDetail'
@@ -21,8 +21,12 @@ export interface CombatCopilotDetailLayerProps {
   target: CopilotDetailTarget | null
   onClose: () => void
   stacked?: boolean
+  /** 目标尚未读出：先显示抽屉壳与加载态，避免点开与内容出现之间留白。 */
+  loading?: boolean
   children?: ReactNode
 }
+
+const PENDING_TITLE = '作业详情'
 
 const RECOMMENDED_MODE_LABELS = { normal: '普通', raid: '突袭', both: '普通+突袭' }
 
@@ -195,10 +199,19 @@ function DetailBody({ target, children }: { target: CopilotDetailTarget; childre
   )
 }
 
+function DetailPlaceholder() {
+  return (
+    <div className="flex min-h-40 items-center justify-center px-2">
+      <Loading text="正在加载作业…" />
+    </div>
+  )
+}
+
 export default function CombatCopilotDetailLayer({
   target,
   onClose,
   stacked = false,
+  loading = false,
   children,
 }: CombatCopilotDetailLayerProps) {
   const isMobile = useMobileDetailLayout()
@@ -208,7 +221,8 @@ export default function CombatCopilotDetailLayer({
   const layerRef = useRef<HTMLDivElement>(null)
   const onCloseRef = useRef(onClose)
 
-  const isOpen = target !== null
+  const isOpen = target !== null || loading
+  const title = target?.title ?? PENDING_TITLE
 
   useModalLayer(layerRef, stacked && isOpen && !isMobile)
 
@@ -255,17 +269,17 @@ export default function CombatCopilotDetailLayer({
       <Modal
         isOpen={isOpen}
         onClose={onClose}
-        title={target?.title}
+        title={title}
         placement="sheet"
         dialogId={COPILOT_DETAIL_LAYER_ID}
         size="lg"
       >
-        {target && <DetailBody target={target}>{children}</DetailBody>}
+        {target ? <DetailBody target={target}>{children}</DetailBody> : <DetailPlaceholder />}
       </Modal>
     )
   }
 
-  if (!target || typeof document === 'undefined') return null
+  if (!isOpen || typeof document === 'undefined') return null
 
   return createPortal(
     <div ref={layerRef} className="combat-copilot-detail-layer">
@@ -279,7 +293,7 @@ export default function CombatCopilotDetailLayer({
         className="combat-copilot-detail-drawer surface-panel"
       >
         <header className="combat-copilot-detail-head">
-          <h2 id={titleId} className="combat-copilot-detail-title">{target.title}</h2>
+          <h2 id={titleId} className="combat-copilot-detail-title">{title}</h2>
           <IconButton
             icon={<X className="h-4 w-4" aria-hidden="true" />}
             variant="ghost"
@@ -290,7 +304,7 @@ export default function CombatCopilotDetailLayer({
           />
         </header>
         <div className="combat-copilot-detail-scroll">
-          <DetailBody target={target}>{children}</DetailBody>
+          {target ? <DetailBody target={target}>{children}</DetailBody> : <DetailPlaceholder />}
         </div>
       </aside>
     </div>,

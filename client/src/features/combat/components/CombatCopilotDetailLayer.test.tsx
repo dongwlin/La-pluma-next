@@ -74,9 +74,9 @@ describe('CombatCopilotDetailLayer', () => {
     vi.restoreAllMocks()
   })
 
-  const renderLayer = async (target: CopilotDetailTarget | null) => {
+  const renderLayer = async (target: CopilotDetailTarget | null, loading = false) => {
     await act(async () => {
-      root.render(<CombatCopilotDetailLayer target={target} onClose={onClose} />)
+      root.render(<CombatCopilotDetailLayer target={target} loading={loading} onClose={onClose} />)
     })
   }
 
@@ -100,6 +100,31 @@ describe('CombatCopilotDetailLayer', () => {
 
     await renderLayer(null)
     expect(document.activeElement).toBe(trigger)
+  })
+
+  it('renders the drawer shell with a loading state while the target is pending', async () => {
+    trigger.focus()
+    await renderLayer(null, true)
+
+    const panel = dialog()
+    expect(panel).not.toBeNull()
+    expect(panel?.getAttribute('aria-modal')).toBe('false')
+    expect(document.getElementById(panel?.getAttribute('aria-labelledby') || '')?.textContent)
+      .toBe('作业详情')
+    expect(panel?.querySelector('[role="status"]')?.textContent).toContain('正在加载作业')
+    expect(document.activeElement).toBe(panel)
+
+    await renderLayer(richTarget)
+    const nextPanel = dialog()
+    expect(document.getElementById(nextPanel?.getAttribute('aria-labelledby') || '')?.textContent)
+      .toBe('第一关')
+    expect(nextPanel?.querySelector('[role="status"]')).toBeNull()
+  })
+
+  it('renders nothing when neither a target nor a pending load exists', async () => {
+    await renderLayer(null)
+
+    expect(dialog()).toBeNull()
   })
 
   it('closes on an outside press but keeps presses inside the drawer', async () => {

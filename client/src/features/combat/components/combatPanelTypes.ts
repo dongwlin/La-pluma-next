@@ -13,6 +13,7 @@ import type { CopilotSetItemStatus } from '../model/copilotSetRun'
 import type { CopilotQueueEntry, CopilotQueueMoveDirection } from '../model/copilotQueue'
 import type { CopilotQueueFailurePolicy } from '../api'
 import type { PanelStateStore } from '../model/panelState'
+import type { CopilotDetailTarget } from '../model/copilotDetail'
 import type {
   CopilotMatchMode,
   CopilotRaid,
@@ -59,6 +60,8 @@ export interface CombatCopilotConfig {
 export interface CombatCopilotPreviewProjection {
   info: CopilotSetInfo | null
   loading: boolean
+  /** 详情在途时先用列表条目渲染的目标；响应到达或失败后清空。 */
+  pendingTarget: CopilotDetailTarget | null
   modeStore: PanelStateStore<CopilotPreviewMode>
   onPreview: () => void
   onCancel: () => void
