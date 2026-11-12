@@ -95,6 +95,7 @@ export default function Input({
           aria-describedby={describedBy}
           aria-errormessage={error ? (ariaErrorMessage ?? errorId) : ariaErrorMessage}
           className={`${baseStyles} ${error ? errorStyles : ''} ${icon ? 'app-input-has-icon' : ''}`}
+          autoComplete="off"
           {...props}
         />
       </div>

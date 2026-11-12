@@ -168,6 +168,8 @@ import { Input, Select, Checkbox, Switch } from '@/shared/ui'
 
 `Input`、`Select` 均支持 `error` 和 `hint`，`Input` 额外支持前置 `icon`。`hint` 默认显示在控件下方；传 `hintPlacement="tooltip"` 时说明收敛为标签旁的 ⓘ 图标，悬停、聚焦或点击时以提示层显示同一段文字，控件仍通过 `aria-describedby` 关联这段说明。多行文本使用带 `app-input control-surface` 的原生 `textarea`。表单错误态使用 `error` prop，不要在页面里单独手写红色边框和错误文字。
 
+`Input` 默认关闭浏览器自动填充历史（`autoComplete="off"`），避免配置值与搜索词混入输入框下拉提示；确实需要浏览器记住输入时才显式传 `autoComplete`。原生 `input` 同样补上该属性。
+
 ---
 
 ### HintTooltip - 标签说明提示
