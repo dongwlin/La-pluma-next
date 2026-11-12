@@ -224,12 +224,6 @@
     box-shadow: inset 1px 0 0 var(--app-border);
   }
 
-  .combat-copilot-source-tools {
-    display: grid;
-    min-width: 0;
-    gap: var(--app-space-3);
-  }
-
   .combat-copilot-search {
     display: grid;
     min-width: 0;
@@ -301,22 +295,6 @@
   .combat-copilot-search-result-add:disabled {
     opacity: 0.5;
     cursor: not-allowed;
-  }
-
-  .combat-copilot-source-meta {
-    display: flex;
-    min-width: 0;
-    flex-wrap: wrap;
-    align-items: center;
-    justify-content: flex-end;
-    gap: var(--app-space-2) var(--app-space-4);
-  }
-
-  .combat-copilot-source-actions {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    gap: 0.25rem var(--app-space-2);
   }
 
   .combat-copilot-help-trigger {
@@ -1121,11 +1099,6 @@
   }
 
   @container (min-width: 60rem) {
-    .combat-copilot-source-tools {
-      grid-template-columns: minmax(0, 1fr) auto;
-      align-items: start;
-    }
-
     .combat-copilot-body {
       grid-template-columns: minmax(0, 1fr) minmax(16.25rem, 18.75rem);
     }
