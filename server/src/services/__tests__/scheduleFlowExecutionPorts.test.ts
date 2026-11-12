@@ -1,4 +1,7 @@
 import assert from 'node:assert/strict';
+import { appendFile, mkdtemp, rename, rm, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { describe, it } from 'node:test';
 import { createScheduleFlowExecutor } from '../scheduleFlowExecution.ts';
 import type {
@@ -19,6 +22,7 @@ import type { DropRecordInput } from '../dropRecordService.ts';
 import type { MaaExecutionLeaseRequest } from '../executionCoordinatorService.ts';
 import { parseGameTaskExecutionAction } from '../gameTaskResultService.ts';
 import type { GameTaskType } from '../gameTaskResultService.ts';
+import { createMaaLogCheckpoint, readMaaLogIncrement } from '../maaLogFileService.ts';
 
 const silentLogger = {
   info() {},
@@ -444,6 +448,40 @@ describe('schedule flow boundaries', () => {
     assert.equal(result.summary.errors.length, 1);
     assert.match(result.summary.errors[0].error, /无法读取领取日志/);
     assert.equal(result.summary.actions[0].status, 'failed');
+  });
+
+  it('confirms scheduled award callbacks across a log rotation without counting earlier claims', async t => {
+    const logDir = await mkdtemp(join(tmpdir(), 'la-pluma-schedule-award-'));
+    t.after(() => rm(logDir, { recursive: true, force: true }));
+    const logPath = join(logDir, 'asst.log');
+    const callback = (first: string, task: string) =>
+      `Assistant::append_callback | SubTaskCompleted ${JSON.stringify({
+        taskchain: 'Award', first: [first], details: { task }
+      })}\n`;
+    await writeFile(logPath, callback('OrundumActivitiesBegin', 'OrundumActivitiesConfirm'));
+
+    const { ports } = createPorts({
+      createLogCheckpoint: () => createMaaLogCheckpoint({ resolveLogDir: async () => logDir }),
+      readLogSince: readMaaLogIncrement,
+      executeCommand: async () => {
+        await appendFile(logPath, callback('AwardBegin', 'ReceiveAward')
+          + callback('OrundumActivitiesBegin', 'OrundumActivitiesBegin'));
+        await rename(logPath, join(logDir, 'asst.bak.log'));
+        await writeFile(logPath, callback('MailBegin', 'ReceiveMail'));
+        return { stdout: '', stderr: '' };
+      }
+    });
+    const executor = createScheduleFlowExecutor({ ports, logger: silentLogger });
+    const result = completedResult(await executor.execute([
+      {
+        id: 'award-1', commandId: 'award', name: '领取奖励', enabled: true,
+        params: { award: true, mail: true, orundum: true }
+      }
+    ], 'flow-award-rotated-log'));
+
+    assert.deepEqual(result.summary.actions.map(action => action.status), ['success', 'success', 'skipped']);
+    assert.equal(result.summary.successCount, 1);
+    assert.equal(result.summary.failedCount, 0);
   });
 
   it('counts a partially confirmed award task as failed rather than success', async () => {

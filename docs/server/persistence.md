@@ -82,7 +82,7 @@
 
 - MAA 日志目录由 `maa dir log` 解析并在进程内缓存，失败在 30 秒冷却期内复用同一错误（`server/src/services/maaLogFileService.ts:105-128`）。
 - 读取只允许日志目录内 `.log` 文件：两侧 realpath 后按目录边界判定，目录外符号链接被拒绝（`server/src/services/maaLogFileService.ts:268-278,345-349`）；内容从尾部按块读取，单次最多 2 MB，行数上限 5000（`server/src/services/maaLogFileService.ts:24-29,337-380`）。
-- 检查点记录 `asst.log` 当时的路径、字节数、文件身份（dev/ino）与检查点边界前 256 字节的 SHA-256 摘要；执行后增量读取只取检查点之后的新增字节（上限默认 2 MB），文件被替换或原地重写时按 `rotated` 处理、不再把新文件当成同一份日志。检查点是内存值，失败按空结果降级，不持久化（`server/src/services/maaLogFileService.ts:188-283`）。
+- 增量日志检查点只保存在内存中。日志轮转后的恢复条件与读取状态见[日志文件边界与检查点](integrations.md#日志文件边界与检查点)。
 - 手动清理按修改时间从新到旧累加，累计超出保留上限（1-1024 MB）后删除较旧的 `.log` 文件；调试截图列表只读 MAA 状态目录 `debug/`（`server/src/services/maaLogFileService.ts:229-262,386-424`）。实时日志缓冲不在这里，属于 `maaProcessService` 的子进程投影（`server/src/services/maaLogFileService.ts:18`）。
 
 ## 单实例约束

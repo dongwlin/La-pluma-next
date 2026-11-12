@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { EventEmitter } from 'node:events';
-import { appendFile, mkdtemp, rename, rm, writeFile } from 'node:fs/promises';
+import { appendFile, mkdtemp, open, rename, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { after, before, describe, it } from 'node:test';
@@ -607,7 +607,7 @@ describe('MAA log checkpoint ports', () => {
     assert.deepEqual(increment, { status: 'truncated', text: 'del' });
   });
 
-  it('marks a rotated log rotated instead of trusting a new file that grew past the old offset', async () => {
+  it('recovers both sides of a rotation when the new log is shorter than the checkpoint', async () => {
     const directory = await createTemporaryDirectory('la-pluma-log-rotated-');
     const logPath = join(directory, 'asst.log');
     await writeFile(logPath, 'old-session\n'.padEnd(2000, '.'), 'utf-8');
@@ -615,12 +615,108 @@ describe('MAA log checkpoint ports', () => {
     const checkpoint = await createMaaLogCheckpoint({ resolveLogDir: async () => directory });
     assert.ok(checkpoint);
 
-    // MaaCore renames asst.log to asst.bak.log and a fresh file grows past the old offset;
-    // the bytes after the old offset belong to a different session, not to this increment.
+    await appendFile(logPath, 'before rotation\n', 'utf-8');
     await rename(logPath, join(directory, 'asst.bak.log'));
-    await writeFile(logPath, 'new-session\n'.padEnd(4000, 'x'), 'utf-8');
+    await writeFile(logPath, 'after rotation\n', 'utf-8');
+
+    const text = 'before rotation\nafter rotation\n';
+    assert.deepEqual(await readMaaLogIncrement(checkpoint), { status: 'rotated', text });
+    assert.equal(await readMaaLogSince(checkpoint), text);
+  });
+
+  it('limits the combined rotation increment to the requested trailing bytes', async () => {
+    const directory = await createTemporaryDirectory('la-pluma-log-rotation-limit-');
+    const logPath = join(directory, 'asst.log');
+    await writeFile(logPath, 'old\n', 'utf-8');
+
+    const checkpoint = await createMaaLogCheckpoint({ resolveLogDir: async () => directory });
+    assert.ok(checkpoint);
+
+    await appendFile(logPath, 'before\n', 'utf-8');
+    await rename(logPath, join(directory, 'asst.bak.log'));
+    await writeFile(logPath, 'after\n', 'utf-8');
+
+    assert.deepEqual(await readMaaLogIncrement(checkpoint, 9), { status: 'truncated', text: 're\nafter\n' });
+    assert.deepEqual(await readMaaLogIncrement(checkpoint, 4), { status: 'truncated', text: 'ter\n' });
+  });
+
+  it('rejects a replacement log without its original backup', async () => {
+    const directory = await createTemporaryDirectory('la-pluma-log-replaced-');
+    const logPath = join(directory, 'asst.log');
+    await writeFile(logPath, 'old\n', 'utf-8');
+
+    const checkpoint = await createMaaLogCheckpoint({ resolveLogDir: async () => directory });
+    assert.ok(checkpoint);
+
+    await rename(logPath, join(directory, 'other.log'));
+    await writeFile(logPath, 'unverified\n', 'utf-8');
 
     assert.deepEqual(await readMaaLogIncrement(checkpoint), { status: 'rotated', text: '' });
+  });
+
+  it('rejects a second rotation even if the backup has the same checkpoint bytes', async () => {
+    const directory = await createTemporaryDirectory('la-pluma-log-rotated-twice-');
+    const logPath = join(directory, 'asst.log');
+    const backupPath = join(directory, 'asst.bak.log');
+    await writeFile(logPath, 'old\n', 'utf-8');
+
+    const checkpoint = await createMaaLogCheckpoint({ resolveLogDir: async () => directory });
+    assert.ok(checkpoint);
+
+    await rename(logPath, backupPath);
+    await writeFile(logPath, 'old\nnewer\n', 'utf-8');
+    const replacementPath = join(directory, 'replacement.log');
+    await writeFile(replacementPath, 'latest\n', 'utf-8');
+    await rename(logPath, backupPath);
+    await rename(replacementPath, logPath);
+
+    assert.deepEqual(await readMaaLogIncrement(checkpoint), { status: 'rotated', text: '' });
+  });
+
+  it('rejects a matching backup identity after its checkpoint bytes were rewritten', async () => {
+    const directory = await createTemporaryDirectory('la-pluma-log-backup-rewritten-');
+    const logPath = join(directory, 'asst.log');
+    const backupPath = join(directory, 'asst.bak.log');
+    await writeFile(logPath, 'old\n', 'utf-8');
+
+    const checkpoint = await createMaaLogCheckpoint({ resolveLogDir: async () => directory });
+    assert.ok(checkpoint);
+
+    await rename(logPath, backupPath);
+    await writeFile(backupPath, 'rewritten\n', 'utf-8');
+    await writeFile(logPath, 'unverified\n', 'utf-8');
+
+    assert.deepEqual(await readMaaLogIncrement(checkpoint), { status: 'rotated', text: '' });
+  });
+
+  it('does not report a complete increment if the active log rotates during the read', async () => {
+    const directory = await createTemporaryDirectory('la-pluma-log-rotation-during-read-');
+    const logPath = join(directory, 'asst.log');
+    await writeFile(logPath, 'old\n', 'utf-8');
+
+    const checkpoint = await createMaaLogCheckpoint({ resolveLogDir: async () => directory });
+    assert.ok(checkpoint);
+    await appendFile(logPath, 'before rotation\n', 'utf-8');
+
+    const increment = await readMaaLogIncrement(checkpoint, 64, {
+      open: async (path, flags) => {
+        const handle = await open(path, flags);
+        return {
+          stat: () => handle.stat(),
+          read: async (buffer, offset, length, position) => {
+            const result = await handle.read(buffer, offset, length, position);
+            if (position === checkpoint.size) {
+              await rename(logPath, join(directory, 'asst.bak.log'));
+              await writeFile(logPath, 'after rotation\n', 'utf-8');
+            }
+            return result;
+          },
+          close: () => handle.close()
+        };
+      }
+    });
+
+    assert.deepEqual(increment, { status: 'rotated', text: '' });
   });
 
   it('marks an in-place rewrite that regrew past the checkpoint as rotated', async () => {
