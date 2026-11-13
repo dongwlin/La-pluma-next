@@ -119,3 +119,37 @@ test('停止中切页、断线重连和刷新都保留同一 Run，旧终态不�
 
   await expectScenarioHealthy(page)
 })
+
+test('概览发起的今日流程由日常页接管并可直接停止', async ({ page }) => {
+  const state = createScenarioState()
+  state.runState = 'succeeded'
+  await installIntegrationScenario(page, state)
+  await gotoScenario(page, 'dashboard')
+  await expect(page.getByRole('button', { name: '开始今日流程', exact: true })).toBeEnabled()
+
+  await page.getByRole('button', { name: '开始今日流程', exact: true }).click()
+  await expect.poll(() => state.submissions.map(request => request.path))
+    .toEqual(['/agent/schedules/dashboard-quick-start/execute'])
+  await expect(page.locator('[data-dashboard-flow-command]').getByText('正在执行跨页场景任务', { exact: true })).toBeVisible()
+
+  // 同一 run_daily_flow 身份：日常页按操作标识接管概览发起的执行，入口不再可提交。
+  await navigateTo(page, 'automation')
+  await expect(page.getByRole('button', { name: '执行中', exact: true })).toBeDisabled()
+  await expect(page.getByRole('button', { name: '终止执行', exact: true })).toBeVisible()
+  await expect(page.locator('[data-execution-state="running"]')).toHaveCount(1)
+  expect(state.submissions).toHaveLength(1)
+
+  await page.getByRole('button', { name: '终止执行', exact: true }).click()
+  await expect.poll(() => state.stopCalls).toEqual([state.runId])
+
+  state.runState = 'stopped'
+  await page.evaluate(() => window.dispatchEvent(new Event('focus')))
+  await expect(page.getByRole('button', { name: '立即执行', exact: true })).toBeVisible()
+  expect(state.submissions).toHaveLength(1)
+
+  await navigateTo(page, 'dashboard')
+  await expect(page.locator('[data-dashboard-flow-command]').getByText('准备就绪', { exact: true })).toBeVisible()
+  await expect(page.getByRole('button', { name: '开始今日流程', exact: true })).toBeEnabled()
+
+  await expectScenarioHealthy(page)
+})

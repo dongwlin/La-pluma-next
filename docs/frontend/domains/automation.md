@@ -89,7 +89,8 @@ AutomationTasks（页头 + 全局指示）
   `updateConfig`；面板不创建草稿副本，也不调用 `saveUserConfig`。
 - **执行只读。** 流程列表与摘要只消费 `isRunning`/`isStopping`/`isSubmitting`/
   `taskResults`/`currentStep`/终态摘要；启动仍只由 `submitFlow` 发出一次
-  `run_daily_flow`，停止仍按本页持有的 runId。
+  `run_daily_flow`，停止仍按控制器持有的 runId。归属按操作标识判定，
+  因此概览快捷入口发起的同一次今日流程也能在本页看到进度并停止。
 - **执行摘要不推断完成。** 步间延迟期间 run 仍活动；只有服务端终态摘要或
   `schedule.lastResult` 投影会进入“最近执行”。
 - **页脚点击区域语义不变。** `AutomationTaskFlowPanel` 自己创建页脚 ref 并

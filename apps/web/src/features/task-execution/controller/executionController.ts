@@ -50,6 +50,11 @@ export interface ExecutionControllerState {
    * 不参与服务端身份、幂等分区或幂等键格式；没有标签时为 null。
    */
   readonly trackedScope: string | null
+  /**
+   * 该身份对应的服务端操作（如 `run_daily_flow`）。与 `trackedScope` 并存：
+   * `scope` 记录“哪个入口发起”，`operationId` 让同一流程的多个入口共同接管同一次执行。
+   */
+  readonly trackedOperationId: string | null
   readonly trackedRun: AgentRun | null
   readonly lastError: string | null
   readonly lastSyncedAt: number | null
@@ -105,6 +110,7 @@ function createInitialState(): ExecutionControllerState {
     snapshot: null,
     trackedRunId: null,
     trackedScope: null,
+    trackedOperationId: null,
     trackedRun: null,
     lastError: null,
     lastSyncedAt: null,
@@ -197,6 +203,7 @@ export class ExecutionController {
   private snapshot: RunSnapshot | null = null
   private trackedRunId: string | null = null
   private trackedScope: string | null = null
+  private trackedOperationId: string | null = null
   private trackedRun: AgentRun | null = null
   private identity: ExecutionIdentityState = 'none'
   private submission: ExecutionSubmissionState = 'idle'
@@ -283,6 +290,7 @@ export class ExecutionController {
     if (!runId) {
       this.trackedRunId = null
       this.trackedScope = null
+      this.trackedOperationId = null
       this.trackedRun = null
       this.identity = 'none'
       this.storage.write(null)
@@ -292,6 +300,7 @@ export class ExecutionController {
 
     this.trackedRunId = runId
     this.trackedScope = scope
+    this.trackedOperationId = operationId
     this.trackedRun = findRunById(this.snapshot, runId)
       ?? (this.trackedRun?.runId === runId ? this.trackedRun : null)
     this.identity = 'tracked'
@@ -349,6 +358,7 @@ export class ExecutionController {
       this.submission = 'accepted'
       this.trackedRunId = runId
       this.trackedScope = intent.scope
+      this.trackedOperationId = intent.operationId
       this.trackedRun = readSubmittedRun(result.data, runId) ?? findRunById(this.snapshot, runId)
       this.identity = 'tracked'
       this.lastError = null
@@ -401,6 +411,7 @@ export class ExecutionController {
     this.submission = 'accepted'
     this.trackedRunId = runId
     this.trackedScope = scope
+    this.trackedOperationId = operationId
     this.trackedRun = readSubmittedRun(result.data, runId) ?? findRunById(this.snapshot, runId)
     this.identity = 'tracked'
     this.lastError = null
@@ -494,6 +505,7 @@ export class ExecutionController {
       if (stored) {
         this.trackedRunId = stored.runId
         this.trackedScope = stored.scope ?? null
+        this.trackedOperationId = stored.operationId ?? null
         this.identity = 'tracked'
         this.publish()
       }
@@ -567,6 +579,7 @@ export class ExecutionController {
     const tracked = findRunById(this.snapshot, this.trackedRunId)
     if (tracked) {
       this.trackedRun = tracked
+      this.trackedOperationId = tracked.operationId ?? this.trackedOperationId
       this.identity = 'tracked'
       this.persistTrackedRun(tracked)
     }
@@ -610,6 +623,7 @@ export class ExecutionController {
     if (this.trackedRunId && run.runId !== this.trackedRunId) return
 
     this.trackedRunId = run.runId
+    this.trackedOperationId = run.operationId ?? this.trackedOperationId
     this.trackedRun = run
     this.identity = 'tracked'
     this.lastError = null
@@ -621,12 +635,17 @@ export class ExecutionController {
     // 身份保留到看到终态为止；终态后不再写入新身份，但内存仍可供本次会话展示。
     this.storage.write(isTerminalRunState(run.state)
       ? null
-      : { runId: run.runId, operationId: run.operationId, scope: this.trackedScope })
+      : {
+          runId: run.runId,
+          operationId: run.operationId ?? this.trackedOperationId,
+          scope: this.trackedScope,
+        })
   }
 
   private markIdentityUnknown(): void {
     this.identity = 'unknown'
     this.trackedScope = null
+    this.trackedOperationId = null
     this.storage.write(null)
     this.publish()
   }
@@ -656,6 +675,7 @@ export class ExecutionController {
       snapshot: this.snapshot,
       trackedRunId: this.trackedRunId,
       trackedScope: this.trackedScope,
+      trackedOperationId: this.trackedOperationId,
       trackedRun: this.trackedRun,
       lastError: this.lastError,
       lastSyncedAt: this.lastSyncedAt,

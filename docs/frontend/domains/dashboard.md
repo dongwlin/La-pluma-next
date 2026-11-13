@@ -257,7 +257,7 @@ Dashboard（首屏门禁、页头、唯一刷新调度）
 - 网络恢复（`online` 事件）`force` 刷新。
 - 在途协调读取不因 Activity 隐藏中止；结果仍写入 store，隐藏期间完成的快照在恢复后直接可用。
 
-统一执行入口的接线为：`useDashboardExecution` 调用 `executionController.submitExecution`，日常流程使用 `run_daily_flow` 与 `scope: 'dashboard'`。操作成功后的刷新仍走 `refreshDashboard`（force），不另建页面请求路径。目前该接线由 `DashboardFlowPanel` 经 `useDashboardFlowActions` 调用，刷新调度仍只有页面/工作区一份，语义不变（见[总览领域面板](#页面与面板)）。
+统一执行入口的接线为：`useDashboardExecution` 调用 `executionController.submitExecution`，日常流程使用 `run_daily_flow` 与 `scope: 'dashboard'`；`scope` 只记录本入口发起，日常页按同一 `run_daily_flow` 接管这次执行的进度与停止。操作成功后的刷新仍走 `refreshDashboard`（force），不另建页面请求路径。目前该接线由 `DashboardFlowPanel` 经 `useDashboardFlowActions` 调用，刷新调度仍只有页面/工作区一份，语义不变（见[总览领域面板](#页面与面板)）。
 
 ### 6. 缓存与持久化边界
 

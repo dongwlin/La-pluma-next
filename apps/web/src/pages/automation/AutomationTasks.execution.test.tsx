@@ -586,6 +586,42 @@ describe('AutomationTasks execution', () => {
     expect(stopButton()).not.toBeNull()
   })
 
+  it('takes over the daily flow started from the dashboard entry and can stop it', async () => {
+    api.fetchSnapshot.mockResolvedValue(ok(activeSnapshot({
+      progress: { currentStep: 0, totalSteps: 3, currentTask: '启动游戏', message: '今日流程执行中' },
+      statuses: ['running', 'pending', 'pending'],
+    })))
+    useIdentity({ runId: 'run-1', operationId: 'run_daily_flow', scope: 'dashboard' })
+    await renderPage()
+
+    expect(runButton()?.textContent).toContain('执行中')
+    expect(runButton()?.disabled).toBe(true)
+    expect(stopButton()).not.toBeNull()
+    expect(sequenceLabels()).toEqual(['正在执行', '等待执行', '等待执行'])
+    expect(mocks.executeScheduleNow).not.toHaveBeenCalled()
+
+    api.stopRun.mockResolvedValue(ok({
+      stopRequested: true,
+      deviceStopRequested: true,
+      run: dailyRun('run-1', 'stopping'),
+    }))
+    await click(stopButton())
+
+    expect(api.stopRun).toHaveBeenCalledWith('run-1')
+  })
+
+  it('does not claim an active run that belongs to another operation', async () => {
+    const foreignRun = dailyRun('run-1', 'running', { operationId: 'run_task' })
+    api.fetchSnapshot.mockResolvedValue(ok(snapshot({
+      activeRuns: [foreignRun],
+    })))
+    useIdentity({ runId: 'run-1', operationId: 'run_task', scope: 'dashboard' })
+    await renderPage()
+
+    expect(runButton()?.textContent).toContain('立即执行')
+    expect(stopButton()).toBeNull()
+  })
+
   it('stops the tracked run by id and waits for the terminal state', async () => {
     api.fetchSnapshot.mockResolvedValue(ok(activeSnapshot({
       progress: { currentStep: 0, totalSteps: 3, currentTask: '启动游戏', message: '正在执行: 启动游戏' },

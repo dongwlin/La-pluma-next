@@ -28,11 +28,17 @@ import {
 
 export const AUTOMATION_EXECUTION_SCOPE = 'automation'
 
+/**
+ * 今日流程的服务端操作标识。概览快捷入口与本页提交的是同一个操作，
+ * 因此谁先发起都能被本页接管（进度、逐项状态与停止）。
+ */
+export const AUTOMATION_FLOW_OPERATION_ID = 'run_daily_flow'
+
 /** 停止请求成功但 run 长期没有离开 running 时，解锁按钮允许重试。 */
 export const AUTOMATION_STOP_CONFIRM_TIMEOUT_MS = 15_000
 
 export interface AutomationExecution {
-  /** 本页发起且仍处于活动状态的 run，或身份已持久化但快照尚未解析出来。 */
+  /** 本页接管且仍处于活动状态的 run，或身份已持久化但快照尚未解析出来。 */
   isRunning: boolean
   /** 停止确认中：服务端已进入 stopping，或停止请求已成功等待终态。 */
   isStopping: boolean
@@ -104,7 +110,7 @@ export function useAutomationExecution({
   storage,
 }: UseAutomationExecutionOptions): AutomationExecution {
   const execution = useExecutionSnapshot(controller)
-  const owned = execution.trackedScope === AUTOMATION_EXECUTION_SCOPE
+  const owned = execution.trackedOperationId === AUTOMATION_FLOW_OPERATION_ID
   const ownedRunId = owned ? execution.trackedRunId : null
   const trackedRun = owned ? execution.trackedRun : null
   const activeRun = trackedRun && isActiveRunState(trackedRun.state) ? trackedRun : null
@@ -170,11 +176,15 @@ export function useAutomationExecution({
     })
 
     if (result.status === 'adopted' && result.run) {
-      controller.observeRun(result.run.runId, 'run_daily_flow', AUTOMATION_EXECUTION_SCOPE)
+      controller.observeRun(
+        result.run.runId,
+        AUTOMATION_FLOW_OPERATION_ID,
+        execution.trackedScope ?? AUTOMATION_EXECUTION_SCOPE,
+      )
     }
     const notice = legacyCheckpointMessage(result)
     if (notice) notify(notice.message, notice.type)
-  }, [controller, execution.snapshot, execution.trackedRunId, notify, storage])
+  }, [controller, execution.snapshot, execution.trackedRunId, execution.trackedScope, notify, storage])
 
   useEffect(() => {
     if (!activeRun) {
@@ -207,7 +217,7 @@ export function useAutomationExecution({
     notify('开始执行任务流程...', 'info')
     try {
       const result = await controller.submitExecution(
-        'run_daily_flow',
+        AUTOMATION_FLOW_OPERATION_ID,
         ({ idempotencyKey, signal }) => executeScheduleNow('manual', cleanFlow(flow), {
           waitForCompletion: false,
           idempotencyKey,
