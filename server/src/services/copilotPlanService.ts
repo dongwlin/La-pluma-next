@@ -671,7 +671,7 @@ export async function buildCopilotQueuePlan(
       stageCodes
     });
     const modeSelection = entry.mode === 'auto' ? item.recommendedMode : entry.mode;
-    const modes = expandCopilotModes(modeSelection === 'both' && !item.supportsRaid ? 'normal' : modeSelection);
+    const modes = expandCopilotModes(modeSelection).filter(mode => mode !== 'raid' || item.supportsRaid);
     return modes.map(mode => ({
       key: modes.length > 1 && mode === 'raid' ? `${entry.clientId}/raid` : entry.clientId,
       clientId: entry.clientId,

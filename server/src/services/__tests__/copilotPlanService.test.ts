@@ -943,7 +943,7 @@ test('queue plan reads managed local files without contacting the copilot site',
   }
 });
 
-test('queue plan runs preset formation once in normal mode when both modes are requested', async () => {
+test('queue plan keeps preset formation entries out of raid mode', async () => {
   const dataDir = join(fixtureDir, 'queue-preset-data');
   const importDir = join(dataDir, 'copilot-imports');
   await mkdir(importDir, { recursive: true });
@@ -956,8 +956,30 @@ test('queue plan runs preset formation once in normal mode when both modes are r
       { clientId: 'preset-raid', source: 'file', filename, mode: 'raid' }
     ], { dataDir });
     assert.deepEqual(plan.entries.map(entry => [entry.clientId, entry.mode, entry.presetFormation]), [
-      ['preset', 'normal', true],
-      ['preset-raid', 'raid', true]
+      ['preset', 'normal', true]
+    ]);
+  } finally {
+    stub.restore();
+  }
+});
+
+test('queue plan keeps explicit raid for entries without a preset formation', async () => {
+  const dataDir = join(fixtureDir, 'queue-raid-data');
+  const importDir = join(dataDir, 'copilot-imports');
+  await mkdir(importDir, { recursive: true });
+  const filename = join(importDir, 'regular.json');
+  await writeFile(filename, JSON.stringify({
+    stage_name: 'main_01-07',
+    opers: [{ name: '能天使' }],
+    groups: []
+  }));
+  const stub = stubQueueContent([]);
+  try {
+    const plan = await buildCopilotQueuePlan([
+      { clientId: 'regular', source: 'file', filename, mode: 'raid' }
+    ], { dataDir });
+    assert.deepEqual(plan.entries.map(entry => [entry.clientId, entry.mode, entry.presetFormation]), [
+      ['regular', 'raid', false]
     ]);
   } finally {
     stub.restore();

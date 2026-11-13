@@ -171,6 +171,28 @@ describe('copilot queue entries', () => {
     })
   })
 
+  it('marks local preset formation files so they stay out of raid mode', () => {
+    const presetContent = JSON.stringify({
+      stage_name: 'act21mini_s01',
+      opers: [],
+      groups: [],
+    })
+    expect(parseCopilotQueueFileContent(presetContent).presetFormation).toBe(true)
+    expect(buildCopilotQueueEntryFromFile('/data/preset.json', 'preset.json', presetContent)).toMatchObject({
+      source: 'file',
+      presetFormation: true,
+      supportsRaid: false,
+    })
+
+    const regular = buildCopilotQueueEntryFromFile('/data/regular.json', 'regular.json', JSON.stringify({
+      stage_name: 'act21mini_04',
+      opers: [{ name: '能天使' }],
+      groups: [],
+    }))
+    expect(regular.presetFormation).toBeUndefined()
+    expect(regular.supportsRaid).toBeUndefined()
+  })
+
   it('quotes local file paths for the execution input', () => {
     expect(copilotQueueEntryArgument(entry({ source: 'file', uri: '/data/my job.json' })))
       .toBe('"/data/my job.json"')

@@ -284,6 +284,19 @@ describe('toCopilotQueueRunEntries', () => {
     ])
   })
 
+  it('keeps local preset-formation files on normal mode in a raid queue', () => {
+    expect(toCopilotQueueRunEntry(queueEntry({
+      source: 'file',
+      uri: '/data/copilot-imports/preset.json',
+      presetFormation: true,
+    }), 'raid')).toEqual({
+      clientId: 'queue-a',
+      source: 'file',
+      filename: '/data/copilot-imports/preset.json',
+      mode: 'normal',
+    })
+  })
+
   it('keeps preset-formation entries on normal mode and drops set URIs', () => {
     expect(toCopilotQueueRunEntry(queueEntry({ uri: 'prts://7', presetFormation: true }), 'raid'))
       .toEqual({ clientId: expect.any(String), source: 'prts', copilotId: 7, mode: 'normal' })
