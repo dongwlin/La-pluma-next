@@ -1,7 +1,20 @@
+import { isRecord } from '@/shared/api/validation'
 import type { CopilotDifficulty, CopilotRaid, CopilotSetItem } from '../types'
 
 export function readCopilotRecommendedMode(value: unknown): CopilotDifficulty | undefined {
   return value === 'normal' || value === 'raid' || value === 'both' ? value : undefined
+}
+
+/**
+ * 预设编队作业：没有固定干员与干员组，且关卡以 `_s<数字>` 结尾。
+ * 与服务端 `isPresetFormationCopilot` 同一规则，供本地文件与远端单作业共用。
+ */
+export function isPresetFormationContent(content: unknown): boolean {
+  if (!isRecord(content)) return false
+  const stageName = typeof content.stage_name === 'string' ? content.stage_name : ''
+  return (!Array.isArray(content.opers) || content.opers.length === 0)
+    && (!Array.isArray(content.groups) || content.groups.length === 0)
+    && /_s\d+$/i.test(stageName)
 }
 
 export function copilotDifficultyFromFlags(value: unknown): CopilotDifficulty | undefined {

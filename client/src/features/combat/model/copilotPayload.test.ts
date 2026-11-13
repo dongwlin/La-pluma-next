@@ -298,6 +298,20 @@ describe('copilot detail payload', () => {
     })
   })
 
+  it('marks preset-formation content so it stays out of raid mode', () => {
+    const preset = readCopilotInfoPayload(envelope({
+      status_code: 200,
+      data: { content: JSON.stringify({ stage_name: 'act21mini_s01', doc: { title: '预设编队' }, opers: [], groups: [] }) },
+    }))
+    expect(preset.detail?.presetFormation).toBe(true)
+
+    const regular = readCopilotInfoPayload(envelope({
+      status_code: 200,
+      data: { content: JSON.stringify(content) },
+    }))
+    expect(regular.detail?.presetFormation).toBeUndefined()
+  })
+
   it('keeps operator requirements and coerces numeric module ids', () => {
     const result = readCopilotInfoPayload({
       status_code: 200,

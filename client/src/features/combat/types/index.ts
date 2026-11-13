@@ -81,6 +81,8 @@ export interface CopilotDetail {
   readonly operators: string
   readonly operatorDetails?: CopilotDetailOperator[]
   readonly groupNames?: string[]
+  /** 预设编队作业：没有固定干员与干员组，关卡以 `_s<数字>` 结尾。 */
+  readonly presetFormation?: boolean
   /** 作业站 `doc.details` 原文；只有作者填写且非空白时才存在。 */
   readonly details?: string
 }
@@ -135,6 +137,7 @@ export interface CopilotSetInfo {
   note?: string
   recommendedMode?: CopilotDifficulty
   autoAddS?: boolean
+  presetFormation?: boolean
   copilots?: CopilotSetItem[]
   currentIndex?: number
 }

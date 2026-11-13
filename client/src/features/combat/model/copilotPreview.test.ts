@@ -57,6 +57,19 @@ describe('preview builders', () => {
     })
   })
 
+  it('carries preset formation into a single preview', () => {
+    expect(buildSingleCopilotPreview('12', {
+      title: '预设编队作业',
+      stageId: 'act21mini_s01',
+      operators: '未知',
+      presetFormation: true,
+    })).toMatchObject({
+      type: 'single',
+      stageId: 'act21mini_s01',
+      presetFormation: true,
+    })
+  })
+
   it('keeps the raw stage id alongside the readable stage code', () => {
     expect(buildSingleCopilotPreview('12', {
       title: '时间啊，向前！ - TL-EX-3 - 致远特维',

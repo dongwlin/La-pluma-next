@@ -3,7 +3,7 @@ import type { CopilotQueueRunEntry } from '../api'
 import type { CopilotDifficulty, CopilotRaid, CopilotSetInfo } from '../types'
 import { parseCopilotUri, quoteCopilotPathForInput } from '../utils/copilotUri'
 import type { CopilotDetailOperator } from './copilotDetail'
-import { copilotDifficultyFromFlags } from './copilotSelection'
+import { copilotDifficultyFromFlags, isPresetFormationContent } from './copilotSelection'
 
 export type CopilotQueueSource = 'link' | 'set' | 'file'
 
@@ -122,6 +122,7 @@ export function buildCopilotQueueEntries(
     stage: preview.stage,
     stageId: preview.stageId,
     recommendedMode: preview.recommendedMode,
+    ...(preview.presetFormation ? { presetFormation: true, supportsRaid: false } : {}),
     ...withCopilotNames(preview.operators, preview.groupNames, preview.operatorDetails),
     addedAt,
   }]
@@ -148,14 +149,11 @@ export function parseCopilotQueueFileContent(content: string): CopilotQueueFileM
   if (!isRecord(parsed)) return { operators: [], groups: [] }
   const documentation = isRecord(parsed.doc) ? parsed.doc : null
   const recommendedMode = copilotDifficultyFromFlags(parsed.difficulty)
-  const stageName = readText(parsed.stage_name)
-  const presetFormation = (!Array.isArray(parsed.opers) || parsed.opers.length === 0)
-    && (!Array.isArray(parsed.groups) || parsed.groups.length === 0)
-    && /_s\d+$/i.test(stageName ?? '')
+  const presetFormation = isPresetFormationContent(parsed)
   return {
     title: readText(documentation?.title),
     details: readText(documentation?.details),
-    stage: stageName,
+    stage: readText(parsed.stage_name),
     ...(presetFormation ? { presetFormation: true } : {}),
     ...(recommendedMode ? { recommendedMode } : {}),
     operators: readNamedEntries(parsed.opers),

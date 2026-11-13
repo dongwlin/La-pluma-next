@@ -121,6 +121,26 @@ describe('copilot queue entries', () => {
     expect(item?.setId).toBeUndefined()
   })
 
+  it('marks a single preset-formation preview so the queue keeps it out of raid mode', () => {
+    const [item] = buildCopilotQueueEntries({
+      type: 'single',
+      id: '1234',
+      name: '预设编队作业',
+      stage: 'ACT21-S1',
+      stageId: 'act21mini_s01',
+      operators: '未知',
+      presetFormation: true,
+    }, 7)
+
+    expect(item).toMatchObject({
+      source: 'link',
+      uri: 'prts://1234',
+      presetFormation: true,
+      supportsRaid: false,
+      addedAt: 7,
+    })
+  })
+
   it('reads local file metadata and keeps the file name fallback', () => {
     const metadata = parseCopilotQueueFileContent(JSON.stringify({
       stage_name: 'CE-6',

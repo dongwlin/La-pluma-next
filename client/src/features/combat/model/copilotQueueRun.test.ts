@@ -2,7 +2,7 @@
 
 import { describe, expect, it } from 'vitest'
 import type { AgentRun, RunProgress } from '@/features/task-execution'
-import { toCopilotQueueRunEntries, toCopilotQueueRunEntry, type CopilotQueueEntry } from './copilotQueue'
+import { buildCopilotQueueEntries, toCopilotQueueRunEntries, toCopilotQueueRunEntry, type CopilotQueueEntry } from './copilotQueue'
 import {
   describeCopilotQueueRunTerminal,
   readCopilotQueueRunProjection,
@@ -293,6 +293,23 @@ describe('toCopilotQueueRunEntries', () => {
       clientId: 'queue-a',
       source: 'file',
       filename: '/data/copilot-imports/preset.json',
+      mode: 'normal',
+    })
+  })
+
+  it('keeps a single remote preset-formation job on normal mode in a raid queue', () => {
+    const [entry] = buildCopilotQueueEntries({
+      type: 'single',
+      id: '123',
+      name: '预设编队作业',
+      stageId: 'act21mini_s01',
+      presetFormation: true,
+    })
+    expect(entry).toBeDefined()
+    expect(toCopilotQueueRunEntry(entry!, 'raid')).toEqual({
+      clientId: entry!.id,
+      source: 'prts',
+      copilotId: 123,
       mode: 'normal',
     })
   })

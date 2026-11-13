@@ -80,6 +80,7 @@ export function buildSingleCopilotPreview(id: string, detail: CopilotDetail): Co
     ...(detail.operatorDetails?.length ? { operatorDetails: detail.operatorDetails } : {}),
     ...(detail.groupNames?.length ? { groupNames: detail.groupNames } : {}),
     ...(detail.details ? { details: detail.details } : {}),
+    ...(detail.presetFormation ? { presetFormation: true } : {}),
   }
 }
 

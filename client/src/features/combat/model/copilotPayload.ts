@@ -10,7 +10,7 @@ import type {
   CopilotStageCandidate,
   ParadoxSearchResult,
 } from '../types'
-import { copilotDifficultyFromFlags, readCopilotRecommendedMode } from './copilotSelection'
+import { copilotDifficultyFromFlags, isPresetFormationContent, readCopilotRecommendedMode } from './copilotSelection'
 import { isCopilotMatchMode, isCopilotSearchOrder } from './copilotDiscovery'
 import {
   asCount,
@@ -93,6 +93,7 @@ export function readCopilotInfoPayload(value: unknown): CopilotInfoPayload {
       recommendedMode: copilotDifficultyFromFlags(content.difficulty),
       stage: asText(payload.stage) ?? stageId,
       stageId,
+      ...(isPresetFormationContent(content) ? { presetFormation: true } : {}),
       operators: extractCopilotOperators(content),
       operatorDetails: operatorDetails.length ? operatorDetails : undefined,
       groupNames: groupNames.length ? groupNames : undefined,
