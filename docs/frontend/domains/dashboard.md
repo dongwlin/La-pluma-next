@@ -283,7 +283,7 @@ Dashboard（首屏门禁、页头、唯一刷新调度）
 
 ### 回归测试
 
-以下路径相对于 `client/src/`：领域回归在 `features/dashboard` 与 `pages/dashboard`，设备采样与预览会话回归在 `features/device-mirror`，跨域资源 key 回归在 `features/automation/model` 与 `features/statistics/model`；入口命令见[验证命令](#验证命令)。
+以下路径相对于 `apps/web/src/`：领域回归在 `features/dashboard` 与 `pages/dashboard`，设备采样与预览会话回归在 `features/device-mirror`，跨域资源 key 回归在 `features/automation/model` 与 `features/statistics/model`；入口命令见[验证命令](#验证命令)。
 
 关键不变量：
 

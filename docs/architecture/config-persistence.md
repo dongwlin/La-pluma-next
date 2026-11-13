@@ -2,7 +2,7 @@
 
 > [← 返回文档索引](../README.md)
 
-本文说明 `client/src/features/user-config/` 的持久化协调模型、域适配契约与薄 hooks。肉鸽、作业与自动化分别通过 `features/roguelike/model/roguelikeConfig.ts`、`features/combat/model/combatConfig.ts` 和 `features/automation/model/automationConfig.ts` 适配该协调器。三页的配置加载、草稿、提交与重试都由协调器通道持有。
+本文说明 `apps/web/src/features/user-config/` 的持久化协调模型、域适配契约与薄 hooks。肉鸽、作业与自动化分别通过 `features/roguelike/model/roguelikeConfig.ts`、`features/combat/model/combatConfig.ts` 和 `features/automation/model/automationConfig.ts` 适配该协调器。三页的配置加载、草稿、提交与重试都由协调器通道持有。
 
 验证入口见文末[回归证据](#7-回归证据)。
 

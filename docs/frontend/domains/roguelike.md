@@ -149,7 +149,7 @@ maa-cli 0.7.8 只认识部分主题、模式与参数；MaaCore 新增的黑流�
 
 ### 回归测试
 
-以下路径相对于 `client/src/`：领域回归在 `features/roguelike` 与 `pages/roguelike`；入口命令见[验证命令](#验证命令)。
+以下路径相对于 `apps/web/src/`：领域回归在 `features/roguelike` 与 `pages/roguelike`；入口命令见[验证命令](#验证命令)。
 
 关键不变量：
 

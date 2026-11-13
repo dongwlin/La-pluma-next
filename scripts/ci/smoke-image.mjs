@@ -75,8 +75,8 @@ function assertRuntimeContents() {
   checked(['run', '--rm', '--network=none', '--entrypoint', 'git', image, '--version'])
   const inspect = [
     "const fs = require('node:fs');",
-    "const compiler = ['/app/node_modules/typescript', '/app/server/node_modules/typescript', '/app/node_modules/.bin/tsc', '/app/server/node_modules/.bin/tsc'].filter(path => fs.existsSync(path));",
-    "const types = ['/app/node_modules/@types', '/app/server/node_modules/@types'].filter(path => fs.existsSync(path));",
+    "const compiler = ['/app/node_modules/typescript', '/app/apps/server/node_modules/typescript', '/app/node_modules/.bin/tsc', '/app/apps/server/node_modules/.bin/tsc'].filter(path => fs.existsSync(path));",
+    "const types = ['/app/node_modules/@types', '/app/apps/server/node_modules/@types'].filter(path => fs.existsSync(path));",
     'console.log(JSON.stringify({ node: process.versions.node, compiler, types }));'
   ].join(' ')
   const facts = JSON.parse(checked(['run', '--rm', '--network=none', '--entrypoint', 'node', image, '-e', inspect]))
@@ -92,7 +92,7 @@ function assertRuntimeContents() {
   }
 
   // 原生类型擦除由 Node 自己完成；生产镜像不装编译器也必须能解析入口。
-  checked(['run', '--rm', '--network=none', '--entrypoint', 'node', image, '--check', '/app/server/src/server.ts'])
+  checked(['run', '--rm', '--network=none', '--entrypoint', 'node', image, '--check', '/app/apps/server/src/server.ts'])
   console.log(`Runtime image: Node ${facts.node}, no compiler, no dev type packages`)
 }
 

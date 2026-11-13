@@ -2,7 +2,7 @@
 
 > [← 返回文档索引](../README.md)
 
-本文说明 `client/src/shared/api/` 的只读资源请求底座，以及各领域只读 API 如何把 `AbortSignal` 传到 `fetch`、校验响应载荷并把失败归类。请求必须支持真实取消与失败分类，领域 Query 才能正确裁决竞态、重试与错误展示。
+本文说明 `apps/web/src/shared/api/` 的只读资源请求底座，以及各领域只读 API 如何把 `AbortSignal` 传到 `fetch`、校验响应载荷并把失败归类。请求必须支持真实取消与失败分类，领域 Query 才能正确裁决竞态、重试与错误展示。
 
 ## 1. 定位与边界
 
@@ -184,16 +184,16 @@ const depot = unwrapApiResponse(result)
 
 | 文件 | 覆盖 |
 | --- | --- |
-| `client/src/shared/api/readApi.test.ts` | signal 传到 fetch、`success=false`、坏载荷、非信封 JSON、2xx 以外状态、`HTTP_502` 描述、取消保持 `AbortError`、已取消不请求、传输失败分类、旧信封形状、`unwrapApiResponse` |
-| `client/src/shared/api/client.test.ts` | 离线/后端不可用文案；`DOMException` 取消不被改写 |
-| `client/src/shared/api/apiResponse.test.ts` | 空响应、非 JSON、结构化 Agent 错误；非信封原始载荷保持原样 |
-| `client/src/features/game-data/api/index.test.ts` | 仓库/持有干员/目录 signal、旧空值、坏载荷、取消；图标 URL 编码、携带 epoch 且不发请求 |
-| `client/src/features/statistics/api/index.test.ts` | 掉落/开放关卡 signal、空值与坏载荷、路由误包错误信封、取消不追加停止请求 |
-| `client/src/features/training/api/index.test.ts` | 候选列表信号与旧数组形状、队列坏载荷、revision/flowSync 保留 |
-| `client/src/features/automation/api/index.test.ts` | 活动与调度状态 signal、坏载荷、服务端失败码、既有执行参数与幂等键 |
-| `client/src/features/settings/api/index.test.ts` | 版本/配置目录/配置/设备发现 signal、旧字符串目录、空目录拒绝、connection 已知字段校验、缺失字段与未知字段保留 |
-| `client/src/features/logs/api/index.test.ts` | 实时轮询 signal、文件列表与内容 signal、坏内容、取消保持 `AbortError` |
-| `client/src/features/combat/api/index.test.ts` | 搜索/详情/计划 signal、PRTS 代理对象、坏计划载荷、404 错误码 |
-| `client/src/features/device-mirror/api/index.test.ts` | WebRTC 状态 signal 与坏载荷、设备状态 signal 与 `null` 保留、既有组合启动 |
+| `apps/web/src/shared/api/readApi.test.ts` | signal 传到 fetch、`success=false`、坏载荷、非信封 JSON、2xx 以外状态、`HTTP_502` 描述、取消保持 `AbortError`、已取消不请求、传输失败分类、旧信封形状、`unwrapApiResponse` |
+| `apps/web/src/shared/api/client.test.ts` | 离线/后端不可用文案；`DOMException` 取消不被改写 |
+| `apps/web/src/shared/api/apiResponse.test.ts` | 空响应、非 JSON、结构化 Agent 错误；非信封原始载荷保持原样 |
+| `apps/web/src/features/game-data/api/index.test.ts` | 仓库/持有干员/目录 signal、旧空值、坏载荷、取消；图标 URL 编码、携带 epoch 且不发请求 |
+| `apps/web/src/features/statistics/api/index.test.ts` | 掉落/开放关卡 signal、空值与坏载荷、路由误包错误信封、取消不追加停止请求 |
+| `apps/web/src/features/training/api/index.test.ts` | 候选列表信号与旧数组形状、队列坏载荷、revision/flowSync 保留 |
+| `apps/web/src/features/automation/api/index.test.ts` | 活动与调度状态 signal、坏载荷、服务端失败码、既有执行参数与幂等键 |
+| `apps/web/src/features/settings/api/index.test.ts` | 版本/配置目录/配置/设备发现 signal、旧字符串目录、空目录拒绝、connection 已知字段校验、缺失字段与未知字段保留 |
+| `apps/web/src/features/logs/api/index.test.ts` | 实时轮询 signal、文件列表与内容 signal、坏内容、取消保持 `AbortError` |
+| `apps/web/src/features/combat/api/index.test.ts` | 搜索/详情/计划 signal、PRTS 代理对象、坏计划载荷、404 错误码 |
+| `apps/web/src/features/device-mirror/api/index.test.ts` | WebRTC 状态 signal 与坏载荷、设备状态 signal 与 `null` 保留、既有组合启动 |
 
 运行上述对应测试可验证传输层取消、错误分类与领域载荷校验；Query 生命周期、领域会话和命令接线的回归由各自契约维护。

@@ -14,11 +14,11 @@ La Pluma Next 支持 macOS、Linux 和 Windows 系统。服务器按操作系统
 | 数据 | 同配置目录 | `$XDG_DATA_HOME/maa/`，缺省 `~/.local/share/maa/` | `%LOCALAPPDATA%\maa\`，缺省 `~/AppData/Local/maa/` |
 | 状态 | 同配置目录 | `$XDG_STATE_HOME/maa/`，缺省 `~/.local/state/maa/` | 同 Windows 数据目录 |
 
-服务器启动时会自动显示当前系统的路径配置。应用自身的运行数据（Run 存储、用户配置、掉落记录等）默认写入 `server/data/`，可通过部署指南中列出的 `LA_PLUMA_*` 变量重定向；生产环境前端静态资源默认读取 `client/dist/`。
+服务器启动时会自动显示当前系统的路径配置。应用自身的运行数据（Run 存储、用户配置、掉落记录等）默认写入 `apps/server/data/`，可通过部署指南中列出的 `LA_PLUMA_*` 变量重定向；生产环境前端静态资源默认读取 `apps/web/dist/`。
 
 物品图标与干员头像按上一段的资源覆盖顺序读取各候选资源层的 `template/items/`（文件按物品 id 命名）与 `template/avatar/`（按干员 id 命名的**基础头像**）；MAA 标准资源不提供 `_1`/`_2` 变体头像，需要变体时把 `LA_PLUMA_GAME_ASSET_DIR` 指向含 `item/`、`avatar/` 子目录的自定义目录（此时独占生效，不再叠加候选层），变体文件按 `<干员 id>_1.png`、`<干员 id>_2.png` 命名。请求键与文件名不一致时（例如仍是 item_table 的 iconId），服务端会借助本地 `item_table.json` 自动解析，`item_table.json` 缺失时回退到 `item_index.json` 的 `icon` 字段。
 
-养成相关数据（队列、材料表、干员材料、仓库/干员识别结果）使用 `LA_PLUMA_TRAINING_DATA_DIR`，默认同为 `server/data/`。材料与掉落抓取脚本复用同一目录解析，重定向后脚本与服务读写同一位置。
+养成相关数据（队列、材料表、干员材料、仓库/干员识别结果）使用 `LA_PLUMA_TRAINING_DATA_DIR`，默认同为 `apps/server/data/`。材料与掉落抓取脚本复用同一目录解析，重定向后脚本与服务读写同一位置。
 
 ## 应用配置
 

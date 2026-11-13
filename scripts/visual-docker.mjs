@@ -6,9 +6,9 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
-const clientRoot = path.join(repoRoot, 'client')
+const webRoot = path.join(repoRoot, 'apps', 'web')
 const version = JSON.parse(
-  readFileSync(path.join(clientRoot, 'node_modules', '@playwright', 'test', 'package.json'), 'utf8'),
+  readFileSync(path.join(webRoot, 'node_modules', '@playwright', 'test', 'package.json'), 'utf8'),
 ).version
 
 const image = process.env.PLAYWRIGHT_IMAGE || `mcr.microsoft.com/playwright:v${version}-noble`
@@ -16,7 +16,7 @@ const image = process.env.PLAYWRIGHT_IMAGE || `mcr.microsoft.com/playwright:v${v
 function parseConfigArg(args) {
   const index = args.indexOf('--config')
   if (index === -1) {
-    return { configArg: 'client/tests/visual/playwright.config.ts', args }
+    return { configArg: 'apps/web/tests/visual/playwright.config.ts', args }
   }
   const configArg = args[index + 1]
   if (!configArg) {
@@ -41,13 +41,13 @@ if (!process.env.VISUAL_SKIP_BUILD) {
     cwd: repoRoot,
   })
   if (build.status !== 0) process.exit(build.status ?? 1)
-} else if (!existsSync(path.join(clientRoot, 'dist', 'index.html'))) {
-  console.error('client/dist 不存在：请先运行 `pnpm --filter la-pluma-next-client build`。')
+} else if (!existsSync(path.join(webRoot, 'dist', 'index.html'))) {
+  console.error('apps/web/dist 不存在：请先运行 `pnpm --filter la-pluma-next-client build`。')
   process.exit(1)
 }
 
 // 解析 playwright CLI 的真实路径：pnpm workspace 把 playwright 包提升在
-// 根 node_modules/.pnpm 虚拟仓库（client 的 .bin/playwright 是 shell shim，
+// 根 node_modules/.pnpm 虚拟仓库（apps/web 的 .bin/playwright 是 shell shim，
 // 不能作为 node 入口）。按已装版本精确定位。
 function resolvePlaywrightCli(version) {
   const storeDir = path.join(repoRoot, 'node_modules', '.pnpm')
@@ -59,7 +59,7 @@ function resolvePlaywrightCli(version) {
     }
   }
   // 非 pnpm 布局的兜底。
-  return createRequire(path.join(clientRoot, 'package.json')).resolve('playwright/cli.js', {
+  return createRequire(path.join(webRoot, 'package.json')).resolve('playwright/cli.js', {
     paths: [path.join(repoRoot, 'node_modules', `.pnpm`, `playwright@${version}`, 'node_modules')],
   })
 }

@@ -2,7 +2,7 @@
 
 > [← 返回文档索引](../README.md)
 
-本文说明 `client/src/features/task-execution/` 的执行客户端、Run 类型接线和应用级执行控制器。服务端的执行身份、状态机与停止矩阵见[执行身份与生命周期契约](execution-lifecycle.md)；本文只讲前端如何消费这些契约，以及各页面的消费边界。
+本文说明 `apps/web/src/features/task-execution/` 的执行客户端、Run 类型接线和应用级执行控制器。服务端的执行身份、状态机与停止矩阵见[执行身份与生命周期契约](execution-lifecycle.md)；本文只讲前端如何消费这些契约，以及各页面的消费边界。
 
 ## 1. 定位与边界
 
@@ -154,7 +154,7 @@ const result = await executionController.submitExecution('run_task', ({ idempote
 
 ## 7. 回归清单
 
-下表路径相对于 `client/src/`。
+下表路径相对于 `apps/web/src/`。
 
 | 测试 | 固定行为 |
 | --- | --- |

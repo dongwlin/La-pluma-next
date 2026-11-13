@@ -6,7 +6,7 @@
 
 ## 概述
 
-为了减少重复代码、统一视觉风格、提升开发效率，项目维护一套通用 UI 组件。组件位于 `client/src/shared/ui/*.tsx`，通过 `client/src/shared/ui/index.ts` 统一导出，页面中统一从 `@/shared/ui` 引入。
+为了减少重复代码、统一视觉风格、提升开发效率，项目维护一套通用 UI 组件。组件位于 `apps/web/src/shared/ui/*.tsx`，通过 `apps/web/src/shared/ui/index.ts` 统一导出，页面中统一从 `@/shared/ui` 引入。
 
 新增或调整组件时，在本文件补充 API 与用法；颜色、字号、间距、圆角、交互状态等规则不要在组件文档里另写一份。
 
@@ -16,7 +16,7 @@
 
 ### PageHeader - 页面标题组件
 
-**文件位置**：`client/src/shared/ui/PageHeader.tsx`
+**文件位置**：`apps/web/src/shared/ui/PageHeader.tsx`
 
 **适用场景**：所有页面的顶部标题区域。
 
@@ -48,7 +48,7 @@ import { FloatingStatusIndicator } from '@/features/runtime-status'
 
 ### Card - 卡片组件系列
 
-**文件位置**：`client/src/shared/ui/Card.tsx`
+**文件位置**：`apps/web/src/shared/ui/Card.tsx`
 
 **适用场景**：主要面板、信息卡片、带标题的内容区域。
 
@@ -78,7 +78,7 @@ import { Card, CardHeader, CardContent } from '@/shared/ui'
 
 ### SmoothPanel - 连续圆角面板
 
-**文件位置**：`client/src/shared/ui/SmoothPanel.tsx`
+**文件位置**：`apps/web/src/shared/ui/SmoothPanel.tsx`
 
 **适用场景**：不使用 `Card` 语义的独立面板，例如工作区面板、设备卡片、通知提示和骨架占位。
 
@@ -111,7 +111,7 @@ import { SmoothPanel } from '@/shared/ui'
 
 ### Button / IconButton
 
-**文件位置**：`client/src/shared/ui/Button.tsx`
+**文件位置**：`apps/web/src/shared/ui/Button.tsx`
 
 **适用场景**：文本按钮、主要操作、危险操作、图标按钮。
 
@@ -132,7 +132,7 @@ import { RefreshCw, Save } from 'lucide-react'
 
 ### Input / Select / Checkbox / Switch
 
-**文件位置**：`client/src/shared/ui/Input.tsx`、`client/src/shared/ui/Switch.tsx`
+**文件位置**：`apps/web/src/shared/ui/Input.tsx`、`apps/web/src/shared/ui/Switch.tsx`
 
 **适用场景**：表单输入、选择、错误提示、说明文字与二元设置。
 
@@ -174,7 +174,7 @@ import { Input, Select, Checkbox, Switch } from '@/shared/ui'
 
 ### HintTooltip - 标签说明提示
 
-**文件位置**：`client/src/shared/ui/HintTooltip.tsx`
+**文件位置**：`apps/web/src/shared/ui/HintTooltip.tsx`
 
 **适用场景**：字段说明需要从控件下方的常驻段落收敛为标签旁的 ⓘ 提示。`Input`、`Select` 的 `hintPlacement="tooltip"` 已内置该组件；自定义标签行时直接复用。
 
@@ -190,7 +190,7 @@ import { HintTooltip } from '@/shared/ui'
 
 ### EmptyState
 
-**文件位置**：`client/src/shared/ui/EmptyState.tsx`
+**文件位置**：`apps/web/src/shared/ui/EmptyState.tsx`
 
 **适用场景**：流程、列表、统计区或数据面板暂时没有内容。通过 `@/shared/ui` 导入，不要在页面中各自拼装“暂无数据”的图标、文案和间距。
 
@@ -221,7 +221,7 @@ Props：
 
 ### ConfirmDialog / Loading
 
-**文件位置**：`client/src/shared/ui/Modal.tsx`、`client/src/shared/ui/Loading.tsx`
+**文件位置**：`apps/web/src/shared/ui/Modal.tsx`、`apps/web/src/shared/ui/Loading.tsx`
 
 **适用场景**：需要确认的破坏性操作使用 `ConfirmDialog`；短时局部等待使用 `Loading`。两者都由 `shared/ui` 的 `index.ts` 导出。
 
@@ -262,7 +262,7 @@ import { ConfirmDialog, Loading } from '@/shared/ui'
 
 ### PageSkeleton
 
-**文件位置**：`client/src/shared/ui/Loading.tsx`，与 `Loading` 同文件导出。
+**文件位置**：`apps/web/src/shared/ui/Loading.tsx`，与 `Loading` 同文件导出。
 
 **适用场景**：懒加载路由的整页骨架占位。按 `variant` 复刻目标工作区的布局比例，减少加载完成后的跳动。
 
@@ -282,7 +282,7 @@ import { PageSkeleton } from '@/shared/ui'
 
 ### useFluidTabIndicator
 
-**文件位置**：`client/src/shared/hooks/useFluidTabIndicator.ts`
+**文件位置**：`apps/web/src/shared/hooks/useFluidTabIndicator.ts`
 
 **适用场景**：带有 Framer Motion 高亮底层的分段标签。它会在切换、容器尺寸变化、标签内容变化和窗口缩放时，把高亮层对齐到当前按钮。不要在每个页面重复维护 `ResizeObserver`、元素 ref 和坐标计算。
 

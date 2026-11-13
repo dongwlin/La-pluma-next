@@ -12,20 +12,20 @@ API 路径均相对于 `/api/agent`。这里的“未声明移除日期”表示
 
 | 兼容项 | 已核实的消费者或契约 | 当前支持窗口与结论 |
 | --- | --- | --- |
-| `GET /tasks/status`、`getTaskStatus` | [useBackendStatusMonitor](../../client/src/features/runtime-status/hooks/useBackendStatusMonitor.ts)用于首次、focus、online 与周期健康检查；空闲 30 秒、忙时 2 秒，串行安排 | 生产消费者仍在，未声明移除日期，保留。仅检查后端健康；旧 `isRunning` 不作为前端运行状态来源 |
-| `GET /schedules/execution`、`getScheduleExecutionStatus` | [automation Query](../../client/src/features/automation/model/queries.ts)导出 `scheduleExecutionQueryOptions`；[Dashboard 完整快照](../../client/src/features/dashboard/model/queries.ts)仍消费它 | 生产消费者仍在，未声明移除日期，保留。自动化页改用 Run 不代表该投影已无人使用 |
-| `stopTask()` 与不带 `runId` 的 `POST /actions/stop` | [task-execution 公开面](../../client/src/features/task-execution/index.ts)仍导出 `stopTask`；[API 兼容测试](../../client/src/features/task-execution/api/api.test.ts)固定无 body 的旧调用；[服务端执行控制器](../../server/src/controllers/agentExecutionController.ts)仍分派到当前执行停止 | 仓库生产前端已无 `stopTask` 调用，但公开契约与旧调用方兼容仍在，未声明移除日期，保留。新调用使用 `stopRun(runId)`，不能把泛化停止替换成目标停止或反过来 |
-| schedule 与 copilot-set 的同步执行默认值 | [schedule API](../../client/src/features/automation/api/index.ts)省略 `waitForCompletion` 时保持旧同步行为；[copilot API](../../client/src/features/combat/api/index.ts)保留可选字段，继续接口默认 `true`；[服务端](../../server/src/controllers/agentExecutionController.ts)默认解析为 `true` 并保留旧结果字段 | 未声明移除日期，保留。新的 [automation hook](../../client/src/features/automation/hooks/useAutomationExecution.ts)和 [combat hook](../../client/src/features/combat/hooks/useCombatExecution.ts)显式传 `false`，由 Run 观察接受后的过程；不能因此改掉旧调用默认值 |
-| 作业集 `app` / `cli` 模式别名 | [服务端 normalizeCopilotSetMode](../../server/src/services/agentActionService.ts)把缺省、`app`、`cli` 统一成 `continuous`；[combatConfig](../../client/src/features/combat/model/combatConfig.ts)仍将服务端与本地持久化旧 `app` 值迁成 UI 的 `cli` | 持久化数据与外部请求的兼容仍在，未声明移除日期，保留。`manual` 独立保留逐关等待语义 |
-| `la-pluma-copilot-queue-v1` 本地作业队列 | [copilotQueueStorage](../../client/src/features/combat/model/copilotQueueStorage.ts)读写带版本的信封，[useCopilotQueue](../../client/src/features/combat/hooks/useCopilotQueue.ts)在初始化时读取、每次队列变更写回；当前格式为 `{ version: 1, entries: [...] }` | 独立本地键，未声明移除日期，保留。版本不符、JSON 损坏、条目缺字段、重复 URI 或超过 50 项时降级为空队列/截断，不把旧数据清空；升级格式须新增版本或提供迁移，移除前需确认用户数据清理路径 |
-| `maa-task-flow-execution` 旧断点 | [useAutomationExecution](../../client/src/features/automation/hooks/useAutomationExecution.ts)在首份快照后调用 [migrateLegacyFlowCheckpoint](../../client/src/features/automation/model/flowCheckpoint.ts)；这是该键唯一生产读取路径 | 接受单条断点的有效期为 24 小时，允许最多 60 秒未来偏差；适配器没有日历移除日期，保留。仅关联已有 Run，绝不重新提交旧任务 |
-| 未纳管的 Telegram 流程执行 | [telegramBotService](../../server/src/services/telegramBotService.ts)仍直接调用 `schedulerService.executeScheduleNow(flowType, taskFlow)`，没有经过 HTTP 路由的 Run 包装；[runSnapshotService](../../server/src/services/runSnapshotService.ts)保留进程、schedule 与 lease 占用投影 | 生产入口仍在，未声明移除日期，保留外部占用识别。没有拥有设备的 Run 时，已观察到的设备活动投影为 `external`，不能认领成当前页面的 Run |
+| `GET /tasks/status`、`getTaskStatus` | [useBackendStatusMonitor](../../apps/web/src/features/runtime-status/hooks/useBackendStatusMonitor.ts)用于首次、focus、online 与周期健康检查；空闲 30 秒、忙时 2 秒，串行安排 | 生产消费者仍在，未声明移除日期，保留。仅检查后端健康；旧 `isRunning` 不作为前端运行状态来源 |
+| `GET /schedules/execution`、`getScheduleExecutionStatus` | [automation Query](../../apps/web/src/features/automation/model/queries.ts)导出 `scheduleExecutionQueryOptions`；[Dashboard 完整快照](../../apps/web/src/features/dashboard/model/queries.ts)仍消费它 | 生产消费者仍在，未声明移除日期，保留。自动化页改用 Run 不代表该投影已无人使用 |
+| `stopTask()` 与不带 `runId` 的 `POST /actions/stop` | [task-execution 公开面](../../apps/web/src/features/task-execution/index.ts)仍导出 `stopTask`；[API 兼容测试](../../apps/web/src/features/task-execution/api/api.test.ts)固定无 body 的旧调用；[服务端执行控制器](../../apps/server/src/controllers/agentExecutionController.ts)仍分派到当前执行停止 | 仓库生产前端已无 `stopTask` 调用，但公开契约与旧调用方兼容仍在，未声明移除日期，保留。新调用使用 `stopRun(runId)`，不能把泛化停止替换成目标停止或反过来 |
+| schedule 与 copilot-set 的同步执行默认值 | [schedule API](../../apps/web/src/features/automation/api/index.ts)省略 `waitForCompletion` 时保持旧同步行为；[copilot API](../../apps/web/src/features/combat/api/index.ts)保留可选字段，继续接口默认 `true`；[服务端](../../apps/server/src/controllers/agentExecutionController.ts)默认解析为 `true` 并保留旧结果字段 | 未声明移除日期，保留。新的 [automation hook](../../apps/web/src/features/automation/hooks/useAutomationExecution.ts)和 [combat hook](../../apps/web/src/features/combat/hooks/useCombatExecution.ts)显式传 `false`，由 Run 观察接受后的过程；不能因此改掉旧调用默认值 |
+| 作业集 `app` / `cli` 模式别名 | [服务端 normalizeCopilotSetMode](../../apps/server/src/services/agentActionService.ts)把缺省、`app`、`cli` 统一成 `continuous`；[combatConfig](../../apps/web/src/features/combat/model/combatConfig.ts)仍将服务端与本地持久化旧 `app` 值迁成 UI 的 `cli` | 持久化数据与外部请求的兼容仍在，未声明移除日期，保留。`manual` 独立保留逐关等待语义 |
+| `la-pluma-copilot-queue-v1` 本地作业队列 | [copilotQueueStorage](../../apps/web/src/features/combat/model/copilotQueueStorage.ts)读写带版本的信封，[useCopilotQueue](../../apps/web/src/features/combat/hooks/useCopilotQueue.ts)在初始化时读取、每次队列变更写回；当前格式为 `{ version: 1, entries: [...] }` | 独立本地键，未声明移除日期，保留。版本不符、JSON 损坏、条目缺字段、重复 URI 或超过 50 项时降级为空队列/截断，不把旧数据清空；升级格式须新增版本或提供迁移，移除前需确认用户数据清理路径 |
+| `maa-task-flow-execution` 旧断点 | [useAutomationExecution](../../apps/web/src/features/automation/hooks/useAutomationExecution.ts)在首份快照后调用 [migrateLegacyFlowCheckpoint](../../apps/web/src/features/automation/model/flowCheckpoint.ts)；这是该键唯一生产读取路径 | 接受单条断点的有效期为 24 小时，允许最多 60 秒未来偏差；适配器没有日历移除日期，保留。仅关联已有 Run，绝不重新提交旧任务 |
+| 未纳管的 Telegram 流程执行 | [telegramBotService](../../apps/server/src/services/telegramBotService.ts)仍直接调用 `schedulerService.executeScheduleNow(flowType, taskFlow)`，没有经过 HTTP 路由的 Run 包装；[runSnapshotService](../../apps/server/src/services/runSnapshotService.ts)保留进程、schedule 与 lease 占用投影 | 生产入口仍在，未声明移除日期，保留外部占用识别。没有拥有设备的 Run 时，已观察到的设备活动投影为 `external`，不能认领成当前页面的 Run |
 
-此外，`GET /runs/current` 的快照仍保留顶层旧任务字段，并加入 `run`、`activeRuns`、`lastRun`、`occupancy`；见 [buildAgentRunSnapshot](../../server/src/services/runSnapshotService.ts)。新增字段不授权删除旧字段，消费方也不能把一次空快照或观察失败当作成功终态。
+此外，`GET /runs/current` 的快照仍保留顶层旧任务字段，并加入 `run`、`activeRuns`、`lastRun`、`occupancy`；见 [buildAgentRunSnapshot](../../apps/server/src/services/runSnapshotService.ts)。新增字段不授权删除旧字段，消费方也不能把一次空快照或观察失败当作成功终态。
 
 ## 旧自动化断点的接受与恢复
 
-旧键没有 `runId`，任务列表和本地索引不足以作为执行身份。迁移入口只在 `useAutomationExecution` 当前挂载取得第一份快照后处理一次；它不创建新的执行意图、不恢复页面逐项执行循环。实现与回归分别见 [flowCheckpoint.ts](../../client/src/features/automation/model/flowCheckpoint.ts)、[flowCheckpoint.test.ts](../../client/src/features/automation/model/flowCheckpoint.test.ts)和[页面执行测试](../../client/src/pages/automation/AutomationTasks.execution.test.tsx)。
+旧键没有 `runId`，任务列表和本地索引不足以作为执行身份。迁移入口只在 `useAutomationExecution` 当前挂载取得第一份快照后处理一次；它不创建新的执行意图、不恢复页面逐项执行循环。实现与回归分别见 [flowCheckpoint.ts](../../apps/web/src/features/automation/model/flowCheckpoint.ts)、[flowCheckpoint.test.ts](../../apps/web/src/features/automation/model/flowCheckpoint.test.ts)和[页面执行测试](../../apps/web/src/pages/automation/AutomationTasks.execution.test.tsx)。
 
 接受规则：
 
@@ -43,7 +43,7 @@ API 路径均相对于 `/api/agent`。这里的“未声明移除日期”表示
 
 非空旧键在解析后尝试删除，匹配成功与失败都执行同一清理。存储读取不可用时返回无迁移结果；删除失败通过 `removed: false` 表达，迁移仍只能观察已有 Run，不能因此触发启动或自动重试旧任务。空值按不存在处理。故障恢复应先确认服务端当前占用与身份，再由用户明确开始新的执行，不能通过反复挂载页面来续跑。
 
-[服务端 Run 存储](../../server/src/services/agentRunService.ts)的终态保留期与淘汰规则由[持久化与运行数据](../server/persistence.md#run-存储与幂等记录)维护。对旧断点而言，24 小时是接受上限，不能承诺窗口内一定可恢复：对应记录可能已被淘汰，也可能不是快照中的最新终态。无法确认时清理旧断点并提示重新开始，比按本地索引重提更符合执行身份契约。
+[服务端 Run 存储](../../apps/server/src/services/agentRunService.ts)的终态保留期与淘汰规则由[持久化与运行数据](../server/persistence.md#run-存储与幂等记录)维护。对旧断点而言，24 小时是接受上限，不能承诺窗口内一定可恢复：对应记录可能已被淘汰，也可能不是快照中的最新终态。无法确认时清理旧断点并提示重新开始，比按本地索引重提更符合执行身份契约。
 
 ## 后续移除与回滚规则
 
@@ -61,4 +61,4 @@ API 路径均相对于 `/api/agent`。这里的“未声明移除日期”表示
 
 兼容回归入口包括 task-execution API 测试、自动化旧断点模型与页面执行测试、combat 配置迁移测试，以及服务端路由、Run、快照和作业集测试。依赖/职责护栏负责阻止边界回退；默认态视觉、浏览器交互与性能采样分别验证自己的范围，不能相互替代。
 
-性能对照需使用相同构建、场景和采样协议；方法与限制见[性能采样说明](../../client/tests/performance/README.md)。指针拖拽取消与成功保存不是同一种完成语义，普通 production 的 DOM 变化不能报告为 React commit。兼容场景需要各自的行为测试，不能用截图或性能结果代替。
+性能对照需使用相同构建、场景和采样协议；方法与限制见[性能采样说明](../../apps/web/tests/performance/README.md)。指针拖拽取消与成功保存不是同一种完成语义，普通 production 的 DOM 变化不能报告为 React commit。兼容场景需要各自的行为测试，不能用截图或性能结果代替。

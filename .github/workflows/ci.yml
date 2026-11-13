@@ -92,7 +92,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: client-dist
-          path: client/dist/
+          path: apps/web/dist/
           if-no-files-found: error
           retention-days: 1
 
@@ -146,10 +146,10 @@ jobs:
       - uses: actions/download-artifact@v4
         with:
           name: client-dist
-          path: client/dist/
+          path: apps/web/dist/
       - name: Pull the matching Playwright image
         run: |
-          version=$(node -p "require('./client/node_modules/@playwright/test/package.json').version")
+          version=$(node -p "require('./apps/web/node_modules/@playwright/test/package.json').version")
           docker pull "mcr.microsoft.com/playwright:v${version}-noble"
       - name: Cross-page behavior
         env:
@@ -165,8 +165,8 @@ jobs:
         with:
           name: browser-test-results
           path: |
-            client/test-results/
-            client/integration-artifacts/
+            apps/web/test-results/
+            apps/web/integration-artifacts/
           overwrite: true
           retention-days: 7
 

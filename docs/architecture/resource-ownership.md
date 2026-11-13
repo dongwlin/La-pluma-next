@@ -160,7 +160,7 @@ Activity 语义：隐藏会清理订阅 Effect，期间发布不会直接刷新�
 
 ## 7. 本层回归入口
 
-| 文件（相对于 `client/src/`） | 覆盖 |
+| 文件（相对于 `apps/web/src/`） | 覆盖 |
 | --- | --- |
 | `features/resource-invalidation/model/resourceInvalidation.test.ts` | 去重发布、空发布忽略、revision、注销、监听器异常隔离 |
 | `features/resource-invalidation/hooks/useResourceInvalidation.test.tsx` | 作用域过滤、首挂载不补发、Activity 隐藏/恢复补发、卸载注销、最新 handler |

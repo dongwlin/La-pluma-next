@@ -2,7 +2,7 @@
 
   # La Pluma Next
 
-  <img src="client/public/logo-graphite.svg" alt="La Pluma Next Logo" width="120" />
+  <img src="apps/web/public/logo-graphite.svg" alt="La Pluma Next Logo" width="120" />
   <p><em>一个基于 MAA CLI 的 WebUI</em></p>
   
   [![CI](https://github.com/dongwlin/La-pluma-next/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/dongwlin/La-pluma-next/actions/workflows/ci.yml)
@@ -59,6 +59,8 @@ pnpm dev
 ```
 
 `pnpm dev` 同时启动前端 [http://localhost:5173](http://localhost:5173) 与后端 [http://localhost:3000](http://localhost:3000)。
+
+已有源码检出目录升级时，启动前请按[数据迁移说明](docs/server/persistence.md#备份与迁移注意事项)处理旧位置的运行数据，再从仓库根目录运行 `pnpm install`。
 
 ## 文档
 
