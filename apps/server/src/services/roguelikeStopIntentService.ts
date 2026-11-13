@@ -13,7 +13,6 @@ const POLL_INTERVAL_MS = 1_000;
 const LOG_LINE_TIME_PATTERN = /^\[(\d{4})-(\d{2})-(\d{2}) (\d{2}):(\d{2}):(\d{2})\.(\d{3})\]/;
 const COMBAT_START_MARKER = 'StageInfo';
 const COMBAT_END_MARKER = 'RoguelikeCombatEnd';
-const COMBAT_ERROR_MARKER = 'StageInfoError';
 
 const logger = createLogger('RoguelikeStopIntent');
 
@@ -133,11 +132,10 @@ function readCombatSignal(logText: string, taskchain: string, sinceMs: number): 
     const what = event.what;
     if (what === COMBAT_START_MARKER) {
       combat = true;
+      combatEnded = false;
     } else if (what === COMBAT_END_MARKER) {
       combat = false;
       combatEnded = true;
-    } else if (what === COMBAT_ERROR_MARKER) {
-      combat = false;
     }
   }
 
@@ -195,7 +193,13 @@ function schedulePoll(runId: string, registration: StopIntentRegistration): void
 
 function dispatchStop(runId: string): void {
   try {
-    runtime.stopDeviceTask();
+    const result = runtime.stopDeviceTask();
+    if (isRecord(result) && result.success === false) {
+      logger.warn('停止等待战斗结束的任务未成功', {
+        runId,
+        message: typeof result.message === 'string' ? result.message : null
+      });
+    }
   } catch (error) {
     logger.warn('停止等待战斗结束的任务失败', { runId, error: describeError(error) });
   }
@@ -234,12 +238,16 @@ async function pollStopIntent(runId: string, registration: StopIntentRegistratio
       return;
     }
 
-    const combatEnded = increment?.status === 'ok'
-      && readCombatSignal(increment.text, registration.taskchain, registration.startedAtMs).combatEnded;
+    const incrementText = increment !== null
+      && (increment.status === 'ok' || increment.status === 'truncated')
+      ? increment.text
+      : '';
+    const combatEnded = incrementText !== ''
+      && readCombatSignal(incrementText, registration.taskchain, registration.startedAtMs).combatEnded;
     if (combatEnded || runtime.scheduler.now() >= registration.deadlineMs) dispatch = true;
   } catch (error) {
-    logger.warn('轮询战斗结束状态失败', { runId, error: describeError(error) });
-    release(runId);
+    logger.warn('轮询战斗结束状态失败，按立即停止处理', { runId, error: describeError(error) });
+    if (release(runId)) dispatchStop(runId);
     return;
   } finally {
     registration.polling = false;

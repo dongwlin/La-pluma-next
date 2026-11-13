@@ -13,6 +13,9 @@ import {
 import type { RoguelikeStopIntentRuntime } from '../services/roguelikeStopIntentService.ts';
 import { enrichAgentRun } from '../services/runSnapshotService.ts';
 import type { AgentRunProgressProjection } from '../services/runSnapshotService.ts';
+import { loggerManager } from '../utils/logger.ts';
+
+loggerManager.getLogger('RoguelikeStopIntent').enableConsole = false;
 
 const RUN_START_MS = new Date(2026, 10, 13, 12, 0, 0, 0).getTime();
 const NOW_MS = new Date(2026, 10, 13, 12, 3, 0, 0).getTime();
@@ -85,7 +88,9 @@ function createHarness(options: HarnessOptions = {}) {
     processRunning: options.processRunning ?? true,
     nowMs: NOW_MS,
     stopCalls: 0,
-    runStopCalls: 0
+    runStopCalls: 0,
+    throwOnGetRun: false,
+    throwOnGetCurrentRun: false
   };
   const timers: TimerEntry[] = [];
 
@@ -106,9 +111,15 @@ function createHarness(options: HarnessOptions = {}) {
       return { status: 'ok', text: state.log } satisfies MaaLogIncrement;
     },
     readLogIncrement: async () => state.increment,
-    getRun: () => state.run,
+    getRun: () => {
+      if (state.throwOnGetRun) throw new Error('run lookup failed');
+      return state.run;
+    },
     getRunInput: () => options.input ?? { command: 'roguelike', args: ['Mizuki'] },
-    getCurrentRun: () => state.current,
+    getCurrentRun: () => {
+      if (state.throwOnGetCurrentRun) throw new Error('current run lookup failed');
+      return state.current;
+    },
     isDeviceTaskRunning: () => state.processRunning,
     stopDeviceTask: () => {
       state.stopCalls += 1;
@@ -207,14 +218,24 @@ describe('roguelike stop intent', () => {
     assert.deepEqual(harness.pendingTimers(), []);
   });
 
-  it('treats StageInfoError as combat no longer in progress', async () => {
+  it('keeps the combat state when StageInfoError follows StageInfo', async () => {
     const log = [
       extraLine(RUN_START_MS + 1_000, 'Roguelike', 'StageInfo'),
       extraLine(RUN_START_MS + 2_000, 'Roguelike', 'StageInfoError')
     ].join('\n');
+    const harness = createHarness({ log });
 
-    createHarness({ log });
+    assert.equal((await beginRoguelikeStopIntent('run-1')).status, 'deferred');
+    assert.equal(harness.pendingTimers().length, 1);
+  });
+
+  it('treats a lone StageInfoError as an unknown combat state', async () => {
+    const harness = createHarness({
+      log: extraLine(RUN_START_MS + 1_000, 'Roguelike', 'StageInfoError')
+    });
+
     assert.equal((await beginRoguelikeStopIntent('run-1')).status, 'immediate');
+    assert.deepEqual(harness.pendingTimers(), []);
   });
 
   it('falls back for runs that are not roguelike or reclamation', async () => {
@@ -306,12 +327,15 @@ describe('roguelike stop intent', () => {
     assert.deepEqual(harness.pendingTimers(), []);
   });
 
-  it('keeps waiting when the increment is not readable even if it mentions a combat end', async () => {
+  it('does not stop when one increment ends a combat and starts the next', async () => {
     const harness = createHarness({
       log: extraLine(RUN_START_MS + 1_000, 'Roguelike', 'StageInfo'),
       increment: {
-        status: 'unreadable',
-        text: extraLine(NOW_MS + 5_000, 'Roguelike', 'RoguelikeCombatEnd')
+        status: 'ok',
+        text: [
+          extraLine(NOW_MS + 1_000, 'Roguelike', 'RoguelikeCombatEnd'),
+          extraLine(NOW_MS + 2_000, 'Roguelike', 'StageInfo')
+        ].join('\n')
       }
     });
     await beginRoguelikeStopIntent('run-1');
@@ -321,6 +345,83 @@ describe('roguelike stop intent', () => {
     assert.equal(harness.state.stopCalls, 0);
     assert.equal(getRoguelikeStopIntent('run-1')?.mode, 'after-combat');
     assert.equal(harness.pendingTimers().length, 1);
+
+    harness.state.increment = {
+      status: 'ok',
+      text: extraLine(NOW_MS + 3_000, 'Roguelike', 'RoguelikeCombatEnd')
+    };
+    await harness.fire();
+
+    assert.equal(harness.state.stopCalls, 1);
+    assert.equal(getRoguelikeStopIntent('run-1'), null);
+  });
+
+  it('dispatches on a truncated increment that still carries RoguelikeCombatEnd', async () => {
+    const harness = createHarness({
+      log: extraLine(RUN_START_MS + 1_000, 'Roguelike', 'StageInfo'),
+      increment: {
+        status: 'truncated',
+        text: extraLine(NOW_MS + 5_000, 'Roguelike', 'RoguelikeCombatEnd')
+      }
+    });
+    await beginRoguelikeStopIntent('run-1');
+
+    await harness.fire();
+
+    assert.equal(harness.state.stopCalls, 1);
+    assert.equal(harness.state.runStopCalls, 1);
+    assert.equal(getRoguelikeStopIntent('run-1'), null);
+  });
+
+  it('keeps waiting when the increment is unreadable', async () => {
+    const harness = createHarness({
+      log: extraLine(RUN_START_MS + 1_000, 'Roguelike', 'StageInfo'),
+      increment: { status: 'unreadable', text: '' }
+    });
+    await beginRoguelikeStopIntent('run-1');
+
+    await harness.fire();
+
+    assert.equal(harness.state.stopCalls, 0);
+    assert.equal(getRoguelikeStopIntent('run-1')?.mode, 'after-combat');
+    assert.equal(harness.pendingTimers().length, 1);
+  });
+
+  it('keeps waiting when an increment only reports StageInfoError', async () => {
+    const harness = createHarness({
+      log: extraLine(RUN_START_MS + 1_000, 'Roguelike', 'StageInfo'),
+      increment: {
+        status: 'ok',
+        text: extraLine(NOW_MS + 5_000, 'Roguelike', 'StageInfoError')
+      }
+    });
+    await beginRoguelikeStopIntent('run-1');
+
+    await harness.fire();
+
+    assert.equal(harness.state.stopCalls, 0);
+    assert.equal(harness.pendingTimers().length, 1);
+  });
+
+  it('releases and stops when a run lookup throws during polling', async () => {
+    for (const target of ['getRun', 'getCurrentRun'] as const) {
+      resetRoguelikeStopIntentForTests();
+      const harness = createHarness({
+        log: extraLine(RUN_START_MS + 1_000, 'Roguelike', 'StageInfo')
+      });
+      await beginRoguelikeStopIntent('run-1');
+      if (target === 'getRun') {
+        harness.state.throwOnGetRun = true;
+      } else {
+        harness.state.throwOnGetCurrentRun = true;
+      }
+
+      await harness.fire();
+
+      assert.equal(harness.state.stopCalls, 1, target);
+      assert.equal(harness.state.runStopCalls, 1, target);
+      assert.equal(getRoguelikeStopIntent('run-1'), null, target);
+    }
   });
 
   it('forces the stop when the wait deadline is reached', async () => {
