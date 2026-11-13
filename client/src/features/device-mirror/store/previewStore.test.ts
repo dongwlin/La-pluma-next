@@ -24,6 +24,11 @@ function savedPreferences() {
   return JSON.parse(window.localStorage.getItem('preview-storage') ?? '{}')
 }
 
+async function hydrateFrom(state: unknown, version = 2) {
+  savePreferences(state, version)
+  await usePreviewStore.persist.rehydrate()
+}
+
 describe('shared preview preferences', () => {
   beforeEach(() => {
     usePreviewStore.setState(defaults)
@@ -73,6 +78,74 @@ describe('shared preview preferences', () => {
     usePreviewStore.getState().setMode('live')
     usePreviewStore.getState().setQuality('ultra')
     expect(usePreviewStore.getState().mode).toBe('live')
+    expect(savedPreferences()).toEqual({
+      version: 2,
+      state: { ...defaults, mode: 'live', quality: 'ultra', fps: 60, maxSize: 1920, bitrateMbps: 20 },
+    })
+  })
+
+  it('keeps the other tab quality when only the mode changes', async () => {
+    await hydrateFrom(defaults)
+    savePreferences({ ...defaults, quality: 'ultra', fps: 60, maxSize: 1920, bitrateMbps: 20 })
+
+    usePreviewStore.getState().setMode('live')
+
+    expect(savedPreferences()).toEqual({
+      version: 2,
+      state: { ...defaults, mode: 'live', quality: 'ultra', fps: 60, maxSize: 1920, bitrateMbps: 20 },
+    })
+    expect(usePreviewStore.getState()).toMatchObject({ mode: 'live', quality: 'power', fps: 15 })
+  })
+
+  it('keeps the other tab mode when only the quality changes', async () => {
+    await hydrateFrom(defaults)
+    savePreferences({ ...defaults, mode: 'live' })
+
+    usePreviewStore.getState().setQuality('ultra')
+
+    expect(savedPreferences()).toEqual({
+      version: 2,
+      state: { ...defaults, mode: 'live', quality: 'ultra', fps: 60, maxSize: 1920, bitrateMbps: 20 },
+    })
+  })
+
+  it('merges custom frame rates over the other tab numeric settings', async () => {
+    await hydrateFrom(defaults)
+    savePreferences({ ...defaults, quality: 'crisp', fps: 60, maxSize: 1600, bitrateMbps: 14 })
+
+    usePreviewStore.getState().setCustomFps(30)
+
+    expect(savedPreferences().state).toEqual({
+      mode: 'off', quality: 'custom', fps: 30, maxSize: 1600, bitrateMbps: 14,
+    })
+  })
+
+  it('writes the whole preset selection as one preference change', async () => {
+    await hydrateFrom(defaults)
+    savePreferences({ ...defaults, mode: 'live', quality: 'crisp', fps: 60, maxSize: 1600, bitrateMbps: 14 })
+
+    usePreviewStore.getState().setQuality('balanced')
+
+    expect(savedPreferences().state).toEqual({
+      mode: 'live', quality: 'balanced', fps: 45, maxSize: 1280, bitrateMbps: 8,
+    })
+  })
+
+  it('falls back to the active tab when the stored payload is unreadable', async () => {
+    await hydrateFrom(defaults)
+    window.localStorage.setItem('preview-storage', '{invalid')
+
+    usePreviewStore.getState().setMode('snapshot')
+
+    expect(savedPreferences()).toEqual({ version: 2, state: { ...defaults, mode: 'snapshot' } })
+  })
+
+  it('applies the legacy mode rule when merging over a version 1 payload', async () => {
+    await hydrateFrom(defaults)
+    savePreferences({ ...defaults, mode: 'live', autoStart: true }, 1)
+
+    usePreviewStore.getState().setQuality('ultra')
+
     expect(savedPreferences()).toEqual({
       version: 2,
       state: { ...defaults, mode: 'live', quality: 'ultra', fps: 60, maxSize: 1920, bitrateMbps: 20 },
