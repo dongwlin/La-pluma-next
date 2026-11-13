@@ -115,6 +115,7 @@ const createProjection = (overrides: Partial<CombatCopilotSearchProjection> = {}
   refreshing: false,
   addingUri: null,
   onSearch: vi.fn(),
+  onLoadMore: vi.fn(async () => null),
   onCancel: vi.fn(),
   onPreviewUri: vi.fn(),
   onAddToQueue: vi.fn(),
@@ -180,6 +181,50 @@ const lastRequest = (search: CombatCopilotSearchProjection) => {
 }
 
 const keywordInput = () => document.querySelector<HTMLInputElement>('input[aria-label="搜索作业关键词"]')
+
+const pagedResult = (
+  page: number,
+  overrides: { total?: number; hasNext?: boolean; count?: number; keyword?: string } = {},
+): CopilotSearchResult => {
+  const { total = 150, hasNext = true, count = 30, keyword = '' } = overrides
+  return {
+    keyword,
+    stage: '1-7',
+    page,
+    limit: 30,
+    total,
+    hasNext,
+    copilots: Array.from({ length: count }, (_, index) => ({
+      id: `page-${page}-${index}`,
+      uri: `prts://page-${page}-${index}`,
+      views: page * 100 + index,
+      hotScore: 0,
+      stageName: '1-7',
+      title: `第 ${page} 页第 ${index + 1} 条`,
+    })),
+  }
+}
+
+const discoveryBody = (): HTMLElement => {
+  const dialog = findDialogByTitle('发现作业')
+  expect(dialog).not.toBeNull()
+  const bodyId = dialog!.getAttribute('aria-describedby')
+  expect(bodyId).toBeTruthy()
+  return document.getElementById(bodyId!)!
+}
+
+const scrollDiscoveryToBottom = async () => {
+  const body = discoveryBody()
+  Object.defineProperty(body, 'scrollHeight', { configurable: true, value: 1000 })
+  Object.defineProperty(body, 'clientHeight', { configurable: true, value: 400 })
+  Object.defineProperty(body, 'scrollTop', { configurable: true, writable: true, value: 600 })
+  await act(async () => {
+    body.dispatchEvent(new Event('scroll'))
+    await Promise.resolve()
+    await Promise.resolve()
+    await Promise.resolve()
+  })
+}
 
 describe('CombatCopilotDiscoveryDialog', () => {
   let container: HTMLDivElement
@@ -508,5 +553,97 @@ describe('CombatCopilotDiscoveryDialog', () => {
 
     await click(findButton('重试'))
     expect(search.onRetryData).toHaveBeenCalled()
+  })
+
+  it('appends the next page of results when the dialog body scrolls to the bottom', async () => {
+    const onLoadMore = vi.fn(async () => pagedResult(2, { count: 30, hasNext: false }))
+    const search = await renderDialog({ result: pagedResult(1), onLoadMore })
+
+    expect(document.body.textContent).toContain('共 150 条')
+    expect(document.body.textContent).toContain('已加载 30 条')
+    expect(document.body.textContent).not.toContain('第 2 页第 1 条')
+
+    await scrollDiscoveryToBottom()
+
+    expect(onLoadMore).toHaveBeenCalledTimes(1)
+    expect(onLoadMore).toHaveBeenCalledWith(expect.objectContaining({ keyword: '', page: 2, limit: 30 }))
+    expect(document.body.textContent).toContain('第 1 页第 1 条')
+    expect(document.body.textContent).toContain('第 2 页第 1 条')
+    expect(document.body.textContent).toContain('已加载 60 条')
+    expect(search.onSearch).not.toHaveBeenCalled()
+  })
+
+  it('does not request another page while a page is loading', async () => {
+    let resolvePage: (result: CopilotSearchResult | null) => void = () => {}
+    const pendingPage = new Promise<CopilotSearchResult | null>((resolve) => {
+      resolvePage = resolve
+    })
+    const onLoadMore = vi.fn(() => pendingPage)
+    await renderDialog({ result: pagedResult(1), onLoadMore })
+
+    await scrollDiscoveryToBottom()
+    await scrollDiscoveryToBottom()
+    expect(onLoadMore).toHaveBeenCalledTimes(1)
+
+    await act(async () => {
+      resolvePage(pagedResult(2))
+      await pendingPage
+    })
+
+    await scrollDiscoveryToBottom()
+    expect(onLoadMore).toHaveBeenCalledTimes(2)
+    expect(onLoadMore).toHaveBeenLastCalledWith(expect.objectContaining({ page: 3 }))
+  })
+
+  it('stops loading pages after a page reports no next page', async () => {
+    const onLoadMore = vi.fn(async () => pagedResult(2, { count: 5, hasNext: false }))
+    await renderDialog({ result: pagedResult(1, { hasNext: false }), onLoadMore })
+
+    await scrollDiscoveryToBottom()
+    expect(onLoadMore).not.toHaveBeenCalled()
+
+    await renderDialog({ result: pagedResult(1), onLoadMore })
+    await scrollDiscoveryToBottom()
+    expect(onLoadMore).toHaveBeenCalledTimes(1)
+    expect(onLoadMore).toHaveBeenLastCalledWith(expect.objectContaining({ page: 2 }))
+
+    await scrollDiscoveryToBottom()
+    expect(onLoadMore).toHaveBeenCalledTimes(1)
+  })
+
+  it('resets appended pages and the page cursor after a new base search', async () => {
+    const onLoadMore = vi.fn(async () => pagedResult(2, { count: 1 }))
+    await renderDialog({ result: pagedResult(1, { keyword: '1-7' }), onLoadMore })
+
+    await scrollDiscoveryToBottom()
+    expect(document.body.textContent).toContain('第 2 页第 1 条')
+
+    await renderDialog({
+      result: pagedResult(1, { keyword: 'LT-2', total: 150, count: 3 }),
+      onLoadMore,
+    })
+
+    expect(document.body.textContent).not.toContain('第 2 页第 1 条')
+    expect(document.body.textContent).toContain('已加载 3 条')
+
+    await scrollDiscoveryToBottom()
+    expect(onLoadMore).toHaveBeenCalledTimes(2)
+    expect(onLoadMore).toHaveBeenLastCalledWith(expect.objectContaining({ keyword: 'LT-2', page: 2 }))
+    expect(document.body.textContent).toContain('第 2 页第 1 条')
+    expect(document.body.textContent).toContain('已加载 4 条')
+  })
+
+  it('keeps the loaded results when the next page fails', async () => {
+    const onLoadMore = vi.fn(async () => null)
+    await renderDialog({ result: pagedResult(1), onLoadMore })
+
+    await scrollDiscoveryToBottom()
+
+    expect(document.body.textContent).toContain('第 1 页第 1 条')
+    expect(document.body.textContent).toContain('已加载 30 条')
+    expect(document.body.textContent).not.toContain('第 2 页第 1 条')
+
+    await scrollDiscoveryToBottom()
+    expect(onLoadMore).toHaveBeenCalledTimes(2)
   })
 })

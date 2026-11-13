@@ -141,6 +141,8 @@ export interface CombatCopilotSearchProjection {
   refreshing: boolean
   addingUri: string | null
   onSearch: (request: CopilotSearchRequest) => void
+  /** 取指定页但不改动当前基础结果；失败返回 null。 */
+  onLoadMore: (request: CopilotSearchRequest) => Promise<CopilotSearchResult | null>
   onCancel: () => void
   onPreviewUri: (uri: string) => void
   onAddToQueue: (uri: string) => void

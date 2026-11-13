@@ -80,6 +80,7 @@ const search = (overrides: Partial<CombatCopilotSearchProjection> = {}): CombatC
   refreshing: false,
   addingUri: null,
   onSearch: () => {},
+  onLoadMore: async () => null,
   onCancel: () => {},
   onPreviewUri: () => {},
   onAddToQueue: () => {},

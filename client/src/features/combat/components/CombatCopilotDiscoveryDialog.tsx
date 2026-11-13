@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState, type UIEvent } from 'react'
 import { SearchX } from 'lucide-react'
 import { EmptyState, Loading } from '@/shared/ui'
 import { Modal } from '@/shared/ui/Modal'
@@ -15,7 +15,7 @@ import {
   writeCopilotOperatorFilterPreference,
 } from '../model/copilotDiscoveryPreferences'
 import { normalizeOperatorSelection, type OperatorSelection } from '../model/operatorFilter'
-import type { CopilotSearchItem, CopilotStageCandidate } from '../types'
+import type { CopilotSearchItem, CopilotSearchResult, CopilotStageCandidate } from '../types'
 import CombatCopilotDiscoveryCard from './CombatCopilotDiscoveryCard'
 import CombatCopilotMatchDialog from './CombatCopilotMatchDialog'
 import CombatCopilotOperatorFilterDialog from './CombatCopilotOperatorFilterDialog'
@@ -34,6 +34,11 @@ export interface CombatCopilotDiscoveryDialogProps {
 
 const EMPTY_ITEMS: readonly CopilotSearchItem[] = []
 const EMPTY_OPERATOR_SELECTION: OperatorSelection = { included: [], excluded: [] }
+const DISCOVERY_SCROLL_THRESHOLD_PX = 24
+
+type AppendedPageState = { base: CopilotSearchResult; items: readonly CopilotSearchItem[]; page: number; hasNext: boolean; loading: boolean }
+
+const mergeCopilotItems = (base: readonly CopilotSearchItem[], extra: readonly CopilotSearchItem[]) => [...new Map([...base, ...extra].map(item => [item.uri, item] as const)).values()]
 
 export default function CombatCopilotDiscoveryDialog({ search }: CombatCopilotDiscoveryDialogProps) {
   const [keyword, setKeyword] = usePanelState(search.keywordStore)
@@ -46,9 +51,18 @@ export default function CombatCopilotDiscoveryDialog({ search }: CombatCopilotDi
   const [view, setView] = usePanelState(search.viewStore)
   const [operatorFilterOpen, setOperatorFilterOpen] = useState(false)
   const [matchOpen, setMatchOpen] = useState(false)
+  const [appendedPages, setAppendedPages] = useState<AppendedPageState | null>(null)
+  const loadingPageRef = useRef(false)
 
-  const copilots = search.result?.copilots ?? EMPTY_ITEMS
+  const appended = appendedPages?.base === search.result ? appendedPages : null
+  const baseItems = search.result?.copilots ?? EMPTY_ITEMS
+  const copilots = useMemo(
+    () => (appended ? mergeCopilotItems(baseItems, appended.items) : baseItems),
+    [appended, baseItems],
+  )
   const total = search.result?.total ?? copilots.length
+  const lastLoadedPage = appended?.page ?? search.result?.page ?? 1
+  const hasNextPage = appended?.hasNext ?? search.result?.hasNext ?? false
   const visibleItems = useMemo(
     () => filterCopilotSearchItems(copilots, match),
     [copilots, match],
@@ -85,6 +99,31 @@ export default function CombatCopilotDiscoveryDialog({ search }: CombatCopilotDi
     limit: DEFAULT_COPILOT_SEARCH_LIMIT,
     ...overrides,
   })
+
+  const buildPageRequest = (page: number) => buildRequest({ page, keyword: search.result?.keyword ?? keyword })
+
+  const loadNextPage = async () => {
+    const base = search.result
+    if (!base || !hasNextPage || search.searching || loadingPageRef.current) return
+    loadingPageRef.current = true
+    const nextPage = lastLoadedPage + 1
+    setAppendedPages({ base, items: appended?.items ?? EMPTY_ITEMS, page: lastLoadedPage, hasNext: hasNextPage, loading: true })
+    const result = await search.onLoadMore(buildPageRequest(nextPage))
+    loadingPageRef.current = false
+    setAppendedPages(current => current?.base !== base ? current : {
+      base,
+      items: result ? mergeCopilotItems(current.items, result.copilots) : current.items,
+      page: result?.page ?? (result ? nextPage : current.page),
+      hasNext: result?.hasNext ?? (result ? false : current.hasNext),
+      loading: false,
+    })
+  }
+
+  const handleBodyScroll = (event: UIEvent<HTMLDivElement>) => {
+    const body = event.currentTarget
+    if (body.scrollHeight - body.scrollTop - body.clientHeight > DISCOVERY_SCROLL_THRESHOLD_PX) return
+    void loadNextPage()
+  }
 
   const handleClose = () => {
     setOperatorFilterOpen(false)
@@ -212,6 +251,7 @@ export default function CombatCopilotDiscoveryDialog({ search }: CombatCopilotDi
       title="发现作业"
       size="xl"
       dialogId={COPILOT_DISCOVERY_DIALOG_ID}
+      onBodyScroll={handleBodyScroll}
     >
       <div className="combat-copilot-discovery">
         <CombatCopilotSearchBar
@@ -248,6 +288,8 @@ export default function CombatCopilotDiscoveryDialog({ search }: CombatCopilotDi
         )}
 
         {renderResults()}
+
+        {appended?.loading && <div className="combat-copilot-discovery-loading"><Loading text="正在加载更多…" /></div>}
       </div>
 
       <CombatCopilotOperatorFilterDialog

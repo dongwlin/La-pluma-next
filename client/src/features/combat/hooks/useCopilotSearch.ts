@@ -32,6 +32,8 @@ export interface UseCopilotSearchResult<TInput, TResult> {
   readonly refreshing: boolean
   /** 提交一次搜索；返回本次代次是否仍当前以及成功/失败结论。 */
   readonly search: (input: TInput) => Promise<CopilotSearchOutcome<TResult>>
+  /** 读取指定页但不推进代次、不改当前结果；失败返回 null。 */
+  readonly loadMore: (input: TInput) => Promise<TResult | null>
   /** 更新默认请求并在后台刷新；失败静默保留旧缓存。 */
   readonly refreshDefault: (next: TInput) => void
   /** 取消在途显式搜索；保留默认查询与上次成功结果。 */
@@ -140,11 +142,23 @@ function useCombatSearch<TInput, TResult>(
     }
   }, [client, toOptions])
 
+  const loadMore = useCallback(async (next: TInput): Promise<TResult | null> => {
+    try {
+      return await client.fetchQuery({
+        ...toOptions(next),
+        staleTime: 0,
+      } as never) as TResult
+    } catch {
+      return null
+    }
+  }, [client, toOptions])
+
   return {
     result: query.data ?? defaultQuery.data ?? null,
     searching: pending,
     refreshing: defaultQuery.isFetching,
     search,
+    loadMore,
     refreshDefault,
     cancel,
     reset,

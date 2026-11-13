@@ -7,6 +7,7 @@ import {
   useState,
   type KeyboardEvent as ReactKeyboardEvent,
   type ReactNode,
+  type UIEvent,
 } from 'react'
 import { createPortal } from 'react-dom'
 import Button, { IconButton } from './Button'
@@ -32,6 +33,8 @@ interface ModalProps {
   role?: 'dialog' | 'alertdialog'
   ariaLabel?: string
   dialogId?: string
+  /** 观察弹窗正文滚动（内容超出时由正文层滚动），用于滚动加载等场景。 */
+  onBodyScroll?: (event: UIEvent<HTMLDivElement>) => void
 }
 
 interface ConfirmDialogProps {
@@ -82,6 +85,7 @@ function ModalLayer({
   role = 'dialog',
   ariaLabel,
   dialogId,
+  onBodyScroll,
 }: ModalLayerProps) {
   const layerRef = useRef<HTMLDivElement>(null)
   const dialogRef = useRef<HTMLDivElement>(null)
@@ -234,7 +238,11 @@ function ModalLayer({
             </div>
           )}
 
-          <div id={descriptionId} className="min-h-0 overflow-y-auto px-5 py-4 sm:px-6">
+          <div
+            id={descriptionId}
+            className="min-h-0 overflow-y-auto px-5 py-4 sm:px-6"
+            onScroll={onBodyScroll}
+          >
             {children}
           </div>
 
