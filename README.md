@@ -83,7 +83,7 @@ pnpm dev
 
 ## 致谢
 
-La Pluma Next 是 [La Pluma 原项目](https://github.com/mps233/La-pluma) 的社区维护分支，自 2026-10 起独立维护，不再跟随上游更新；项目名沿用《明日方舟》五星近卫干员 La Pluma（羽毛笔），上游作者：miaopasi、mps233。
+La Pluma Next 是 [La Pluma 原项目](https://github.com/mps233/La-pluma) 的社区维护分支，自 2026-10 起独立维护，不再跟随上游更新。
 
 - [MAA (MaaAssistantArknights)](https://github.com/MaaAssistantArknights/MaaAssistantArknights) - 明日方舟游戏助手
 - [maa-cli](https://github.com/MaaAssistantArknights/maa-cli) - MAA 命令行工具
