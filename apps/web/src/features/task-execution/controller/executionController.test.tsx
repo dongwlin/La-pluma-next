@@ -385,20 +385,31 @@ describe('execution controller identity', () => {
     })))
 
     const release = restored.start()
+    // 快照返回前只有持久化身份一个来源，恢复失效会在这里暴露。
+    expect(restored.getState().trackedOperationId).toBe('run_daily_flow')
+
     await flush()
 
-    expect(restored.getState().trackedOperationId).toBe('run_daily_flow')
+    expect(restored.getState().trackedRunId).toBe('run-1')
     release()
   })
 
-  it('clears the operation id when the tracked run is released', () => {
+  it('clears the persisted identity when the tracked run is released', () => {
+    const storage = memoryStorage()
+    controller = new ExecutionController({ api, storage })
     controller.observeRun('run-2', 'run_daily_flow', 'dashboard')
 
     expect(controller.getState().trackedOperationId).toBe('run_daily_flow')
+    expect(storage.current()).toEqual({
+      runId: 'run-2',
+      operationId: 'run_daily_flow',
+      scope: 'dashboard',
+    })
 
     controller.observeRun(null)
 
     expect(controller.getState().trackedOperationId).toBeNull()
+    expect(storage.current()).toBeNull()
   })
 
   it('does not adopt a scope from a legacy response without a run id', () => {
