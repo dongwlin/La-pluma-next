@@ -84,7 +84,7 @@ export function parseWaitForCompletion(value: unknown, defaultValue = true): boo
 export type StopRequestMode = 'now' | 'after-combat';
 
 export function parseStopRequestMode(value: unknown): StopRequestMode {
-  const normalized = value ?? 'now';
+  const normalized = value === undefined ? 'now' : value;
   if (normalized === 'now' || normalized === 'after-combat') return normalized;
   throw agentError('AGENT_VALIDATION_STOP_MODE_INVALID', 'mode 必须是 now 或 after-combat', {
     statusCode: 400,

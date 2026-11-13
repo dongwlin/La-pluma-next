@@ -345,6 +345,7 @@ const invalidFixtures: readonly ErrorFixture[] = [
   { operationId: 'run_task', status: 400, body: { command: 'not-a-command' }, errorCode: 'AGENT_VALIDATION_COMMAND_NOT_ALLOWED' },
   { operationId: 'stop_task', status: 400, body: { runId: 42 }, errorCode: 'AGENT_VALIDATION_RUN_ID_INVALID' },
   { operationId: 'stop_task', status: 400, body: { mode: 'later' }, errorCode: 'AGENT_VALIDATION_STOP_MODE_INVALID' },
+  { operationId: 'stop_task', status: 400, body: { mode: null }, errorCode: 'AGENT_VALIDATION_STOP_MODE_INVALID' },
   { operationId: 'get_screenshot', status: 400, body: { profileId: 'bad id!' }, errorCode: 'AGENT_VALIDATION_PROFILE_ID_INVALID' },
   { operationId: 'run_daily_flow', status: 400, body: { dryRun: 'false' }, errorCode: 'AGENT_VALIDATION_DRY_RUN_INVALID' },
   { operationId: 'webrtc_status', status: 400, query: { profileId: 'bad id!' }, errorCode: 'AGENT_VALIDATION_PROFILE_ID_INVALID' },

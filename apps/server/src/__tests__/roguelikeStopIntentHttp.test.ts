@@ -131,7 +131,7 @@ interface TimerEntry {
 
 function createManualScheduler() {
   const timers: TimerEntry[] = [];
-  let nowMs = Date.now();
+  const nowMs = Date.now();
   const scheduler = {
     now: () => nowMs,
     schedule(callback: () => void): RoguelikeStopIntentTimer {
@@ -142,9 +142,6 @@ function createManualScheduler() {
   };
   return {
     scheduler,
-    advance(ms: number) {
-      nowMs += ms;
-    },
     pendingCount: () => timers.filter(timer => !timer.cancelled && !timer.fired).length,
     fire() {
       const timer = timers.find(candidate => !candidate.cancelled && !candidate.fired);
@@ -310,13 +307,18 @@ after(async () => {
 });
 
 describe('stop after combat over HTTP', () => {
-  it('rejects an unknown stop mode before reading the target run', async () => {
+  it('rejects explicit null and unknown stop modes while an omitted mode stays now', async () => {
     const baseUrl = await listen();
+    const url = `${baseUrl}/api/agent/actions/stop`;
 
-    const response = await postJson(`${baseUrl}/api/agent/actions/stop`, { mode: 'later' });
+    for (const body of [{ mode: 'later' }, { mode: null }, { mode: 42 }]) {
+      const response = await postJson(url, body);
+      assert.equal(response.status, 400, JSON.stringify(body));
+      assert.equal((await readError(response)).error.code, 'AGENT_VALIDATION_STOP_MODE_INVALID');
+    }
 
-    assert.equal(response.status, 400);
-    assert.equal((await readError(response)).error.code, 'AGENT_VALIDATION_STOP_MODE_INVALID');
+    assert.equal((await postJson(url, {})).status, 200);
+    assert.equal((await fetch(url, { method: 'POST' })).status, 200);
   });
 
   it('falls back to an immediate stop for a non-roguelike run', async () => {
