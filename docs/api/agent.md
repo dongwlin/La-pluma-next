@@ -241,7 +241,7 @@ curl -X POST http://localhost:3000/api/agent/config/resource-source \
 
 `runs/current` 返回运行快照：`run` 是当前活动 run，`activeRuns` 列出全部活动意图，`lastRun` 是最近终态，`occupancy` 说明设备由 `run` 还是未纳管执行（`external`）占用，或只是 `pending`、`idle`、`unknown`；旧字段 `isRunning`、`taskName`、`schedule`、`recentLogs` 保持原样，`schedule.runId` 为 `null` 表示该流程没有 Run 身份。快照各字段、占用与租约投影、进度投影及“进程 idle 不代表流程完成”等判定规则的完整约定见[执行身份与生命周期契约](../architecture/execution-lifecycle.md)。
 
-目标停止按 `runId` 保护：未开始的 run 直接取消且不发送设备命令，`running` 的当前 run 转入 `stopping`，旧终态 run 返回 `alreadyTerminal`，不会影响新执行；重复停止保持成功。响应中的 `stopRequested` 表示停止意图已记录，`deviceStopRequested` 表示是否真的发出了设备停止命令；按目标状态区分的完整停止矩阵与取消语义见[执行身份与生命周期契约](../architecture/execution-lifecycle.md)。
+目标停止按 `runId` 保护：未开始的 run 直接取消且不发送设备命令，`running` 的当前 run 转入 `stopping`，旧终态 run 返回 `alreadyTerminal`，不会影响新执行；重复停止保持成功。请求体可带 `mode`：`now`（缺省，原有行为）或 `after-combat`；后者只对正处于战斗的肉鸽/生息演算当前 run 延后受理，响应保留 `run.state=running`、返回 `pendingStop`（`mode`、`requestedAt`、`deadline`、`combat`）并在进度中给出同一 `stopIntent`，设备停止等本场战斗结束或 600 秒上限后才下发，其余情况一律退化为立即停止；重复请求返回同一 `pendingStop` 与 `alreadyPending: true`。响应中的 `stopRequested` 表示停止意图已记录，`deviceStopRequested` 表示是否真的发出了设备停止命令；按目标状态区分的完整停止矩阵与取消语义见[执行身份与生命周期契约](../architecture/execution-lifecycle.md)。
 
 `Idempotency-Key` 是可选请求头，适用于启动游戏、理智作战、通用任务与今日流程；Web UI 专用的作业集入口、显式作业队列入口和 `/api/agent/schedules/{scheduleId}/execute` 也支持。相同 key、相同输入重试时返回原 `runId`，对象键顺序不影响比较，但显式参数差异会被视为不同输入。幂等键按 `operationId` 分区、同键不同输入的拒绝、重放与键释放规则，以及 Run 与幂等记录的持久化、重启 `interrupted` 语义和终态保留期限的完整约定见[执行身份与生命周期契约](../architecture/execution-lifecycle.md)。
 
