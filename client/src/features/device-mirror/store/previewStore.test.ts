@@ -6,15 +6,22 @@ import { fpsOptions, qualityPresets } from '../constants'
 
 const defaults = {
   mode: 'off' as const,
-  autoStart: false,
   quality: 'power' as const,
   fps: 15,
   maxSize: 640,
   bitrateMbps: 1.5,
 }
 
-function savePreferences(state: unknown, version = 1) {
+function savePreferences(state: unknown, version = 2) {
   window.localStorage.setItem('preview-storage', JSON.stringify({ state, version }))
+}
+
+function saveUnversionedPreferences(state: unknown) {
+  window.localStorage.setItem('preview-storage', JSON.stringify({ state }))
+}
+
+function savedPreferences() {
+  return JSON.parse(window.localStorage.getItem('preview-storage') ?? '{}')
 }
 
 describe('shared preview preferences', () => {
@@ -25,6 +32,7 @@ describe('shared preview preferences', () => {
 
   it('starts stopped with the power preset and offers low frame rates', () => {
     expect(usePreviewStore.getState()).toMatchObject(defaults)
+    expect(usePreviewStore.getState()).not.toHaveProperty('autoStart')
     expect(fpsOptions).toEqual([10, 15, 30, 45, 60, 90, 120])
     expect(buildScrcpyOptions(usePreviewStore.getState())).toEqual({
       max_fps: 15,
@@ -61,28 +69,66 @@ describe('shared preview preferences', () => {
     expect(usePreviewStore.getState()).toMatchObject({ ...defaults, quality: 'custom' })
   })
 
-  it('preserves the active mode in this session while saving only preferences', () => {
+  it('saves the selected mode with the preferences', () => {
     usePreviewStore.getState().setMode('live')
     usePreviewStore.getState().setQuality('ultra')
     expect(usePreviewStore.getState().mode).toBe('live')
-    expect(JSON.parse(window.localStorage.getItem('preview-storage') ?? '{}')).toEqual({
-      version: 1,
+    expect(savedPreferences()).toEqual({
+      version: 2,
       state: { ...defaults, mode: 'live', quality: 'ultra', fps: 60, maxSize: 1920, bitrateMbps: 20 },
     })
   })
 
-  it('requires auto-start to restore the saved mode after loading', async () => {
-    savePreferences({ ...defaults, mode: 'live', autoStart: false })
+  it('restores the saved mode after loading', async () => {
+    savePreferences({ ...defaults, mode: 'live' })
     await usePreviewStore.persist.rehydrate()
-    expect(usePreviewStore.getState().mode).toBe('off')
+    expect(usePreviewStore.getState()).toMatchObject({ ...defaults, mode: 'live' })
 
-    savePreferences({ ...defaults, mode: 'snapshot', autoStart: true })
+    savePreferences({ ...defaults, mode: 'snapshot' })
     await usePreviewStore.persist.rehydrate()
-    expect(usePreviewStore.getState()).toMatchObject({ mode: 'snapshot', autoStart: true })
+    expect(usePreviewStore.getState()).toMatchObject({ ...defaults, mode: 'snapshot' })
+  })
 
-    savePreferences({ ...defaults, mode: 'live', autoStart: true })
+  it('falls back to off for an unsupported saved mode', async () => {
+    savePreferences({ ...defaults, mode: 'unexpected' })
     await usePreviewStore.persist.rehydrate()
-    expect(usePreviewStore.getState().mode).toBe('live')
+    expect(usePreviewStore.getState()).toMatchObject(defaults)
+  })
+
+  it('migrates auto-starting preferences to the saved mode', async () => {
+    savePreferences({ ...defaults, mode: 'snapshot', autoStart: true }, 1)
+    await usePreviewStore.persist.rehydrate()
+    expect(usePreviewStore.getState()).toMatchObject({ ...defaults, mode: 'snapshot' })
+    expect(usePreviewStore.getState()).not.toHaveProperty('autoStart')
+    expect(savedPreferences()).toEqual({ version: 2, state: { ...defaults, mode: 'snapshot' } })
+
+    savePreferences({ ...defaults, mode: 'live', autoStart: true }, 0)
+    await usePreviewStore.persist.rehydrate()
+    expect(usePreviewStore.getState()).toMatchObject({ ...defaults, mode: 'live' })
+  })
+
+  it('clears the saved mode when legacy preferences did not auto-start', async () => {
+    savePreferences({ ...defaults, mode: 'live', autoStart: false }, 1)
+    await usePreviewStore.persist.rehydrate()
+    expect(usePreviewStore.getState()).toMatchObject(defaults)
+
+    savePreferences({ ...defaults, mode: 'live', autoStart: 'true' }, 1)
+    await usePreviewStore.persist.rehydrate()
+    expect(usePreviewStore.getState()).toMatchObject(defaults)
+
+    savePreferences({ ...defaults, mode: 'live' }, 0)
+    await usePreviewStore.persist.rehydrate()
+    expect(usePreviewStore.getState()).toMatchObject(defaults)
+  })
+
+  it('treats preferences without a stored version as the auto-start format', async () => {
+    saveUnversionedPreferences({ ...defaults, mode: 'live', autoStart: false })
+    await usePreviewStore.persist.rehydrate()
+    expect(usePreviewStore.getState()).toMatchObject(defaults)
+
+    saveUnversionedPreferences({ ...defaults, mode: 'snapshot', autoStart: true })
+    await usePreviewStore.persist.rehydrate()
+    expect(usePreviewStore.getState()).toMatchObject({ ...defaults, mode: 'snapshot' })
   })
 
   it('restores custom quality and canonicalizes saved presets', async () => {
@@ -116,9 +162,17 @@ describe('shared preview preferences', () => {
     await usePreviewStore.persist.rehydrate()
     expect(usePreviewStore.getState()).toMatchObject(defaults)
 
-    savePreferences({ mode: 'live', autoStart: true, quality: '__proto__' })
+    savePreferences(['live', 'ultra'], 1)
     await usePreviewStore.persist.rehydrate()
-    expect(usePreviewStore.getState()).toMatchObject({ ...defaults, autoStart: true, mode: 'live' })
+    expect(usePreviewStore.getState()).toMatchObject(defaults)
+
+    savePreferences({ mode: 'live', quality: '__proto__' })
+    await usePreviewStore.persist.rehydrate()
+    expect(usePreviewStore.getState()).toMatchObject({ ...defaults, mode: 'live' })
+
+    savePreferences({ mode: 'live', autoStart: true, quality: '__proto__' }, 1)
+    await usePreviewStore.persist.rehydrate()
+    expect(usePreviewStore.getState()).toMatchObject({ ...defaults, mode: 'live' })
   })
 
   it('ignores invalid custom values and malformed JSON', async () => {

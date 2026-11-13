@@ -61,7 +61,7 @@ describe('useDashboardPreview Activity lifecycle', () => {
   let root: Root
 
   beforeEach(() => {
-    usePreviewStore.setState({ mode: 'off', autoStart: false })
+    usePreviewStore.setState({ mode: 'off' })
     signalingConnections.length = 0
     screenshotPending = false
     mocks.fetchWithAuth.mockReset().mockImplementation((input: RequestInfo | URL) => {

@@ -1,6 +1,5 @@
-import { useId, useRef, type KeyboardEvent } from 'react'
+import { useRef, type KeyboardEvent } from 'react'
 import { usePreviewStore, type PreviewMode } from '../store/previewStore'
-import { Switch } from '@/shared/ui'
 
 const modes: { value: PreviewMode; label: string }[] = [
   { value: 'off', label: '关闭' },
@@ -74,28 +73,6 @@ export function PreviewModeSegmented({ unavailable = false }: PreviewModeSegment
           </button>
         )
       })}
-    </div>
-  )
-}
-
-export function PreviewAutoStartSetting() {
-  const autoStart = usePreviewStore(state => state.autoStart)
-  const setAutoStart = usePreviewStore(state => state.setAutoStart)
-  const inputId = `preview-auto-start-${useId().replace(/:/g, '')}`
-
-  return (
-    <div className="flex items-center justify-between gap-4">
-      <label htmlFor={inputId} className="min-w-0 cursor-pointer">
-        <span className="block text-xs font-medium text-primary">重新打开时恢复预览</span>
-        <span className="mt-0.5 block text-xs leading-5 text-secondary">仅在重新打开应用后生效</span>
-      </label>
-      <Switch
-        id={inputId}
-        compact
-        label="重新打开时恢复预览"
-        checked={autoStart}
-        onChange={setAutoStart}
-      />
     </div>
   )
 }

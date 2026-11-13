@@ -43,13 +43,6 @@ interface MockButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
   statusKey?: string | number
 }
 
-interface MockSwitchProps {
-  checked: boolean
-  label: string
-  disabled?: boolean
-  onChange: (checked: boolean) => void
-}
-
 vi.mock('@/shared/ui', () => ({
   Button: ({
     children,
@@ -66,16 +59,6 @@ vi.mock('@/shared/ui', () => ({
       {loading ? loadingText : children}
     </button>
   ),
-  Switch: ({ checked, label, disabled, onChange }: MockSwitchProps) => (
-    <input
-      type="checkbox"
-      role="switch"
-      aria-label={label}
-      checked={checked}
-      disabled={disabled}
-      onChange={event => onChange(event.target.checked)}
-    />
-  ),
 }))
 
 let container: HTMLDivElement
@@ -88,7 +71,7 @@ describe('ScrcpyDeviceView automation availability', () => {
   beforeEach(() => {
     availabilityMock.isAvailable = true
     vi.mocked(getWebrtcStatus).mockReset().mockResolvedValue({ success: true, data: { installed: true, built: true, serverRunning: false, agentRunning: false } })
-    usePreviewStore.setState({ mode: 'off', quality: 'power', fps: 15, maxSize: 640, bitrateMbps: 1.5, autoStart: false })
+    usePreviewStore.setState({ mode: 'off', quality: 'power', fps: 15, maxSize: 640, bitrateMbps: 1.5 })
     vi.spyOn(HTMLMediaElement.prototype, 'play').mockResolvedValue(undefined)
     webrtcMock.status = 'idle'
     webrtcMock.error = null
@@ -249,12 +232,6 @@ describe('ScrcpyDeviceView automation availability', () => {
     expect(collapseSettings?.getAttribute('aria-expanded')).toBe('true')
     expect(collapseSettings?.getAttribute('aria-controls')).toBe(controlsId)
     expect(document.getElementById(controlsId!)).not.toBeNull()
-
-    const autoStart = container.querySelector<HTMLInputElement>('input[role="switch"][aria-label="重新打开时恢复预览"]')
-    expect(autoStart).not.toBeNull()
-    expect(autoStart?.checked).toBe(false)
-    await act(async () => autoStart?.click())
-    expect(usePreviewStore.getState().autoStart).toBe(true)
   })
 
   it('keeps recovery controls available while blocking new device actions', async () => {

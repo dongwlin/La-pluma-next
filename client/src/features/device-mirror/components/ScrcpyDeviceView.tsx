@@ -6,7 +6,7 @@ import { usePreviewSession } from '../hooks/usePreviewSession'
 import { usePreviewSnapshot } from '../hooks/usePreviewSnapshot'
 import { usePreviewStore } from '../store/previewStore'
 import { qualityPresets, fpsOptions, type QualityPreset } from '../constants'
-import PreviewModeControls, { PreviewAutoStartSetting, PreviewModeSegmented } from './PreviewModeControls'
+import PreviewModeControls, { PreviewModeSegmented } from './PreviewModeControls'
 
 interface ScrcpyDeviceViewProps {
   enabled: boolean
@@ -713,18 +713,6 @@ export default function ScrcpyDeviceView({
                 {settingsDirty ? '画质已修改，重连预览后生效' : '画质调整会在下次连接时生效'}
               </p>
             </div>
-          </div>
-        </section>
-
-        <section className="scrcpy-control-section">
-          <div className="scrcpy-control-header">
-            <div className="scrcpy-control-title">
-              <RotateCw className="h-4 w-4" strokeWidth={1.8} />
-              <span>启动行为</span>
-            </div>
-          </div>
-          <div className="pt-3">
-            <PreviewAutoStartSetting />
           </div>
         </section>
       </aside>}

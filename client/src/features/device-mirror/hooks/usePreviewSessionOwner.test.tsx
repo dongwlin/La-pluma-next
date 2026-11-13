@@ -67,7 +67,7 @@ describe('usePreviewSessionOwner', () => {
     vi.useFakeTimers()
     vi.clearAllMocks()
     mocks.startWebrtc.mockReset().mockResolvedValue(started())
-    usePreviewStore.setState({ mode: 'off', autoStart: false, quality: 'power', fps: 15, maxSize: 640, bitrateMbps: 1.5 })
+    usePreviewStore.setState({ mode: 'off', quality: 'power', fps: 15, maxSize: 640, bitrateMbps: 1.5 })
     window.localStorage.clear()
     visibility = 'visible'
     Object.defineProperty(document, 'visibilityState', { configurable: true, get: () => visibility })
