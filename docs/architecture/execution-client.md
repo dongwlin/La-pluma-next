@@ -96,7 +96,7 @@ const result = await executionController.submitExecution('run_task', ({ idempote
 1. 每次逻辑提交用 `beginExecutionIntent` 取一个幂等键；同一次重试复用 intent，不能生成第二个键。键格式为 `[A-Za-z0-9][A-Za-z0-9._~:-]{0,127}`，由服务端按 `operationId` 分区。
 2. 提交响应通过 `data.runId` 取得身份，`data.run` 可用时立即作为 `trackedRun`；没有 `runId` 的旧同步响应不会被伪造出身份。
 3. 身份写入 `localStorage['la-pluma-execution-identity-v1']`，保留到该 run 进入终态为止。终态后清除持久化身份，本次会话仍可展示最后记录。
-4. `scope` 是调用方自己的领域标签，随身份一起持久化，只用于判断“这个 run 是不是本页面发起的”。它不是服务端字段，不参与身份、幂等分区或键格式；缺省为 `null`，旧记录可正常读取。一个域不应把其它域 `scope` 的 run 展示成自己的执行。身份同时保存 `operationId`（`trackedOperationId`）：同一操作有多个入口时（今日流程的概览快捷入口与日常页），各入口按操作标识共同接管这一次执行，`scope` 只记录是哪个入口发起的。
+4. `scope` 是调用方自己的领域标签，随身份一起持久化，只用于判断“这个 run 是不是本页面发起的”。它不是服务端字段，不参与身份、幂等分区或键格式；缺省为 `null`，旧记录可正常读取。一个域不应把其它域 `scope` 的 run 展示成自己的执行。身份同时保存 `operationId`（`trackedOperationId`）：它让同一流程的多个入口可以认领同一次执行——目前只有日常页对 `run_daily_flow` 按它判定归属，概览与其它域仍按 `scope`，`scope` 只记录是哪个入口发起的。
 5. `settleExecutionIntent` 只接受最新 intent 的响应。较早的提交即使更晚返回，也不会覆盖新 run；较早的快照请求同理，晚到响应由序列号丢弃。
 6. `stopRun` 始终携带 `runId`；终态旧 run 只返回 `alreadyTerminal`，accepted 会被取消而不发设备命令，非当前活动 run 由服务端拒绝。
 
