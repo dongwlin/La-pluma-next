@@ -1,4 +1,4 @@
-import { Copy, X } from 'lucide-react'
+import { X } from 'lucide-react'
 import {
   useEffect,
   useId,
@@ -7,15 +7,28 @@ import {
   type ReactNode,
 } from 'react'
 import { createPortal } from 'react-dom'
-import { Button, IconButton, Loading, useModalLayer } from '@/shared/ui'
+import { IconButton, useModalLayer } from '@/shared/ui'
 import { Modal } from '@/shared/ui/Modal'
-import { useStatusStore } from '@/features/runtime-status'
-import type { CopilotDetailOperator, CopilotDetailTarget } from '../model/copilotDetail'
+import type { CopilotDetailTarget } from '../model/copilotDetail'
 import { COPILOT_DETAIL_LAYER_ID } from './combatPanelTypes'
-import { DetailField, DetailSection } from './CombatCopilotDetailSection'
-import CopilotDescription from './CopilotDescription'
+import { DetailBody, DetailPlaceholder } from './CombatCopilotDetailBody'
 
 const MOBILE_DETAIL_QUERY = '(max-width: 40rem)'
+
+const FOCUSABLE_SELECTOR = [
+  'a[href]',
+  'button:not([disabled])',
+  'input:not([disabled]):not([type="hidden"])',
+  'select:not([disabled])',
+  'textarea:not([disabled])',
+  '[contenteditable="true"]',
+  '[tabindex]:not([tabindex="-1"])',
+].join(',')
+
+function getFocusableElements(container: HTMLElement): HTMLElement[] {
+  return Array.from(container.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR))
+    .filter(element => element.getAttribute('aria-hidden') !== 'true')
+}
 
 export interface CombatCopilotDetailLayerProps {
   target: CopilotDetailTarget | null
@@ -27,8 +40,6 @@ export interface CombatCopilotDetailLayerProps {
 }
 
 const PENDING_TITLE = '作业详情'
-
-const RECOMMENDED_MODE_LABELS = { normal: '普通', raid: '突袭', both: '普通+突袭' }
 
 function useMobileDetailLayout(): boolean {
   const [isMobile, setIsMobile] = useState(() => (
@@ -49,164 +60,6 @@ function useMobileDetailLayout(): boolean {
   return isMobile
 }
 
-function groupOperators(
-  operators: readonly CopilotDetailOperator[],
-): Array<[string, CopilotDetailOperator[]]> {
-  const grouped = new Map<string, CopilotDetailOperator[]>()
-  for (const operator of operators) {
-    const key = operator.group?.trim() ?? ''
-    const list = grouped.get(key)
-    if (list) list.push(operator)
-    else grouped.set(key, [operator])
-  }
-  return [...grouped.entries()]
-}
-
-function requirementLabels(operator: CopilotDetailOperator): string[] {
-  const labels: string[] = []
-  if (typeof operator.elite === 'number') labels.push(`精英 ${operator.elite}`)
-  if (typeof operator.level === 'number') labels.push(`等级 ${operator.level}`)
-  if (typeof operator.skillLevel === 'number') labels.push(`技能 ${operator.skillLevel}`)
-  if (operator.module) labels.push(`模组 ${operator.module}`)
-  return labels
-}
-
-function DetailBody({ target, children }: { target: CopilotDetailTarget; children?: ReactNode }) {
-  const setStatusMessage = useStatusStore(state => state.setMessage)
-  const operators = target.operators ?? []
-  const groups = target.groups ?? []
-  const groupedOperators = groupOperators(operators)
-  const stageLabel = target.stage ?? target.stageId
-
-  const handleCopy = async () => {
-    if (!target.uri) return
-    try {
-      await navigator.clipboard.writeText(target.uri)
-      setStatusMessage('已复制作业链接', 'success')
-    } catch {
-      setStatusMessage('复制失败，请手动选择链接', 'error')
-    }
-  }
-
-  return (
-    <div className="combat-copilot-detail-content">
-      {target.statusLabel && (
-        <span className="combat-copilot-detail-state">{target.statusLabel}</span>
-      )}
-
-      <dl className="combat-copilot-detail-grid">
-        {stageLabel && (
-          <DetailField label="关卡">
-            <span>{stageLabel}</span>
-            {target.stageId && target.stageId !== stageLabel && (
-              <code className="combat-copilot-detail-code">{target.stageId}</code>
-            )}
-          </DetailField>
-        )}
-        {typeof target.apCost === 'number' && (
-          <DetailField label="理智">{target.apCost}</DetailField>
-        )}
-        {target.presetFormation !== undefined && (
-          <DetailField label="编队">
-            {target.presetFormation ? '预设编队 · 仅普通' : '按执行设置自动编队'}
-          </DetailField>
-        )}
-        {target.sourceLabel && <DetailField label="来源">{target.sourceLabel}</DetailField>}
-        {target.recommendedMode && (
-          <DetailField label="作业标注">{RECOMMENDED_MODE_LABELS[target.recommendedMode]}</DetailField>
-        )}
-        {target.supportsRaid !== undefined && (
-          <DetailField label="突袭">
-            {target.supportsRaid ? '支持突袭' : '不支持突袭'}
-          </DetailField>
-        )}
-        {target.completedModes?.length ? (
-          <DetailField label="已完成模式" wide>
-            <span className="combat-copilot-detail-tags">
-              {target.completedModes.map(mode => (
-                <span key={mode} className="combat-copilot-tag is-complete">
-                  {mode === 'raid' ? '突袭已完成' : '普通已完成'}
-                </span>
-              ))}
-            </span>
-          </DetailField>
-        ) : null}
-        {target.uri && (
-          <DetailField label="作业链接" wide>
-            <span className="combat-copilot-detail-link">
-              <code>{target.uri}</code>
-              <Button
-                onClick={() => void handleCopy()}
-                variant="ghost"
-                size="sm"
-                className="min-h-11 shrink-0"
-                icon={<Copy size={14} aria-hidden="true" />}
-              >
-                复制链接
-              </Button>
-            </span>
-          </DetailField>
-        )}
-      </dl>
-
-      {target.details && (
-        <DetailSection title="作业描述">
-          <CopilotDescription text={target.details} />
-        </DetailSection>
-      )}
-
-      {target.error && (
-        <DetailSection title="失败原因">
-          <p role="alert" className="combat-copilot-detail-error">{target.error}</p>
-        </DetailSection>
-      )}
-
-      {operators.length > 0 && (
-        <DetailSection title="干员需求">
-          <div className="combat-copilot-detail-operators">
-            {groupedOperators.map(([group, members]) => (
-              <div key={group || 'fixed'} className="combat-copilot-detail-operator-group">
-                {group && <h4 className="combat-copilot-detail-operator-group-name">{group}</h4>}
-                <ul className="combat-copilot-detail-operator-list">
-                  {members.map((operator, index) => (
-                    <li key={`${operator.name}-${index}`} className="combat-copilot-detail-operator">
-                      <span className="combat-copilot-detail-operator-name">{operator.name}</span>
-                      <span className="combat-copilot-detail-requirements">
-                        {requirementLabels(operator).map(label => (
-                          <span key={label} className="combat-copilot-detail-requirement">{label}</span>
-                        ))}
-                      </span>
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            ))}
-          </div>
-        </DetailSection>
-      )}
-
-      {groups.length > 0 && (
-        <DetailSection title="干员组">
-          <ul className="combat-copilot-detail-group-list">
-            {groups.map(group => (
-              <li key={group} className="combat-copilot-detail-group">{group}</li>
-            ))}
-          </ul>
-        </DetailSection>
-      )}
-      {children}
-    </div>
-  )
-}
-
-function DetailPlaceholder() {
-  return (
-    <div className="flex min-h-40 items-center justify-center px-2">
-      <Loading text="正在加载作业…" />
-    </div>
-  )
-}
-
 export default function CombatCopilotDetailLayer({
   target,
   onClose,
@@ -223,8 +76,9 @@ export default function CombatCopilotDetailLayer({
 
   const isOpen = target !== null || loading
   const title = target?.title ?? PENDING_TITLE
+  const isModalDrawer = stacked && isOpen && !isMobile
 
-  useModalLayer(layerRef, stacked && isOpen && !isMobile)
+  useModalLayer(layerRef, isModalDrawer)
 
   useEffect(() => {
     onCloseRef.current = onClose
@@ -264,6 +118,34 @@ export default function CombatCopilotDetailLayer({
     }
   }, [isOpen, isMobile])
 
+  useEffect(() => {
+    if (!isModalDrawer) return
+    const handleTabKey = (event: KeyboardEvent) => {
+      if (event.key !== 'Tab' || event.defaultPrevented) return
+      const panel = panelRef.current
+      const active = document.activeElement
+      if (!panel || !(active instanceof Node) || !panel.contains(active)) return
+      const focusable = getFocusableElements(panel)
+      const first = focusable[0]
+      const last = focusable[focusable.length - 1]
+      if (!first || !last) {
+        event.preventDefault()
+        panel.focus({ preventScroll: true })
+        return
+      }
+      const wraps = event.shiftKey
+        ? active === first || active === panel
+        : active === last || active === panel
+      if (!wraps) return
+      const target = event.shiftKey ? last : first
+      event.preventDefault()
+      target.focus({ preventScroll: true })
+    }
+
+    document.addEventListener('keydown', handleTabKey)
+    return () => document.removeEventListener('keydown', handleTabKey)
+  }, [isModalDrawer])
+
   if (isMobile) {
     return (
       <Modal
@@ -287,7 +169,7 @@ export default function CombatCopilotDetailLayer({
         ref={panelRef}
         id={COPILOT_DETAIL_LAYER_ID}
         role="dialog"
-        aria-modal="false"
+        aria-modal={isModalDrawer ? 'true' : 'false'}
         aria-labelledby={titleId}
         tabIndex={-1}
         className="combat-copilot-detail-drawer surface-panel"

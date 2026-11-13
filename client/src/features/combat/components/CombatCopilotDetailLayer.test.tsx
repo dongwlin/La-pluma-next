@@ -74,13 +74,29 @@ describe('CombatCopilotDetailLayer', () => {
     vi.restoreAllMocks()
   })
 
-  const renderLayer = async (target: CopilotDetailTarget | null, loading = false) => {
+  const renderLayer = async (
+    target: CopilotDetailTarget | null,
+    loading = false,
+    stacked = false,
+  ) => {
     await act(async () => {
-      root.render(<CombatCopilotDetailLayer target={target} loading={loading} onClose={onClose} />)
+      root.render(
+        <CombatCopilotDetailLayer
+          target={target}
+          loading={loading}
+          onClose={onClose}
+          stacked={stacked}
+        />,
+      )
     })
   }
 
   const dialog = () => document.querySelector<HTMLElement>('[role="dialog"]')
+
+  const closeButton = () => dialog()?.querySelector<HTMLButtonElement>('button[aria-label="关闭详情"]') ?? null
+
+  const copyButton = () => Array.from(dialog()?.querySelectorAll('button') ?? [])
+    .find(button => button.textContent?.trim() === '复制链接') ?? null
 
   it('opens a non-modal desktop drawer, focuses it and returns focus on close', async () => {
     await renderLayer(null)
@@ -125,6 +141,73 @@ describe('CombatCopilotDetailLayer', () => {
     await renderLayer(null)
 
     expect(dialog()).toBeNull()
+  })
+
+  it('exposes modal semantics once the desktop drawer is stacked over another layer', async () => {
+    await renderLayer(richTarget, false, true)
+
+    expect(dialog()?.getAttribute('aria-modal')).toBe('true')
+    expect(document.body.style.overflow).toBe('hidden')
+  })
+
+  it('keeps Tab inside the stacked drawer and wraps at both ends', async () => {
+    await renderLayer(richTarget, false, true)
+    const panel = dialog()
+    const close = closeButton()
+    const copy = copyButton()
+    expect(close).not.toBeNull()
+    expect(copy).not.toBeNull()
+
+    copy?.focus()
+    const wrapForward = new KeyboardEvent('keydown', { key: 'Tab', bubbles: true, cancelable: true })
+    document.dispatchEvent(wrapForward)
+    expect(wrapForward.defaultPrevented).toBe(true)
+    expect(document.activeElement).toBe(close)
+
+    close?.focus()
+    const forwardInside = new KeyboardEvent('keydown', { key: 'Tab', bubbles: true, cancelable: true })
+    document.dispatchEvent(forwardInside)
+    expect(forwardInside.defaultPrevented).toBe(false)
+    expect(document.activeElement).toBe(close)
+
+    const wrapBackward = new KeyboardEvent('keydown', {
+      key: 'Tab',
+      shiftKey: true,
+      bubbles: true,
+      cancelable: true,
+    })
+    document.dispatchEvent(wrapBackward)
+    expect(wrapBackward.defaultPrevented).toBe(true)
+    expect(document.activeElement).toBe(copy)
+
+    panel?.focus()
+    const fromPanelForward = new KeyboardEvent('keydown', { key: 'Tab', bubbles: true, cancelable: true })
+    document.dispatchEvent(fromPanelForward)
+    expect(fromPanelForward.defaultPrevented).toBe(true)
+    expect(document.activeElement).toBe(close)
+
+    panel?.focus()
+    const fromPanelBackward = new KeyboardEvent('keydown', {
+      key: 'Tab',
+      shiftKey: true,
+      bubbles: true,
+      cancelable: true,
+    })
+    document.dispatchEvent(fromPanelBackward)
+    expect(fromPanelBackward.defaultPrevented).toBe(true)
+    expect(document.activeElement).toBe(copy)
+  })
+
+  it('leaves Tab alone while the drawer is not stacked', async () => {
+    await renderLayer(richTarget)
+    const copy = copyButton()
+    copy?.focus()
+
+    const event = new KeyboardEvent('keydown', { key: 'Tab', bubbles: true, cancelable: true })
+    document.dispatchEvent(event)
+
+    expect(event.defaultPrevented).toBe(false)
+    expect(document.activeElement).toBe(copy)
   })
 
   it('closes on an outside press but keeps presses inside the drawer', async () => {
