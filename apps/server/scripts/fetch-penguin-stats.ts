@@ -6,7 +6,7 @@
  * - /PenguinStats/api/v2/result/matrix  掉落矩阵：每关每物品的样本次数与总掉落数
  * - /PenguinStats/api/v2/zones  章节表：用于给关卡标记章节类型（主线/资源/别传等）
  *
- * 输出 server/data/penguin-drop-data.json：
+ * 输出 apps/server/data/penguin-drop-data.json：
  * - stages：stageId -> { code, apCost, zoneId, zoneType }
  * - dropMatrix：物品Id -> 该物品在各关卡的 { stageId, expected 期望掉落/次, samples 样本数 }（按样本数降序）
  *

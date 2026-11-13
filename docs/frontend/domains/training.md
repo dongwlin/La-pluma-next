@@ -378,7 +378,7 @@ applyTrainingPlan({ plan: getOpenStagePlan(plan), settings: 所有者当前 sett
 
 ### 回归测试
 
-以下路径相对于 `client/src/`：领域回归在 `features/training` 与 `pages/training`；跨域联动回归在 `pages/dashboard/Dashboard.test.tsx`、`pages/automation/AutomationTasks.config.test.tsx` 与 `features/resource-invalidation/**`。入口命令见[验证命令](#验证命令)。
+以下路径相对于 `apps/web/src/`：领域回归在 `features/training` 与 `pages/training`；跨域联动回归在 `pages/dashboard/Dashboard.test.tsx`、`pages/automation/AutomationTasks.config.test.tsx` 与 `features/resource-invalidation/**`。入口命令见[验证命令](#验证命令)。
 
 关键不变量：
 

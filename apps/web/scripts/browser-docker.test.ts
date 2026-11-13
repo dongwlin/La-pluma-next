@@ -1,3 +1,4 @@
+import { resolve } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 const { spawnSync } = vi.hoisted(() => ({ spawnSync: vi.fn() }))
@@ -43,9 +44,9 @@ afterEach(() => {
 
 describe('Docker browser test launchers', () => {
   it.each([
-    ['../../scripts/visual-docker.mjs', 'client/tests/visual/playwright.config.ts'],
-    ['./integration-docker.ts', 'client/tests/integration/playwright.config.ts'],
-    ['./performance-docker.ts', 'client/tests/performance/playwright.config.ts'],
+    ['../../../scripts/visual-docker.mjs', 'apps/web/tests/visual/playwright.config.ts'],
+    ['./integration-docker.ts', 'apps/web/tests/integration/playwright.config.ts'],
+    ['./performance-docker.ts', 'apps/web/tests/performance/playwright.config.ts'],
   ] as const)('isolates %s from host ports and preserves test arguments and failure status', async (script, config) => {
     let dockerArgs: string[] = []
     spawnSync.mockImplementation((command: string, args: string[]) => {
@@ -62,6 +63,7 @@ describe('Docker browser test launchers', () => {
     expect(dockerArgs).not.toContain('--network=host')
     expect(dockerArgs.some(arg => arg === '-p' || arg.startsWith('--publish'))).toBe(false)
     expect(dockerArgs).toContain('--ipc=host')
+    expect(dockerArgs).toContain(`${resolve(import.meta.dirname, '../../..')}:/work`)
     expect(dockerArgs).toContain('mcr.microsoft.com/playwright:v1.64.1-noble')
     expect(dockerArgs.slice(-4)).toEqual(['--config', config, '--grep', 'cross-page'])
   })

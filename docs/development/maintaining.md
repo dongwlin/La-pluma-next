@@ -50,13 +50,13 @@ La Pluma Next 是 [mps233/La-pluma](https://github.com/mps233/La-pluma) 的社�
 
 ## 外部运行时依赖
 
-WebRTC 安装会从 `hqw700/ScrcpyOverWebRTC` 的 GitHub Release 下载 `cloudphone-v0.4.1.zip`，并校验固定 SHA-256。为保证长期可安装，建议把该压缩包镜像到本仓库的 Release，并在上游资产失效时更新 `server/src/services/webrtcRuntime.ts` 中的 `RELEASE_URL`。
+WebRTC 安装会从 `hqw700/ScrcpyOverWebRTC` 的 GitHub Release 下载 `cloudphone-v0.4.1.zip`，并校验固定 SHA-256。为保证长期可安装，建议把该压缩包镜像到本仓库的 Release，并在上游资产失效时更新 `apps/server/src/services/webrtcRuntime.ts` 中的 `RELEASE_URL`。
 
 ## 项目文档与过程档案
 
 主仓库只维护现行架构、公开契约、兼容约束、开发/运维方法及可复现测试入口。阶段计划、任务交接、实施日志、逐项验收和一次性测试结果属于过程档案，在仓库外的私有工作区维护，不提交到主仓库。需要长期保留的结论应独立转写为当前约束，并由实现或回归测试支持。
 
-性能采样结果默认写入 Git 忽略的 `client/test-results/performance/`；长期文档只描述采样方法与指标限制，不能把某次基准数据当作未来版本的持续保证。
+性能采样结果默认写入 Git 忽略的 `apps/web/test-results/performance/`；长期文档只描述采样方法与指标限制，不能把某次基准数据当作未来版本的持续保证。
 
 ### 公开文档准入
 
@@ -98,6 +98,6 @@ WebRTC 安装会从 `hqw700/ScrcpyOverWebRTC` 的 GitHub Release 下载 `cloudph
 | 共享资源所有权、跨域失效作用域与收发映射 | [资源归属与失效端口](../architecture/resource-ownership.md) |
 | 旧入口消费者、支持窗口与移除条件 | [兼容入口](../frontend/compatibility.md) |
 | 领域特有的面板、命令、竞态与回归 | 各领域文档；通用规则链接到上述契约 |
-| 日常检查、集成场景与性能方法 | [开发指南](README.md)、[跨页集成](integration.md)、[性能采样说明](../../client/tests/performance/README.md) |
+| 日常检查、集成场景与性能方法 | [开发指南](README.md)、[跨页集成](integration.md)、[性能采样说明](../../apps/web/tests/performance/README.md) |
 
 文件移动或合并时，同步修复索引、相对路径、章节锚点和源码/脚本中的文档引用。已完成任务的历史证据应固定到交付提交，避免用当前路径冒充仍在维护的文档；不为旧路径建立第二份正文或长期占位文件。

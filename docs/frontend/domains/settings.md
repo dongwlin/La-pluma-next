@@ -508,7 +508,7 @@ section 只控制渲染哪个面板：三个编辑面板在所有 section 下保
 
 ### 回归测试
 
-以下路径相对于 `client/src/`：领域回归在 `features/settings` 与 `pages/settings`，物品图标 epoch 回归在 `features/game-data/model/itemIconCache.test.ts`；入口命令见[验证命令](#验证命令)。
+以下路径相对于 `apps/web/src/`：领域回归在 `features/settings` 与 `pages/settings`，物品图标 epoch 回归在 `features/game-data/model/itemIconCache.test.ts`；入口命令见[验证命令](#验证命令)。
 
 关键不变量：
 

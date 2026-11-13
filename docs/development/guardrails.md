@@ -2,7 +2,7 @@
 
 > [← 返回文档索引](../README.md)
 
-本文说明自动检查：功能域依赖环、公开面与分层方向、非页面微域的反向依赖、页面裸副作用，以及 hooks / model / components / pages 的规模观察与预算。规则实现在 `client/scripts/guardrails.ts`，CLI 为 `client/scripts/check-guardrails.ts`，已接入客户端 `verify`。
+本文说明自动检查：功能域依赖环、公开面与分层方向、非页面微域的反向依赖、页面裸副作用，以及 hooks / model / components / pages 的规模观察与预算。规则实现在 `apps/web/scripts/guardrails.ts`，CLI 为 `apps/web/scripts/check-guardrails.ts`，已接入客户端 `verify`。
 
 它只做静态事实判断，不证明运行时所有权，也不替代[执行客户端](../architecture/execution-client.md)、[配置持久化协调器](../architecture/config-persistence.md)或[Query 缓存](../architecture/query-cache.md)的行为契约。
 
@@ -18,7 +18,7 @@
 
 范围：
 
-- 依赖检查读取 `client/src/**/*.{ts,tsx}` 的生产源码；`*.test.*` 与 `*.spec.*` 不进入运行时依赖图。测试可以为隔离而接触内部实现，不会进入生产包。
+- 依赖检查读取 `apps/web/src/**/*.{ts,tsx}` 的生产源码；`*.test.*` 与 `*.spec.*` 不进入运行时依赖图。测试可以为隔离而接触内部实现，不会进入生产包。
 - 页面检查只针对 `pages/*/*.{ts,tsx}` 生产文件；`components/`、`hooks/`、`model/` 等领域容器不受页面限制。
 - 规模统计 `pages/*` 与 `features/*/{hooks,model,components}` 下的生产源码；`shared/`、`app/`、`api/`、`store/`、`utils/` 不在规模分类内。
 
@@ -47,7 +47,7 @@
 
 ### 2.2 与 ESLint 的分工
 
-`client/eslint.config.js` 继续负责编辑器内的快速反馈：拦截 `@/features/<domain>/...` 深路径、features/shared 反向依赖 app 或 pages、shared 依赖 features/pages，以及 pages 反向依赖 app。页面测试（`src/pages/**/*.test.tsx`）允许深路径到被测域内部以构造领域状态，不进入产物；CLI 的生产依赖图同样跳过测试文件。CLI 额外解析相对路径、目录 index 与动态 import，因此能发现 ESLint 字符串规则看不到的公开面绕过与真实域环。两处规则的权威事实都来自 `app → pages → features → shared`，新增边界时先更新本文与脚本，再考虑 ESLint 的即时提示。
+`apps/web/eslint.config.js` 继续负责编辑器内的快速反馈：拦截 `@/features/<domain>/...` 深路径、features/shared 反向依赖 app 或 pages、shared 依赖 features/pages，以及 pages 反向依赖 app。页面测试（`src/pages/**/*.test.tsx`）允许深路径到被测域内部以构造领域状态，不进入产物；CLI 的生产依赖图同样跳过测试文件。CLI 额外解析相对路径、目录 index 与动态 import，因此能发现 ESLint 字符串规则看不到的公开面绕过与真实域环。两处规则的权威事实都来自 `app → pages → features → shared`，新增边界时先更新本文与脚本，再考虑 ESLint 的即时提示。
 
 ## 3. 页面职责
 
@@ -80,7 +80,7 @@
 
 ### 4.2 预算语义
 
-`client/size-budget.json` 冻结每个分类的阈值、「超过阈值的文件集合」，以及各域（`pages/<domain>` 与 `features/<domain>`）的 pages / hooks+model+components 总行数：
+`apps/web/size-budget.json` 冻结每个分类的阈值、「超过阈值的文件集合」，以及各域（`pages/<domain>` 与 `features/<domain>`）的 pages / hooks+model+components 总行数：
 
 - 当前超阈值文件都在基线内时通过；
 - 新增一个超过本类阈值、且不在基线内的文件时失败；
@@ -113,7 +113,7 @@ pnpm --filter la-pluma-next-client verify
 
 本地 `pnpm verify` 包含护栏与样式预算 `stylelint:ratchet`；CI 将它们作为客户端检查的独立步骤运行。
 
-回归集中在 `client/scripts/guardrails.test.ts`：
+回归集中在 `apps/web/scripts/guardrails.test.ts`：
 
 - 正例：跨域公开面 import、同域相对 import、shared import、领域容器使用 fetch/计时器、页面经 `@/features/<domain>` 调用领域 hook、命名空间/动态导入只用领域 hook、页面仅 type-only 导入传输层类型、类型引用与 `typeof fetch` 等 TypeQuery、模块级同名本地 helper、import/export 别名与非全局赋值解构不误报；
 - 反例：深路径、跨域相对绕过、shared→features、features→app、features→根入口、task-execution→runtime-status、双域依赖环、页面直接 import 传输层、页面经公开面（含 `export *`、同文件 `import`/`export` 的本地命名/默认/命名空间转发、`export * as`、命名空间、字面量动态 import）导入领域端点、页面导入本域 `@/features/<domain>/api` 或经根入口命名空间/动态 import 调用本域端点、页面使用 `fetch`/`WebSocket`/`localStorage`/`setInterval`（含 `window[...]` 计算属性与 `['fetch']` 字面量计算键、`window as any`/非空断言/括号包装、从全局对象变量声明/解构参数默认值/赋值解构（含嵌套对象模式）重命名、`window.window` 属性链、`window.top`/`parent` 代理与 `document.defaultView` 及其 `window.document` 变体）、命名空间/动态 import 经 as/非空/括号/satisfies 包装、局部别名、参数默认值/赋值解构/字面量计算键或 `.then` 包装回调访问端点、同域页面搬移启发式、新增超阈值文件；

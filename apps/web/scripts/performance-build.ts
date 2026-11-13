@@ -1,17 +1,17 @@
 #!/usr/bin/env node
 import { spawnSync } from 'node:child_process'
 import { createHash } from 'node:crypto'
-import { mkdirSync, readFileSync, readdirSync, symlinkSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, readFileSync, readdirSync, symlinkSync, writeFileSync } from 'node:fs'
 import { createRequire } from 'node:module'
 import path from 'node:path'
-import { fileURLToPath } from 'node:url'
 import { build, loadConfigFromFile } from 'vite'
 import { createProfilingOverlay } from '../tests/performance/profiling-overlay.ts'
 
-const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..')
+const webRoot = path.resolve(import.meta.dirname, '..')
+const repoRoot = path.resolve(webRoot, '../..')
 const [ref, sourceRootArgument, distArgument] = process.argv.slice(2)
 if (!ref || !sourceRootArgument || !distArgument) {
-  throw new Error('Usage: node client/scripts/performance-build.ts <commit> <new-source-directory> <dist-directory>')
+  throw new Error('Usage: node apps/web/scripts/performance-build.ts <commit> <new-source-directory> <dist-directory>')
 }
 const sourceRoot = path.resolve(sourceRootArgument)
 const dist = path.resolve(distArgument)
@@ -28,27 +28,29 @@ const archive = git(['archive', sourceCommit])
 const unpack = spawnSync('tar', ['-x', '-C', sourceRoot], { input: archive })
 if (unpack.status !== 0) throw new Error(unpack.stderr.toString())
 symlinkSync(path.join(repoRoot, 'node_modules'), path.join(sourceRoot, 'node_modules'), 'dir')
-const sourceClient = path.join(sourceRoot, 'client')
-symlinkSync(path.join(repoRoot, 'client/node_modules'), path.join(sourceClient, 'node_modules'), 'dir')
-const loaded = await loadConfigFromFile({ command: 'build', mode: 'production' }, path.join(sourceClient, 'vite.config.ts'))
+const sourceWebRoot = existsSync(path.join(sourceRoot, 'apps/web/vite.config.ts'))
+  ? path.join(sourceRoot, 'apps/web')
+  : path.join(sourceRoot, 'client')
+symlinkSync(path.join(webRoot, 'node_modules'), path.join(sourceWebRoot, 'node_modules'), 'dir')
+const loaded = await loadConfigFromFile({ command: 'build', mode: 'production' }, path.join(sourceWebRoot, 'vite.config.ts'))
 if (!loaded) throw new Error('Unable to load source Vite config')
-const require = createRequire(path.join(repoRoot, 'client/package.json'))
+const require = createRequire(path.join(webRoot, 'package.json'))
 await build({
   ...loaded.config,
   configFile: false,
-  root: sourceClient,
+  root: sourceWebRoot,
   mode: 'production',
   resolve: {
     ...loaded.config.resolve,
     alias: [
       { find: /^react-dom\/client$/, replacement: require.resolve('react-dom/profiling') },
-      { find: '@', replacement: path.join(sourceClient, 'src') },
+      { find: '@', replacement: path.join(sourceWebRoot, 'src') },
     ],
   },
-  plugins: [...(loaded.config.plugins ?? []), createProfilingOverlay(path.join(sourceClient, 'src/main.tsx'))],
+  plugins: [...(loaded.config.plugins ?? []), createProfilingOverlay(path.join(sourceWebRoot, 'src/main.tsx'))],
   build: { ...loaded.config.build, outDir: dist, emptyOutDir: true },
 })
-const overlayFile = path.join(repoRoot, 'client/tests/performance/profiling-overlay.ts')
+const overlayFile = path.join(webRoot, 'tests/performance/profiling-overlay.ts')
 const files: string[] = []
 const collect = (directory: string) => {
   for (const entry of readdirSync(directory, { withFileTypes: true })) {

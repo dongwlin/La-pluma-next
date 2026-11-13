@@ -229,11 +229,11 @@ queryFn: async ({ signal }) => unwrapApiResponse(await getDepotData(signal))
 
 | 文件 | 覆盖 |
 | --- | --- |
-| `client/src/shared/query/queryClient.test.ts` | 默认 staleTime/gcTime/重取/网络模式、重试分类与上限、退避、写请求不重试 |
-| `client/src/shared/query/queryKeys.test.ts` | `[domain, resource, ...params]` 形状、同域 key 结构一致 |
-| `client/src/app/providers/QueryProvider.test.tsx` | Provider 重建保留同一缓存、同 key 单次请求与共享缓存、页面卸载/重挂载；Activity 隐藏后观察者注销、新鲜数据复用、超过 staleTime 重取、超过 gcTime 回收后重新加载；文档焦点不重取、重连重取过期资源 |
-| `client/src/app/App.test.tsx` | Activity 保活、隐藏工作区错误边界与恢复 |
-| `client/src/features/automation/components/NotificationSettings.test.tsx` | 通知配置 Query 读取与失败、保存成功后 `setQueryData` 回写、测试通知命令与会话清理 |
+| `apps/web/src/shared/query/queryClient.test.ts` | 默认 staleTime/gcTime/重取/网络模式、重试分类与上限、退避、写请求不重试 |
+| `apps/web/src/shared/query/queryKeys.test.ts` | `[domain, resource, ...params]` 形状、同域 key 结构一致 |
+| `apps/web/src/app/providers/QueryProvider.test.tsx` | Provider 重建保留同一缓存、同 key 单次请求与共享缓存、页面卸载/重挂载；Activity 隐藏后观察者注销、新鲜数据复用、超过 staleTime 重取、超过 gcTime 回收后重新加载；文档焦点不重取、重连重取过期资源 |
+| `apps/web/src/app/App.test.tsx` | Activity 保活、隐藏工作区错误边界与恢复 |
+| `apps/web/src/features/automation/components/NotificationSettings.test.tsx` | 通知配置 Query 读取与失败、保存成功后 `setQueryData` 回写、测试通知命令与会话清理 |
 
 基础设施的针对性复现命令（仓库根目录）：
 

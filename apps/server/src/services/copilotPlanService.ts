@@ -26,7 +26,7 @@ const logger = createLogger('CopilotPlan');
 
 const dataDir = fileURLToPath(new URL('../../data/', import.meta.url));
 // 作业进度是共享 JSON 状态：读改写经进度存储按路径排队执行；
-// 默认位置保持 server/data/copilot-progress.json，可用环境变量注入隔离。
+// 默认位置保持 apps/server/data/copilot-progress.json，可用环境变量注入隔离。
 const progressStore = createCopilotProgressStore({
   progressPath: process.env.LA_PLUMA_COPILOT_PROGRESS_STORE || join(dataDir, 'copilot-progress.json')
 });

@@ -110,14 +110,12 @@ describe('resolveAppPaths', () => {
     assert.equal(paths.dropRecordsDir, join(serverRoot, 'data', 'drop-records'));
     assert.equal(paths.executionLockPath, join(serverRoot, 'data', 'maa-execution.lock'));
     assert.equal(paths.trainingDataDir, join(serverRoot, 'data'));
-    assert.equal(paths.frontendDistDir, resolve(serverRoot, '..', 'client', 'dist'));
+    assert.equal(paths.frontendDistDir, resolve(serverRoot, '..', 'web', 'dist'));
   });
 
   it('anchors the default server root at the server package directory, not src/', () => {
     const paths = resolveAppPaths({ env: {} });
 
-    // 包目录名是布局契约（workspace 声明 packages: client/server）：
-    // 默认锚点必须停在 server/，否则运行数据会静默写入 server/src/data。
     assert.equal(basename(paths.serverRoot), 'server');
     assert.equal(resolve(paths.serverRoot, 'src', 'config', '__tests__'), testDir);
     assert.equal(paths.appDataDir, join(paths.serverRoot, 'data'));
@@ -178,7 +176,7 @@ describe('resolveAppPaths', () => {
 
     assert.equal(paths.serverRoot, '/tmp/la-pluma-sandbox/server');
     assert.equal(paths.appDataDir, '/tmp/la-pluma-sandbox/server/data');
-    assert.equal(paths.frontendDistDir, '/tmp/la-pluma-sandbox/client/dist');
+    assert.equal(paths.frontendDistDir, '/tmp/la-pluma-sandbox/web/dist');
   });
 });
 

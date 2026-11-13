@@ -2,22 +2,22 @@
 
 > [← 返回文档索引](../README.md)
 
-浏览器实时预览不直连上游 ScrcpyOverWebRTC：连接先经过应用同源的 `/webrtc-signaling` 信令网关，再由网关代理到本机回环上的上游信令服务。权威实现在 `server/src/services/webrtcSignalingGateway.ts`、`webrtcService.ts` 与 `webrtcRuntime.ts`。部署环境变量、上游端口边界与通用鉴权规则见[部署指南](../guides/deployment.md)；预览与 Run 执行的关系见[执行身份与生命周期契约](../architecture/execution-lifecycle.md)；前端会话所有权见[前端架构与所有权](../frontend/README.md)。
+浏览器实时预览不直连上游 ScrcpyOverWebRTC：连接先经过应用同源的 `/webrtc-signaling` 信令网关，再由网关代理到本机回环上的上游信令服务。权威实现在 `apps/server/src/services/webrtcSignalingGateway.ts`、`webrtcService.ts` 与 `webrtcRuntime.ts`。部署环境变量、上游端口边界与通用鉴权规则见[部署指南](../guides/deployment.md)；预览与 Run 执行的关系见[执行身份与生命周期契约](../architecture/execution-lifecycle.md)；前端会话所有权见[前端架构与所有权](../frontend/README.md)。
 
 ## 链路总览
 
-1. 预览启停与状态经 `/api/agent` 下的预览 router 进入（`server/src/routes/agentPreviewRoutes.ts` 只做端点映射，`server/src/controllers/agentPreviewController.ts` 做 HTTP 适配）；服务端经生命周期队列启动信令服务与设备端 Agent，启动响应带同源协议描述 `websocket: /webrtc-signaling/connect_client?token=` 等（`server/src/controllers/agentPreviewController.ts:66-73`）。
-2. 浏览器向 `POST /webrtc-signaling/api/login` 换取一次性票据。这是上游管理面唯一经应用端口暴露的部分：信令路径的其余请求一律固定 JSON 404，上游管理界面、`/api` 与 `/devices` 不外露（`server/src/app.ts:126-138`）。
-3. 网关持票据换得的上游 token，把只含 `connect_client` 的 WebSocket 升级代理到 `127.0.0.1:$LA_PLUMA_WEBRTC_PORT`（默认 8443）的上游监听（`server/src/services/webrtcSignalingGateway.ts:150-162`、`server/src/services/webrtcService.ts:44`）。
+1. 预览启停与状态经 `/api/agent` 下的预览 router 进入（`apps/server/src/routes/agentPreviewRoutes.ts` 只做端点映射，`apps/server/src/controllers/agentPreviewController.ts` 做 HTTP 适配）；服务端经生命周期队列启动信令服务与设备端 Agent，启动响应带同源协议描述 `websocket: /webrtc-signaling/connect_client?token=` 等（`apps/server/src/controllers/agentPreviewController.ts:66-73`）。
+2. 浏览器向 `POST /webrtc-signaling/api/login` 换取一次性票据。这是上游管理面唯一经应用端口暴露的部分：信令路径的其余请求一律固定 JSON 404，上游管理界面、`/api` 与 `/devices` 不外露（`apps/server/src/app.ts:126-138`）。
+3. 网关持票据换得的上游 token，把只含 `connect_client` 的 WebSocket 升级代理到 `127.0.0.1:$LA_PLUMA_WEBRTC_PORT`（默认 8443）的上游监听（`apps/server/src/services/webrtcSignalingGateway.ts:150-162`、`apps/server/src/services/webrtcService.ts:44`）。
 4. 每个升级连接登记一个 viewer 租约，连接关闭或网关关闭时释放（`webrtcSignalingGateway.ts:227-247,299-305`）。
 
 预览与截图只管理预览基础设施，不参与设备自动化执行租约（`docs/architecture/execution-lifecycle.md` 第 6 节）。
 
-网关路径固定挂在同源根路径，不随 `LA_PLUMA_BASE_PATH` 子路径偏移：生产静态资源把信令路径列入保留路径，先于 SPA fallback 处理（`server/src/app.ts:200-218`）。工作目录 `LA_PLUMA_WEBRTC_DIR` 默认 `$HOME/ScrcpyOverWebRTC`，信令服务、TURN 与设备端 Agent 的日志都写在该目录（`webrtcService.ts:43,663-669`）。
+网关路径固定挂在同源根路径，不随 `LA_PLUMA_BASE_PATH` 子路径偏移：生产静态资源把信令路径列入保留路径，先于 SPA fallback 处理（`apps/server/src/app.ts:200-218`）。工作目录 `LA_PLUMA_WEBRTC_DIR` 默认 `$HOME/ScrcpyOverWebRTC`，信令服务、TURN 与设备端 Agent 的日志都写在该目录（`webrtcService.ts:43,663-669`）。
 
 ## 一次性票据与升级代理
 
-- 票据签发先用 `LA_PLUMA_WEBRTC_USERNAME` / `LA_PLUMA_WEBRTC_PASSWORD`（缺省沿用上游出厂 `admin` / `admin123`，不生成不轮换）从回环地址登录上游换取 token；任何上游失败都返回固定 503，不回显上游错误或凭据（`webrtcSignalingGateway.ts:175-199`、`server/src/config/webrtcCredentials.ts:44-56`）。
+- 票据签发先用 `LA_PLUMA_WEBRTC_USERNAME` / `LA_PLUMA_WEBRTC_PASSWORD`（缺省沿用上游出厂 `admin` / `admin123`，不生成不轮换）从回环地址登录上游换取 token；任何上游失败都返回固定 503，不回显上游错误或凭据（`webrtcSignalingGateway.ts:175-199`、`apps/server/src/config/webrtcCredentials.ts:44-56`）。
 - 票据 TTL 15 秒、未决上限 256 张：签发前清理过期票据，满了删除最旧；响应 `{ token, expiresInMs }` 且 `Cache-Control: no-store`（`webrtcSignalingGateway.ts:32-34,168-195`）。
 - 升级校验（`parseClientUpgrade`，`webrtcSignalingGateway.ts:133-148`）：路径必须精确为 `<proxyPath>/connect_client`，`token` 非空，`deviceId` 可选且不超过 256 字符；不满足按 404 结束。
 - 票据一次性：消费时读取后立即删除，已用或过期票据一律 401（`webrtcSignalingGateway.ts:202-208,221-224`）。
@@ -28,11 +28,11 @@
 
 ## signalingLoginGuard：票据签发的访问边界
 
-票据入口前置 `optionalApiAuth` 与 `createSignalingLoginGuard`（`server/src/app.ts:126-130`）。
+票据入口前置 `optionalApiAuth` 与 `createSignalingLoginGuard`（`apps/server/src/app.ts:126-130`）。
 
-- 令牌模式（配置 `LA_PLUMA_TOKEN`）：令牌已由前置中间件把关，来源不构成额外边界，守卫只限流（`server/src/services/signalingLoginGuard.ts:67-82`）。
+- 令牌模式（配置 `LA_PLUMA_TOKEN`）：令牌已由前置中间件把关，来源不构成额外边界，守卫只限流（`apps/server/src/services/signalingLoginGuard.ts:67-82`）。
 - 本地/LAN 模式（未配置令牌）只允许同源签发：无 `Origin` 的非浏览器调用视为同源；`Origin: null`、非法 URL、缺失或携带 userinfo/路径的 `Host` 一律拒绝；只比较主机名，端口与协议不参与（兼容本地开发代理与反向代理终止 TLS）。跨源返回 403 `AGENT_SIGNALING_ORIGIN_FORBIDDEN`（`signalingLoginGuard.ts:50-65,82-88`）。
-- 签发频率独立于认证失败限流：每来源每 60 秒窗口 30 次，进程内固定窗口计数，键取 `req.ip`（未启用 trust proxy）；超限返回 429 并带 `Retry-After`（`server/src/app.ts:53-55,83-87`、`signalingLoginGuard.ts:90-98`、`server/src/utils/loginThrottle.ts:52-60`）。
+- 签发频率独立于认证失败限流：每来源每 60 秒窗口 30 次，进程内固定窗口计数，键取 `req.ip`（未启用 trust proxy）；超限返回 429 并带 `Retry-After`（`apps/server/src/app.ts:53-55,83-87`、`signalingLoginGuard.ts:90-98`、`apps/server/src/utils/loginThrottle.ts:52-60`）。
 
 认证与限流的通用规则（令牌头、失败限流、反向代理注意项）见[部署指南](../guides/deployment.md#跨域与访问来源)。
 
@@ -70,8 +70,8 @@
 
 ## 关闭时的资源回收
 
-- 预览关闭步骤以 `webrtc-preview` 注册到运行时生命周期（`webrtcService.ts:1388-1404`、`server/src/server.ts:260-264`）；关闭顺序为后台触发源与轮询 → 执行收尾 → HTTP 传输 → 预览资源（`docs/architecture/execution-lifecycle.md` §5.6）。
-- HTTP 传输步骤拥有信令网关的关闭：`signalingGateway.close()` 断开观看连接并清空票据后，再停止接受连接并排空在途响应（`server/src/server.ts:197-218,296-297`）。
+- 预览关闭步骤以 `webrtc-preview` 注册到运行时生命周期（`webrtcService.ts:1388-1404`、`apps/server/src/server.ts:260-264`）；关闭顺序为后台触发源与轮询 → 执行收尾 → HTTP 传输 → 预览资源（`docs/architecture/execution-lifecycle.md` §5.6）。
+- HTTP 传输步骤拥有信令网关的关闭：`signalingGateway.close()` 断开观看连接并清空票据后，再停止接受连接并排空在途响应（`apps/server/src/server.ts:197-218,296-297`）。
 - 预览关闭置关闭标记并 abort 在途等待、取消 viewer 自动回收计时器、终止本实例的信令/TURN/Agent 部署/构建子进程，等待启动队列排空后再兜底 SIGKILL，不留孤儿进程（`webrtcService.ts:1360-1373`）。
 - 关闭不通过 ADB 清理设备端 Agent，也不触碰没有所有权记录的外部资源（`webrtcService.ts:994-1018,1366-1379`）。
 
@@ -92,12 +92,12 @@
 
 | 测试 | 固定的行为 |
 | --- | --- |
-| `server/src/services/__tests__/webrtcSignalingGateway.test.ts` | 票据签发与重放拒绝、过期票据与路径白名单、按设备登记 viewer、关闭清空票据 |
-| `server/src/services/__tests__/webrtcPreviewOwnership.test.ts` | 外部资源不被停止、`ownership` 与 `released` 上报、关闭中止在途启动并终止本实例子进程 |
-| `server/src/services/__tests__/webrtcService.test.ts` | 启动就绪等待与超时错误码、发布布局识别与升级候选识别 |
-| `server/src/services/__tests__/webrtcRuntime.test.ts` | 平台判定、宿主地址选择、版本标记、安装决策、发布包布局校验与事务性落位/回滚 |
-| `server/src/services/__tests__/webrtcViewerLifecycle.test.ts` | viewer 计时器、宽限与恢复 |
-| `server/src/services/__tests__/signalingLoginGuard.test.ts` | 同源判定与签发限流 |
-| `server/src/routes/__tests__/previewRoutes.test.ts` | 同源信令契约与请求收窄 |
+| `apps/server/src/services/__tests__/webrtcSignalingGateway.test.ts` | 票据签发与重放拒绝、过期票据与路径白名单、按设备登记 viewer、关闭清空票据 |
+| `apps/server/src/services/__tests__/webrtcPreviewOwnership.test.ts` | 外部资源不被停止、`ownership` 与 `released` 上报、关闭中止在途启动并终止本实例子进程 |
+| `apps/server/src/services/__tests__/webrtcService.test.ts` | 启动就绪等待与超时错误码、发布布局识别与升级候选识别 |
+| `apps/server/src/services/__tests__/webrtcRuntime.test.ts` | 平台判定、宿主地址选择、版本标记、安装决策、发布包布局校验与事务性落位/回滚 |
+| `apps/server/src/services/__tests__/webrtcViewerLifecycle.test.ts` | viewer 计时器、宽限与恢复 |
+| `apps/server/src/services/__tests__/signalingLoginGuard.test.ts` | 同源判定与签发限流 |
+| `apps/server/src/routes/__tests__/previewRoutes.test.ts` | 同源信令契约与请求收窄 |
 
 回归命令与单文件定向执行方式见[服务端架构与请求契约](./README.md#测试入口)。

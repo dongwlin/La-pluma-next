@@ -15,15 +15,15 @@ RUN --mount=type=cache,target=/root/.npm \
 WORKDIR /app
 
 COPY package.json pnpm-workspace.yaml pnpm-lock.yaml ./
-COPY client/package.json ./client/
-COPY server/package.json ./server/
+COPY apps/web/package.json ./apps/web/
+COPY apps/server/package.json ./apps/server/
 
 # store 挂载复用同一个本地 builder 的下载；CI 的跨 runner 复用依靠 registry 层缓存。
 RUN --mount=type=cache,target=/root/.local/share/pnpm/store \
     pnpm install --frozen-lockfile --filter la-pluma-next-client... \
     --registry=${NPM_REGISTRY}
 
-COPY client/ ./client/
+COPY apps/web/ ./apps/web/
 
 RUN pnpm --filter la-pluma-next-client build
 
@@ -81,18 +81,20 @@ RUN set -eux; \
 RUN mkdir -p /root/.config/maa
 
 COPY package.json pnpm-workspace.yaml pnpm-lock.yaml ./
-COPY client/package.json ./client/
-COPY server/package.json ./server/
+COPY apps/web/package.json ./apps/web/
+COPY apps/server/package.json ./apps/server/
 
 RUN --mount=type=cache,target=/root/.local/share/pnpm/store \
     pnpm install --frozen-lockfile --prod --filter la-pluma-next-server... \
     --registry=${NPM_REGISTRY}
 
-COPY server/ ./server/
+COPY apps/server/ ./apps/server/
 
-COPY --from=frontend-builder /app/client/dist ./client/dist
+COPY --from=frontend-builder /app/apps/web/dist ./apps/web/dist
 
-RUN mkdir -p /app/server/data/user-configs
+RUN mkdir -p /app/apps/server/data/user-configs /app/server \
+    && mv /app/apps/server/data /app/server/data \
+    && ln -s /app/server/data /app/apps/server/data
 
 COPY docker-entrypoint.sh /usr/local/bin/
 RUN chmod +x /usr/local/bin/docker-entrypoint.sh
@@ -110,6 +112,6 @@ ENV NODE_ENV=production \
 HEALTHCHECK --interval=30s --timeout=10s --start-period=600s --retries=3 \
     CMD scheme=http; if [ -n "$LA_PLUMA_HTTPS_CERT_PATH" ]; then scheme=https; fi; curl -fk "$scheme://localhost:${PORT:-3000}/health" || exit 1
 
-WORKDIR /app/server
+WORKDIR /app/apps/server
 ENTRYPOINT ["docker-entrypoint.sh"]
 CMD ["node", "src/server.ts"]

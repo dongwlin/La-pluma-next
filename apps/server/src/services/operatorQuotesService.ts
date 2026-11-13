@@ -1,5 +1,5 @@
 /**
- * 干员台词读取与自定义文件 `server/data/operatorQuotes.json` 的存储契约：文件缺失或
+ * 干员台词读取与自定义文件 `apps/server/data/operatorQuotes.json` 的存储契约：文件缺失或
  * 归一后为空数组时读取内置兜底文案，但顶层非数组/解析失败视为损坏，读取与写入一律报错，
  * 绝不用兜底覆盖原文件；读改写按路径串行，写回为临时文件原子替换，并发修改互不丢失。
  */
@@ -48,7 +48,7 @@ export interface OperatorQuotesService {
 }
 
 // 数据目录按模块位置锚定，与 cwd 无关；`LA_PLUMA_OPERATOR_QUOTES_STORE`
-// 可重定向存储位置（测试隔离与部署需要），默认路径保持 server/data/operatorQuotes.json。
+// 可重定向存储位置（测试隔离与部署需要），默认路径保持 apps/server/data/operatorQuotes.json。
 const dataDir = fileURLToPath(new URL('../../data/', import.meta.url))
 
 export function createOperatorQuotesStore({ quotesPath }: { quotesPath: string }): OperatorQuotesStore {

@@ -125,7 +125,7 @@ AutomationTasks（页头 + 全局指示）
 capture 是否仍属于手柄；`lostpointercapture` 不再取消排序。capture 仍会
 尽力建立，用于指针离开手柄时的浏览器语义。该行为由
 `AutomationTasks.layout.test.tsx` 的“commits a pointer drag even when the
-browser releases pointer capture”用例固定；DOM/CSS 未变化。性能复测采用[性能采样工具](../../../client/tests/performance/README.md)中的相同场景与完成条件。
+browser releases pointer capture”用例固定；DOM/CSS 未变化。性能复测采用[性能采样工具](../../../apps/web/tests/performance/README.md)中的相同场景与完成条件。
 
 ### 4. 定时编辑
 
@@ -197,11 +197,11 @@ browser releases pointer capture”用例固定；DOM/CSS 未变化。性能复�
 
 - 通用任务配置编辑器仍在 `AutomationWorkspace` 内组合；流程、定时
   与摘要在各自面板中，未改变其表单结构或参数规则。
-- 指针排序的性能比较必须先验证保存完成条件；旧版取消结果不可直接与成功保存耗时比较。采样方法见[性能采样工具](../../../client/tests/performance/README.md)。
+- 指针排序的性能比较必须先验证保存完成条件；旧版取消结果不可直接与成功保存耗时比较。采样方法见[性能采样工具](../../../apps/web/tests/performance/README.md)。
 
 ## 纯模型与排序
 
-配置提交仍由 [`automationConfig.ts`](../../../client/src/features/automation/model/automationConfig.ts) 适配器与 `user-config` 协调器持有，执行仍由 `task-execution` 控制器与服务端 Run 持有；当前指针/键盘接线由 `hooks/useTaskFlowSorting.ts` 持有，逐项执行状态与摘要来源由 `model/flowExecution.ts` 提供，模型本身仍不访问 React、网络或存储。
+配置提交仍由 [`automationConfig.ts`](../../../apps/web/src/features/automation/model/automationConfig.ts) 适配器与 `user-config` 协调器持有，执行仍由 `task-execution` 控制器与服务端 Run 持有；当前指针/键盘接线由 `hooks/useTaskFlowSorting.ts` 持有，逐项执行状态与摘要来源由 `model/flowExecution.ts` 提供，模型本身仍不访问 React、网络或存储。
 
 ### 1. 定位与边界
 
@@ -427,7 +427,7 @@ Infrast 任务在 `mode=10000` 时仍以 `filename`/`plan_index` 两个 Core 字
 
 ### 回归测试
 
-以下路径相对于 `client/src/`：领域回归在 `features/automation` 与 `pages/automation`；入口命令见[验证命令](#验证命令)。
+以下路径相对于 `apps/web/src/`：领域回归在 `features/automation` 与 `pages/automation`；入口命令见[验证命令](#验证命令)。
 
 关键不变量：
 

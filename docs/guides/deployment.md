@@ -39,6 +39,8 @@ docker run -d \
 
 镜像内的 maa-cli 固定到上游 release（当前 `v0.7.8`），并在构建时按目标架构校验 SHA-256；升级时通过 `MAA_CLI_VERSION` 与对应的 `MAA_CLI_SHA256_AMD64` / `MAA_CLI_SHA256_ARM64` 构建参数更新。首次启动的 `maa install` 仍会从上游解析并下载 MaaCore 与资源，需要完全可复现的 MaaCore 版本时请预置并复用数据卷。
 
+下表中的 `apps/server/data` 是源码运行的数据目录。镜像中对应的数据卷挂载点为 `/app/server/data`。
+
 可选环境变量：
 
 | 变量 | 说明 | 默认值 |
@@ -50,16 +52,16 @@ docker run -d \
 | `MAA_CLI_PATH` | `maa` CLI 可执行文件路径 | 本地为 `maa`，Docker 为 `/usr/local/bin/maa` |
 | `MAA_CLIENT_TYPE` | 默认客户端类型 | `Official` |
 | `LA_PLUMA_TOKEN` | 设置后 `/api/*` 与 WebRTC 票据入口需要 Bearer Token 或 `X-La-Pluma-Token` | 空，不启用 |
-| `LA_PLUMA_AGENT_RUN_STORE` | Agent Run 与幂等记录的持久化文件 | `server/data/agent-runs.json` |
-| `LA_PLUMA_DROP_RECORDS_DIR` | 掉落记录目录 | `server/data/drop-records` |
-| `LA_PLUMA_MAA_LOCK_FILE` | MAA 执行互斥锁文件 | `server/data/maa-execution.lock` |
+| `LA_PLUMA_AGENT_RUN_STORE` | Agent Run 与幂等记录的持久化文件 | `apps/server/data/agent-runs.json` |
+| `LA_PLUMA_DROP_RECORDS_DIR` | 掉落记录目录 | `apps/server/data/drop-records` |
+| `LA_PLUMA_MAA_LOCK_FILE` | MAA 执行互斥锁文件 | `apps/server/data/maa-execution.lock` |
 | `LA_PLUMA_MAA_MAINTENANCE_TIMEOUT_MS` | Core 安装/更新维护命令的 execFile 超时；非法值回落默认，超上限收敛到上限 | `900000`（上限 `3600000`） |
-| `LA_PLUMA_TRAINING_DATA_DIR` | 养成与参考数据目录（队列、材料表、干员材料、掉落统计、仓库/干员识别结果） | `server/data` |
+| `LA_PLUMA_TRAINING_DATA_DIR` | 养成与参考数据目录（队列、材料表、干员材料、掉落统计、仓库/干员识别结果） | `apps/server/data` |
 | `LA_PLUMA_GAME_ASSET_DIR` | 本地图标与头像根目录（含 `item/`、`avatar/` 子目录，文件名规则与 MAA 模板一致：物品 id / 干员 id）；缺省按资源覆盖顺序读取各候选资源层生效的 `template/items`、`template/avatar` | MAA 资源目录下的 `template` |
-| `LA_PLUMA_COPILOT_PROGRESS_STORE` | 作业集共享进度文件 | `server/data/copilot-progress.json` |
+| `LA_PLUMA_COPILOT_PROGRESS_STORE` | 作业集共享进度文件 | `apps/server/data/copilot-progress.json` |
 | `LA_PLUMA_COPILOT_NATIVE_DELEGATION` | 原生 `maa copilot` 委托开关（灰度）；设为 `1`/`true`/`on`/`yes`/`enable`/`enabled`（大小写不敏感）时启用，未设置、空值或其它取值时走现有流程 | 关闭 |
-| `LA_PLUMA_ACTIVITY_COPILOT_PROGRESS_STORE` | 当前活动通关进度文件（只读历史数据） | `server/data/activity-copilot-progress.json` |
-| `LA_PLUMA_OPERATOR_QUOTES_STORE` | 干员台词数据文件 | `server/data/operatorQuotes.json` |
+| `LA_PLUMA_ACTIVITY_COPILOT_PROGRESS_STORE` | 当前活动通关进度文件（只读历史数据） | `apps/server/data/activity-copilot-progress.json` |
+| `LA_PLUMA_OPERATOR_QUOTES_STORE` | 干员台词数据文件 | `apps/server/data/operatorQuotes.json` |
 | `LA_PLUMA_MAX_REALTIME_LOGS` | 实时日志内存缓存最大行数 | `5000` |
 | `LA_PLUMA_WEBRTC_DIR` | ScrcpyOverWebRTC 工作目录 | `$HOME/ScrcpyOverWebRTC`（Docker 为 `/root/ScrcpyOverWebRTC`） |
 | `LA_PLUMA_WEBRTC_PORT` | ScrcpyOverWebRTC 本地端口 | `8443` |
@@ -230,11 +232,11 @@ pnpm --filter la-pluma-next-server fetch-formulas
 pnpm --filter la-pluma-next-server fetch-materials
 pnpm --filter la-pluma-next-server fetch-drop-data
 
-cp server/data/{materials.json,material-formulas.json,operator-materials.json,penguin-drop-data.json} \
+cp apps/server/data/{materials.json,material-formulas.json,operator-materials.json,penguin-drop-data.json} \
   ./docker-data/server/
 ```
 
-也可以直接把生成好的 `server/data` 目录挂载到 `/app/server/data`。不要把 `user-configs/`、`depot.json`、`operbox.json`、`drop-records/`、`agent-runs.json` 等用户运行数据打进自定义镜像，它们只应通过数据卷持久化。
+也可以直接把生成好的 `apps/server/data` 目录挂载到 `/app/server/data`。不要把 `user-configs/`、`depot.json`、`operbox.json`、`drop-records/`、`agent-runs.json` 等用户运行数据打进自定义镜像，它们只应通过数据卷持久化。
 
 **支持架构**：
 - `linux/amd64` - x86_64 服务器、PC

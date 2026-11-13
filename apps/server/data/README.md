@@ -1,4 +1,4 @@
-# server/data 目录说明
+# apps/server/data 目录说明
 
 该目录同时承载两类内容，部署与打包时必须区分：
 
@@ -22,4 +22,4 @@
 - `copilot-progress.json`、`activity-copilot-progress.json`：作业集与活动进度
 - `operatorQuotes.json`：用户可编辑的台词数据
 
-运行数据通过 Docker 卷持久化到 `/app/server/data`，不要复制进镜像。参考数据的生成命令与 Docker 持久化说明见 [部署指南](../../docs/guides/deployment.md#参考数据与运行数据) 和 [服务器脚本说明](../scripts/README.md)。
+运行数据通过 Docker 卷持久化到 `/app/server/data`，不要复制进镜像。参考数据的生成命令与 Docker 持久化说明见 [部署指南](../../../docs/guides/deployment.md#参考数据与运行数据) 和 [服务器脚本说明](../scripts/README.md)。

@@ -4,7 +4,7 @@ import { fileURLToPath } from 'url';
 
 const dataDir = fileURLToPath(new URL('../../data/', import.meta.url));
 // 活动完成进度是共享 JSON 状态：读取经进度存储按路径排队执行；
-// 默认位置保持 server/data/activity-copilot-progress.json，可用环境变量注入隔离。
+// 默认位置保持 apps/server/data/activity-copilot-progress.json，可用环境变量注入隔离。
 const activityProgressStore = createCopilotProgressStore({
   progressPath: process.env.LA_PLUMA_ACTIVITY_COPILOT_PROGRESS_STORE
     || join(dataDir, 'activity-copilot-progress.json')

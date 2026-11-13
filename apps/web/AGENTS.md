@@ -1,6 +1,6 @@
 # Client 开发指南
 
-本指南适用于 `client/`。下列 `src/` 路径相对于本目录；命令均从仓库根目录执行。
+本指南适用于 `apps/web/`。下列 `src/` 路径相对于本目录；命令均从仓库根目录执行。
 
 ## 分层与代码组织
 
@@ -61,16 +61,16 @@
 
 | 入口 | 用途与阅读时机 |
 | --- | --- |
-| [前端架构与所有权](../docs/frontend/README.md) | 新增领域、路由或调整状态归属时；也作为各领域详细契约的导航。 |
-| [依赖与职责护栏](../docs/development/guardrails.md) | import、页面职责或规模检查失败，以及有意调整结构与基线时。 |
-| [开发指南](../docs/development/README.md) | 查询测试治理（含已知缺陷的 `it.fails` 约定）、样式治理与文件类型规则时。 |
-| [共享资源归属与失效端口](../docs/architecture/resource-ownership.md) | 新增共享资源、写后刷新或跨页一致性修改前，核对发布与接收范围。 |
-| [Query 缓存与键规范](../docs/architecture/query-cache.md) | 新增或调整资源 key、缓存策略、Provider 与重试时。 |
-| [资源请求错误与取消契约](../docs/architecture/resource-requests.md) | 修改只读端点、载荷校验、signal 或错误展示时。 |
-| [执行客户端与控制器](../docs/architecture/execution-client.md) | 修改执行提交、观察、停止、身份恢复或全局运行展示前。 |
-| [配置持久化协调器](../docs/architecture/config-persistence.md) | 修改配置适配器、完整提交、pending 或跨域写入屏障前。 |
-| [兼容入口与移除规则](../docs/frontend/compatibility.md) | 删除旧接口、存储键或恢复逻辑前。 |
-| [设计规范](../DESIGN.md) | 修改视觉、交互、token、主题与样式层序前；此处是设计规则的单一来源。 |
-| [通用组件库](../docs/frontend/components.md) | 选用或调整公共控件、更新组件 API 时。 |
-| [跨页一致性集成测试](../docs/development/integration.md) | 运行浏览器集成测试前，确认 Docker 前置条件与场景覆盖边界。 |
+| [前端架构与所有权](../../docs/frontend/README.md) | 新增领域、路由或调整状态归属时；也作为各领域详细契约的导航。 |
+| [依赖与职责护栏](../../docs/development/guardrails.md) | import、页面职责或规模检查失败，以及有意调整结构与基线时。 |
+| [开发指南](../../docs/development/README.md) | 查询测试治理（含已知缺陷的 `it.fails` 约定）、样式治理与文件类型规则时。 |
+| [共享资源归属与失效端口](../../docs/architecture/resource-ownership.md) | 新增共享资源、写后刷新或跨页一致性修改前，核对发布与接收范围。 |
+| [Query 缓存与键规范](../../docs/architecture/query-cache.md) | 新增或调整资源 key、缓存策略、Provider 与重试时。 |
+| [资源请求错误与取消契约](../../docs/architecture/resource-requests.md) | 修改只读端点、载荷校验、signal 或错误展示时。 |
+| [执行客户端与控制器](../../docs/architecture/execution-client.md) | 修改执行提交、观察、停止、身份恢复或全局运行展示前。 |
+| [配置持久化协调器](../../docs/architecture/config-persistence.md) | 修改配置适配器、完整提交、pending 或跨域写入屏障前。 |
+| [兼容入口与移除规则](../../docs/frontend/compatibility.md) | 删除旧接口、存储键或恢复逻辑前。 |
+| [设计规范](../../DESIGN.md) | 修改视觉、交互、token、主题与样式层序前；此处是设计规则的单一来源。 |
+| [通用组件库](../../docs/frontend/components.md) | 选用或调整公共控件、更新组件 API 时。 |
+| [跨页一致性集成测试](../../docs/development/integration.md) | 运行浏览器集成测试前，确认 Docker 前置条件与场景覆盖边界。 |
 | [性能采样说明](tests/performance/README.md) | 性能优化或报告性能结论前，确认采样协议和指标限制。 |

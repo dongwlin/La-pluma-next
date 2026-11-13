@@ -4,7 +4,7 @@
 
 本文说明 La Pluma Next 当前的执行身份、唯一状态来源与生命周期边界，以及必须保留的兼容语义。它面向执行链路、Agent 集成和前端控制器的维护者；不涉及页面视觉。
 
-契约的权威实现是服务端 Run 记录（`server/src/services/agentRunService.ts`）、运行快照（`server/src/services/runSnapshotService.ts`）、执行租约（`server/src/services/executionCoordinatorService.ts`）、作业集会话（`server/src/services/copilotSetRunService.ts`）、任务进程投影（`server/src/services/maaProcessService.ts`）和流程进度投影（`server/src/services/scheduleFlowExecution.ts`，经 `schedulerService.ts` 的公开入口读取）。文档与代码冲突时，以代码和契约测试为准，并修正本文。
+契约的权威实现是服务端 Run 记录（`apps/server/src/services/agentRunService.ts`）、运行快照（`apps/server/src/services/runSnapshotService.ts`）、执行租约（`apps/server/src/services/executionCoordinatorService.ts`）、作业集会话（`apps/server/src/services/copilotSetRunService.ts`）、任务进程投影（`apps/server/src/services/maaProcessService.ts`）和流程进度投影（`apps/server/src/services/scheduleFlowExecution.ts`，经 `schedulerService.ts` 的公开入口读取）。文档与代码冲突时，以代码和契约测试为准，并修正本文。
 
 ## 1. 执行身份
 
@@ -37,7 +37,7 @@ Run 存储是**单实例**语义：不要让多个 Node.js 进程同时读写同
 | 活动身份集合与设备占用 | `GET /api/agent/runs/current` 的 `run`、`activeRuns`、`lastRun`、`occupancy` | 当前唯一活动 run、其余 accepted 意图、最近终态，以及设备由 run 还是未纳管执行占用 | 执行结果；`occupancy` 也不能证明租约之外的直接设备使用 |
 | 当前 MAA 子进程 | `GET /api/agent/tasks/status`（`maaProcessService` 的 `taskStatus`） | 当前是否有一个受管子进程在跑，及其 `taskName`/`stopRequested` | 整个流程是否完成；流程步间等待时它可以是 idle |
 | 流程步骤进度 | `GET /api/agent/schedules/execution`（`scheduleExecutionStatus`） | `isRunning`、`currentStep`、`totalSteps`、`currentTask`、`taskResults`，以及当前流程的 `runId` | 看不到进度就推断未运行；`runId` 为空只表示该次流程没有 Run 身份（如 Telegram 等未纳管调用方） |
-| 执行租约 | `server/data/maa-execution.lock`；快照中的 `occupancy.lease` | 哪个协作进程在占用设备变更权（`pid`、`source`、`taskName`、`command`、`startedAt`） | 执行结果；租约释放不代表流程成功 |
+| 执行租约 | `apps/server/data/maa-execution.lock`；快照中的 `occupancy.lease` | 哪个协作进程在占用设备变更权（`pid`、`source`、`taskName`、`command`、`startedAt`） | 执行结果；租约释放不代表流程成功 |
 | 连接健康 | 前端 runtime-status 健康探针 | 浏览器能否访问后端 | 执行是否活动、成功、失败或已完成 |
 | 全局运行展示 | `useRunStatusProjection` 从执行控制器写入 `statusStore.runStatus` | 当前 Run 快照的 UI 投影 | 后台任务所有权或独立终态 |
 
@@ -296,7 +296,7 @@ Web UI 的「作业队列」不是作业集：用户队列以显式条目提交�
 
 ## 6. 执行入口覆盖
 
-“纳入 Run”指该入口通过 `beginAgentRun`/`executeTrackedAgentAction` 创建服务端 run，并在响应中返回 `runId`。判定依据见 `server/src/controllers/agentExecutionController.ts`、`server/src/controllers/agentMaintenanceController.ts`、`server/src/routes/agent.ts` 与 `server/src/routes/agentContract.ts`。
+“纳入 Run”指该入口通过 `beginAgentRun`/`executeTrackedAgentAction` 创建服务端 run，并在响应中返回 `runId`。判定依据见 `apps/server/src/controllers/agentExecutionController.ts`、`apps/server/src/controllers/agentMaintenanceController.ts`、`apps/server/src/routes/agent.ts` 与 `apps/server/src/routes/agentContract.ts`。
 
 | 入口 | 端点/调用方 | Run | 租约/执行方式 | 进度来源 | 备注 |
 | --- | --- | --- | --- | --- | --- |
@@ -345,7 +345,7 @@ Run 存储当前使用 `version: 1`，只接受该版本并严格校验记录；
 
 ### 当前契约测试
 
-- **入口命令**：`pnpm --filter la-pluma-next-server test`（仓库根 `pnpm test` 会连同客户端一起运行）。测试只发现 `server/src` 各级 `__tests__` 目录下的 `*.test.ts`，逐文件、逐进程串行执行；本清单覆盖的契约测试分布在 `server/src/services/__tests__/`、`server/src/routes/__tests__/` 与 `server/src/__tests__/`。
+- **入口命令**：`pnpm --filter la-pluma-next-server test`（仓库根 `pnpm test` 会连同客户端一起运行）。测试只发现 `apps/server/src` 各级 `__tests__` 目录下的 `*.test.ts`，逐文件、逐进程串行执行；本清单覆盖的契约测试分布在 `apps/server/src/services/__tests__/`、`apps/server/src/routes/__tests__/` 与 `apps/server/src/__tests__/`。
 - **Run 状态机**：生命周期转换与终态幂等、`waiting` 等待/恢复/停止、accepted 取消、pre-start 门禁在 spawn 前生效并放弃启动；幂等键按 `operationId` 分区、同键不同输入拒绝、跨重启重放不重新执行；current 排序与设备所有权对齐（滞留 `stopping` 不压过新 `running`）。
 - **持久化与恢复**：重启后活动 run（含 `waiting`）转 `interrupted` 并带 `recovery`；终态保留淘汰与写回；JSON 语法损坏不可重试、磁盘错误可重试、坏版本 fail-closed；cron 日常流程终态写回磁盘。
 - **快照与占用**：`occupancy` 的 idle/pending/run/external/unknown 与租约 free/held/stale/unknown；`lastRun` 与当前身份分离；只有 current 带进度，日常流程只投影自己持有的 `schedule.runId`。

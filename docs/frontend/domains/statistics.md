@@ -190,7 +190,7 @@ DataStatistics（页面壳：页头、全局状态指示）
 
 ### 回归测试
 
-以下路径相对于 `client/src/`：领域回归在 `features/statistics` 与 `pages/statistics`；跨域联动回归在 `features/training/api/index.test.ts`、`pages/training/OperatorTraining.test.tsx`、`pages/dashboard/Dashboard.test.tsx` 与 `features/resource-invalidation/**`。入口命令见[验证命令](#验证命令)。
+以下路径相对于 `apps/web/src/`：领域回归在 `features/statistics` 与 `pages/statistics`；跨域联动回归在 `features/training/api/index.test.ts`、`pages/training/OperatorTraining.test.tsx`、`pages/dashboard/Dashboard.test.tsx` 与 `features/resource-invalidation/**`。入口命令见[验证命令](#验证命令)。
 
 关键不变量：
 

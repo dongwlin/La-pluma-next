@@ -65,7 +65,7 @@ export interface DepotFile {
 }
 
 /**
- * server/data/operbox.json 的结构。`data` 是 MAA 的 `own_opers`，条目原样保存；
+ * apps/server/data/operbox.json 的结构。`data` 是 MAA 的 `own_opers`，条目原样保存；
  * `allOpers` 是同一回调里的 `all_opers` 目录（含拥有标记与多语言名称），
  * `recognition` 是按目录派生的识别概要，缺目录（旧快照或旧 Core）时为 partial。
  */

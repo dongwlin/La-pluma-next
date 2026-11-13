@@ -154,15 +154,15 @@ La Pluma Next 是一个高密度的本地自动化控制台，不是营销页面
 
 ### Source of Truth
 
-- `client/src/styles/index.css`：语义 token 的**唯一来源**（base 层）、Tailwind 入口、`@theme` 圆角映射、`gap-*` / `space-*` 定向 `@utility`、通用组件类与跨域 keyframes；页面样式由各功能域自持。
-- `client/src/styles/ios-theme.css`：只保留 iOS 26 独有的 chrome/材质 token（`--app-chrome-*`、`--app-glass-*`、安全区、导航/侧栏几何等）与对应样式；不再重定义语义 token。
-- `client/src/shared/ui`：`Button`、`IconButton`、`Card`、`Input`、`Select`、`Checkbox`、`Switch`、`Modal`、`PageHeader`、`EmptyState`、`Loading` 等通用组件。
+- `apps/web/src/styles/index.css`：语义 token 的**唯一来源**（base 层）、Tailwind 入口、`@theme` 圆角映射、`gap-*` / `space-*` 定向 `@utility`、通用组件类与跨域 keyframes；页面样式由各功能域自持。
+- `apps/web/src/styles/ios-theme.css`：只保留 iOS 26 独有的 chrome/材质 token（`--app-chrome-*`、`--app-glass-*`、安全区、导航/侧栏几何等）与对应样式；不再重定义语义 token。
+- `apps/web/src/shared/ui`：`Button`、`IconButton`、`Card`、`Input`、`Select`、`Checkbox`、`Switch`、`Modal`、`PageHeader`、`EmptyState`、`Loading` 等通用组件。
 
-本文件描述规则；token 的具体数值以 `client/src/styles/index.css` 为准，调整 token 时同步更新本文件的表格与说明。
+本文件描述规则；token 的具体数值以 `apps/web/src/styles/index.css` 为准，调整 token 时同步更新本文件的表格与说明。
 
 ## 层序与 token 单源
 
-`client/src/styles/index.css` 首行先声明完整层序，再导入 Tailwind：
+`apps/web/src/styles/index.css` 首行先声明完整层序，再导入 Tailwind：
 
 ```css
 @layer theme, base, components, page, utilities;
@@ -208,7 +208,7 @@ Tailwind 的 8 个圆角档位被压缩为应用的 5 个命名档位：`rounded
 
 ### 冻结规则（全局样式入口）
 
-- `client/src/styles/index.css` 与 `client/src/styles/ios-theme.css` 是全局样式的**冻结入口**，不接收新增页面级选择器。
+- `apps/web/src/styles/index.css` 与 `apps/web/src/styles/ios-theme.css` 是全局样式的**冻结入口**，不接收新增页面级选择器。
 - 页面选择器归 `features/<domain>/styles/`，由该域 `index.ts` 导入；两个全局入口对页面级选择器保持冻结，新样式按组件目录或功能域目录新增。
 - 拦截机制：stylelint 预算制（ratchet）冻结存量违规数、只拦净新增，用法见 [开发文档](docs/development/README.md) 的「样式治理」一节。
 
@@ -282,7 +282,7 @@ Tailwind 的 8 个圆角档位被压缩为应用的 5 个命名档位：`rounded
 - 桌面端（`lg` 及以上）显示 `17rem` 左侧工作台导航：一条跨越顶栏与导航区的连续圆角玻璃边界、可用搜索、单列导航和 28px 语义色图标底座；导航项从面板顶部开始排列，干员身份区固定在面板底部。当前项使用整行系统强调色和白色文字；品牌入口属于侧栏右侧的工作区顶栏，不能进入或遮挡侧栏圆角区。
 - 移动端使用悬浮的 iOS 风格底部胶囊导航，右侧搜索/更多入口承载次要页面。两端必须复用 `Layout` 的 URL 路由和 active 状态，不要按 viewport 建立第二份导航状态。
 - 主题由 `useUIStore` 的 `light`、`dark`、`system` 管理，并同步到文档根节点和 `.la-pluma-app`。组件或页面不要直接操作 `.dark`，也不要创建局部主题开关。
-- `client/index.html` 使用 `viewport-fit=cover`。`Layout` 通过统一 token 管理 navbar、移动 tabbar 和对应安全区高度；自定义 fixed/sticky 层只有在不属于这些 chrome 时才使用 `env(safe-area-inset-*)`，内容区不要重复叠加顶部或底部 inset。
+- `apps/web/index.html` 使用 `viewport-fit=cover`。`Layout` 通过统一 token 管理 navbar、移动 tabbar 和对应安全区高度；自定义 fixed/sticky 层只有在不属于这些 chrome 时才使用 `env(safe-area-inset-*)`，内容区不要重复叠加顶部或底部 inset。
 - 页面边缘留白统一由 `Layout` 的 `.la-pluma-content` 提供，内部 `.app-page` 不重复增加上下内边距。桌面底部使用 `--app-space-3`（12px）；移动端由外层预留底部导航、安全区和页面间距。
 - 新页面按 mobile-first 编写：`sm` (640px) 用于显示次级信息或恢复横向工具栏，`md` (768px) 用于中等宽度布局，`lg` (1024px) 与 `xl` (1280px) 才扩展为双栏或多栏。不要新增 `899px`、`1023px` 这类页面级断点；日常页三栏等既有组件可保留自身的专用断点。
 - 页面滚动条当前全局隐藏，避免切换页面或列表时因系统滚动条出现导致布局左右跳动。文本和控件要在移动端自然换行，不允许为了保留桌面布局而裁剪有效内容。
@@ -383,7 +383,7 @@ Tailwind 的 8 个圆角档位被压缩为应用的 5 个命名档位：`rounded
 ## Do's and Don'ts
 
 ### Do:
-- **Do** 先读 `client/src/styles/index.css` 和 `client/src/styles/ios-theme.css`，再用语义类实现界面；新页面优先使用 `Layout`、`PageHeader`、`Card`、`Button`、`Input` 等现有组件。
+- **Do** 先读 `apps/web/src/styles/index.css` 和 `apps/web/src/styles/ios-theme.css`，再用语义类实现界面；新页面优先使用 `Layout`、`PageHeader`、`Card`、`Button`、`Input` 等现有组件。
 - **Do** 把间距回到 `--app-space-*`、圆角回到 `--app-radius-*`，保持 4px 基线和 1px 发丝线。
 - **Do** 让系统蓝保持稀缺：只用于当前项、主操作、焦点和运行中状态；状态色只表达语义。
 - **Do** 在手机和粗指针设备上保证至少 44px 的点击区域，并检查 light/dark、loading、disabled、empty、error 以及长标题/长操作文案。

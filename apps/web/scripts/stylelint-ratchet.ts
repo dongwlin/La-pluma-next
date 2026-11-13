@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// 基线文件 client/stylelint-baseline.json 按文件粒度记录（文件 -> 规则 -> 违规数），
+// 基线文件 apps/web/stylelint-baseline.json 按文件粒度记录（文件 -> 规则 -> 违规数），
 // 文件移动/改名时比单一总数更稳。存量违规在 .stylelintrc.json 里是 warning，
 // 不阻塞本地开发；本脚本冻结基线，只拦净新增。
 import { readFile, writeFile } from 'node:fs/promises'

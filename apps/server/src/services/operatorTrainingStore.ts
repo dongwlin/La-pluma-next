@@ -39,7 +39,7 @@ import type {
 
 const logger = createLogger('OperatorTraining');
 
-// 配置文件路径：与抓取脚本共用运行配置入口，默认 server/data，
+// 配置文件路径：与抓取脚本共用运行配置入口，默认 apps/server/data，
 // 可由 LA_PLUMA_TRAINING_DATA_DIR 重定向。
 const DATA_DIRECTORY = resolveAppPaths().trainingDataDir;
 const TRAINING_QUEUE_PATH = path.join(DATA_DIRECTORY, 'user-configs/training-queue.json');

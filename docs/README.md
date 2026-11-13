@@ -73,4 +73,4 @@ docs/
 | [跨页一致性集成测试](development/integration.md) | Chromium 场景、复现方法、观察结果与覆盖边界 |
 | [维护说明](development/maintaining.md) | 分支、发布、运行时依赖与文档归属 |
 
-性能采样的方法与指标限制随工具维护在 [client/tests/performance/README.md](../client/tests/performance/README.md)。任务过程和一次性证据不加入现行文档索引。
+性能采样的方法与指标限制随工具维护在 [apps/web/tests/performance/README.md](../apps/web/tests/performance/README.md)。任务过程和一次性证据不加入现行文档索引。

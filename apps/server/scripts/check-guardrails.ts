@@ -106,7 +106,7 @@ export function evaluateGuardrails(options: GuardrailsRunOptions): GuardrailsEva
 if (isDirectExecution(import.meta.url)) {
   const evaluation = evaluateGuardrails({
     serverRoot: defaultServerRoot,
-    repoRoot: path.resolve(defaultServerRoot, '..')
+    repoRoot: path.resolve(defaultServerRoot, '..', '..')
   });
   for (const line of evaluation.lines) {
     if (line.startsWith('✗') || line.startsWith('Guardrails failed.') || line.startsWith('ℹ')) {

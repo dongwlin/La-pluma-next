@@ -5,7 +5,7 @@
  * `.ts`，并顺带拒绝 `enum`、`namespace` 等不可擦除语法。本脚本逐个文件启动独立
  * 进程，不依赖 TypeScript 编译器，因此 `build` 在只安装生产依赖时也能运行。
  *
- * 同时拒绝 `server/` 下残留的 `.js` / `.mjs` / `.cjs` 源码：Node 会直接运行它们，
+ * 同时拒绝 `apps/server/` 下残留的 `.js` / `.mjs` / `.cjs` 源码：Node 会直接运行它们，
  * 但类型门禁与质量护栏都看不到，等于绕过检查。工具配置若确实只能写成 JavaScript，
  * 需要在这里登记并说明理由，不能默默放入源码目录。
  */
@@ -49,7 +49,7 @@ if (isDirectExecution(import.meta.url)) {
 
   const typeScriptFiles = collectFiles(serverRoot, TYPESCRIPT_EXTENSIONS).sort();
   if (typeScriptFiles.length === 0) {
-    console.error('Syntax check scope is empty: no TypeScript files found under server/.');
+    console.error('Syntax check scope is empty: no TypeScript files found under apps/server/.');
     process.exitCode = 1;
   } else {
     const failures = checkSyntax(typeScriptFiles);

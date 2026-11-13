@@ -49,7 +49,7 @@ function run(): void {
   }
 
   if (typeScriptFiles.length === 0) {
-    console.error('Type check scope is empty: no TypeScript files found under server/.');
+    console.error('Type check scope is empty: no TypeScript files found under apps/server/.');
     process.exitCode = 1;
     return;
   }

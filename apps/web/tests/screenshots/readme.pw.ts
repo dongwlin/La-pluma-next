@@ -81,7 +81,7 @@ test('README automation screenshot', async ({ page }, testInfo) => {
   await expectNoBrowserErrors(page)
 
   await page.screenshot({
-    path: path.resolve(__dirname, '..', '..', '..', 'screenshots', outputName),
+    path: path.resolve(__dirname, '..', '..', '..', '..', 'screenshots', outputName),
     fullPage: false,
     animations: 'disabled',
     caret: 'hide',

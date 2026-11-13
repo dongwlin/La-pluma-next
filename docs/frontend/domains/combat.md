@@ -311,7 +311,7 @@ CombatTasks（页面壳：PageHeader + FloatingStatusIndicator）
 
 ### 回归测试
 
-以下路径相对于 `client/src/`：领域回归在 `features/combat` 与 `pages/combat`；入口命令见[验证命令](#验证命令)。
+以下路径相对于 `apps/web/src/`：领域回归在 `features/combat` 与 `pages/combat`；入口命令见[验证命令](#验证命令)。
 
 关键不变量：
 

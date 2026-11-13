@@ -2,7 +2,7 @@
 
 ## 职责与组织
 
-服务端运行在 Node.js 24+ 上，源码全部为 TypeScript ESM：Node 原生类型擦除直接运行 `.ts`，生产不经过编译器。相对导入使用真实 `.ts` 扩展名，且只使用可擦除语法（不用 `enum`、`namespace`、构造器参数属性和 `import =`）。类型门禁以 `tsc --noEmit` 独立执行（NodeNext、strict、noEmit、erasableSyntaxOnly、verbatimModuleSyntax，固定 TypeScript 6.0.3），覆盖 `server/**/*.ts`；`allowJs` 已移除，源码目录出现 `.js` / `.mjs` / `.cjs` 时 `typecheck` 直接失败，避免未检查文件被 tsc 全绿掩盖。`guardrails` 检查显式 `any`、类型抑制指令、经 any/unknown 的双重断言、分层方向与静态导入环；存量例外登记在 `guardrails-baseline.json`，每条含理由与移除条件。服务文件、函数与变量使用现有的 camelCase 命名。
+服务端运行在 Node.js 24+ 上，源码全部为 TypeScript ESM：Node 原生类型擦除直接运行 `.ts`，生产不经过编译器。相对导入使用真实 `.ts` 扩展名，且只使用可擦除语法（不用 `enum`、`namespace`、构造器参数属性和 `import =`）。类型门禁以 `tsc --noEmit` 独立执行（NodeNext、strict、noEmit、erasableSyntaxOnly、verbatimModuleSyntax，固定 TypeScript 6.0.3），覆盖 `apps/server/**/*.ts`；`allowJs` 已移除，源码目录出现 `.js` / `.mjs` / `.cjs` 时 `typecheck` 直接失败，避免未检查文件被 tsc 全绿掩盖。`guardrails` 检查显式 `any`、类型抑制指令、经 any/unknown 的双重断言、分层方向与静态导入环；存量例外登记在 `guardrails-baseline.json`，每条含理由与移除条件。服务文件、函数与变量使用现有的 camelCase 命名。
 
 | 位置 | 修改边界 |
 | --- | --- |
@@ -44,7 +44,7 @@
 | 后端类型检查 | `pnpm --filter la-pluma-next-server typecheck` |
 | 类型与依赖护栏 | `pnpm --filter la-pluma-next-server guardrails` |
 | 后端回归 | `pnpm --filter la-pluma-next-server test` |
-| 定向回归示例 | `node --test server/src/services/__tests__/maaCallbackService.test.ts` |
+| 定向回归示例 | `node --test apps/server/src/services/__tests__/maaCallbackService.test.ts` |
 | 覆盖率检查 | `pnpm --filter la-pluma-next-server test:coverage` |
 
 `build` 仅执行语法检查（`node --check` 逐个解析 `.ts`，同时拒绝不可擦除语法，不依赖 TypeScript 编译器，只装生产依赖时也能运行）；类型检查由 `typecheck` 独立承担，覆盖全部 TS 文件（`tsconfig.json` 的 `include`/`exclude` 为静态范围声明）；`guardrails` 承担类型与依赖职责检查，只约束正确性不变量，不引入格式或风格规则。`verify` 依次运行 `guardrails`、`check`、`typecheck`、`test`。常规测试入口逐文件、逐进程运行，默认最多 4 个进程并发，可用 `LA_PLUMA_TEST_CONCURRENCY` 调整；每个文件仍在独立进程中执行，不要改成共享进程并行，以免模块单例和环境变量相互污染。`test:coverage` 与 `test` 使用同一批测试文件和同样的逐文件进程隔离，统计范围固定为 `**/*.ts` 排除 `**/__tests__/**`，阈值是只升不降的渐进下限；Node 只统计被测试加载过的文件，覆盖率不能替代行为测试。
@@ -67,19 +67,19 @@
 | `import-cycle` | 静态 `import` / `export ... from` 不得成环 | 直接失败 |
 | `unlayered-file` | 新增顶层模块或目录必须先归入既有层 | 直接失败 |
 
-- 范围是 `server/**/*.ts`；测试与 fixture 不参与分层与依赖环，但仍检查类型逃生舱。
+- 范围是 `apps/server/**/*.ts`；测试与 fixture 不参与分层与依赖环，但仍检查类型逃生舱。
 - 动态 `import()` 不参与环检查：它用于延迟加载重模块或有意断开静态环（养成应用与调度、执行端口与数据解析），静态环本身必须为零。
 - 存量例外登记在 `guardrails-baseline.json`，每条写清 `reason` 与 `remove`（移除条件）；违规数下降后应下调 `count`，护栏会提示可下调项。
-- 同一命令核对 TypeScript 版本三处一致：`package.json` 的精确声明、根 `pnpm-lock.yaml` 的 server importer、实际安装的编译器。
+- 同一命令核对 TypeScript 版本三处一致：`package.json` 的精确声明、根 `pnpm-lock.yaml` 的 `apps/server` importer、实际安装的编译器。
 
 ## 延伸阅读
 
 - [服务端脚本与依赖](package.json)：查阅可执行脚本和依赖时读取，以实际配置为准。
-- [服务端架构与请求契约](../docs/server/README.md)：调整分层方向、请求管道、响应契约或测试入口时读取。
-- [运行时初始化、就绪与关闭](../docs/server/runtime-lifecycle.md)：修改启动组装、就绪判定、执行准入或关闭流程时必读。
-- [持久化与运行数据](../docs/server/persistence.md)：新增持久化数据、调整写入或恢复语义前必读。
-- [日常流程与定时触发](../docs/server/scheduling.md)：修改任务流计划、流程执行或定时注册时必读。
-- [MAA、ADB 与通知渠道](../docs/server/integrations.md)：调整 MAA 子进程、连接解析、回调解析或通知渠道时读取。
-- [设备预览与信令运行时](../docs/server/preview-webrtc.md)：修改预览链路、信令网关或 WebRTC 运行时前必读。
-- [执行身份与生命周期契约](../docs/architecture/execution-lifecycle.md)：修改执行身份、租约、停止、幂等、持久化或快照时必读；含契约测试分工。
-- [Agent API 使用指南](../docs/api/agent.md)：新增或修改公开接口、响应、连接参数及养成同步行为时读取。
+- [服务端架构与请求契约](../../docs/server/README.md)：调整分层方向、请求管道、响应契约或测试入口时读取。
+- [运行时初始化、就绪与关闭](../../docs/server/runtime-lifecycle.md)：修改启动组装、就绪判定、执行准入或关闭流程时必读。
+- [持久化与运行数据](../../docs/server/persistence.md)：新增持久化数据、调整写入或恢复语义前必读。
+- [日常流程与定时触发](../../docs/server/scheduling.md)：修改任务流计划、流程执行或定时注册时必读。
+- [MAA、ADB 与通知渠道](../../docs/server/integrations.md)：调整 MAA 子进程、连接解析、回调解析或通知渠道时读取。
+- [设备预览与信令运行时](../../docs/server/preview-webrtc.md)：修改预览链路、信令网关或 WebRTC 运行时前必读。
+- [执行身份与生命周期契约](../../docs/architecture/execution-lifecycle.md)：修改执行身份、租约、停止、幂等、持久化或快照时必读；含契约测试分工。
+- [Agent API 使用指南](../../docs/api/agent.md)：新增或修改公开接口、响应、连接参数及养成同步行为时读取。

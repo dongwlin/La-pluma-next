@@ -76,7 +76,7 @@ function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
-// 默认目录经运行配置入口解析（server/data/user-configs），不依赖进程 cwd。
+// 默认目录经运行配置入口解析（apps/server/data/user-configs），不依赖进程 cwd。
 const defaultUserConfigsDir = resolveAppPaths().userConfigsDir;
 
 /**

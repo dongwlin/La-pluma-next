@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * 视觉基线专用静态服务器：伺服 client/dist（vite build 产物）并对 /app/* 做 SPA 回退。
+ * 视觉基线专用静态服务器：伺服 apps/web/dist（vite build 产物）并对 /app/* 做 SPA 回退。
  * 不用 vite preview，避免 dev/preview 差异与 PWA dev 插件等额外变量。
  */
 import { createServer } from 'node:http'

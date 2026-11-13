@@ -607,7 +607,7 @@ describe('maintenance script entry safety and targets', () => {
     assert.equal(imported.stdout.trim(), 'imported');
   });
 
-  it('writes each data script to its documented server/data target', () => {
+  it('writes each data script to its documented app data target', () => {
     assert.equal(operatorMaterials.OUTPUT_PATH, join(serverDir, 'data', 'operator-materials.json'));
     assert.equal(materialFormulas.OUTPUT_PATH, join(serverDir, 'data', 'material-formulas.json'));
     assert.equal(mergeFormulas.MATERIALS_PATH, join(serverDir, 'data', 'materials.json'));

@@ -43,28 +43,29 @@ URL 导航、路径归一、PWA 历史记录与 Activity 保活的约定统一�
 ```
 La-pluma-next/
 ├── DESIGN.md                  # UI 设计规范（开发者与 Agent 的唯一来源）
-├── client/                    # 前端 (React + TypeScript + Vite + Tailwind CSS v4 + Framer Motion)
-│   ├── src/
-│   │   ├── main.tsx           # 入口：import './styles' 并挂载 @/app/App
-│   │   ├── app/               # 应用组装层：router（路由表、URL 归一与保活出口）、layout、providers
-│   │   ├── pages/             # 页面层：按域组合页头与领域工作区
-│   │   ├── features/          # 功能域（对外只有 index.ts）：dashboard、automation、combat、roguelike、training、
-│   │   │                      #   statistics、logs、settings 等页面域，以及 task-execution、user-config、game-data、
-│   │   │                      #   resource-invalidation、runtime-status、device-mirror、operator-quotes 等跨域微域
-│   │   ├── shared/            # 横向下层：ui、theme（启动主题单一真源）、navigation、stores、api、query、hooks、utils
-│   │   └── styles/            # 全局样式资产（不参与四层分层）：index.css 语义 token 单源与 ios-theme.css
-│   └── public/                # 静态资源（Logo、图标）
+├── apps/
+│   ├── web/                   # 前端 (React + TypeScript + Vite + Tailwind CSS v4 + Framer Motion)
+│   │   ├── src/
+│   │   │   ├── main.tsx       # 入口：import './styles' 并挂载 @/app/App
+│   │   │   ├── app/           # 应用组装层：router（路由表、URL 归一与保活出口）、layout、providers
+│   │   │   ├── pages/         # 页面层：按域组合页头与领域工作区
+│   │   │   ├── features/      # 功能域（对外只有 index.ts）：dashboard、automation、combat、roguelike、training、
+│   │   │   │                  #   statistics、logs、settings 等页面域，以及 task-execution、user-config、game-data、
+│   │   │   │                  #   resource-invalidation、runtime-status、device-mirror、operator-quotes 等跨域微域
+│   │   │   ├── shared/        # 横向下层：ui、theme（启动主题单一真源）、navigation、stores、api、query、hooks、utils
+│   │   │   └── styles/        # 全局样式资产（不参与四层分层）：index.css 语义 token 单源与 ios-theme.css
+│   │   └── public/            # 静态资源（Logo、图标）
+│   └── server/                # 后端 (Node.js + Express)
+│       ├── src/
+│       │   ├── app.ts         # Express 应用装配（中间件与路由挂载）
+│       │   ├── server.ts      # 服务器入口（HTTP/HTTPS 传输与启动）
+│       │   ├── config/        # 运行时配置：端口、应用路径、HTTPS、连接默认值、信令凭据与 API 版本
+│       │   ├── routes/        # API 路由（路径映射与 router 装配）
+│       │   ├── controllers/   # 请求解析、校验、DTO 与响应封装的业务适配
+│       │   ├── services/      # 业务逻辑：MAA 执行、调度流程、养成、通知、WebRTC 预览与配置存储
+│       │   └── utils/         # 横向助手：日志与脱敏、API token 认证、请求上下文等
+│       └── data/              # 用户配置数据（user-configs/ 任务配置 JSON）
 ├── docs/                      # 项目文档（架构、Agent API、功能、配置、部署、开发、组件库、维护）
-├── server/                    # 后端 (Node.js + Express)
-│   ├── src/
-│   │   ├── app.ts             # Express 应用装配（中间件与路由挂载）
-│   │   ├── server.ts          # 服务器入口（HTTP/HTTPS 传输与启动）
-│   │   ├── config/            # 运行时配置：端口、应用路径、HTTPS、连接默认值、信令凭据与 API 版本
-│   │   ├── routes/            # API 路由（路径映射与 router 装配）
-│   │   ├── controllers/       # 请求解析、校验、DTO 与响应封装的业务适配
-│   │   ├── services/          # 业务逻辑：MAA 执行、调度流程、养成、通知、WebRTC 预览与配置存储
-│   │   └── utils/             # 横向助手：日志与脱敏、API token 认证、请求上下文等
-│   └── data/                  # 用户配置数据（user-configs/ 任务配置 JSON）
 ├── pnpm-workspace.yaml        # pnpm 工作区配置
 ├── pnpm-lock.yaml             # 统一依赖锁文件
 ├── package.json               # 根目录脚本（pnpm workspace 入口）
@@ -75,8 +76,8 @@ La-pluma-next/
 
 ## 后端组装与启动
 
-- `server/src/app.ts` 的 `createLaPlumaApp(options)` 创建独立 Express 应用，接收信令登录、就绪快照和配置存储等注入端口；`/api` router 先认证再解析 JSON，挂载业务路由后由统一 JSON 404 与错误出口收尾，生产静态文件与 SPA fallback 最后挂载并共同排除 API、探针和信令命名空间，探针与信令登录不经过业务 JSON 解析。请求管道与 envelope 细节见[服务端架构与请求契约](../server/README.md)。
-- `server/src/server.ts` 的 `createLaPlumaServer(options)` 同步校验传输配置并组装生命周期，返回尚未监听的句柄；`start()` 才恢复 Run 存储、挂载信令网关、监听 HTTP/HTTPS 并初始化后台领域，重复调用复用同一次启动；`startLaPlumaServer(options)` 保留为一步启动入口。
+- `apps/server/src/app.ts` 的 `createLaPlumaApp(options)` 创建独立 Express 应用，接收信令登录、就绪快照和配置存储等注入端口；`/api` router 先认证再解析 JSON，挂载业务路由后由统一 JSON 404 与错误出口收尾，生产静态文件与 SPA fallback 最后挂载并共同排除 API、探针和信令命名空间，探针与信令登录不经过业务 JSON 解析。请求管道与 envelope 细节见[服务端架构与请求契约](../server/README.md)。
+- `apps/server/src/server.ts` 的 `createLaPlumaServer(options)` 同步校验传输配置并组装生命周期，返回尚未监听的句柄；`start()` 才恢复 Run 存储、挂载信令网关、监听 HTTP/HTTPS 并初始化后台领域，重复调用复用同一次启动；`startLaPlumaServer(options)` 保留为一步启动入口。
 - 直接执行入口先安装 SIGINT/SIGTERM 处理，再调用 `start()`，初始化期间即可关闭准入、取消初始化并进入 draining；初始化退出与资源释放共用关闭截止时间，HTTP 等待在途响应完成、超时才强制断开，启动回滚复用统一释放结果且网关关闭失败仍会排空 HTTP。具体执行收尾语义见[执行身份与生命周期契约](execution-lifecycle.md#56-运行时关闭与后台触发源)。
 - HTTP 回归使用应用工厂和本机临时监听器，无需恢复调度、Telegram 或真实设备运行时；初始化、就绪与关闭全流程见[运行时初始化、就绪与关闭](../server/runtime-lifecycle.md)。
 
@@ -86,12 +87,12 @@ La-pluma-next/
 
 ## 依赖与职责护栏
 
-`app → pages → features → shared` 的单向依赖、feature 公开面、`task-execution` 不反向依赖页面域、页面裸副作用，以及 hooks/model/components/pages 的规模观察由 `client/scripts/check-guardrails.ts` 自动检查，并作为客户端 `verify` 的第一步运行：
+`app → pages → features → shared` 的单向依赖、feature 公开面、`task-execution` 不反向依赖页面域、页面裸副作用，以及 hooks/model/components/pages 的规模观察由 `apps/web/scripts/check-guardrails.ts` 自动检查，并作为客户端 `verify` 的第一步运行：
 
 ```bash
 pnpm --filter la-pluma-next-client guardrails
 ```
 
-规模预算冻结在 `client/size-budget.json`，阈值依据迁移后的实际分类分布而不是统一的 150 行，并检查同域页面缩减是否被搬进 hooks/model/components（缩减 ≥40 行且增长 ≥80% 判为疑似搬移）；规则、阈值表、更新方式和已知限制见[依赖与职责护栏](../development/guardrails.md)。ESLint 继续负责编辑器内的深路径与分层即时报错，CLI 额外覆盖相对路径绕过、真实域环、页面职责与规模预算。
+规模预算冻结在 `apps/web/size-budget.json`，阈值依据迁移后的实际分类分布而不是统一的 150 行，并检查同域页面缩减是否被搬进 hooks/model/components（缩减 ≥40 行且增长 ≥80% 判为疑似搬移）；规则、阈值表、更新方式和已知限制见[依赖与职责护栏](../development/guardrails.md)。ESLint 继续负责编辑器内的深路径与分层即时报错，CLI 额外覆盖相对路径绕过、真实域环、页面职责与规模预算。
 
 开发流程与常用检查见 [开发文档](../development/README.md)。

@@ -363,7 +363,7 @@ function toEstimate(found: StageDropEstimate): FarmEstimate {
 
 /**
  * 为单个材料选择刷取关卡并给出期望掉落与理智单价。数据来自企鹅物流掉落统计，
- * 抓取为 server/data/penguin-drop-data.json：芯片类刷固定关卡，其余按
+ * 抓取为 apps/server/data/penguin-drop-data.json：芯片类刷固定关卡，其余按
  * 「期望理智消耗/个」（apCost / 期望掉落）反查最优永久关卡；数据缺失、无样本或
  * 无候选关卡时回退经验估算（50% 掉率、18 理智/关），保证计划不中断。
  * 返回 null 表示无任何可用关卡，调用方应 warn 并跳过该材料。

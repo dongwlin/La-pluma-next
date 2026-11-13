@@ -80,6 +80,7 @@ function readJson(filePath: string): unknown {
 export function checkTypeScriptPin({ serverDir, repoRoot }: { serverDir: string; repoRoot: string }): TypeScriptPinResult {
   const problems: string[] = [];
   const facts: TypeScriptPinFacts = {};
+  const importer = path.relative(repoRoot, serverDir).split(path.sep).join('/');
 
   const packageJson = readJson(path.join(serverDir, 'package.json'));
   if (typeof packageJson === 'object' && packageJson !== null) {
@@ -88,25 +89,25 @@ export function checkTypeScriptPin({ serverDir, repoRoot }: { serverDir: string;
   }
   if (facts.declared !== EXPECTED_TYPESCRIPT_VERSION) {
     problems.push(
-      `server/package.json devDependencies.typescript 必须精确声明 ${EXPECTED_TYPESCRIPT_VERSION}，实际为 ${facts.declared ?? '缺失'}`
+      `${importer}/package.json devDependencies.typescript 必须精确声明 ${EXPECTED_TYPESCRIPT_VERSION}，实际为 ${facts.declared ?? '缺失'}`
     );
   }
 
   const lockfileText = readFileSync(path.join(repoRoot, 'pnpm-lock.yaml'), 'utf8');
-  const locked = readLockfileDependency(lockfileText, 'server', 'typescript');
+  const locked = readLockfileDependency(lockfileText, importer, 'typescript');
   facts.lockfileSpecifier = locked?.specifier;
   facts.lockfileVersion = locked?.version;
   if (!locked) {
-    problems.push('pnpm-lock.yaml 中找不到 server importer 的 typescript 解析值');
+    problems.push(`pnpm-lock.yaml 中找不到 ${importer} importer 的 typescript 解析值`);
   } else {
     if (locked.specifier !== EXPECTED_TYPESCRIPT_VERSION) {
       problems.push(
-        `pnpm-lock.yaml server importer 的 typescript specifier 应为 ${EXPECTED_TYPESCRIPT_VERSION}，实际为 ${locked.specifier ?? '缺失'}`
+        `pnpm-lock.yaml ${importer} importer 的 typescript specifier 应为 ${EXPECTED_TYPESCRIPT_VERSION}，实际为 ${locked.specifier ?? '缺失'}`
       );
     }
     if (locked.version !== EXPECTED_TYPESCRIPT_VERSION) {
       problems.push(
-        `pnpm-lock.yaml server importer 的 typescript version 应为 ${EXPECTED_TYPESCRIPT_VERSION}，实际为 ${locked.version ?? '缺失'}`
+        `pnpm-lock.yaml ${importer} importer 的 typescript version 应为 ${EXPECTED_TYPESCRIPT_VERSION}，实际为 ${locked.version ?? '缺失'}`
       );
     }
   }
@@ -121,7 +122,7 @@ export function checkTypeScriptPin({ serverDir, repoRoot }: { serverDir: string;
   }
   if (facts.installedVersion !== EXPECTED_TYPESCRIPT_VERSION) {
     problems.push(
-      `server/node_modules/typescript 实际版本应为 ${EXPECTED_TYPESCRIPT_VERSION}，实际为 ${facts.installedVersion ?? '未安装'}`
+      `${importer}/node_modules/typescript 实际版本应为 ${EXPECTED_TYPESCRIPT_VERSION}，实际为 ${facts.installedVersion ?? '未安装'}`
     );
   }
 

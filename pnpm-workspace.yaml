@@ -1,6 +1,6 @@
 packages:
-  - client
-  - server
+  - apps/web
+  - apps/server
 
 allowBuilds:
   esbuild: true

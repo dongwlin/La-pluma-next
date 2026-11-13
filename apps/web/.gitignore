@@ -12,6 +12,14 @@ dist
 dist-ssr
 *.local
 
+.eslintcache
+.stylelintcache
+
+# Playwright artifacts
+/test-results/
+/playwright-report/
+/integration-artifacts/
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json

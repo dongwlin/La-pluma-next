@@ -124,7 +124,7 @@ export interface AppPaths {
 const moduleServerRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..');
 
 /**
- * 解析应用运行路径。五个类别互不混用：持久数据、内置/解析数据共享 server/data
+ * 解析应用运行路径。五个类别互不混用：持久数据、内置/解析数据共享 apps/server/data
  * 根目录但由不同字段区分；临时目录与前端产物独立锚定；外部 MAA 路径见 paths.ts。
  */
 export function resolveAppPaths(options: AppPathOptions = {}): AppPaths {
@@ -147,7 +147,7 @@ export function resolveAppPaths(options: AppPathOptions = {}): AppPaths {
     penguinDropDataPath: join(trainingDataDir, 'penguin-drop-data.json'),
     depotPath: join(trainingDataDir, 'depot.json'),
     operboxPath: join(trainingDataDir, 'operbox.json'),
-    frontendDistDir: resolve(serverRoot, '..', 'client', 'dist')
+    frontendDistDir: resolve(serverRoot, '..', 'web', 'dist')
   };
 }
 

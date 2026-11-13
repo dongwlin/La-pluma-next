@@ -201,7 +201,7 @@ describe('toolchain pin', () => {
     '  .:',
     '    configDependencies: {}',
     '',
-    '  server:',
+    '  apps/server:',
     '    devDependencies:',
     '      typescript:',
     '        specifier: 6.0.3',
@@ -212,18 +212,18 @@ describe('toolchain pin', () => {
   ].join('\n');
 
   it('reads the importer resolution from the lockfile layout', () => {
-    assert.deepEqual(readLockfileDependency(lockfile, 'server', 'typescript'), {
+    assert.deepEqual(readLockfileDependency(lockfile, 'apps/server', 'typescript'), {
       specifier: '6.0.3',
       version: '6.0.3'
     });
-    assert.equal(readLockfileDependency(lockfile, 'server', 'eslint'), undefined);
-    assert.equal(readLockfileDependency(lockfile, 'client', 'typescript'), undefined);
+    assert.equal(readLockfileDependency(lockfile, 'apps/server', 'eslint'), undefined);
+    assert.equal(readLockfileDependency(lockfile, 'apps/web', 'typescript'), undefined);
   });
 
   it('accepts matching declaration, lockfile and installed versions', async () => {
     const root = await mkdtemp(path.join(tmpdir(), 'la-pluma-pin-'));
     try {
-      const serverDir = path.join(root, 'server');
+      const serverDir = path.join(root, 'apps', 'server');
       await mkdir(path.join(serverDir, 'node_modules', 'typescript'), { recursive: true });
       await writeFile(path.join(serverDir, 'package.json'), JSON.stringify({
         devDependencies: { typescript: '6.0.3' }
@@ -247,7 +247,7 @@ describe('toolchain pin', () => {
   it('reports every drift between declaration, lockfile and installed compiler', async () => {
     const root = await mkdtemp(path.join(tmpdir(), 'la-pluma-pin-'));
     try {
-      const serverDir = path.join(root, 'server');
+      const serverDir = path.join(root, 'apps', 'server');
       await mkdir(path.join(serverDir, 'node_modules', 'typescript'), { recursive: true });
       await writeFile(path.join(serverDir, 'package.json'), JSON.stringify({
         devDependencies: { typescript: '^6.0.3' }
@@ -345,7 +345,7 @@ describe('coverage report scope', () => {
 describe('guardrail gate over a fixture tree', () => {
   async function createTree(sourceText: string): Promise<string> {
     const root = await mkdtemp(path.join(tmpdir(), 'la-pluma-guardrails-'));
-    const serverDir = path.join(root, 'server');
+    const serverDir = path.join(root, 'apps', 'server');
     await mkdir(path.join(serverDir, 'src', 'utils'), { recursive: true });
     await mkdir(path.join(serverDir, 'node_modules', 'typescript'), { recursive: true });
     await writeFile(path.join(serverDir, 'package.json'), JSON.stringify({ devDependencies: { typescript: '6.0.3' } }));
@@ -355,7 +355,7 @@ describe('guardrail gate over a fixture tree', () => {
       '',
       'importers:',
       '',
-      '  server:',
+      '  apps/server:',
       '    devDependencies:',
       '      typescript:',
       '        specifier: 6.0.3',
@@ -371,7 +371,7 @@ describe('guardrail gate over a fixture tree', () => {
     const failingRoot = await createTree('export const value: any = 1;\n');
     try {
       const failing = evaluateGuardrails({
-        serverRoot: path.join(failingRoot, 'server'),
+        serverRoot: path.join(failingRoot, 'apps', 'server'),
         repoRoot: failingRoot
       });
       assert.equal(failing.exitCode, 1);
@@ -383,7 +383,7 @@ describe('guardrail gate over a fixture tree', () => {
     const cleanRoot = await createTree('export const value: unknown = 1;\n');
     try {
       const clean = evaluateGuardrails({
-        serverRoot: path.join(cleanRoot, 'server'),
+        serverRoot: path.join(cleanRoot, 'apps', 'server'),
         repoRoot: cleanRoot
       });
       assert.equal(clean.exitCode, 0);
@@ -398,7 +398,7 @@ describe('guardrail gate over a fixture tree', () => {
     try {
       await rm(path.join(root, 'pnpm-lock.yaml'));
       const evaluation = evaluateGuardrails({
-        serverRoot: path.join(root, 'server'),
+        serverRoot: path.join(root, 'apps', 'server'),
         repoRoot: root
       });
       assert.equal(evaluation.exitCode, 1);
