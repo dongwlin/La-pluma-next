@@ -1,5 +1,5 @@
 import { getErrorMessage, type ApiResponse } from '@/shared/api'
-import { getRun, getRunSnapshot, stopRun } from '../api'
+import { getRun, getRunSnapshot, stopRun, type StopRunOptions } from '../api'
 import {
   findRunById,
   isActiveRunState,
@@ -83,7 +83,7 @@ export interface ExecutionIdentityStorage {
 export interface ExecutionControllerApi {
   fetchSnapshot: (signal?: AbortSignal) => Promise<ApiResponse<RunSnapshot>>
   fetchRun: (runId: string, signal?: AbortSignal) => Promise<ApiResponse<AgentRun>>
-  stopRun: (runId: string) => Promise<ApiResponse<StopRunResult>>
+  stopRun: (runId: string, options?: StopRunOptions) => Promise<ApiResponse<StopRunResult>>
 }
 
 export interface ExecutionControllerOptions {
@@ -444,11 +444,13 @@ export class ExecutionController {
   /**
    * 按本客户端持有的 runId 停止。没有身份时返回 null，绝不退化为“停止当前任务”。
    */
-  async stopTrackedRun(): Promise<ApiResponse<StopRunResult> | null> {
+  async stopTrackedRun(options: StopRunOptions = {}): Promise<ApiResponse<StopRunResult> | null> {
     const runId = this.trackedRunId
     if (!runId) return null
 
-    const result = await this.api.stopRun(runId)
+    const result = options.mode
+      ? await this.api.stopRun(runId, options)
+      : await this.api.stopRun(runId)
     if (result.success && result.data?.run && typeof result.data.run.runId === 'string') {
       this.applyRun(result.data.run)
     } else if (result.errorInfo?.code === 'AGENT_RUN_NOT_FOUND') {

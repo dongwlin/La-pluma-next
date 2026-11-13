@@ -33,6 +33,8 @@ export default function RoguelikeWorkspace() {
   const {
     isRunning,
     isStopping,
+    isWaitingForCombat,
+    pendingStopMode,
     isSubmitting,
     trackedRun,
     execute,
@@ -146,11 +148,13 @@ export default function RoguelikeWorkspace() {
           execution={{
             isRunning,
             isStopping,
+            isWaitingForCombat,
+            pendingStopMode,
             isSubmitting,
             automationAvailable,
             unavailableMessage,
             onExecute: () => void handleExecute(),
-            onStop: () => void stop(),
+            onStop: mode => void stop(mode),
           }}
         />
 

@@ -20,9 +20,11 @@ export type {
   RunRecovery,
   RunSnapshot,
   RunState,
+  RunStopIntent,
   RunSubmissionData,
   RunTaskResult,
   ScheduleExecutionSnapshot,
+  StopMode,
   StopRunResult,
   TerminalRunState,
 } from './run'

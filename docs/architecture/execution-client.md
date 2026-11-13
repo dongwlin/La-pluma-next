@@ -27,14 +27,14 @@
 | --- | --- |
 | `getRunSnapshot(signal?)` | `GET /api/agent/runs/current`，返回 `RunSnapshot` |
 | `getRun(runId, signal?)` | `GET /api/agent/runs/{runId}`，终态保留期内可读 |
-| `stopRun(runId)` | `POST /api/agent/actions/stop?runId=…`，只停止目标 run |
+| `stopRun(runId, options?)` | `POST /api/agent/actions/stop?runId=…`，只停止目标 run；`options.mode` 取 `now`（缺省）或 `after-combat`，只有显式传 `mode` 时才发送 JSON body |
 | `executeCommand(..., options?)` | 通用 `run-task`，`options.idempotencyKey` 写入 `Idempotency-Key` |
 | `executePredefinedTask` / `executePredefinedTaskArgs` | 旧参数形式保持不变，末位新增可选 `AgentRequestOptions` |
 | `getTaskStatus` / `stopTask` | 旧进程投影与旧式停止；`getTaskStatus` 仍由连接监测器使用，`stopTask` 仅保留给旧调用方，页面不再调用 |
 
 ### 类型
 
-`RunState`、`AgentRun`、`RunSnapshot`、`RunOccupancy`、`RunLease`、`StopRunResult` 与 OpenAPI 的 Run schema 对齐；`isActiveRunState` / `isTerminalRunState` / `findRunById` 提供不依赖页面状态的判断。类型只描述服务端事实，不包含前端推导出的完成语义。
+`RunState`、`AgentRun`、`RunSnapshot`、`RunOccupancy`、`RunLease`、`StopRunResult` 与 OpenAPI 的 Run schema 对齐；`StopMode` / `RunStopIntent` 描述停止意图：`StopRunResult.pendingStop` 表示等待战斗结束的停止已被受理，活动 run 的 `progress.stopIntent` 是同一意图的进度投影。`isActiveRunState` / `isTerminalRunState` / `findRunById` 提供不依赖页面状态的判断。类型只描述服务端事实，不包含前端推导出的完成语义。
 
 ### 控制器
 
@@ -56,7 +56,7 @@ const result = await executionController.submitExecution('run_task', ({ idempote
 | `submitExecution(operationId, request, options?)` | 生成键、执行请求、收敛响应；`options.scope` 标记调用方领域；本地 signal 中止不等于停止 |
 | `adoptSubmission(response, operationId, { scope? })` | 为日常流程/作业集等域端点采纳响应中的 `runId` |
 | `observeRun(runId \| null, operationId?, scope?)` | 绑定或解除调用方身份，不发送停止；重新绑定已持久化身份时应传回原 `scope` |
-| `stopTrackedRun()` | 按当前身份停止；没有身份时返回 `null`，不退化为旧式“停止当前任务” |
+| `stopTrackedRun(options?)` | 按当前身份停止，`options.mode` 透传给 `stopRun`；没有身份时返回 `null`，不退化为旧式“停止当前任务” |
 | `abortObservation()` / `resumeObservation()` | 中止/恢复本地观察，不改变服务端执行 |
 | `useExecutionObservation()` | 应用级启动观察，通常在 `App` 中调用一次 |
 | `useExecutionSnapshot()` | 基于 `useSyncExternalStore` 的薄订阅，返回稳定快照 |
@@ -83,7 +83,7 @@ const result = await executionController.submitExecution('run_task', ({ idempote
 
 | 投影阶段 | 条件 | 标签 | 设备是否忙 |
 | --- | --- | --- | --- |
-| `running` | 快照或已跟踪身份里有活动 run（`stopping` 显示“正在停止”） | `正在执行: <当前任务>` 或 `任务执行中` | 是 |
+| `running` | 快照或已跟踪身份里有活动 run（`stopping` 显示“正在停止”） | `正在执行: <当前任务>`、`任务执行中`，存在 `progress.stopIntent` 时为 `等待战斗结束后停止` | 是 |
 | `waiting` | 唯一活动 run 是等待下一关的作业集 | `等待继续` | 是 |
 | `occupied` | 没有活动 run，但 `occupancy.state=external`（未纳管的更新、Telegram 或旧调用方） | `设备被其他任务占用` | 是 |
 | `unknown` | 观察断线（保留最后已知 `isRunning`），或 `occupancy.state=unknown` | `执行状态未知` | 按最后已知值 |
@@ -113,18 +113,21 @@ const result = await executionController.submitExecution('run_task', ({ idempote
 
 | 操作 | 是否调用服务端 | 是否影响执行 | 用途 |
 | --- | --- | --- | --- |
-| `stopTrackedRun()` | 是，`POST stop?runId=…` | 记录停止意图并停止设备任务 | 用户明确终止 |
+| `stopTrackedRun({ mode: 'now' })` | 是，`POST stop?runId=…`，body `{ mode: 'now' }` | 记录停止意图并停止设备任务 | 用户明确终止，或取消等待战斗结束 |
+| `stopTrackedRun({ mode: 'after-combat' })` | 是，`POST stop?runId=…`，body `{ mode: 'after-combat' }` | 战斗结束后停止；无法判定或不在战斗中时退化为立即停止 | 用户选择等待战斗结束 |
 | `abortObservation()` | 否 | 只取消本地请求与定时器，保留快照 | 页面/会话暂时不再观察 |
 | `start()` 返回的释放函数 | 否 | 引用计数归零后停止本地观察 | 应用卸载或测试清理 |
 | 提交请求的 `AbortSignal` | 否 | 只放弃本地 HTTP 响应，服务端可能已接受 | 页面取消等待 |
 
 停止后仍需继续观察，直到 `stopped`/`failed`/`interrupted` 等终态；重复停止是安全的。
 
+`mode=after-combat` 只有在服务端能确认当前战斗时才被受理：响应带 `pendingStop`（`mode`/`requestedAt`/`deadline`/`combat`；`requestedAt`/`deadline` 是 ISO 8601 字符串，`combat` 为 `null` 表示无法判定），活动 run 的 `progress` 同时出现 `stopIntent` 并保持 `running`，直到进入 `stopping` 时消失。响应没有 `pendingStop` 表示已退化为立即停止，调用方不能自行假设仍在等待。等待期间再次以 `mode=now` 停止就是取消等待并立即停止。
+
 ## 6. 生命周期与兼容
 
 - `App` 通过 `useExecutionObservation()` 启动一次应用级观察；页面或组件只能通过 `useExecutionSnapshot()` 订阅，不得自行创建控制器或重复启动轮询。`App` 同时调用 `useRunStatusProjection()`：它在 React 树外订阅控制器并写 `statusStore.runStatus`，所以页面切换、Activity 清理和组件卸载都不会让全局运行展示退回空闲。
 - Activity 隐藏只清理页面 Effects，不调用 `abortObservation()` 或 `stopTrackedRun()`；控制器不在 React 树内，页面生命周期不改变执行所有权。浏览器文档隐藏同样不停止应用级 Run 观察，也不改变执行终态。
-- 肉鸽页已迁移到控制器：`run_task` 以 `waitForCompletion=false` 和 `scope: 'roguelike'` 提交，202 接受后只按 `trackedRun` 渲染运行/停止按钮。停止走 `stopTrackedRun()`，确认期间由快照推进；停止请求成功但 15s 内仍看不到 `stopping`/终态时解锁按钮允许重试。页面卸载或 Activity 隐藏不发送停止，刷新后按持久化身份恢复且不重新提交。页面只消费全局运行投影。
+- 肉鸽页已迁移到控制器：`run_task` 以 `waitForCompletion=false` 和 `scope: 'roguelike'` 提交，202 接受后只按 `trackedRun` 渲染停止意图。运行中提供两个等宽按钮：「立即终止」以 `stopTrackedRun({ mode: 'now' })` 立即停止，「等待战斗结束」以 `stopTrackedRun({ mode: 'after-combat' })` 请求战斗结束后停止；空闲态仍是单个「立即执行」。等待态只由 `trackedRun.progress.stopIntent` 或刚受理的 `pendingStop` 派生，期间右侧按钮禁用并提示最多等待 10 分钟，左侧「立即终止」保持可用，用于取消等待或逃生。停止请求成功但 15s 内仍看不到 `stopping`/终态时解锁按钮允许重试；等待态不算停止确认，不能触发该超时。页面卸载或 Activity 隐藏不发送停止，刷新后按持久化身份恢复且不重新提交。页面只消费全局运行投影。
 - 作业页已迁移到控制器，`scope: 'combat'`：
   - 单作业走 `run_task`（`waitForCompletion=false`），幂等键由控制器 intent 生成；作业集走 `run_copilot_set`，只有服务端持有的集合 run 一种身份。
   - 三种页面模式映射为两种服务端模式：`顺序执行` 与 `连续执行` 都提交 `mode=continuous`；`手动逐关` 提交 `mode=manual`，首项后 run 转 `waiting`，页面用 `progress.nextEntry` 渲染“开始下一关”，点击调用 `POST /api/agent/actions/continue-copilot-set`（不新建 run、不使用新幂等键）。
@@ -158,9 +161,9 @@ const result = await executionController.submitExecution('run_task', ({ idempote
 
 | 测试 | 固定行为 |
 | --- | --- |
-| `features/task-execution/api/api.test.ts` | 旧位置参数不带幂等头；新 `AgentRequestOptions` 写入 `Idempotency-Key`；快照/按 id/目标停止的 URL 与请求方式；旧 `tasks/status`、`stopTask` 仍可用 |
-| `features/task-execution/controller/executionController.test.tsx` | 快照作为唯一观察源；旧快照不覆盖新快照；旧提交不覆盖新 run；幂等键复用与格式；调用方 `scope` 与 `operationId` 随身份提交/持久化/恢复，未知身份或解除绑定时清除；断线保留活动状态；重连按 `runId` 恢复观察且不重新提交；页面卸载后仍观察；引用计数释放；订阅入口不启动轮询；观察 hook 挂载/卸载；404 标记 unknown；停止与本地中止分离 |
-| `pages/roguelike/RoguelikeTasks.test.tsx` | 单次幂等提交保留 `run_task`/`taskType`/命令参数；重复点击不并发提交；按 `runId` 停止且确认中重复点击只发一次；Activity 隐藏/恢复不遗留锁定按钮；停止确认超时与拒绝后可重试；页面卸载不发送停止且继续观察；刷新按身份恢复且不重提交；其它 `scope` 的 run 不显示为本页执行；终态成功/失败消息 |
+| `features/task-execution/api/api.test.ts` | 旧位置参数不带幂等头；新 `AgentRequestOptions` 写入 `Idempotency-Key`；快照/按 id/目标停止的 URL 与请求方式；缺省停止不带 body，`mode` 才写入 JSON body；旧 `tasks/status`、`stopTask` 仍可用 |
+| `features/task-execution/controller/executionController.test.tsx` | 快照作为唯一观察源；旧快照不覆盖新快照；旧提交不覆盖新 run；幂等键复用与格式；调用方 `scope` 与 `operationId` 随身份提交/持久化/恢复，未知身份或解除绑定时清除；断线保留活动状态；重连按 `runId` 恢复观察且不重新提交；页面卸载后仍观察；引用计数释放；订阅入口不启动轮询；观察 hook 挂载/卸载；404 标记 unknown；停止与本地中止分离；`mode` 透传后保持 run 的 `running` 与响应中的 `pendingStop` |
+| `pages/roguelike/RoguelikeTasks.test.tsx` | 单次幂等提交保留 `run_task`/`taskType`/命令参数；重复点击不并发提交；运行中双按钮与空闲单按钮；两种停止模式与请求 `mode`；等待态来自 `progress.stopIntent`/`pendingStop` 且不触发 15s 超时；等待中点「立即终止」发 `mode=now`；非战斗退化提示；停止确认超时与拒绝后可重试；Activity 隐藏/恢复不遗留锁定按钮；页面卸载不发送停止且继续观察；刷新按身份恢复且不重提交；其它 `scope` 的 run 不显示为本页执行；终态成功/失败消息 |
 | `features/combat/model/copilotSetRun.test.ts` | 活动 `progress` 与终态 `summary` 的投影；突袭/普通条目按作业折叠；等待态 `nextEntry`；缺失进度不伪造完成；终态通知文案 |
 | `pages/combat/CombatTasks.test.tsx` | 单作业 `run_task` 幂等提交（不等待完成）；作业集三模式映射（cli/app→`continuous`、`manual`）；提交在途重复点击只发一次；等待态“开始下一关”与 409 占用重试；失败汇总与失败数；按 `runId` 停止后不再提交；停止确认超时重试；Activity 隐藏/恢复不停止、不重提；断线保留运行态并在重连后恢复观察；刷新按身份恢复；其它 `scope`/其它作业集的 run 不显示为本页执行；未知身份不冒充完成 |
 | `features/statistics/model/commandOwner.test.ts` | 识别命令经 `beginExecutionIntent` 提交并携带 `scope: statistics`；超时/取消后复用同一幂等键确认已有 Run；Run 终态等待与解析超时不重提；材料刷新不产生 Run；成功后发布作用域失效 |
@@ -170,7 +173,7 @@ const result = await executionController.submitExecution('run_task', ({ idempote
 | `features/automation/model/flowCheckpoint.test.ts` | 旧断点 JSON/版本/时效校验；活动与终态 `run_daily_flow` 关联；无身份流程与其它活动 run 的冲突；所有分支删除旧键；删除失败仍只观察不重提 |
 | `pages/automation/AutomationTasks.execution.test.tsx` | 单次 `run_daily_flow` 幂等提交；步间延迟期间不提前完成；按 `runId` 停止并等待终态；刷新按身份恢复且不重提；概览入口发起的今日流程被本页接管并可停止；非今日流程的活动 run 不被认领；其它 run 的 `schedule` 投影不被采用；Activity 隐藏/恢复保留终态标记；旧断点有效/终态/失效/过期/冲突分支；失败、跳过与未执行结果 |
 | `pages/automation/AutomationTasks.activity.test.tsx` | 流程结束时 Activity 隐藏再恢复，完成标记不丢失、不发送停止、不重新提交 |
-| `features/runtime-status/hooks/useRunStatusProjection.test.tsx` | 空闲/运行/等待继续/正在停止/外部占用/未知占用/断线保留最后活动 run/终态才回到空闲 |
+| `features/runtime-status/hooks/useRunStatusProjection.test.tsx` | 空闲/运行/等待继续/等待战斗结束后停止（仍算设备忙）/正在停止/外部占用/未知占用/断线保留最后活动 run/终态才回到空闲 |
 | `features/runtime-status/hooks/useBackendStatusMonitor.test.tsx` | 探针只写连接健康，不写运行状态；投影进入忙态后探针改按 2s 间隔 |
 | `features/runtime-status/components/FloatingStatusIndicator.test.tsx` | 连接健康 > 临时消息 > 运行投影（标签与颜色）> 干员台词；运行/等待为 info，占用/未知为 warning |
 | `features/runtime-status/store/statusStore.test.ts` | 运行字段只接受投影；忙态保留消息，离开忙态才恢复自动消失；相同投影不重复通知；连接健康与消息互不影响 |

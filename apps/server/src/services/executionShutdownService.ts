@@ -28,6 +28,7 @@ import {
 } from './agentRunService.ts';
 import { requestCopilotSetRunStop } from './copilotSetRunService.ts';
 import { getTaskStatus, stopCurrentTask } from './maaProcessService.ts';
+import { releaseAllRoguelikeStopIntents } from './roguelikeStopIntentService.ts';
 import { getScheduleExecutionStatus, stopScheduleExecution } from './schedulerService.ts';
 import type {
   RuntimeLifecycle,
@@ -51,6 +52,7 @@ export interface ExecutionShutdownRuntime {
   flushRunStore(): Promise<unknown>;
   stopDeviceTask(options: { forceKillDelayMs: number }): unknown;
   stopScheduleFlow(): unknown;
+  releaseStopIntents(): void;
   isDeviceTaskRunning(): boolean;
   isScheduleRunning(): boolean;
   now(): number;
@@ -112,6 +114,7 @@ function createDefaultRuntime(): ExecutionShutdownRuntime {
     flushRunStore: () => flushAgentRunStore(),
     stopDeviceTask: ({ forceKillDelayMs }) => stopCurrentTask({ forceKillDelayMs }),
     stopScheduleFlow: () => stopScheduleExecution(),
+    releaseStopIntents: () => releaseAllRoguelikeStopIntents(),
     isDeviceTaskRunning: () => Boolean(getTaskStatus().isRunning),
     isScheduleRunning: () => Boolean(getScheduleExecutionStatus().isRunning),
     now: () => Date.now(),
@@ -156,6 +159,11 @@ export function createExecutionShutdownService(
     const admission = gate.close(reason);
     const errorMessages = new Set<string>();
     const recordError = (message: string) => { errorMessages.add(message); };
+    try {
+      runtime.releaseStopIntents();
+    } catch (error) {
+      recordError(`释放等待战斗结束的停止意图失败: ${describeError(error)}`);
+    }
     const stoppedRuns: Array<{ runId: string; disposition: string }> = [];
     const seenRunIds = new Set<string>();
     const deviceStopRunIds = new Set<string>();

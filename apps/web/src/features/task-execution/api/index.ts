@@ -113,3 +113,4 @@ export {
   getRunSnapshot,
   stopRun,
 } from './runs'
+export type { StopRunOptions } from './runs'

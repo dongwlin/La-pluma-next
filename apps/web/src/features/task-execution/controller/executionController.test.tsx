@@ -524,6 +524,32 @@ describe('execution controller stop semantics', () => {
     expect(controller.getState().trackedRun?.state).toBe('stopping')
   })
 
+  it('forwards the stop mode and returns the accepted wait intent without leaving running', async () => {
+    api.fetchSnapshot.mockResolvedValue(ok(runSnapshot({ activeRuns: [activeRun('run-1')] })))
+    const intent = controller.beginExecutionIntent('run_task')
+    controller.settleExecutionIntent(intent, ok({ runId: 'run-1', run: activeRun('run-1') }))
+    start()
+    await flush()
+
+    api.stopRun.mockResolvedValue(ok({
+      stopRequested: false,
+      deviceStopRequested: false,
+      run: activeRun('run-1'),
+      pendingStop: {
+        mode: 'after-combat',
+        requestedAt: '2026-10-25T00:00:00.000Z',
+        deadline: '2026-10-25T00:10:00.000Z',
+        combat: true,
+      },
+    }))
+
+    const result = await controller.stopTrackedRun({ mode: 'after-combat' })
+
+    expect(api.stopRun).toHaveBeenCalledWith('run-1', { mode: 'after-combat' })
+    expect(result?.data?.pendingStop?.mode).toBe('after-combat')
+    expect(controller.getState().trackedRun?.state).toBe('running')
+  })
+
   it('never degrades a missing identity into stopping the current task', async () => {
     const result = await controller.stopTrackedRun()
 

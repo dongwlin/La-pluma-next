@@ -109,4 +109,15 @@ describe('run observation api', () => {
     expect((url as URL).searchParams.get('runId')).toBe('00000000-0000-4000-8000-000000000000')
     expect(init).toEqual({ method: 'POST' })
   })
+
+  it('sends the stop mode as a JSON body only when one is requested', async () => {
+    await stopRun('run-1', { mode: 'after-combat' })
+
+    const [url, init] = mocks.fetchWithAuth.mock.calls[0]!
+    expect((url as URL).pathname).toBe('/api/agent/actions/stop')
+    expect((url as URL).searchParams.get('runId')).toBe('run-1')
+    expect(init.method).toBe('POST')
+    expect(readHeaders(init).get('Content-Type')).toBe('application/json')
+    expect(JSON.parse(init.body)).toEqual({ mode: 'after-combat' })
+  })
 })

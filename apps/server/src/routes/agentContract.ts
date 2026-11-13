@@ -564,7 +564,7 @@ export const AGENT_OPERATIONS: readonly RegisteredAgentOperation[] = Object.free
     id: 'stop_task',
     method: 'POST',
     path: '/api/agent/actions/stop',
-    description: 'Stop the currently running MAA task if any. Pass runId to guard the stop to one execution; accepted runs are canceled without touching the device.',
+    description: 'Stop the currently running MAA task if any. Pass runId to guard the stop to one execution; accepted runs are canceled without touching the device. mode=after-combat defers a currently fighting Roguelike/Reclamation run: the response keeps run.state=running and returns pendingStop:{mode,requestedAt,deadline,combat} with deviceStopRequested=false, the run progress carries the same stopIntent, and the device stop is sent only after RoguelikeCombatEnd or the 600s cap. A repeated request returns the same pendingStop with alreadyPending=true. Every other target, including a run that is not in combat or whose combat state cannot be read from asst.log, falls back to an immediate stop.',
     tags: ['Execution'],
     safety: safety('low-risk-write', {
       idempotent: true,
@@ -587,6 +587,12 @@ export const AGENT_OPERATIONS: readonly RegisteredAgentOperation[] = Object.free
         runId: {
           ...runIdProperty,
           description: 'Optional guard: only stop the current execution when its run id matches.'
+        },
+        mode: {
+          type: 'string',
+          enum: ['now', 'after-combat'],
+          default: 'now',
+          description: 'Stop timing. after-combat only defers a running, current run_task Roguelike/Reclamation execution that is observed in combat; all other cases stop immediately.'
         }
       }
     }
@@ -1082,7 +1088,19 @@ export function buildOpenApiSpec(defaults: AgentRuntimeDefaults = {}): OpenApiDo
             totalSteps: { type: ['integer', 'null'], minimum: 0 },
             currentTask: {},
             shouldStop: { type: 'boolean' },
-            message: { type: ['string', 'null'] }
+            message: { type: ['string', 'null'] },
+            stopIntent: {
+              type: 'object',
+              required: ['mode', 'requestedAt', 'deadline', 'combat'],
+              properties: {
+                mode: { type: 'string', const: 'after-combat' },
+                requestedAt: { type: 'string', format: 'date-time' },
+                deadline: { type: 'string', format: 'date-time' },
+                combat: { type: ['boolean', 'null'] }
+              },
+              additionalProperties: false,
+              description: 'Present only while a Roguelike/Reclamation run waits for the current combat to end before the stop is sent.'
+            }
           },
           additionalProperties: true
         },

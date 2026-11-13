@@ -4,7 +4,7 @@
 
 本文说明 La Pluma Next 当前的执行身份、唯一状态来源与生命周期边界，以及必须保留的兼容语义。它面向执行链路、Agent 集成和前端控制器的维护者；不涉及页面视觉。
 
-契约的权威实现是服务端 Run 记录（`apps/server/src/services/agentRunService.ts`）、运行快照（`apps/server/src/services/runSnapshotService.ts`）、执行租约（`apps/server/src/services/executionCoordinatorService.ts`）、作业集会话（`apps/server/src/services/copilotSetRunService.ts`）、任务进程投影（`apps/server/src/services/maaProcessService.ts`）和流程进度投影（`apps/server/src/services/scheduleFlowExecution.ts`，经 `schedulerService.ts` 的公开入口读取）。文档与代码冲突时，以代码和契约测试为准，并修正本文。
+契约的权威实现是服务端 Run 记录（`apps/server/src/services/agentRunService.ts`）、运行快照（`apps/server/src/services/runSnapshotService.ts`）、执行租约（`apps/server/src/services/executionCoordinatorService.ts`）、作业集会话（`apps/server/src/services/copilotSetRunService.ts`）、任务进程投影（`apps/server/src/services/maaProcessService.ts`）、战斗结束后停止的等待意图（`apps/server/src/services/roguelikeStopIntentService.ts`）和流程进度投影（`apps/server/src/services/scheduleFlowExecution.ts`，经 `schedulerService.ts` 的公开入口读取）。文档与代码冲突时，以代码和契约测试为准，并修正本文。
 
 ## 1. 执行身份
 
@@ -126,9 +126,10 @@ waiting ──stop──> stopped
 | 执行前占用/校验失败 | 400/409 | 错误响应，`error.details.runId`/`run` 可查；run 为 `failed`，幂等键释放，允许用同键重试 |
 | 执行中失败 | 4xx/5xx | 错误响应，`error.details.run` 为 `failed`，幂等键保留 |
 | 已停止 | 200 | 成功响应，`data.run.state=stopped` |
+| 战斗结束后停止（延后受理） | 200 | `stopRequested: true`、`deviceStopRequested: false`、`pendingStop`，`data.run.state=running`；重复请求带 `alreadyPending: true` |
 | Run 持久化不可用 | 503 | `AGENT_RUN_PERSISTENCE_FAILED`（可重试）或 `AGENT_RUN_STORE_INVALID`（不可重试） |
 
-`enrichAgentRun` 会为活动 run 追加 `progress`：日常流程只有在自己持有 `schedule.runId` 时读取 `schedule.scheduleId/currentStep/totalSteps/currentTask/shouldStop/message`；尚未获得执行权时显示 `等待执行权`，流程状态尚未发布时显示 `等待流程状态`。作业集 run 读取服务端会话：`setId`、`mode`、`phase`（`starting`/`running`/`waiting_for_next`）、`currentStep`/`totalSteps`、`currentTask`、`nextEntry`、`shouldStop` 与逐项 `taskResults`；`waiting` 阶段显示 `等待开始下一关`，会话在服务重启后不存在时按状态回退为等待提示。Core/CLI/资源更新 run 读取 taskStatus 的受管更新子进程：`currentTask` 为受管任务名，`message` 区分等待执行权、执行中、停止中与收尾阶段；更新 run 没有步骤进度，不能把子进程 idle 读成更新完成。其他执行读任务进程的 `taskName` 与 `stopRequested`。终态不追加进度。
+`enrichAgentRun` 会为活动 run 追加 `progress`：日常流程只有在自己持有 `schedule.runId` 时读取 `schedule.scheduleId/currentStep/totalSteps/currentTask/shouldStop/message`；尚未获得执行权时显示 `等待执行权`，流程状态尚未发布时显示 `等待流程状态`。作业集 run 读取服务端会话：`setId`、`mode`、`phase`（`starting`/`running`/`waiting_for_next`）、`currentStep`/`totalSteps`、`currentTask`、`nextEntry`、`shouldStop` 与逐项 `taskResults`；`waiting` 阶段显示 `等待开始下一关`，会话在服务重启后不存在时按状态回退为等待提示。Core/CLI/资源更新 run 读取 taskStatus 的受管更新子进程：`currentTask` 为受管任务名，`message` 区分等待执行权、执行中、停止中与收尾阶段；更新 run 没有步骤进度，不能把子进程 idle 读成更新完成。其他执行读任务进程的 `taskName` 与 `stopRequested`。肉鸽/生息演算的延后停止在等待期间额外带 `stopIntent`（`mode`、`requestedAt`、`deadline`、`combat`），`message` 为 `等待战斗结束后终止`；停止真正下发、run 进入 `stopping` 后不再包含 `stopIntent`。终态不追加进度。
 
 ### 幂等与重试
 
@@ -141,7 +142,20 @@ waiting ──stop──> stopped
 
 ## 4. 取消语义
 
-停止是**服务端操作**，不是中止本地读取。入口是 `POST /api/agent/actions/stop`；`runId` 可放在请求体或查询参数中（`links.stop` 使用查询参数），请求体优先。
+停止是**服务端操作**，不是中止本地读取。入口是 `POST /api/agent/actions/stop`；`runId` 可放在请求体或查询参数中（`links.stop` 使用查询参数），请求体优先。请求体还可带 `mode`：`now`（缺省，原有行为）或 `after-combat`；其它值返回 400 `AGENT_VALIDATION_STOP_MODE_INVALID`，不会进入执行编排；显式 `mode: null` 同样非法，只有字段缺失才取 `now`。
+
+`mode=after-combat` 只对满足全部条件的请求延后受理：目标是 `operationId=run_task` 的肉鸽/生息演算 run（`command`、`taskType` 或动态任务类型匹配）、run 为 `running` 且是当前执行，并且从本次 run 开始后的 `asst.log` 判定正处于战斗中。任一条不满足（包括非肉鸽 run、非当前 run、战斗已结束或无法判定）都退化为立即停止，响应与 `mode=now` 相同，不产生 `pendingStop`。
+
+延后受理时：
+
+- 响应 200，`stopRequested: true`、`deviceStopRequested: false`、`pendingStop: { mode, requestedAt, deadline, combat }`；`requestedAt`/`deadline` 为 ISO 8601 字符串，`deadline` 是受理时刻加 600 秒（`ROGUELIKE_STOP_INTENT_MAX_WAIT_MS`）。
+- run 保持 `running`，不向设备发送停止命令；`run.progress.stopIntent` 与 `pendingStop` 相同，`message` 为 `等待战斗结束后终止`。
+- 已在等待中的重复请求返回同一 `pendingStop` 并带 `alreadyPending: true`，不建立第二个 watcher。
+- 战斗判定只采信本次 run 的 `startedAt` 之后的日志行：最后一个标记决定状态，`SubTaskExtraInfo.what=StageInfo` 表示战斗中，只有 `RoguelikeCombatEnd` 清除战斗状态，`StageInfoError` 不改变判定（单独出现且没有更早的 `StageInfo` 时仍为无法判定）；更早的残留回调（例如上一局被强杀的 run）不参与判定。没有相关事件、读取失败或 `startedAt` 缺失都按无法判定处理并立即停止。
+- 等待期间只保存内存中的 pending，不落盘；通过 `createMaaLogCheckpoint` 与 `readMaaLogIncrement` 轮询增量，只要 `ok` 或 `truncated` 的增量带回文本并发现 `RoguelikeCombatEnd` 就结束等待（`truncated` 的文本是区间尾部，仍可做肯定发现）；文本为空、不可读、轮转或没有结束标记时继续轮询。到达 600 秒上限后同样按既有停止路径下发。
+- 下发停止复用 `stopCurrentTask` 与 `requestAgentRunStop`；run 进入 `stopping` 后 `progress.stopIntent` 消失。
+- `mode=now`、不带 `runId` 的旧式停止、run 进入终态、设备子进程退出或服务关闭都会释放等待，不补发停止；`mode=now` 会先取消已有的 pending。
+- 战斗状态依赖 MaaCore 把结构化回调写入 `asst.log`。真实设备上这些回调的可见性尚未验证；日志不可读或没有回显时行为会保守地退化为立即停止。当前 `StageInfo`/`RoguelikeCombatEnd` 由肉鸽战斗插件发出，生息演算若没有同类回调，同样会按无法判定退化为立即停止。
 
 不带 `runId` 的旧式停止仍然有效：停止当前受管子进程和当前流程，并在存在活动 run 时记录停止意图。`accepted` 的当前 run 会被取消；`waiting` 的当前作业集会直接转为 `stopped`（`waitingRunStopped`）且不发送设备命令；`running` 的会转入 `stopping`。响应保留 `task`、`scheduleStopped`、`stopRequested`，并新增 `deviceStopRequested` 表示是否真的向设备发出了停止命令。
 
@@ -152,6 +166,8 @@ waiting ──stop──> stopped
 | `accepted`（是否为 current 均可） | 200 | 立即取消为 `stopped`，`acceptedRunCanceled: true` | 否 |
 | `waiting`（manual 作业集；是否为 current 均可） | 200 | 立即转为 `stopped`，`waitingRunStopped: true`，`result` 含逐项汇总，未开始项保持 `pending` | 否 |
 | `running` 且是 current | 200 | 记录 `stopping` | 是，`deviceStopRequested` 反映结果 |
+| `running` 且是 current，`mode=after-combat`，肉鸽/生息演算且正在战斗 | 200 | 只记录 `pendingStop`，run 保持 `running`，`progress.stopIntent` 可观察 | 否，战斗结束或到达 600 秒上限后补发 |
+| `running` 且是 current，`mode=after-combat`，其它情况 | 200 | 退化为立即停止，记录 `stopping` | 是，`deviceStopRequested` 反映结果 |
 | `running` 但不是 current | 409 `AGENT_RUN_NOT_CURRENT` | 拒绝，不改任何 run | 否 |
 | `stopping` 且是 current | 200 | 保持 `stopping`，重发设备停止 | 是 |
 | `stopping` 但不是 current | 200，`alreadyStopping: true` | 已是停止意图 | 否 |
@@ -161,7 +177,8 @@ waiting ──stop──> stopped
 规则：
 
 - **旧 runId 不会误伤新运行。** 终态旧 run 只返回 `alreadyTerminal`；未开始的旧 run 只会取消它自己；非当前的活动 run 在发出设备命令前被拒绝。
-- **停止可安全重试。** `stopping` 与终态的重复请求都返回 200；`stopping` 时会重新尝试设备停止。调用方仍需轮询到终态。
+- **停止可安全重试。** `stopping` 与终态的重复请求都返回 200；`stopping` 时会重新尝试设备停止。调用方仍需轮询到终态。`after-combat` 的重复请求返回同一 `pendingStop` 与 `alreadyPending: true`，不会重复建立 watcher。
+- **延后停止不是完成。** 等待期间的 `pendingStop`/`progress.stopIntent` 只描述已受理的停止意图；run 仍是 `running`，设备仍在执行。调用方必须继续轮询到终态，不能用 `pendingStop` 判断战斗已结束或任务已停止。
 - 停止请求先记录 run 意图，再发送设备命令。若子进程尚未 spawn，执行器在 pre-start gate 看到 `stopping` 会直接放弃启动并转为 `stopped`；若 spawn 已发生但事件尚未处理，`onStarted` 会补发进程/流程停止。
 - 停止过程中若子进程/流程正常退出，run 进入 `stopped`；若以错误结束，当前实现按 `stopping` 优先记为 `stopped`。不要在停止请求后把“进程退出”直接当作成功完成。
 - 更新 run 与其它执行共用同一停止矩阵：`running` 的更新 run 收到停止后终止受管更新子进程（Core/CLI/资源更新都登记进 `taskStatus`），最终结果为 `stopped`；`accepted` 的更新被直接取消，不启动子进程。停止不会把失败写成成功，也不会自动重试。
@@ -350,6 +367,7 @@ Run 存储当前使用 `version: 1`，只接受该版本并严格校验记录；
 - **持久化与恢复**：重启后活动 run（含 `waiting`）转 `interrupted` 并带 `recovery`；终态保留淘汰与写回；JSON 语法损坏不可重试、磁盘错误可重试、坏版本 fail-closed；cron 日常流程终态写回磁盘。
 - **快照与占用**：`occupancy` 的 idle/pending/run/external/unknown 与租约 free/held/stale/unknown；`lastRun` 与当前身份分离；只有 current 带进度，日常流程只投影自己持有的 `schedule.runId`。
 - **HTTP 契约**：目标停止矩阵与“旧 run 不误停新运行”；同步/后台 202 与幂等重放响应头、错误码映射；manifest/OpenAPI 同源且与实际挂载 router 图一致，恰好四个执行动作声明 `producesRun`，公开 operation 按发布 schema 校验请求与真实响应；HTTP 排空（在途响应完整结束、keep-alive 回收、超时强制断开并非零退出）与信令网关关闭失败仍排空 HTTP。
+- **停止时序**：`mode` 校验与非法值 400；非肉鸽、非战斗中、无法判定时回退立即停止；战斗中只记录 `pendingStop` 与 `progress.stopIntent` 而不下发设备停止；增量出现 `RoguelikeCombatEnd` 或到达 600 秒上限后下发并清除 `stopIntent`；增量文本为空、不可读或没有结束标记时不提前结束等待（`truncated` 尾部文本仍参与肯定发现）；`StageInfoError` 不改变战斗状态；run 先进入终态时释放 watcher 且不补发停止；`mode=now` 取消 pending 并立即停止。
 - **租约与执行**：租约互斥、死进程锁回收、unknown/空锁拒绝获取、锁文件完整内容原子发布；执行失败释放租约。
 - **维护更新 Run**：Core/CLI/资源更新返回 `runId` 与可查询终态；`waitForCompletion=false` 在取得执行权、产生受管子进程前返回 202；`running` 的更新 run 作为 `occupancy.state=run` 出现，按 `runId` 停止终止受管更新子进程并释放租约；失败归一化为 `AGENT_MAA_UPDATE_*_FAILED` 写入 `failed` 终态，详情保留各操作的领域字段（core 为 `version`/`failedStep`/`coreUpdated`，CLI 为 `channel`/`source`，资源为 `failedStep`）；资源热更新并发时后到请求立即得到 409 `AGENT_MAA_RESOURCE_UPDATE_IN_PROGRESS`（含当前更新 `activeRunId`/`activeRunState` 与本次被拒绝的 `runId`），首个更新结束后可重新开始且不启动第二次更新；相同幂等键重放原 run，不重复执行更新。
 - **作业集与流程**：continuous/manual 的等待、继续与停止语义，占用 409 可重试且不消耗条目，逐项结果归属 `runId`；计划构建与逐项状态分类；可中止的步间等待，完成副作用在租约释放且 Run 结算后消费；cron 产生单个带终态结果的 `run_daily_flow`，占用时 fail-closed；触发源重复配置替换、销毁失败上报、draining 后拒绝注册并丢弃排队回调。

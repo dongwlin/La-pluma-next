@@ -24,6 +24,21 @@ export interface RunLinks {
   stop?: string
 }
 
+/**
+ * 停止意图：`now` 立即停止设备任务；`after-combat` 等当前战斗结束后再停止，
+ * 无法判定战斗状态时服务端退化为立即停止。
+ */
+export type StopMode = 'now' | 'after-combat'
+
+/** 服务端受理的等待停止意图；等待期间随活动 run 的进度下发，进入 `stopping` 后消失。 */
+export interface RunStopIntent {
+  mode: 'after-combat'
+  requestedAt: string
+  deadline: string
+  /** `null` 表示服务端无法判定当前是否在战斗中。 */
+  combat: boolean | null
+}
+
 export interface RunTaskResult {
   index?: number
   itemIndex?: number
@@ -48,6 +63,7 @@ export interface RunProgress {
   name?: string | null
   nextEntry?: unknown
   shouldStop?: boolean
+  stopIntent?: RunStopIntent
   phase?: 'starting' | 'running' | 'waiting_for_next' | string
   message?: string
   taskResults?: RunTaskResult[]
@@ -167,6 +183,9 @@ export interface StopRunResult {
   alreadyStopping?: boolean
   acceptedRunCanceled?: boolean
   waitingRunStopped?: boolean
+  /** 只有 `mode=after-combat` 被受理为等待时才返回；缺省表示服务端已立即停止。 */
+  pendingStop?: RunStopIntent
+  alreadyPending?: boolean
   [key: string]: unknown
 }
 

@@ -310,6 +310,7 @@ const validFixtures: readonly ValidFixture[] = [
   { operationId: 'fight', status: 200, body: { stages: ['1-7'], dryRun: true } },
   { operationId: 'run_task', status: 200, body: { command: 'reclamation', args: ['Tales', '-m', '1', '-C', '荧光棒'] }, expectRun: true },
   { operationId: 'stop_task', status: 200, body: {} },
+  { operationId: 'stop_task', status: 200, body: { mode: 'after-combat' } },
   { operationId: 'get_current_run', status: 200, query: { lines: 2 } },
   { operationId: 'get_run', status: 404, pathParams: { runId: missingRunId } },
   { operationId: 'get_screenshot', status: 200, body: { adbPath: fakeAdbPath, address: deviceAddress } },
@@ -343,6 +344,8 @@ const invalidFixtures: readonly ErrorFixture[] = [
   { operationId: 'fight', status: 400, body: {}, errorCode: 'AGENT_VALIDATION_MISSING_STAGES' },
   { operationId: 'run_task', status: 400, body: { command: 'not-a-command' }, errorCode: 'AGENT_VALIDATION_COMMAND_NOT_ALLOWED' },
   { operationId: 'stop_task', status: 400, body: { runId: 42 }, errorCode: 'AGENT_VALIDATION_RUN_ID_INVALID' },
+  { operationId: 'stop_task', status: 400, body: { mode: 'later' }, errorCode: 'AGENT_VALIDATION_STOP_MODE_INVALID' },
+  { operationId: 'stop_task', status: 400, body: { mode: null }, errorCode: 'AGENT_VALIDATION_STOP_MODE_INVALID' },
   { operationId: 'get_screenshot', status: 400, body: { profileId: 'bad id!' }, errorCode: 'AGENT_VALIDATION_PROFILE_ID_INVALID' },
   { operationId: 'run_daily_flow', status: 400, body: { dryRun: 'false' }, errorCode: 'AGENT_VALIDATION_DRY_RUN_INVALID' },
   { operationId: 'webrtc_status', status: 400, query: { profileId: 'bad id!' }, errorCode: 'AGENT_VALIDATION_PROFILE_ID_INVALID' },
@@ -469,7 +472,7 @@ after(async () => {
 describe('Agent API contract registry and mounted routes', () => {
   it('covers every registered operation with a request fixture', () => {
     assert.deepEqual(
-      validFixtures.map(fixture => fixture.operationId).sort(),
+      [...new Set(validFixtures.map(fixture => fixture.operationId))].sort(),
       AGENT_OPERATIONS.map(operation => operation.id).sort(),
       'each registry entry needs an HTTP fixture so new operations cannot skip contract coverage'
     );

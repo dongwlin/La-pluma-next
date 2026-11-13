@@ -317,6 +317,14 @@ describe('Agent API contract registry', () => {
     assert.deepEqual(getRun.path_schema?.required, ['runId']);
     assert.equal(prop(getRun.path_schema, 'runId', 'get_run path').format, 'uuid');
     assert.equal(prop(must(byId.get('stop_task'), 'stop_task').body_schema, 'runId', 'stop_task body').format, 'uuid');
+    assert.deepEqual(
+      prop(must(byId.get('stop_task'), 'stop_task').body_schema, 'mode', 'stop_task body').enum,
+      ['now', 'after-combat']
+    );
+    assert.equal(
+      prop(must(byId.get('stop_task'), 'stop_task').body_schema, 'mode', 'stop_task body').default,
+      'now'
+    );
   });
 
   it('advertises restart-safe local idempotency for exactly four execution actions', () => {
@@ -648,9 +656,13 @@ describe('Agent OpenAPI generation', () => {
     assert.equal(guard.in, 'query');
     assert.equal(guard.required, false);
     assert.equal(must(guard.schema, 'stop runId schema').format, 'uuid');
-    assert.equal(
-      prop(must(must(stop.requestBody, 'stop requestBody').content['application/json'], 'stop media').schema, 'runId', 'stop body').format,
-      'uuid'
+    const stopBody = must(must(stop.requestBody, 'stop requestBody').content['application/json'], 'stop media').schema;
+    assert.equal(prop(stopBody, 'runId', 'stop body').format, 'uuid');
+    assert.deepEqual(prop(stopBody, 'mode', 'stop body').enum, ['now', 'after-combat']);
+    assert.equal(prop(stopBody, 'mode', 'stop body').default, 'now');
+    assert.deepEqual(
+      prop(schemas.RunProgress, 'stopIntent', 'RunProgress').required,
+      ['mode', 'requestedAt', 'deadline', 'combat']
     );
   });
 

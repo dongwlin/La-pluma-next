@@ -10,6 +10,8 @@ import { getRealtimeLogs, getTaskStatus } from './maaProcessService.ts';
 import type { MaaRealtimeLogEntry, MaaTaskStatus } from './maaProcessService.ts';
 import { getScheduleExecutionStatus } from './schedulerService.ts';
 import type { ScheduleExecutionStatus } from './scheduleFlowExecution.ts';
+import { getRoguelikeStopIntent } from './roguelikeStopIntentService.ts';
+import type { RoguelikeStopIntent } from './roguelikeStopIntentService.ts';
 import { resolveBoundedInteger } from '../utils/numericQueryHelper.ts';
 
 /**
@@ -42,6 +44,8 @@ export interface AgentRunProgressProjection {
   scheduleId?: string | null;
   /** 仅日常流程带停止意图。 */
   shouldStop?: boolean;
+  /** 仅肉鸽/生息演算战斗结束后的延后停止带。 */
+  stopIntent?: RoguelikeStopIntent;
 }
 
 /**
@@ -205,13 +209,17 @@ export function enrichAgentRun(run: AgentRunDto | null): AgentRunSnapshotEntry |
       }
     };
   }
+  const stopIntent = run.state === 'running' ? getRoguelikeStopIntent(run.runId) : null;
   return {
     ...run,
     progress: {
       currentStep: null,
       totalSteps: null,
       currentTask: task.taskName,
-      message: task.stopRequested ? '正在终止任务' : task.isRunning ? '任务执行中' : '等待任务启动'
+      message: stopIntent
+        ? '等待战斗结束后终止'
+        : task.stopRequested ? '正在终止任务' : task.isRunning ? '任务执行中' : '等待任务启动',
+      ...(stopIntent ? { stopIntent } : {})
     }
   };
 }
