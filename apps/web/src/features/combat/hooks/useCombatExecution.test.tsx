@@ -96,6 +96,7 @@ function combatState(trackedRun: AgentRun | null): ExecutionControllerState {
     snapshot: null,
     trackedRunId: trackedRun?.runId ?? null,
     trackedScope: COMBAT_EXECUTION_SCOPE,
+    trackedOperationId: trackedRun?.operationId ?? null,
     trackedRun,
     lastError: null,
     lastSyncedAt: null,

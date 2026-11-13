@@ -362,6 +362,45 @@ describe('execution controller identity', () => {
     expect(controller.getState().trackedScope).toBeNull()
   })
 
+  it('keeps the submitted operation id with the identity and restores it on startup', async () => {
+    const storage = memoryStorage()
+    controller = new ExecutionController({ api, storage })
+    const intent = controller.beginExecutionIntent('run_daily_flow', { scope: 'dashboard' })
+
+    controller.settleExecutionIntent(intent, ok({
+      runId: 'run-1',
+      run: { ...activeRun('run-1'), operationId: 'run_daily_flow' },
+    }))
+
+    expect(controller.getState().trackedOperationId).toBe('run_daily_flow')
+    expect(storage.current()?.operationId).toBe('run_daily_flow')
+
+    const restored = new ExecutionController({
+      api,
+      storage,
+      intervals: { active: 1_000, idle: 5_000, disconnected: 2_000 },
+    })
+    api.fetchSnapshot.mockResolvedValue(ok(runSnapshot({
+      activeRuns: [{ ...activeRun('run-1'), operationId: 'run_daily_flow' }],
+    })))
+
+    const release = restored.start()
+    await flush()
+
+    expect(restored.getState().trackedOperationId).toBe('run_daily_flow')
+    release()
+  })
+
+  it('clears the operation id when the tracked run is released', () => {
+    controller.observeRun('run-2', 'run_daily_flow', 'dashboard')
+
+    expect(controller.getState().trackedOperationId).toBe('run_daily_flow')
+
+    controller.observeRun(null)
+
+    expect(controller.getState().trackedOperationId).toBeNull()
+  })
+
   it('does not adopt a scope from a legacy response without a run id', () => {
     const intent = controller.beginExecutionIntent('run_task', { scope: 'roguelike' })
 

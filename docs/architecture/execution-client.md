@@ -96,7 +96,7 @@ const result = await executionController.submitExecution('run_task', ({ idempote
 1. 每次逻辑提交用 `beginExecutionIntent` 取一个幂等键；同一次重试复用 intent，不能生成第二个键。键格式为 `[A-Za-z0-9][A-Za-z0-9._~:-]{0,127}`，由服务端按 `operationId` 分区。
 2. 提交响应通过 `data.runId` 取得身份，`data.run` 可用时立即作为 `trackedRun`；没有 `runId` 的旧同步响应不会被伪造出身份。
 3. 身份写入 `localStorage['la-pluma-execution-identity-v1']`，保留到该 run 进入终态为止。终态后清除持久化身份，本次会话仍可展示最后记录。
-4. `scope` 是调用方自己的领域标签，随身份一起持久化，只用于判断“这个 run 是不是本页面发起的”。它不是服务端字段，不参与身份、幂等分区或键格式；缺省为 `null`，旧记录可正常读取。一个域不应把其它域 `scope` 的 run 展示成自己的执行。
+4. `scope` 是调用方自己的领域标签，随身份一起持久化，只用于判断“这个 run 是不是本页面发起的”。它不是服务端字段，不参与身份、幂等分区或键格式；缺省为 `null`，旧记录可正常读取。一个域不应把其它域 `scope` 的 run 展示成自己的执行。身份同时保存 `operationId`（`trackedOperationId`）：同一操作有多个入口时（今日流程的概览快捷入口与日常页），各入口按操作标识共同接管这一次执行，`scope` 只记录是哪个入口发起的。
 5. `settleExecutionIntent` 只接受最新 intent 的响应。较早的提交即使更晚返回，也不会覆盖新 run；较早的快照请求同理，晚到响应由序列号丢弃。
 6. `stopRun` 始终携带 `runId`；终态旧 run 只返回 `alreadyTerminal`，accepted 会被取消而不发设备命令，非当前活动 run 由服务端拒绝。
 
@@ -133,19 +133,19 @@ const result = await executionController.submitExecution('run_task', ({ idempote
   - 继续下一关返回可重试的 409 `MAA_EXECUTION_BUSY` 时保持等待态并允许重试；`AGENT_COPILOT_SET_SESSION_LOST` 提示重新提交；拒绝与传输失败之后都先重新读取快照，不凭页面状态推断结果。
   - 作业集终态后页面按服务端计划进度重建“待执行”选择（成功项移出、失败项保留）；计划读取失败只影响展示，不据此宣告完成。`失败后停止` 策略在 manual 等待态遇到失败项时结束集合 run，不再提供“开始下一关”。
   - 作业页只消费全局运行投影；页面隐藏/卸载不发送停止，刷新后按持久化身份恢复运行展示且不重提作业集。刷新后需要重新预览对应作业集才能恢复列表与“开始下一关”入口，`waiting` run 本身不会被重新提交。
-- 自动化页已迁移到控制器，`scope: 'automation'`：
+- 自动化页已迁移到控制器，`scope: 'automation'`，归属按 `trackedOperationId === 'run_daily_flow'` 判定：
   - 手动执行只提交一次 `run_daily_flow`（`POST /api/agent/schedules/manual/execute`，`waitForCompletion=false`），幂等键由控制器 intent 生成；202 接受后运行/停止按钮只由 `trackedRun` 决定。页面不再逐项提交 `run-task`，也不再保留第二套前端流程引擎。
   - 活动进度来自 `run.progress` 的 `currentStep`/`totalSteps`/`currentTask`/`message`；逐项结果只读取快照中 `schedule.runId === trackedRunId` 的 `taskResults`。流程步间延迟期间 run 仍为活动，页面不会提前标完成；终态摘要只来自 `run.result.summary`。空闲且本页没有持有 run 时，“最近执行”可回退展示快照的 `schedule.lastResult`；它只是旧字段的展示投影，不用于判断身份、完成或重提。
   - 停止走 `stopTrackedRun()`，确认期间由快照推进，15s 未确认解锁重试；页面隐藏/卸载不发送停止，刷新后按持久化身份恢复观察且不重新提交。
   - 旧 `maa-task-flow-execution` 断点只关联已有 Run，绝不重提任务；接受期限、匹配与清理规则由[兼容文档](../frontend/compatibility.md#旧自动化断点的接受与恢复)维护。
-  - 自动化页不再单独轮询 `schedules/execution`，也不写全局运行字段；它只接管本页发起的 run，不把 cron、Dashboard 或 Telegram 发起的流程显示成自己的执行。跨页全局展示由运行状态投影统一处理。
+  - 自动化页不再单独轮询 `schedules/execution`，也不写全局运行字段；它接管本页与概览快捷入口发起的今日流程（两者同为 `run_daily_flow`，进度、逐项状态与停止都可用），不把 cron 或 Telegram 发起的流程显示成自己的执行——那些执行没有本客户端身份。跨页全局展示由运行状态投影统一处理。
 - 设置页的组件更新命令同样提交服务端 Run（`update_core`/`update_cli`/`update_resources`）：`model/updateRunPort.ts` 通过 `adoptSubmission` 采纳 `runId` 并等待控制器观察到的终态；“停止更新”只停止该 `runId`，不退化成本地中止或旧式停止当前任务。等待没有前端本地时限，仍活动时保留 `running` 槽位与停止入口；刷新后 `observeTrackedRun` 按持久化身份恢复观察，终态只由服务端 Run 决定。命令所有者不在 React 树内，页面隐藏或 Activity 清理不会取消更新；旧同步响应没有 `runId` 时不伪造身份。
 - `features/task-execution` 不导入 `features/runtime-status`；连接健康与执行身份来自不同来源，不能互相替代。
 - Dashboard 已迁移到控制器，`scope: 'dashboard'`：
   - 日常入口提交一次 `run_daily_flow`（`POST /api/agent/schedules/dashboard-quick-start/execute`，`waitForCompletion=false`），幂等键由控制器 intent 生成；202 接受后不再等待请求返回，卡片按共享快照显示运行或等待。
   - Dashboard 只展示当前活动，不提供活动作业执行入口。
   - 启动入口的禁用与运行文案只来自共享投影：活动 run（含其它域或 Agent 发起的）和未纳管占用都会禁用启动；断线时显示“执行状态未知”并按最后已知活动 run 保留禁用。Dashboard 只消费全局运行投影，也不再用 `schedules/execution.isRunning` 判断运行。
-  - 本页发起的日常流程终态只在“实际观察过活动”后提示一次；其它域或未纳管执行不产生“今日流程完成”提示。页面隐藏/卸载不发送停止，控制器继续观察。
+  - 本页发起的日常流程终态只在“实际观察过活动”后提示一次；其它域或未纳管执行不产生“今日流程完成”提示。页面隐藏/卸载不发送停止，控制器继续观察。日常页按同一 `run_daily_flow` 接管概览发起的今日流程，不改变本页的全局观察与提示规则。
 - 数据统计页已迁移到控制器，`scope: 'statistics'`：
   - 仓库/干员识别通过 `beginExecutionIntent('run_task', { scope: 'statistics' })` 生成幂等键，以 `waitForCompletion=true` 提交；命令确认成功后才轮询解析端点等待 MAA 日志可解析。
   - 命令超时或本地取消只结束本地等待，不调用停止；继续时复用同一幂等键确认已有 Run，已接受 Run 只读取终态，绝不产生第二个设备命令。Run 终态等待或解析超时后只继续等待/解析，不再提交 `run-task`。
@@ -159,7 +159,7 @@ const result = await executionController.submitExecution('run_task', ({ idempote
 | 测试 | 固定行为 |
 | --- | --- |
 | `features/task-execution/api/api.test.ts` | 旧位置参数不带幂等头；新 `AgentRequestOptions` 写入 `Idempotency-Key`；快照/按 id/目标停止的 URL 与请求方式；旧 `tasks/status`、`stopTask` 仍可用 |
-| `features/task-execution/controller/executionController.test.tsx` | 快照作为唯一观察源；旧快照不覆盖新快照；旧提交不覆盖新 run；幂等键复用与格式；调用方 `scope` 随身份提交/持久化/恢复，未知身份时清除；断线保留活动状态；重连按 `runId` 恢复观察且不重新提交；页面卸载后仍观察；引用计数释放；订阅入口不启动轮询；观察 hook 挂载/卸载；404 标记 unknown；停止与本地中止分离 |
+| `features/task-execution/controller/executionController.test.tsx` | 快照作为唯一观察源；旧快照不覆盖新快照；旧提交不覆盖新 run；幂等键复用与格式；调用方 `scope` 与 `operationId` 随身份提交/持久化/恢复，未知身份或解除绑定时清除；断线保留活动状态；重连按 `runId` 恢复观察且不重新提交；页面卸载后仍观察；引用计数释放；订阅入口不启动轮询；观察 hook 挂载/卸载；404 标记 unknown；停止与本地中止分离 |
 | `pages/roguelike/RoguelikeTasks.test.tsx` | 单次幂等提交保留 `run_task`/`taskType`/命令参数；重复点击不并发提交；按 `runId` 停止且确认中重复点击只发一次；Activity 隐藏/恢复不遗留锁定按钮；停止确认超时与拒绝后可重试；页面卸载不发送停止且继续观察；刷新按身份恢复且不重提交；其它 `scope` 的 run 不显示为本页执行；终态成功/失败消息 |
 | `features/combat/model/copilotSetRun.test.ts` | 活动 `progress` 与终态 `summary` 的投影；突袭/普通条目按作业折叠；等待态 `nextEntry`；缺失进度不伪造完成；终态通知文案 |
 | `pages/combat/CombatTasks.test.tsx` | 单作业 `run_task` 幂等提交（不等待完成）；作业集三模式映射（cli/app→`continuous`、`manual`）；提交在途重复点击只发一次；等待态“开始下一关”与 409 占用重试；失败汇总与失败数；按 `runId` 停止后不再提交；停止确认超时重试；Activity 隐藏/恢复不停止、不重提；断线保留运行态并在重连后恢复观察；刷新按身份恢复；其它 `scope`/其它作业集的 run 不显示为本页执行；未知身份不冒充完成 |
@@ -168,7 +168,7 @@ const result = await executionController.submitExecution('run_task', ({ idempote
 | `features/automation/api/index.test.ts` | 旧同步调用不带 `waitForCompletion` 与幂等头；后台调用写入 `waitForCompletion=false`、`Idempotency-Key` 并转发 signal |
 | `features/automation/model/automationRun.test.ts` | 活动进度取 `run.progress` 与匹配 runId 的 `schedule`；其它 run 的逐项结果不被借用；不完整结果行被丢弃；终态摘要只来自 `succeeded`/`stopped`；成功/失败/停止/中断通知文案 |
 | `features/automation/model/flowCheckpoint.test.ts` | 旧断点 JSON/版本/时效校验；活动与终态 `run_daily_flow` 关联；无身份流程与其它活动 run 的冲突；所有分支删除旧键；删除失败仍只观察不重提 |
-| `pages/automation/AutomationTasks.execution.test.tsx` | 单次 `run_daily_flow` 幂等提交；步间延迟期间不提前完成；按 `runId` 停止并等待终态；刷新按身份恢复且不重提；其它 run 的 `schedule` 投影不被采用；Activity 隐藏/恢复保留终态标记；旧断点有效/终态/失效/过期/冲突分支；失败、跳过与未执行结果 |
+| `pages/automation/AutomationTasks.execution.test.tsx` | 单次 `run_daily_flow` 幂等提交；步间延迟期间不提前完成；按 `runId` 停止并等待终态；刷新按身份恢复且不重提；概览入口发起的今日流程被本页接管并可停止；非今日流程的活动 run 不被认领；其它 run 的 `schedule` 投影不被采用；Activity 隐藏/恢复保留终态标记；旧断点有效/终态/失效/过期/冲突分支；失败、跳过与未执行结果 |
 | `pages/automation/AutomationTasks.activity.test.tsx` | 流程结束时 Activity 隐藏再恢复，完成标记不丢失、不发送停止、不重新提交 |
 | `features/runtime-status/hooks/useRunStatusProjection.test.tsx` | 空闲/运行/等待继续/正在停止/外部占用/未知占用/断线保留最后活动 run/终态才回到空闲 |
 | `features/runtime-status/hooks/useBackendStatusMonitor.test.tsx` | 探针只写连接健康，不写运行状态；投影进入忙态后探针改按 2s 间隔 |
@@ -178,7 +178,7 @@ const result = await executionController.submitExecution('run_task', ({ idempote
 
 ## 8. 当前限制
 
-- 自动化页只展示本页发起并持有的 run。cron、Dashboard 或 Telegram 发起的流程不会变成自动化页的 `trackedRun`；全局展示由运行状态投影提供，但各页的启动按钮仍只按本域身份禁用，跨页同时启动由服务端执行租约拒绝。
+- 自动化页展示本页发起并持有的 run，以及概览快捷入口发起的同一 `run_daily_flow`。cron、Telegram 或其它操作发起的流程不会变成自动化页的 `trackedRun`；全局展示由运行状态投影提供。日常页之外的域仍只按本域 `scope` 判定归属，跨页同时启动由服务端执行租约拒绝。
 - 作业页刷新后不会自动恢复作业集预览：需要用户重新预览对应作业集才能看到列表与“开始下一关”；`waiting` run 本身仍可观察且不会被重提。
 - 作业集 `waiting` 在全局投影里按“设备忙、等待继续”处理，Dashboard 会禁用启动入口；是否允许在等待期间启动其它流程仍由服务端租约决定，界面暂不提供跨页继续入口。
 - Dashboard 完整业务快照由 `features/dashboard/model/snapshotRefresher.ts` 协调，设备采样归 `device-mirror`；页面只投影。所有权与失败保旧规则见[总览完整快照与设备采样](../frontend/domains/dashboard.md#完整快照与设备采样)。
