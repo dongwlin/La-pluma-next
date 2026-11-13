@@ -124,6 +124,34 @@ curl -X POST http://localhost:3000/api/agent/actions/continue-copilot-set \
   -d '{"runId":"00000000-0000-4000-8000-000000000000"}'
 ```
 
+#### 作业队列执行
+
+Web UI 的「作业队列」按显式条目提交 `run_copilot_queue`，不经过作业集计划，也不写入作业集的 `copilot-progress.json`。队列条目为 1–50 项，`clientId` 在本次请求内唯一（`[A-Za-z0-9][A-Za-z0-9._:-]{0,127}`）；`source=prts` 使用正整数 `copilotId`，`source=file` 使用受管目录 `copilot-imports/` 内的绝对 `.json` 路径。`mode` 为 `continuous`（默认，旧 `app`/`cli` 同义）或 `manual`；每项 `mode` 可用 `normal`（接口默认）、`raid`、`both` 或 `auto`；预设编队只按普通模式展开——`both` 只产出 `normal`，显式 `raid` 的预设编队条目不进入计划。`failurePolicy` 为 `stop`（默认）或 `continue`；`queueId` 可选（缺省 `copilot-queue`，仅字母数字与 `.`/`_`/`-`，1–64 位），`name` 可选（缺省「作业队列」，最多 128 字）；`options` 与作业集执行使用同一组字段；`waitForCompletion` 默认 `true`，Web UI 传 `false` 以先取得 `runId` 再观察 Run。
+
+```bash
+# 提交显式队列；queueId/name 只是 Run 标签
+curl -X POST http://localhost:3000/api/agent/copilot-queues/execute \
+  -H 'Content-Type: application/json' \
+  -H 'Idempotency-Key: copilot-queue-20260712-01' \
+  -d '{"queueId":"my-queue","name":"我的作业队列","mode":"manual","failurePolicy":"stop","entries":[{"clientId":"queue-a","source":"prts","copilotId":1088231,"mode":"normal"},{"clientId":"queue-b","source":"file","filename":"/path/to/copilot-imports/uuid.json","mode":"raid"}],"waitForCompletion":false}'
+
+# manual 首项完成后等待下一项
+curl -X POST http://localhost:3000/api/agent/actions/continue-copilot-queue \
+  -H 'Content-Type: application/json' \
+  -d '{"runId":"00000000-0000-4000-8000-000000000000"}'
+
+# 跳过下一个待执行项（仅 manual waiting）
+curl -X POST http://localhost:3000/api/agent/actions/skip-copilot-queue-entry \
+  -H 'Content-Type: application/json' \
+  -d '{"runId":"00000000-0000-4000-8000-000000000000"}'
+```
+
+- 同步终态响应与作业集同形：`runId`、`run`、`state`、`mode`、`queueId`、`name`、`failurePolicy`、`summary`、`message`；`waitForCompletion=false` 在取得执行权或进入 waiting 后返回 202，`data.accepted=true`。
+- manual 首项完成后 Run 为 `waiting`，响应带 `waitingForNext:true`、`nextEntry` 与当前 `summary.taskResults`；继续与跳过只在该状态可用。跳过把下一个 `pending` 项改为 `skipped` 并保持 waiting；若已无 pending 则结算为 `succeeded`。
+- 错误码：未找到 Run `AGENT_RUN_NOT_FOUND`（404）；非等待/连续模式 `AGENT_COPILOT_QUEUE_NOT_WAITING`（409）；会话丢失 `AGENT_COPILOT_QUEUE_SESSION_LOST`（409）；租约被占 `MAA_EXECUTION_BUSY`（409，保持 waiting 且不消耗条目）；请求校验失败为 `AGENT_VALIDATION_*`（400）；计划获取失败为 `AGENT_COPILOT_QUEUE_UNAVAILABLE`（502）。
+- 停止继续使用 `POST /api/agent/actions/stop?runId=`：waiting 直接转 `stopped` 并保留逐项结果；running 转 `stopping`，执行器在下一项前退出；accepted 直接取消。逐项状态、`failurePolicy`、waiting 与重启语义见[执行生命周期](../architecture/execution-lifecycle.md#43-显式作业队列-run)。
+- 本端点不在 `AGENT_OPERATIONS` 中，也不出现在 manifest/OpenAPI；Agent 需要批量执行时应使用 manifest 中的任务动作，不能依赖 Web UI 队列入口。
+
 ### 自定义基建排班文件端点（不在 Agent manifest）
 
 Web UI 的基建排班编辑器通过下列端点读写 MAA 配置目录 `infrast/` 下的排班 JSON。它们同样属于 Web UI 专用入口，未在 `AGENT_OPERATIONS` 中注册，也不会出现在 manifest/OpenAPI 中：排班文件是编辑器维护的 MAA 配置，不是面向 Agent 的语义化动作，这些端点只读写文件，不创建 Run、不占用执行租约，也不做任务参数预检。
@@ -203,7 +231,9 @@ curl -X POST http://localhost:3000/api/agent/config/resource-source \
 
 所有标准响应都包含 `success`、`message` 和 `meta`。真实执行响应还包含稳定的 `runId`、`run`、`pollUrl` 和 `stopUrl`；后台接受执行时返回 HTTP `202`。Dry-run 响应会设置 `meta.dryRun: true`；失败响应的 `error` 包含稳定的 `code`、`details` 与 `retryable`，执行器忙碌时返回 HTTP `409`。API 错误经过统一错误出口：`/api` 下未匹配的路径返回 404 `AGENT_ROUTE_NOT_FOUND`；无法解析的 JSON 请求体返回 400 `AGENT_REQUEST_BODY_INVALID`，超过大小限制返回 413 `AGENT_REQUEST_BODY_TOO_LARGE`，字符集不支持返回 415 `AGENT_REQUEST_CHARSET_UNSUPPORTED`；路径参数解码失败返回 400 `AGENT_REQUEST_PATH_INVALID`；用户配置写接口（`POST /api/agent/config/user/{configType}` 与 `POST /api/agent/notifications/config`）的请求体必须是 JSON 对象，其他顶层类型返回 400 `AGENT_CONFIG_DATA_INVALID`。错误状态限制在 400–599；携带业务状态的错误保留其公开 `code`、`message`、`details` 与 `retryable`，`retryable` 只来自错误本身，不按 5xx 推导；未知内部错误统一返回 500 `AGENT_INTERNAL_ERROR`，不泄露内部 message、details 或堆栈。错误响应与错误日志不回显请求查询串。日常流程的 Agent 入口是 `POST /api/agent/actions/run-daily-flow`；Web UI 另使用未在 manifest 中广告的 `/api/agent/schedules/{scheduleId}/execute`，两者共用 `run_daily_flow`，旧同步响应字段保持不变。Run 状态机与终态、同步与后台接受（202）响应的对应、执行身份、唯一状态来源、停止语义和断线/占用/刷新等边界的完整约定见[执行身份与生命周期契约](../architecture/execution-lifecycle.md)。
 
-作业集入口 `/api/agent/copilot-sets/{setId}/execute` 由 Web UI 使用，未在 Agent manifest 中广告；它使用 `run_copilot_set`。`mode` 可取 `continuous`（默认，旧 `app`/`cli` 也映射到这里）或 `manual`。`continuous` 默认同步返回旧字段并新增 `runId`、`run`、`mode`、`summary`；`waitForCompletion=false` 在取得执行租约后返回 202。`manual` 只执行第一个待办条目然后返回 `waitingForNext: true`、`nextEntry` 与逐项 `summary`，run 进入 `waiting`；随后调用 `POST /api/agent/actions/continue-copilot-set` 携带该 `runId` 执行下一项。`waiting` 期间的租约与占用、停止与逐项状态汇总、服务重启后转 `interrupted` 等集合 Run 行为的完整约定见[执行身份与生命周期契约](../architecture/execution-lifecycle.md)。
+作业集入口 `/api/agent/copilot-sets/{setId}/execute` 由 Web UI 使用，未在 Agent manifest 中广告；它使用 `run_copilot_set`。`mode` 可取 `continuous`（默认，旧 `app`/`cli` 也映射到这里）或 `manual`。计划查询与执行的 `raid` 都接受 `normal`（接口默认）、`raid`、`both` 或 `auto`。`continuous` 默认同步返回旧字段并新增 `runId`、`run`、`mode`、`summary`；`waitForCompletion=false` 在取得执行租约后返回 202。`manual` 只执行第一个待办条目然后返回 `waitingForNext: true`、`nextEntry` 与逐项 `summary`，run 进入 `waiting`；随后调用 `POST /api/agent/actions/continue-copilot-set` 携带该 `runId` 执行下一项。`waiting` 期间的租约与占用、停止与逐项状态汇总、服务重启后转 `interrupted` 等集合 Run 行为的完整约定见[执行身份与生命周期契约](../architecture/execution-lifecycle.md)。
+
+显式作业队列入口 `/api/agent/copilot-queues/execute` 同样由 Web UI 使用、未在 Agent manifest 中广告；它使用 `run_copilot_queue`，按提交顺序逐条执行，不依赖作业集计划，也不写 `copilot-progress.json`。`continuous` 一次执行全部条目，`manual` 在每项后进入 `waiting`；继续与跳过分别使用 `/api/agent/actions/continue-copilot-queue` 与 `/api/agent/actions/skip-copilot-queue-entry`。逐项状态、`failurePolicy`、停止、会话丢失与重启语义见上文「作业队列执行」及[执行身份与生命周期契约](../architecture/execution-lifecycle.md#43-显式作业队列-run)。
 
 请求关联与日志：请求头 `x-request-id` 可选，合法值为 1–64 位字母、数字与 `.`、`_`、`:`、`-`，首字符必须是字母或数字。合法值原样出现在响应头 `x-request-id`、响应 `meta.requestId` 与同一请求的 API 错误日志中；缺失、超长或含其他字符时服务端生成新 id 并在上述三处使用该新 id，非法输入不会回显。执行日志（含 MAA 子进程输出与响应返回后的后台收尾）在纳入 Run 时记录 `runId` 与 `operationId`，未纳入 Run 的直接调用不冒用其他执行的 id；HTTP 请求结束不代表执行完成，仍需以 run 终态或实际进程结果为准。API 错误按级别记录：携带状态且已归类的 4xx 为 WARN，未知内部 5xx 为 ERROR。日志不输出 Authorization、cookie、token、信令 ticket、密码与签名等凭据字段，也不回显请求查询串或请求体。
 
@@ -213,7 +243,7 @@ curl -X POST http://localhost:3000/api/agent/config/resource-source \
 
 目标停止按 `runId` 保护：未开始的 run 直接取消且不发送设备命令，`running` 的当前 run 转入 `stopping`，旧终态 run 返回 `alreadyTerminal`，不会影响新执行；重复停止保持成功。响应中的 `stopRequested` 表示停止意图已记录，`deviceStopRequested` 表示是否真的发出了设备停止命令；按目标状态区分的完整停止矩阵与取消语义见[执行身份与生命周期契约](../architecture/execution-lifecycle.md)。
 
-`Idempotency-Key` 是可选请求头，适用于启动游戏、理智作战、通用任务与今日流程；Web UI 专用的作业集入口和 `/api/agent/schedules/{scheduleId}/execute` 也支持。相同 key、相同输入重试时返回原 `runId`，对象键顺序不影响比较，但显式参数差异会被视为不同输入。幂等键按 `operationId` 分区、同键不同输入的拒绝、重放与键释放规则，以及 Run 与幂等记录的持久化、重启 `interrupted` 语义和终态保留期限的完整约定见[执行身份与生命周期契约](../architecture/execution-lifecycle.md)。
+`Idempotency-Key` 是可选请求头，适用于启动游戏、理智作战、通用任务与今日流程；Web UI 专用的作业集入口、显式作业队列入口和 `/api/agent/schedules/{scheduleId}/execute` 也支持。相同 key、相同输入重试时返回原 `runId`，对象键顺序不影响比较，但显式参数差异会被视为不同输入。幂等键按 `operationId` 分区、同键不同输入的拒绝、重放与键释放规则，以及 Run 与幂等记录的持久化、重启 `interrupted` 语义和终态保留期限的完整约定见[执行身份与生命周期契约](../architecture/execution-lifecycle.md)。
 
 
 Run 存储以单个 La Pluma Next 服务实例为边界，需要修改路径时可设置 `LA_PLUMA_AGENT_RUN_STORE`；默认存储位置、单实例读写约束与保留策略见[执行身份与生命周期契约](../architecture/execution-lifecycle.md)。

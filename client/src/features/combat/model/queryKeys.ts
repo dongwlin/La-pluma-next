@@ -6,6 +6,7 @@ export const combatKeys = defineQueryKeys(COMBAT_DOMAIN)
 
 export type CombatResource =
   | 'copilot-search'
+  | 'copilot-stages'
   | 'paradox-search'
   | 'copilot'
   | 'copilot-set'

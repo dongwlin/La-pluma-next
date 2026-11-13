@@ -68,6 +68,7 @@ function ScheduleTimeField({ index, time, disabled, onCommit }: ScheduleTimeFiel
     <input
       type="text"
       inputMode="numeric"
+      autoComplete="off"
       maxLength={5}
       placeholder="HH:MM"
       id={`automation-schedule-time-${index}`}

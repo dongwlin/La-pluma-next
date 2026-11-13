@@ -37,6 +37,8 @@ router.get('/paradox/search', asyncHandler<MaintenanceRequest, ApiResponseWriter
 
 router.get('/copilot/search', asyncHandler<MaintenanceRequest, ApiResponseWriter>(agentMaintenanceController.searchCopilot));
 
+router.get('/copilot/stages', asyncHandler<MaintenanceRequest, ApiResponseWriter>(agentMaintenanceController.readCopilotStages));
+
 router.get('/paradox/operators', asyncHandler<MaintenanceRequest, ApiResponseWriter>(agentMaintenanceController.readParadoxOperators));
 
 router.get('/schedules/status', asyncHandler<MaintenanceRequest, ApiResponseWriter>(agentMaintenanceController.readScheduleStatus));

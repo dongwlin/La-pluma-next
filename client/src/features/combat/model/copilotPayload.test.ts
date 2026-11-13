@@ -3,11 +3,12 @@
 import { describe, expect, it } from 'vitest'
 import {
   extractCopilotOperators,
-  formatCopilotApCost,
   readCopilotInfoPayload,
   readCopilotPlanPayload,
   readCopilotSearchResult,
   readCopilotSetPayload,
+  readCopilotStageCandidates,
+  readCopilotStageCatalog,
   readParadoxSearchResult,
   unwrapCopilotPayload,
 } from './copilotPayload'
@@ -76,6 +77,142 @@ describe('copilot search payload', () => {
     expect(readCopilotSearchResult(null)).toBeNull()
   })
 
+  it('reads the extended card fields and filters unusable list values', () => {
+    const result = readCopilotSearchResult(envelope({
+      keyword: '1-7',
+      stage: '1-7',
+      stageId: 'main_01-07',
+      orderBy: 'views',
+      page: 2,
+      limit: 30,
+      total: 41,
+      hasNext: true,
+      copilots: [{
+        id: 5,
+        uri: 'prts://5',
+        views: 1,
+        hotScore: 2,
+        stageName: '1-7',
+        stageId: 'main_01-07',
+        stageCode: '1-7',
+        stageLabel: '风暴瞭望',
+        uploader: '博士',
+        uploadTime: '2026-01-01 10:00:00',
+        operators: ['阿米娅', '凯尔希', '', 7, '阿米娅'],
+        match: {
+          mode: 'borrow',
+          missing: ['凯尔希'],
+          training: [],
+          check: ['桃金娘', '桃金娘'],
+          totalSlots: 12,
+        },
+      }],
+    }))
+
+    expect(result).toEqual({
+      keyword: '1-7',
+      stage: '1-7',
+      stageId: 'main_01-07',
+      orderBy: 'views',
+      page: 2,
+      limit: 30,
+      total: 41,
+      hasNext: true,
+      copilots: [{
+        id: '5',
+        uri: 'prts://5',
+        views: 1,
+        hotScore: 2,
+        stageName: '1-7',
+        stageId: 'main_01-07',
+        stageCode: '1-7',
+        stageLabel: '风暴瞭望',
+        uploader: '博士',
+        uploadTime: '2026-01-01 10:00:00',
+        operators: ['阿米娅', '凯尔希'],
+        match: { mode: 'borrow', missing: ['凯尔希'], training: [], check: ['桃金娘'], totalSlots: 12 },
+      }],
+    })
+  })
+
+  it('omits invalid paging and match values instead of guessing', () => {
+    const result = readCopilotSearchResult(envelope({
+      stage: '1-7',
+      orderBy: 'popular',
+      page: 0,
+      limit: 1.5,
+      total: -1,
+      hasNext: 'yes',
+      copilots: [
+        { uri: 'prts://1', match: { mode: 'unknown', totalSlots: 12 } },
+        { uri: 'prts://2', match: { mode: 'ready', totalSlots: '12' } },
+        { uri: 'prts://3', match: { mode: 'ready', totalSlots: 12, missing: '阿米娅' } },
+      ],
+    }))
+
+    expect(result).toEqual({
+      stage: '1-7',
+      copilots: [
+        { id: 'prts://1', uri: 'prts://1', views: 0, hotScore: 0 },
+        { id: 'prts://2', uri: 'prts://2', views: 0, hotScore: 0 },
+        {
+          id: 'prts://3',
+          uri: 'prts://3',
+          views: 0,
+          hotScore: 0,
+          match: { mode: 'ready', missing: [], training: [], check: [], totalSlots: 12 },
+        },
+      ],
+    })
+  })
+
+  it('reads the preview fields the list carries for the detail drawer', () => {
+    const result = readCopilotSearchResult(envelope({
+      stage: 'TL-EX-8',
+      copilots: [{
+        id: 9,
+        uri: 'prts://9',
+        title: '时间啊，向前！',
+        details: '作者：萨拉托加\nhttps://www.bilibili.com/video/BV1x8WJ6oE3H/',
+        recommendedMode: 'both',
+        groupNames: ['输出组', '', '输出组'],
+        operatorDetails: [
+          { name: '圣聆初雪', group: '输出组', elite: 2, level: 60, skillLevel: 10, module: '-1' },
+          { name: '桃金娘', elite: 2, level: 70, skillLevel: 7 },
+        ],
+      }],
+    }))
+
+    expect(result?.copilots[0]).toMatchObject({
+      details: '作者：萨拉托加\nhttps://www.bilibili.com/video/BV1x8WJ6oE3H/',
+      recommendedMode: 'both',
+      groupNames: ['输出组'],
+      operatorDetails: [
+        { name: '圣聆初雪', group: '输出组', elite: 2, level: 60, skillLevel: 10, module: '-1' },
+        { name: '桃金娘', elite: 2, level: 70, skillLevel: 7 },
+      ],
+    })
+  })
+
+  it('omits preview fields the list did not carry and rejects unknown modes', () => {
+    const result = readCopilotSearchResult(envelope({
+      stage: '1-7',
+      copilots: [
+        { id: 1, uri: 'prts://1', details: '   ', recommendedMode: 'extreme' },
+        { id: 2, uri: 'prts://2', operatorDetails: 'nope', groupNames: ['输出组'] },
+      ],
+    }))
+
+    expect(result?.copilots[0]).toEqual({ id: '1', uri: 'prts://1', views: 0, hotScore: 0 })
+    expect(result?.copilots[1]).toEqual({
+      id: '2',
+      uri: 'prts://2',
+      views: 0,
+      hotScore: 0,
+      groupNames: ['输出组'],
+    })
+  })
+
   it('reads paradox payloads with the operator name', () => {
     const result = readParadoxSearchResult(envelope({
       operator: '古米',
@@ -88,6 +225,49 @@ describe('copilot search payload', () => {
       copilots: [{ id: '7', uri: 'prts://7', views: 1, hotScore: 5 }],
       recommended: { uri: 'prts://7' },
     })
+  })
+})
+
+describe('copilot stage candidates', () => {
+  it('reads candidate stages from ambiguous-search error details', () => {
+    expect(readCopilotStageCandidates({
+      stage: 'LT-2',
+      candidates: [
+        { stageId: 'lt_02_01', code: 'LT-2', name: '未授权区域', category: '保全派驻', zone: '塔山农业实验平台' },
+        { stageId: 'lt_02_02', code: 'LT-2', name: '临时通道' },
+        { name: '缺少标识' },
+        'not-a-record',
+      ],
+    })).toEqual([
+      { stageId: 'lt_02_01', code: 'LT-2', name: '未授权区域', category: '保全派驻', zone: '塔山农业实验平台' },
+      { stageId: 'lt_02_02', code: 'LT-2', name: '临时通道', category: '', zone: '' },
+    ])
+  })
+
+  it('returns an empty list for unrelated details', () => {
+    expect(readCopilotStageCandidates(null)).toEqual([])
+    expect(readCopilotStageCandidates({ stage: '1-7' })).toEqual([])
+    expect(readCopilotStageCandidates([])).toEqual([])
+  })
+})
+
+describe('copilot stage catalog', () => {
+  it('reads the catalog array and keeps the first entry per stageId', () => {
+    expect(readCopilotStageCatalog([
+      { stageId: 'main_01-07', code: '1-7', name: '风暴瞭望', category: '主线', zone: '切尔诺伯格' },
+      { stageId: 'main_01-07', code: '1-7', name: '重复条目' },
+      { name: '缺少标识' },
+      'not-a-record',
+      null,
+    ])).toEqual([
+      { stageId: 'main_01-07', code: '1-7', name: '风暴瞭望', category: '主线', zone: '切尔诺伯格' },
+    ])
+  })
+
+  it('treats an empty catalog as valid and a non-array as invalid', () => {
+    expect(readCopilotStageCatalog([])).toEqual([])
+    expect(readCopilotStageCatalog({ stages: [] })).toBeNull()
+    expect(readCopilotStageCatalog(null)).toBeNull()
   })
 })
 
@@ -110,9 +290,70 @@ describe('copilot detail payload', () => {
       detail: {
         title: '低配 1-7',
         stage: '1-7',
+        stageId: '1-7',
         operators: '桃金娘、阿米娅、[击杀组]',
+        operatorDetails: [{ name: '桃金娘' }, { name: '阿米娅' }],
+        groupNames: ['击杀组'],
       },
     })
+  })
+
+  it('marks preset-formation content so it stays out of raid mode', () => {
+    const preset = readCopilotInfoPayload(envelope({
+      status_code: 200,
+      data: { content: JSON.stringify({ stage_name: 'act21mini_s01', doc: { title: '预设编队' }, opers: [], groups: [] }) },
+    }))
+    expect(preset.detail?.presetFormation).toBe(true)
+
+    const regular = readCopilotInfoPayload(envelope({
+      status_code: 200,
+      data: { content: JSON.stringify(content) },
+    }))
+    expect(regular.detail?.presetFormation).toBeUndefined()
+  })
+
+  it('keeps operator requirements and coerces numeric module ids', () => {
+    const result = readCopilotInfoPayload({
+      status_code: 200,
+      data: {
+        content: {
+          opers: [
+            { name: '桃金娘', requirements: { elite: 2, level: 60, skill_level: 10, module: 1 } },
+            { name: '临光', requirements: { elite: 0, level: 1 } },
+            { name: '' },
+            { requirements: { elite: 2 } },
+          ],
+          groups: [{ name: '击杀组' }, { name: '' }, null],
+        },
+      },
+    })
+
+    expect(result.detail?.operatorDetails).toEqual([
+      { name: '桃金娘', elite: 2, level: 60, skillLevel: 10, module: '1' },
+      { name: '临光', elite: 0, level: 1 },
+    ])
+    expect(result.detail?.groupNames).toEqual(['击杀组'])
+    expect(result.detail?.operators).toBe('桃金娘、临光、[击杀组]')
+  })
+
+  it('reads the author description verbatim and drops blank ones', () => {
+    const details = '作者：緊急失控\nhttps://www.bilibili.com/video/BV1FrWJ6nESh'
+    const described = readCopilotInfoPayload(envelope({
+      status_code: 200,
+      data: {
+        content: JSON.stringify({
+          stage_name: 'TL-EX-3',
+          doc: { title: 'TL-EX-3', details },
+        }),
+      },
+    }))
+    expect(described.detail?.details).toBe(details)
+
+    const blank = readCopilotInfoPayload(envelope({
+      status_code: 200,
+      data: { content: JSON.stringify({ stage_name: '1-7', doc: { details: '  ' } }) },
+    }))
+    expect(blank.detail?.details).toBeUndefined()
   })
 
   it('accepts an already parsed content object and falls back to the unnamed title', () => {
@@ -121,7 +362,31 @@ describe('copilot detail payload', () => {
       data: { content: { stage_name: 'CE-6' } },
     })
 
-    expect(result.detail).toEqual({ title: '未命名作业', stage: 'CE-6', operators: '未知' })
+    expect(result.detail).toEqual({
+      title: '未命名作业',
+      stage: 'CE-6',
+      stageId: 'CE-6',
+      operators: '未知',
+    })
+  })
+
+  it('prefers the server-resolved stage code and keeps the raw stage id', () => {
+    const result = readCopilotInfoPayload(envelope({
+      status_code: 200,
+      stage: 'TL-EX-3',
+      stageId: 'act55side_ex03',
+      data: {
+        content: JSON.stringify({
+          stage_name: 'act55side_ex03',
+          doc: { title: '时间啊，向前！ - TL-EX-3 - 致远特维' },
+        }),
+      },
+    }))
+
+    expect(result.detail).toMatchObject({
+      stage: 'TL-EX-3',
+      stageId: 'act55side_ex03',
+    })
   })
 
   it('keeps the status code for the legacy set probe when the copilot is missing', () => {
@@ -208,6 +473,17 @@ describe('copilot plan payload', () => {
     })
   })
 
+  it('keeps the author description on plan members', () => {
+    const details = '作者：A\nhttps://www.bilibili.com/video/BV1xx411c7mD'
+    const result = readCopilotPlanPayload({
+      items: [{ id: 7, details }, { id: 8, details: ' ' }],
+      entries: [],
+    })
+
+    expect(result?.items[0]?.details).toBe(details)
+    expect(result?.items[1]?.details).toBeUndefined()
+  })
+
   it('normalizes missing names and accepts a raw payload', () => {
     const result = readCopilotPlanPayload({
       items: [{ id: 7 }],
@@ -227,7 +503,7 @@ describe('copilot plan payload', () => {
     })
   })
 
-  it('keeps known stage costs and reports missing costs as unknown', () => {
+  it('keeps known stage costs and drops missing costs', () => {
     const result = readCopilotPlanPayload({
       items: [
         { id: 1, stage: '1-7', apCost: 6 },
@@ -241,9 +517,30 @@ describe('copilot plan payload', () => {
     expect(result?.items[0]?.apCost).toBe(6)
     expect(result?.items[1]?.apCost).toBeUndefined()
     expect(result?.items[2]?.apCost).toBeUndefined()
-    expect(formatCopilotApCost(result?.items[0]?.apCost)).toBe('6')
-    expect(formatCopilotApCost(result?.items[1]?.apCost)).toBe('未知')
-    expect(formatCopilotApCost(result?.items[2]?.apCost)).toBe('未知')
+  })
+
+  it('keeps operator requirements and groups instead of dropping them', () => {
+    const result = readCopilotPlanPayload({
+      items: [{
+        id: 201,
+        operators: [
+          { name: '桃金娘', requirements: { elite: 2, level: 60, skill_level: 10, module: 'χ' } },
+          { name: '临光', requirements: { elite: 0, level: 1 } },
+        ],
+        groups: [{ name: '击杀组', opers: ['桃金娘'] }],
+      }],
+      entries: [],
+    })
+
+    expect(result?.items[0]).toMatchObject({
+      id: 201,
+      operatorDetails: [
+        { name: '桃金娘', elite: 2, level: 60, skillLevel: 10, module: 'χ' },
+        { name: '临光', elite: 0, level: 1 },
+      ],
+      groupNames: ['击杀组'],
+    })
+    expect(result?.items[0]?.operators).toBeUndefined()
   })
 
   it('rejects incomplete plans so callers can fall back to the set list', () => {

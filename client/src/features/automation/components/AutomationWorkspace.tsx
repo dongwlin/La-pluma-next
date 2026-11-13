@@ -530,6 +530,7 @@ export default function AutomationWorkspace() {
                                   <input
                                     id={fieldId}
                                     type="text"
+                                    autoComplete="off"
                                     value={task.params[field.key] || ''}
                                     onChange={(e) => updateTaskParam(index, field.key, e.target.value)}
                                     placeholder={field.placeholder}
@@ -734,6 +735,7 @@ export default function AutomationWorkspace() {
                                   <input
                                     id={fieldId}
                                     type={field.type}
+                                    autoComplete="off"
                                     value={task.params[field.key] || ''}
                                     onChange={(e) => updateTaskParam(index, field.key, e.target.value)}
                                     placeholder={field.placeholder}
@@ -824,6 +826,7 @@ export default function AutomationWorkspace() {
                                 <input
                                   id={`${task.id}-penguin-id`}
                                   type="text"
+                                  autoComplete="off"
                                   value={task.params.penguin_id || ''}
                                   onChange={(e) => updateTaskParam(index, 'penguin_id', e.target.value)}
                                   placeholder="留空则匿名汇报"
@@ -851,6 +854,7 @@ export default function AutomationWorkspace() {
                                 <input
                                   id={`${task.id}-yituliu-id`}
                                   type="text"
+                                  autoComplete="off"
                                   value={task.params.yituliu_id || ''}
                                   onChange={(e) => updateTaskParam(index, 'yituliu_id', e.target.value)}
                                   placeholder="留空则匿名汇报"
@@ -1003,6 +1007,7 @@ export default function AutomationWorkspace() {
                             <input
                               id={`${task.id}-first-tags`}
                               type="text"
+                              autoComplete="off"
                               value={Array.isArray(task.params.first_tags) ? task.params.first_tags.join(',') : (task.params.first_tags || '')}
                               onChange={(e) => updateTaskParam(index, 'first_tags', e.target.value)}
                               placeholder="近卫干员,治疗"

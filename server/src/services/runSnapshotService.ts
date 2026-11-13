@@ -2,6 +2,8 @@ import { getActiveAgentRuns, getLatestTerminalAgentRun, isDeviceOwningAgentRunSt
 import type { AgentRunDto, AgentRunStatus } from './agentRunService.ts';
 import { getCopilotSetRunProgress } from './copilotSetRunService.ts';
 import type { CopilotSetProgress } from './copilotSetRunService.ts';
+import { getCopilotQueueRunProgress } from './copilotQueueRunService.ts';
+import type { CopilotQueueProgress } from './copilotQueueRunService.ts';
 import { getMaaExecutionLeaseSnapshot } from './executionCoordinatorService.ts';
 import type { MaaExecutionLeaseSnapshot } from './executionCoordinatorService.ts';
 import { getRealtimeLogs, getTaskStatus } from './maaProcessService.ts';
@@ -47,7 +49,7 @@ export interface AgentRunProgressProjection {
  * 追加。进程/流程投影与作业集会话进度结构不同，不能互相替代。
  */
 export interface AgentRunSnapshotEntry extends AgentRunDto {
-  progress?: AgentRunProgressProjection | CopilotSetProgress;
+  progress?: AgentRunProgressProjection | CopilotSetProgress | CopilotQueueProgress;
 }
 
 /** 设备占用来源：只列出本次观察到的投影，不推断未观察到的来源。 */
@@ -174,6 +176,19 @@ export function enrichAgentRun(run: AgentRunDto | null): AgentRunSnapshotEntry |
       }
     };
   }
+  if (run.operationId === 'run_copilot_queue') {
+    const progress = getCopilotQueueRunProgress(run.runId);
+    if (progress) return { ...run, progress };
+    return {
+      ...run,
+      progress: {
+        currentStep: null,
+        totalSteps: null,
+        currentTask: null,
+        message: run.state === 'waiting' ? '等待开始下一项' : '等待作业队列状态'
+      }
+    };
+  }
   const updateLabel = UPDATE_PROGRESS_LABELS[run.operationId];
   if (updateLabel) {
     return {
@@ -253,10 +268,12 @@ export async function buildAgentRunSnapshot({ lines = 80 }: AgentRunSnapshotOpti
   const activeRuns = getActiveAgentRuns();
   const currentRunId = activeRuns[0]?.runId || null;
   // Global process/schedule projections only describe the current run; a
-  // copilot-set session is owned by its own runId and stays observable even
-  // when another run is current.
+  // copilot session is owned by its own runId and stays observable even when
+  // another run is current.
   const enrichedRuns: AgentRunSnapshotEntry[] = activeRuns.map(run =>
-    run.runId === currentRunId || run.operationId === 'run_copilot_set'
+    run.runId === currentRunId
+      || run.operationId === 'run_copilot_set'
+      || run.operationId === 'run_copilot_queue'
       ? enrichAgentRun(run)
       : asSnapshotEntry(run)
   );

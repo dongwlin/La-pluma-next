@@ -7,9 +7,17 @@ import {
   useState,
   type KeyboardEvent as ReactKeyboardEvent,
   type ReactNode,
+  type UIEvent,
 } from 'react'
 import { createPortal } from 'react-dom'
 import Button, { IconButton } from './Button'
+import {
+  isTopModal,
+  lockBackground,
+  registerModal,
+  unregisterModal,
+  unlockBackground,
+} from './modalLayer'
 
 interface ModalProps {
   isOpen: boolean
@@ -18,11 +26,15 @@ interface ModalProps {
   children: ReactNode
   footer?: ReactNode
   size?: 'sm' | 'md' | 'lg' | 'xl'
+  placement?: 'center' | 'sheet'
   closeOnOverlay?: boolean
   showClose?: boolean
   dismissible?: boolean
   role?: 'dialog' | 'alertdialog'
   ariaLabel?: string
+  dialogId?: string
+  /** 观察弹窗正文滚动（内容超出时由正文层滚动），用于滚动加载等场景。 */
+  onBodyScroll?: (event: UIEvent<HTMLDivElement>) => void
 }
 
 interface ConfirmDialogProps {
@@ -46,70 +58,6 @@ const FOCUSABLE_SELECTOR = [
   '[tabindex]:not([tabindex="-1"])',
 ].join(',')
 
-const modalStack: string[] = []
-const modalLayers = new Map<string, HTMLElement>()
-const backgroundState = new Map<HTMLElement, { inert: boolean; ariaHidden: string | null }>()
-let scrollLockCount = 0
-let previousBodyOverflow = ''
-
-function updateModalStack() {
-  const topId = modalStack[modalStack.length - 1]
-  modalLayers.forEach((layer, id) => {
-    const isTop = id === topId
-    layer.inert = !isTop
-    if (isTop) layer.removeAttribute('aria-hidden')
-    else layer.setAttribute('aria-hidden', 'true')
-  })
-}
-
-function registerModal(id: string, layer: HTMLElement) {
-  modalStack.push(id)
-  modalLayers.set(id, layer)
-  updateModalStack()
-}
-
-function unregisterModal(id: string) {
-  const index = modalStack.lastIndexOf(id)
-  if (index >= 0) modalStack.splice(index, 1)
-  modalLayers.delete(id)
-  updateModalStack()
-}
-
-function lockBackground() {
-  if (scrollLockCount === 0) {
-    previousBodyOverflow = document.body.style.overflow
-    document.body.style.overflow = 'hidden'
-
-    Array.from(document.body.children).forEach(child => {
-      if (!(child instanceof HTMLElement) || child.dataset.appModalLayer === 'true') return
-      backgroundState.set(child, {
-        inert: child.inert,
-        ariaHidden: child.getAttribute('aria-hidden'),
-      })
-      child.inert = true
-      child.setAttribute('aria-hidden', 'true')
-    })
-  }
-  scrollLockCount += 1
-}
-
-function unlockBackground() {
-  scrollLockCount = Math.max(0, scrollLockCount - 1)
-  if (scrollLockCount > 0) return
-
-  document.body.style.overflow = previousBodyOverflow
-  backgroundState.forEach((state, element) => {
-    element.inert = state.inert
-    if (state.ariaHidden === null) element.removeAttribute('aria-hidden')
-    else element.setAttribute('aria-hidden', state.ariaHidden)
-  })
-  backgroundState.clear()
-}
-
-function isTopModal(id: string) {
-  return modalStack[modalStack.length - 1] === id
-}
-
 function getFocusableElements(container: HTMLElement) {
   return Array.from(container.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR))
     .filter(element => element.getAttribute('aria-hidden') !== 'true')
@@ -130,11 +78,14 @@ function ModalLayer({
   children,
   footer,
   size = 'md',
+  placement = 'center',
   closeOnOverlay = true,
   showClose = true,
   dismissible = true,
   role = 'dialog',
   ariaLabel,
+  dialogId,
+  onBodyScroll,
 }: ModalLayerProps) {
   const layerRef = useRef<HTMLDivElement>(null)
   const dialogRef = useRef<HTMLDivElement>(null)
@@ -209,6 +160,32 @@ function ModalLayer({
     event.stopPropagation()
   }
 
+  const isSheet = placement === 'sheet'
+  const containerClassName = isSheet
+    ? 'pointer-events-none absolute inset-0 flex items-end justify-center'
+    : 'pointer-events-none absolute inset-0 flex items-center justify-center p-4 sm:p-6'
+  const panelClassName = isSheet
+    ? 'surface-panel pointer-events-auto flex max-h-[85dvh] w-full max-w-none flex-col overflow-hidden rounded-t-[1.25rem]'
+    : `surface-panel pointer-events-auto flex max-h-[calc(100dvh-2rem)] w-full flex-col overflow-hidden rounded-xl ${sizeStyles[size]}`
+  const motionProps = shouldReduceMotion
+    ? { initial: { opacity: 0 }, animate: { opacity: 1 }, exit: { opacity: 0 } }
+    : isSheet
+      ? {
+          initial: { opacity: 0, y: 48 },
+          animate: { opacity: 1, y: 0 },
+          exit: { opacity: 0, y: 32 },
+        }
+      : {
+          initial: { opacity: 0, scale: 0.97, y: 12, backdropFilter: 'blur(0px) saturate(100%)' },
+          animate: { opacity: 1, scale: 1, y: 0, backdropFilter: 'blur(24px) saturate(165%)' },
+          exit: { opacity: 0, scale: 0.98, y: 8, backdropFilter: 'blur(0px) saturate(100%)' },
+        }
+  const transition = shouldReduceMotion
+    ? { duration: 0 }
+    : isSheet
+      ? { duration: 0.22, ease: 'easeOut' as const }
+      : { type: 'spring' as const, stiffness: 380, damping: 34, mass: 0.82 }
+
   return (
     <div
       ref={layerRef}
@@ -225,9 +202,11 @@ function ModalLayer({
         aria-hidden="true"
       />
 
-      <div className="pointer-events-none absolute inset-0 flex items-center justify-center p-4 sm:p-6">
+      <div className={containerClassName}>
         <motion.div
           ref={dialogRef}
+          id={dialogId}
+          data-modal-placement={placement}
           role={role}
           aria-modal="true"
           aria-labelledby={title ? titleId : undefined}
@@ -235,19 +214,10 @@ function ModalLayer({
           aria-describedby={descriptionId}
           tabIndex={-1}
           onKeyDown={handleDialogKeyDown}
-          initial={shouldReduceMotion
-            ? { opacity: 0 }
-            : { opacity: 0, scale: 0.97, y: 12, backdropFilter: 'blur(0px) saturate(100%)' }}
-          animate={shouldReduceMotion
-            ? { opacity: 1 }
-            : { opacity: 1, scale: 1, y: 0, backdropFilter: 'blur(24px) saturate(165%)' }}
-          exit={shouldReduceMotion
-            ? { opacity: 0 }
-            : { opacity: 0, scale: 0.98, y: 8, backdropFilter: 'blur(0px) saturate(100%)' }}
-          transition={shouldReduceMotion
-            ? { duration: 0 }
-            : { type: 'spring', stiffness: 380, damping: 34, mass: 0.82 }}
-          className={`surface-panel pointer-events-auto flex max-h-[calc(100dvh-2rem)] w-full flex-col overflow-hidden rounded-xl ${sizeStyles[size]}`}
+          {...motionProps}
+          transition={transition}
+          className={panelClassName}
+          style={isSheet ? { paddingBottom: 'env(safe-area-inset-bottom)' } : undefined}
         >
           {(title || showClose) && (
             <div className="flex min-h-14 items-center justify-between gap-4 px-5 py-3 shadow-[inset_0_-1px_0_var(--app-border)] sm:px-6">
@@ -268,7 +238,11 @@ function ModalLayer({
             </div>
           )}
 
-          <div id={descriptionId} className="min-h-0 overflow-y-auto px-5 py-4 sm:px-6">
+          <div
+            id={descriptionId}
+            className="min-h-0 overflow-y-auto px-5 py-4 sm:px-6"
+            onScroll={onBodyScroll}
+          >
             {children}
           </div>
 

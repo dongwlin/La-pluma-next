@@ -80,7 +80,7 @@ export class CopilotPreviewSession {
     this.cancelInFlight()
   }
 
-  /** 输入变化或清除预览：取消并清空。 */
+  /** 输入变化或替换预览目标：取消并清空。 */
   clear(): void {
     this.cancelInFlight()
     this.setState({ preview: null, loading: false })

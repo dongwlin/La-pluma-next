@@ -8,15 +8,25 @@ import type {
   AdvancedValues,
 } from '../model/combatCommands'
 import type { CopilotPreviewMode } from '../model/copilotPreview'
+import type { CopilotQueueRunProjection } from '../model/copilotQueueRun'
+import type { CopilotSetItemStatus } from '../model/copilotSetRun'
+import type { CopilotQueueEntry, CopilotQueueMoveDirection } from '../model/copilotQueue'
+import type { CopilotQueueFailurePolicy } from '../api'
 import type { PanelStateStore } from '../model/panelState'
+import type { CopilotDetailTarget } from '../model/copilotDetail'
 import type {
+  CopilotMatchMode,
   CopilotRaid,
+  CopilotSearchOrder,
   CopilotSearchResult,
   CopilotSetExecutionMode,
   CopilotSetInfo,
+  CopilotStageCandidate,
   FormationMode,
   ParadoxSearchResult,
 } from '../types'
+import type { CopilotSearchRequest } from '../model/copilotDiscovery'
+import type { OperatorFilterOption, OperatorSelection } from '../model/operatorFilter'
 
 export interface CombatExecutionActions {
   automationAvailable: boolean
@@ -29,10 +39,10 @@ export interface CombatExecutionActions {
   onStop: () => void
 }
 
-/** 作业集卡片额外暴露下一关与取消等待；服务端持有等待态。 */
+/** 作业集卡片额外暴露下一关；服务端持有等待态。 */
 export interface CombatCopilotExecutionActions extends CombatExecutionActions {
+  isWaitingForNext: boolean
   onStartNext: () => void
-  onCancelSet: () => void
 }
 
 export interface CombatCopilotConfig {
@@ -50,28 +60,93 @@ export interface CombatCopilotConfig {
 export interface CombatCopilotPreviewProjection {
   info: CopilotSetInfo | null
   loading: boolean
+  /** 详情在途时先用列表条目渲染的目标；响应到达或失败后清空。 */
+  pendingTarget: CopilotDetailTarget | null
   modeStore: PanelStateStore<CopilotPreviewMode>
   onPreview: () => void
   onCancel: () => void
-  onClear: () => void
+}
+
+export type CombatCopilotDetailSelection = { type: 'preview' } | { type: 'queue'; id: string }
+
+export const COPILOT_DETAIL_LAYER_ID = 'combat-copilot-detail-panel'
+export const COPILOT_DISCOVERY_DIALOG_ID = 'combat-copilot-discovery-dialog'
+
+export interface CombatCopilotFileImportProjection {
+  isImporting: boolean
+  onImport: (file: File) => void
 }
 
 export interface CombatCopilotSelectionProjection {
-  selected: ReadonlySet<number>
   isResetting: boolean
-  onToggle: (index: number) => void
-  onToggleAll: () => void
   onOpenReset: () => void
 }
 
+export interface CombatCopilotQueueProjection {
+  entries: readonly CopilotQueueEntry[]
+  selected: ReadonlySet<string>
+  setId: string | null
+  itemStatuses: ReadonlyMap<number, CopilotSetItemStatus>
+  itemErrors: ReadonlyMap<number, string>
+  submittedEntryIds: ReadonlySet<string>
+  queueRun: CopilotQueueRunProjection | null
+  failurePolicy: CopilotQueueFailurePolicy
+  isRunning: boolean
+  isSubmitting: boolean
+  isContinuing: boolean
+  isSkipping: boolean
+  isAdding: boolean
+  addingUri: string | null
+  automationAvailable: boolean
+  unavailableMessage: string
+  onToggle: (id: string) => void
+  onRemove: (id: string) => void
+  onMove: (id: string, direction: CopilotQueueMoveDirection) => void
+  onClear: () => void
+  onAddCurrent: () => void
+  onAddUri: (uri: string) => void
+  onContinueQueue: () => void
+  onSkipEntry: () => void
+  onRetryFailed: () => void
+}
+
+export type CombatCopilotDiscoveryView = 'grid' | 'list'
+
+export interface CombatCopilotMatchSettings {
+  enabled: boolean
+  modes: readonly CopilotMatchMode[]
+}
+
 export interface CombatCopilotSearchProjection {
-  stageStore: PanelStateStore<string>
-  selectionStore: PanelStateStore<string>
+  isOpen: boolean
+  onOpen: () => void
+  onClose: () => void
+  keywordStore: PanelStateStore<string>
+  levelStore: PanelStateStore<string>
+  operatorStore: PanelStateStore<OperatorSelection>
+  operatorFilterEnabledStore: PanelStateStore<boolean>
+  operatorFilterRememberStore: PanelStateStore<boolean>
+  orderStore: PanelStateStore<CopilotSearchOrder>
+  matchStore: PanelStateStore<CombatCopilotMatchSettings>
+  viewStore: PanelStateStore<CombatCopilotDiscoveryView>
+  stages: readonly CopilotStageCandidate[]
+  stagesLoading: boolean
+  stagesError: string | null
+  operators: readonly OperatorFilterOption[]
+  operatorsLoading: boolean
+  operatorsError: string | null
+  ownedOperatorNames: ReadonlySet<string>
   result: CopilotSearchResult | null
   searching: boolean
-  onSearch: (term: string) => void
+  refreshing: boolean
+  addingUri: string | null
+  onSearch: (request: CopilotSearchRequest) => void
+  /** 取指定页但不改动当前基础结果；失败返回 null。 */
+  onLoadMore: (request: CopilotSearchRequest) => Promise<CopilotSearchResult | null>
   onCancel: () => void
-  onSelectUri: (uri: string) => void
+  onPreviewUri: (uri: string) => void
+  onAddToQueue: (uri: string) => void
+  onRetryData: () => void
 }
 
 export interface CombatParadoxSearchProjection {

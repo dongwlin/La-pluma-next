@@ -26,7 +26,7 @@ utils / config → services → controllers → routes → app.ts / server.ts
 3. 请求 id 中间件，注册在鉴权与请求体解析之前（见下节；`server/src/app.ts:119`）。
 4. 信令票据签发入口：注册在 JSON parser 之前，登录不读取业务请求体。无令牌时只接受同源签发，设置 `LA_PLUMA_TOKEN` 后由令牌把关；Express 5 通配符必须命名（`*splat`），信令路径本身与其余子路径一律返回固定 JSON 404，上游管理端点不经公共应用端口暴露（`server/src/app.ts:121-138`、`docs/api/agent.md:207-209`）。
 5. `/health` 与 `/readiness` 探针（见「探针」）。
-6. `/api` 命名空间：router 内先 `optionalApiAuth` 再 `express.json()`，鉴权先于 JSON 解析；无令牌模式在鉴权后为 `/diagnostics` 增加每来源限流（默认每分钟 30 次，返回 429 `AGENT_RATE_LIMITED`），依次挂载用户配置、Agent 聚合与干员台词路由后，未匹配路径返回统一 JSON 404 `AGENT_ROUTE_NOT_FOUND`，最后挂统一错误出口（`server/src/app.ts:170-198`）。
+6. `/api` 命名空间：router 内先 `optionalApiAuth`；`/copilot-files` 使用独立的 JSON 解析上限（`COPILOT_FILES_JSON_BODY_LIMIT_BYTES`，按文件上限的最坏转义膨胀推导），其余端点沿用默认 `express.json()`，鉴权始终先于 JSON 解析。无令牌模式在鉴权后为 `/diagnostics` 增加每来源限流（默认每分钟 30 次，返回 429 `AGENT_RATE_LIMITED`），依次挂载本地作业文件上传、用户配置、Agent 聚合与干员台词路由后，未匹配路径返回统一 JSON 404 `AGENT_ROUTE_NOT_FOUND`，最后挂统一错误出口（`server/src/app.ts:171-198`）。
 7. 生产静态资源：仅 `NODE_ENV=production` 时挂载。`/api`、`/health`、`/readiness`、`/game-assets` 与信令路径先经 `next('router')` 跳出命名空间；其余请求依次经 `express.static` 与 SPA fallback——无扩展名的路径返回 `index.html`；挂载点随 `LA_PLUMA_BASE_PATH` 的子路径偏移（`server/src/app.ts:200-218`）。
 
 ### 请求 id
@@ -56,7 +56,7 @@ utils / config → services → controllers → routes → app.ts / server.ts
 
 错误出口的归一规则（`server/src/utils/apiHelper.ts:309-344`）：已发送响应头则交回错误链；携带 400–599 状态的业务错误保留其公开 `code`、`message`、`details` 与 `retryable`，状态越界一律按 500 处理，`retryable` 只来自错误本身（`server/src/utils/apiHelper.ts:227-230,329-338`）；未知内部错误统一 500，不泄露内部 message、details 或堆栈；API 错误按级别记录，已归类的 4xx 记 WARN、5xx 记 ERROR，错误日志与响应不回显请求查询串（`server/src/utils/apiHelper.ts:278-300,340-343`）。
 
-框架错误与入口层产生的稳定错误码：
+框架错误、入口层与 Web UI 专用入口产生的稳定错误码：
 
 | code | HTTP 状态 | 触发 |
 | --- | --- | --- |
@@ -68,6 +68,17 @@ utils / config → services → controllers → routes → app.ts / server.ts
 | `AGENT_REQUEST_CHARSET_UNSUPPORTED` | 415 | 请求字符集不支持（`server/src/utils/apiHelper.ts:256-259`） |
 | `AGENT_REQUEST_PATH_INVALID` | 400 | 路径参数无法解码（`server/src/utils/apiHelper.ts:322-327`） |
 | `AGENT_INTERNAL_ERROR` | 500 | 未识别的内部错误（`server/src/utils/apiHelper.ts:340-343`） |
+| `COPILOT_FILE_INVALID` | 400 | 本地作业文件上传的请求体或内容不合法（`server/src/controllers/copilotFileController.ts:24-39`） |
+
+### 本地作业文件导入（Web UI 专用）
+
+浏览器内的文件选择，以及从文件管理器复制 JSON 文件后在输入框粘贴，都经 `POST /api/copilot-files` 上传为受管作业文件，队列执行时按该受管路径读取；该入口不进入 Agent manifest/OpenAPI，作业链接输入框只承载作业链接与 JSON 文件粘贴，不再接受服务端可见的文件路径。
+
+- 请求体为 `{ "name"?: string, "content": string }`。`content` 必须是字符串，UTF-8 字节数不超过 2 MiB，解析后是 JSON 对象（数组与标量不接受），且包含非空字符串 `stage_name`；其余字段不参与服务端校验。
+- `name` 只用于展示：非字符串或缺失时回退 `copilot.json`；字符串去掉路径成分、仅保留安全字符并统一为 `.json` 后缀；落盘文件名固定为 `<uuid>.json`，不采用用户提供的名称。
+- 成功响应沿用统一 envelope，`data` 为 `{ path, name, bytes, stage, stageId }`，`path` 是受管目录内的绝对路径；`stage` 是按资源地图表解析出的可读关卡代号，`stageId` 是作业文件里的原始标识，解析不到代号时 `stage` 回退为 `stageId`；校验失败返回 400 `COPILOT_FILE_INVALID`，`details.reason` 标识具体校验项，不回显文件内容。
+- `/copilot-files` 的 JSON parser 上限取 `COPILOT_FILE_MAX_BYTES` 的 6 倍再加 64 KiB 包装余量（最坏控制字符转义为 `\uXXXX`），恰好 2 MiB 的 `content` 可以完整通过；请求体超过该上限返回 413 `AGENT_REQUEST_BODY_TOO_LARGE`。service 独立校验 `content` 的 UTF-8 字节数不超过 2 MiB，超限返回 400 `COPILOT_FILE_INVALID`（`reason: content_too_large`），HTTP 入口不再先于 service 拦截合法文件。
+- 文件写入 `resolveAppPaths().appDataDir/copilot-imports/`，目录不存在时创建，文件权限为 `0o600`；错误与日志都不记录文件内容。路由工厂 `createCopilotFilesRouter({ saveFile?, resolveStage? })` 与 service 的 `dataDir` 选项用于测试注入（`server/src/services/copilotFileService.ts:61-67,220-240`、`server/src/routes/copilotFiles.ts:16-25`）。
 
 ## 探针：/health 与 /readiness
 

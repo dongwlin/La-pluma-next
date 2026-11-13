@@ -1,5 +1,6 @@
 import type { AgentRun, RunState } from '@/features/task-execution'
 import { isActiveRunState } from '@/features/task-execution'
+import type { CopilotRaid } from '../types'
 
 export type CopilotSetItemStatus = 'pending' | 'running' | 'success' | 'failed' | 'skipped' | 'stopped'
 
@@ -26,7 +27,7 @@ export interface CopilotSetRunProjection {
   setId: string | null
   name: string | null
   mode: string | null
-  raid: 'normal' | 'raid' | 'both' | null
+  raid: CopilotRaid | null
   phase: string | null
   isWaiting: boolean
   waitingForNext: boolean
@@ -50,6 +51,8 @@ export interface CopilotSetRunProjection {
   stoppedCount: number
   pendingCount: number
   failures: CopilotSetFailureSummary[]
+  /** 终态 `summary.errors` 的原始失败清单；未投影时缺省，不能回退成 `failures`。 */
+  summaryErrors?: CopilotSetFailureSummary[]
 }
 
 // 同一作业在突袭/普通模式下有多个条目时折叠成一条展示状态：执行中 > 失败 >
@@ -64,11 +67,11 @@ function foldItemStatuses(entries: CopilotSetEntryProjection[]): Map<number, Cop
     else grouped.set(entry.itemIndex, [entry.status])
   }
   const folded = new Map<number, CopilotSetItemStatus>()
-  for (const [itemIndex, statuses] of grouped) folded.set(itemIndex, foldStatuses(statuses))
+  for (const [itemIndex, statuses] of grouped) folded.set(itemIndex, foldCopilotItemStatuses(statuses))
   return folded
 }
 
-function foldStatuses(statuses: readonly CopilotSetItemStatus[]): CopilotSetItemStatus {
+export function foldCopilotItemStatuses(statuses: readonly CopilotSetItemStatus[]): CopilotSetItemStatus {
   if (statuses.includes('running')) return 'running'
   if (statuses.includes('failed')) return 'failed'
   if (statuses.includes('stopped')) return 'stopped'
@@ -96,8 +99,8 @@ function asText(value: unknown): string | null {
   return typeof value === 'string' && value.trim() ? value : null
 }
 
-function normalizeRaid(value: string | null): 'normal' | 'raid' | 'both' | null {
-  return value === 'normal' || value === 'raid' || value === 'both' ? value : null
+function normalizeRaid(value: string | null): CopilotRaid | null {
+  return value === 'normal' || value === 'raid' || value === 'both' || value === 'auto' ? value : null
 }
 
 function normalizeItemStatus(value: unknown): CopilotSetItemStatus {
@@ -129,6 +132,25 @@ function readEntries(value: unknown): CopilotSetEntryProjection[] {
   return value
     .map(readEntry)
     .filter((entry): entry is CopilotSetEntryProjection => entry !== null)
+}
+
+function readSummaryErrors(value: unknown): CopilotSetFailureSummary[] {
+  if (!Array.isArray(value)) return []
+  const errors: CopilotSetFailureSummary[] = []
+  for (const raw of value) {
+    const entry = asRecord(raw)
+    if (!entry) continue
+    const key = asText(entry.key)
+    const keyIndex = key ? Number(key.split(':')[0]) : NaN
+    const itemIndex = asNumber(entry.itemIndex)
+      ?? (Number.isInteger(keyIndex) ? keyIndex : null)
+    errors.push({
+      itemIndex,
+      stage: asText(entry.stage),
+      error: asText(entry.error) ?? '未知错误',
+    })
+  }
+  return errors
 }
 
 function traceStatuses(entries: CopilotSetEntryProjection[], status: CopilotSetItemStatus): number {
@@ -199,6 +221,7 @@ export function readCopilotSetRunProjection(run: AgentRun | null): CopilotSetRun
     stoppedCount: asCount(summary?.stoppedCount) ?? asCount(progress?.stoppedCount) ?? traceStatuses(entries, 'stopped'),
     pendingCount: asCount(summary?.pendingCount) ?? asCount(progress?.pendingCount) ?? traceStatuses(entries, 'pending'),
     failures,
+    summaryErrors: readSummaryErrors(summary?.errors),
   }
 }
 

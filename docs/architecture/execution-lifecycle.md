@@ -210,6 +210,28 @@ waiting ──stop──> stopped
 - 集合会话保存在服务端进程内。服务重启后活动集合 run 转为 `interrupted`；等待中的集合不会自动续跑，页面必须重新选择并提交。浏览器刷新、页面隐藏或断线只影响观察，不影响集合 run；重新连接后按 `runId` 或 `runs/current` 恢复观察。
 
 
+### 4.3 显式作业队列 Run
+
+Web UI 的「作业队列」不是作业集：用户队列以显式条目提交，服务端创建 `operationId='run_copilot_queue'` 的 Run，`metadata.taskType='copilot-queue'`。端点、请求字段与错误码见 [Agent API](../api/agent.md#作业队列执行)；本节只定义 Run 语义。
+
+| 模式 | 行为 | 设备租约 |
+| --- | --- | --- |
+| `continuous`（默认；旧 `app`/`cli` 同义） | 一个 Run 按提交顺序执行全部条目；`failurePolicy=stop` 首项失败后不执行后续项，`continue` 记录失败后继续 | 整个队列执行期间持有 |
+| `manual` | 首项执行后 Run 转 `waiting`；每次 continue 执行下一项，skip 把下一个 pending 项标为 `skipped` | 仅单项执行期间持有；等待时释放 |
+
+- 队列条目 1–50 项，`clientId` 在本次请求内唯一；`source=prts` 由服务端按 `copilotId` 取作业内容，`source=file` 只接受受管目录 `copilot-imports/` 内的绝对 `.json` 路径，服务端读取并解析 `stage_name` 后写入队列计划目录，不把用户路径直接交给 MaaCore。
+- `auto` 读取作业的 `difficulty`，缺省、`0` 和 `1` 为普通，`2` 为突袭，`3` 为两者。双模式按输入顺序为每个适用作业展开 `normal`、`raid` 两个相邻步骤，预设编队只展开普通，显式 `raid` 的预设编队条目不进入计划。步骤共用来源的 `clientId` 和 `itemIndex`，用 `mode` 区分。计划文件写入 `copilot-plans/queue-<queueId>/`。
+- 连续模式按相邻步骤的编队配置分批，将每批作为一个 MaaCore `copilot_list` 执行。手动模式每次执行一步。连续执行失败时，服务端根据本批回调确认已完成步骤和失败位置。选择继续时从已确认的失败位置之后接续。无法确认执行位置时 Run 以执行错误结束，避免重复执行可能已经开战的步骤。
+- 队列执行不写 `copilot-progress.json`，历史通关不参与队列；这与作业集按计划进度跳过已完成项不同。
+- 运行中 `run.progress`（`enrichAgentRun` 注入）包含：`queueId`、`name`、`mode`、`failurePolicy`、`phase`（`starting`/`running`/`waiting_for_next`/`finished`/`stopped`）、`currentStep`、`totalSteps`、`currentClientId`、`currentTask`、`nextEntry`、`shouldStop`、`message` 与五类计数。`taskResults[]` 按条目给出 `clientId`、`itemIndex`、`stage`、`stageId`、`apCost`、`mode`、`status`（`pending`/`running`/`success`/`failed`/`skipped`/`stopped`）与可选 `error`。
+- 终态 `run.result.summary` 包含 `queueId`、`name`、`mode`、`failurePolicy`、`totalEntries`、成功/失败/跳过/停止/待执行计数、`durationMs`、`errors[]` 与 `taskResults[]`。`totalEntries` 统计展开后的执行步骤，最多 100 步，与 `taskResults` 长度及 `progress.totalSteps` 一致。
+- `failurePolicy=stop` 在首项失败后不再启动后续项，后续项保持 `pending`；`continue` 记录失败后继续。条目失败不把整个 Run 置为 `failed`：按策略完成执行后 Run 结算为 `succeeded`，失败事实保留在 `failedCount`、`errors` 与 `taskResults`；只有计划构建失败、持久化失败或执行级错误才使 Run 为 `failed`。该终态映射暂保留现状，是否应把“执行完成但存在失败项”改为 `failed` 待产品确认。
+- `manual` 首项完成后 Run 为 `waiting`，`progress.phase=waiting_for_next`，`nextEntry` 指向下一个 pending 项，逐项结果与计数来自同一 Run。等待期间不持有设备租约；继续时重新获取租约，被占用返回可重试的 409 `MAA_EXECUTION_BUSY`，保持 waiting 且不消耗条目。等待期间 skip 只把下一个 pending 项标为 `skipped`；没有 pending 时结算为 `succeeded`。
+- 停止复用目标 Run 停止：`waiting` 直接转 `stopped` 并保留逐项结果，未开始项保持 `pending`；`accepted` 取消；`running` 转 `stopping`，执行器在当前项结束或下一项前退出并结算为 `stopped`。停止后 continue/skip 返回 `alreadyTerminal` 或 `AGENT_COPILOT_QUEUE_NOT_WAITING`，不得启动任何条目。
+- 队列会话保存在服务端进程内。服务重启后活动队列 run 转为 `interrupted`；等待中的队列不自动续跑，continue/skip 返回 `AGENT_COPILOT_QUEUE_SESSION_LOST`（409），页面应重新提交。浏览器刷新、页面隐藏或断线只影响观察，不影响队列 run。
+- `Idempotency-Key` 作用于 `run_copilot_queue`：相同 key 与相同输入重放同一 run；continue/skip 不创建新 run，也不使用独立幂等键。队列 Run 与作业集 Run 一样只使用一个身份，不按条目拆分子 Run。
+
+
 ## 5. 边界契约
 
 ### 5.1 断线未知
@@ -231,7 +253,7 @@ waiting ──stop──> stopped
 
 ### 5.3 manual 等待下一项
 
-服务端已把作业集 manual 模式纳入 Run：首个条目执行后 Run 转为 `waiting`，等待“开始下一关”。等待态归服务端，页面只负责展示和发起继续请求。Web UI 的作业页已按该契约迁移：manual 提交一次集合 run，页面展示 `nextEntry` 并在用户点击“开始下一关”时调用继续端点；页面不再逐项提交 `run-task`，也不再维护等待态。
+服务端已把作业集与显式作业队列的 manual 模式纳入 Run：首个条目执行后 Run 转为 `waiting`，等待用户决定继续。等待态归服务端，页面只负责展示和发起继续/跳过请求。Web UI 的作业页已按该契约迁移：manual 提交一次集合或队列 run，页面展示 `nextEntry` 并在用户点击「开始下一关」/「开始下一项」时调用对应继续端点；页面不再逐项提交 `run-task`，也不再维护等待态。队列的「跳过此项」只把下一个 pending 项标为 `skipped`，不启动设备。
 
 等待态必须满足的不变量：
 
@@ -255,7 +277,7 @@ waiting ──stop──> stopped
 - 定时任务由运行时初始化按已保存的自动化配置重新注册；它与被中断的 Run 没有续跑关系，之后可以独立触发新的执行。
 - 定时触发源在停止、替换或禁用时不能静默丢弃旧 `job.destroy` 失败：停止返回 `success:false`，替换/禁用保留已经生效的新状态但返回失败与逐时间点 `errors`，与 `stopAll` 的 `ok=false` 语义一致。
 - Run 存储文件损坏、版本不支持或启动恢复失败时，纳入 Run 的执行接口保持关闭（503），不能用无身份记录的方式继续执行。JSON 语法损坏（截断、手工编辑）与形状/版本错误都属于不可重试的 `AGENT_RUN_STORE_INVALID`；只有磁盘读取/写入等临时错误才返回可重试的 `AGENT_RUN_PERSISTENCE_FAILED`。运行期写入失败按上一条处理：阻止新的准入并返回可重试的 503。
-- 正常关闭（SIGINT/SIGTERM）先进入 draining 再收尾活动执行：新提交的执行被拒绝，本实例记录的活动 run 收到停止意图，当前任务进程收到 SIGTERM（关闭预算不足时提前升级 SIGKILL），流程与作业集在下一项之前退出。关闭只处理本实例的内存记录与进程内任务进程/流程，不按端口或其他进程的 PID 终止进程。
+- 正常关闭（SIGINT/SIGTERM）先进入 draining 再收尾活动执行：新提交的执行被拒绝，本实例记录的活动 run 收到停止意图，当前任务进程收到 SIGTERM（关闭预算不足时提前升级 SIGKILL），流程、作业集与作业队列在下一项之前退出。关闭只处理本实例的内存记录与进程内任务进程/流程，不按端口或其他进程的 PID 终止进程。
 - 关闭在预算内等待执行器结算，**实际结果决定终态**：已结算的 run 保留执行器写入的 `succeeded`/`failed`/`stopped`；预算耗尽时仍未结算的 run 记为 `interrupted`（`recovery.source=server_shutdown`、`executionResumed=false`），不会写成成功。Run 存储在退出前等待落盘；落盘或执行收尾失败时关闭摘要 `ok=false`，进程以非零退出码结束，其余收尾步骤仍继续执行。
 - 重复信号复用同一次关闭，不会在收尾中途再次退出或重复写入停止意图；关闭完成后由新进程重新组装并重新开放准入。
 - 异常退出（崩溃、`kill -9` 等）没有关闭流程，仍由下次启动把残留活动记录转为 `interrupted`（`recovery.source=server_restart`）。无论哪种退出，都不保证已 detach 的 MAA 子进程（非 Windows）一定终止，重启后的设备占用需要重新确认。
@@ -265,9 +287,9 @@ waiting ──stop──> stopped
 
 进程入口在异步启动前安装关闭信号处理；初始化取消、关闭预算分配、定时计划替换与重新注册、Telegram 轮询和 WebRTC 预览的停止挂接等完整机制见[运行时初始化、就绪与关闭](../server/runtime-lifecycle.md)。本节保留与执行契约相关的摘要：
 
-- **关闭顺序**：固定为后台触发源与轮询 → 执行收尾 → HTTP 传输 → 预览资源。执行收尾在触发源停止之后进行，按 §5.5 结算已开始的日常流程与作业集：执行器在预算内写出的实际结果优先，截止时间到达仍未结算的 run 记为 `interrupted`，不会写成成功或重新排队。传输阶段之前的读取接口（查询 Run、任务状态、日志）继续可用，便于查询执行收尾状态。
+- **关闭顺序**：固定为后台触发源与轮询 → 执行收尾 → HTTP 传输 → 预览资源。执行收尾在触发源停止之后进行，按 §5.5 结算已开始的日常流程、作业集与作业队列：执行器在预算内写出的实际结果优先，截止时间到达仍未结算的 run 记为 `interrupted`，不会写成成功或重新排队。传输阶段之前的读取接口（查询 Run、任务状态、日志）继续可用，便于查询执行收尾状态。
 - **draining**：关闭开始即关闭 Run 准入与设备租约申请，并拒绝注册新的触发源与生命周期步骤；已经排队的 cron 回调不再启动日常流程或自动更新，已开始的流程仍由实际执行结算。
-- **503**：draining 开始后 `beginAgentRun` 返回 503 `AGENT_EXECUTION_SHUTTING_DOWN`，直接申请设备变更权返回 503 `MAA_EXECUTION_SHUTTING_DOWN`；HTTP 执行入口、cron、Telegram 指令、维护更新与作业集继续都经过这两个闸门，不会因为入口不同而绕过。关闭期间的提交（包括携带相同幂等键的重放）返回 503，调用方应改为查询已有 run。
+- **503**：draining 开始后 `beginAgentRun` 返回 503 `AGENT_EXECUTION_SHUTTING_DOWN`，直接申请设备变更权返回 503 `MAA_EXECUTION_SHUTTING_DOWN`；HTTP 执行入口、cron、Telegram 指令、维护更新、作业集继续与作业队列继续/跳过都经过这两个闸门，不会因为入口不同而绕过。关闭期间的提交（包括携带相同幂等键的重放）返回 503，调用方应改为查询已有 run。
 - **预算**：关闭预算默认 10 秒，从第一次关闭请求或启动回滚开始统一计算；等待初始化退出与全部逆序释放共用同一截止时间，份额耗尽时传递零预算，不回退默认超时。失败与超时使关闭摘要 `ok=false`，进程以非零退出码结束。
 - **回滚**：只有 `close` 的生命周期步骤表示资源已归本实例，注册时即纳入回收；带 `start` 的步骤在实际受理启动时才纳入，尚未启动的资源不会被释放。启动步骤失败按注册逆序释放已受理资源，回滚与后续关闭复用同一次释放及其结果，不掩盖回滚失败。
 
@@ -287,6 +309,8 @@ waiting ──stop──> stopped
 | 定时触发 | `schedulerService.executeScheduledTaskFromCron` | 是（`run_daily_flow`） | 流程全程持有 | `schedule` 投影 + `schedule.runId` | 无 HTTP 客户端；无幂等键；Run 在开始前创建，供快照观察 |
 | 作业集（continuous，含旧 app/cli） | `POST /api/agent/copilot-sets/{setId}/execute` | 是（`run_copilot_set`） | 集合全程持有 | `run.progress` + 响应 `summary`；完成进度落 `copilot-progress.json` | 默认同步兼容原响应；`waitForCompletion=false` 返回 202 |
 | 作业集（manual） | `POST /api/agent/copilot-sets/{setId}/execute`（`mode=manual`）与 `POST /api/agent/actions/continue-copilot-set` | 是（`run_copilot_set`；集合级 `waiting`） | 仅单条目执行期间持有；等待释放 | `run.progress` 的 `waiting_for_next`/逐项结果 | 等待期间其他客户端可占用；继续失败可重试且不消耗条目 |
+| 显式作业队列（continuous） | `POST /api/agent/copilot-queues/execute` | 是（`run_copilot_queue`） | 队列全程持有 | `run.progress` + 响应 `summary`；逐项结果来自同一 Run | 默认同步；`waitForCompletion=false` 返回 202；不写 `copilot-progress.json` |
+| 显式作业队列（manual） | 同端点（`mode=manual`）与 `POST /api/agent/actions/continue-copilot-queue`、`POST /api/agent/actions/skip-copilot-queue-entry` | 是（`run_copilot_queue`；`waiting`） | 仅单条目执行期间持有；等待释放 | `run.progress` 的 `waiting_for_next`/逐项结果 | 等待期间可继续或跳过；跳过只改下一个 pending 项 |
 | 逐项 `run-task`（通用入口） | `POST /api/agent/actions/run-task` | 每项是；集合整体否 | 每项命令期间持有 | 每项 run | 页面内的连续编排已退役；其它调用方仍可逐项提交，但不构成集合身份 |
 | 旧断点迁移 | 页面启动读取 `maa-task-flow-execution` | 否（只关联已有 run） | 不获取 | 所关联 run 的 progress | 一次性；不重提，见 5.4 |
 | 仓库/干员识别 | `POST /api/agent/actions/run-task`（`command=run` + `taskConfig`，`Depot`/`OperBox`） | 是 | 命令期间持有 | run 进度 | 后续 `depot-recognition`/`operbox-recognition` 只解析本地日志，不是设备执行 |
@@ -305,6 +329,7 @@ waiting ──stop──> stopped
 - 只有 Agent API 的四个执行动作（`start_game`、`fight`、`run_task`、`run_daily_flow`）在 manifest/OpenAPI 中声明 `producesRun`，与上表一致。
 - `POST /api/agent/schedules/{scheduleId}/execute` 未在 Agent manifest 中广告，但同样创建 `run_daily_flow`；它和 Agent 入口共享 OperationId 与幂等命名空间。
 - `POST /api/agent/copilot-sets/{setId}/execute` 与 `POST /api/agent/actions/continue-copilot-set` 面向 Web UI，未在 Agent manifest 中广告；它们创建/推进 `run_copilot_set`，与其他执行共享同一租约与快照。
+- `POST /api/agent/copilot-queues/execute`、`POST /api/agent/actions/continue-copilot-queue` 与 `POST /api/agent/actions/skip-copilot-queue-entry` 面向 Web UI，未在 Agent manifest 中广告；它们创建/推进 `run_copilot_queue`，与其他执行共享同一租约与快照。
 - 定时流程与 HTTP 入口使用同一执行租约；同一时刻只有一个流程能进入 pre-start gate，第二个触发会得到占用失败而不是并行执行。
 - 资源热更新在服务实例内 single-flight：已有 `hot-update-resources` 进行中时，后到请求不会排队等待首个结束，也不会复用首个结果，而是在创建本次 Run 后立即返回 409 `AGENT_MAA_RESOURCE_UPDATE_IN_PROGRESS`（`details.activeRunId`/`activeRunState` 指向进行中的 Run）；被拒绝的 Run 按执行前拒绝写入 `failed` 并释放幂等键，首个更新结束后可重新发起。
 

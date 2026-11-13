@@ -17,6 +17,7 @@ function progress(overrides: Partial<ExecutionProgressView> = {}): ExecutionProg
     isActive: true,
     name: null,
     stage: 'TEST-2',
+    mode: null,
     step: { current: 2, total: 3 },
     startedAtMs: Date.now() - 5_000,
     durationMs: null,
@@ -85,6 +86,27 @@ describe('CombatExecutionProgressPanel', () => {
     expect(panel?.textContent).not.toContain('3 / 4 关')
   })
 
+  it('names the mode so entries sharing one stage stay apart', async () => {
+    const panelText = () => container.querySelector('[aria-label="本次执行进度"]')?.textContent ?? ''
+
+    await render(
+      <CombatExecutionProgressPanel
+        progress={progress({ mode: 'raid', step: { current: 4, total: 4 } })}
+      />,
+    )
+
+    expect(panelText()).toContain('正在执行 本次第 4 / 4 项 · 突袭')
+    expect(panelText()).toContain('关卡: TEST-2')
+
+    await render(
+      <CombatExecutionProgressPanel
+        progress={progress({ mode: 'normal', step: { current: 3, total: 4 } })}
+      />,
+    )
+
+    expect(panelText()).toContain('正在执行 本次第 3 / 4 项 · 普通')
+  })
+
   it('keeps the waiting entry position without claiming it is executing', async () => {
     await render(
       <CombatExecutionProgressPanel
@@ -95,6 +117,8 @@ describe('CombatExecutionProgressPanel', () => {
     const panel = container.querySelector('[aria-label="本次执行进度"]')
     expect(panel?.textContent).toContain('本次第 2 / 3 项')
     expect(panel?.textContent).not.toContain('正在执行')
+    expect(panel?.textContent).not.toContain('普通')
+    expect(panel?.textContent).not.toContain('突袭')
   })
 
   it('degrades a single task run to its task name and elapsed time', async () => {

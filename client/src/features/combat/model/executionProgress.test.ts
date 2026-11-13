@@ -2,6 +2,7 @@
 
 import { describe, expect, it } from 'vitest'
 import type { AgentRun } from '@/features/task-execution'
+import type { CopilotQueueRunProjection } from './copilotQueueRun'
 import type { CopilotSetRunProjection } from './copilotSetRun'
 import { deriveExecutionProgress, formatExecutionElapsed } from './executionProgress'
 
@@ -45,6 +46,36 @@ function setProjection(overrides: Partial<CopilotSetRunProjection> = {}): Copilo
   }
 }
 
+function queueProjection(overrides: Partial<CopilotQueueRunProjection> = {}): CopilotQueueRunProjection {
+  return {
+    runId: 'run-1',
+    state: 'running',
+    isActive: true,
+    isTerminal: false,
+    queueId: 'copilot-queue',
+    name: '作业队列',
+    mode: 'continuous',
+    failurePolicy: 'continue',
+    phase: 'running',
+    isWaiting: false,
+    waitingForNext: false,
+    currentClientId: null,
+    currentItemIndex: null,
+    nextEntry: null,
+    taskResults: [],
+    statuses: new Map(),
+    totalCount: 0,
+    successCount: 0,
+    failedCount: 0,
+    skippedCount: 0,
+    stoppedCount: 0,
+    pendingCount: 0,
+    failures: [],
+    summaryErrors: [],
+    ...overrides,
+  }
+}
+
 describe('deriveExecutionProgress', () => {
   it('returns null without a tracked run', () => {
     expect(deriveExecutionProgress(null, null)).toBeNull()
@@ -74,7 +105,74 @@ describe('deriveExecutionProgress', () => {
     expect(view?.isActive).toBe(true)
     expect(view?.stage).toBe('TEST-2')
     expect(view?.step).toEqual({ current: 2, total: 3 })
+    expect(view?.mode).toBe('normal')
     expect(view?.name).toBeNull()
+  })
+
+  it('reads the running mode from the server entry for a set run', () => {
+    const view = deriveExecutionProgress(run({
+      operationId: 'run_copilot_set',
+      progress: { currentEntry: { displayStage: 'TEST-2', mode: 'raid' }, currentStep: 3, totalSteps: 4 },
+    }), setProjection())
+
+    expect(view?.stage).toBe('TEST-2')
+    expect(view?.mode).toBe('raid')
+    expect(view?.step).toEqual({ current: 3, total: 4 })
+  })
+
+  it('drops a mode it cannot place instead of guessing', () => {
+    const view = deriveExecutionProgress(run({
+      operationId: 'run_copilot_set',
+      progress: { currentEntry: { displayStage: 'TEST-2', mode: 'both' } },
+    }), setProjection())
+
+    expect(view?.mode).toBeNull()
+  })
+
+  it('projects the queue entry stage and mode from the per-item results', () => {
+    const view = deriveExecutionProgress(run({
+      operationId: 'run_copilot_queue',
+      progress: { currentStep: 3, totalSteps: 4 },
+    }), null, queueProjection({
+      currentClientId: 'b',
+      taskResults: [
+        {
+          clientId: 'a',
+          itemIndex: 1,
+          stage: 'TEST-1',
+          stageId: null,
+          apCost: null,
+          mode: 'normal',
+          status: 'success',
+        },
+        {
+          clientId: 'b',
+          itemIndex: 1,
+          stage: 'TEST-1',
+          stageId: null,
+          apCost: null,
+          mode: 'raid',
+          status: 'running',
+        },
+      ],
+    }))
+
+    expect(view?.name).toBeNull()
+    expect(view?.stage).toBe('TEST-1')
+    expect(view?.mode).toBe('raid')
+    expect(view?.step).toEqual({ current: 3, total: 4 })
+  })
+
+  it('keeps the queue position but drops the mode while waiting', () => {
+    const view = deriveExecutionProgress(run({
+      operationId: 'run_copilot_queue',
+      state: 'waiting',
+      progress: { currentStep: 2, totalSteps: 2 },
+    }), null, queueProjection({ state: 'waiting', isWaiting: true, waitingForNext: true }))
+
+    expect(view?.step).toEqual({ current: 2, total: 2 })
+    expect(view?.stage).toBeNull()
+    expect(view?.mode).toBeNull()
   })
 
   it('numbers the step by the server queue while a set run waits', () => {
@@ -113,6 +211,7 @@ describe('deriveExecutionProgress', () => {
 
     expect(view?.name).toBe('自动战斗作业')
     expect(view?.stage).toBeNull()
+    expect(view?.mode).toBeNull()
     expect(view?.step).toBeNull()
   })
 
@@ -121,6 +220,7 @@ describe('deriveExecutionProgress', () => {
 
     expect(view?.name).toBeNull()
     expect(view?.stage).toBeNull()
+    expect(view?.mode).toBeNull()
     expect(view?.step).toBeNull()
     expect(view?.startedAtMs).toBeNull()
     expect(view?.durationMs).toBeNull()

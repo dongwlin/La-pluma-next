@@ -14,6 +14,9 @@ export interface ExecutionCopilotSetRequest extends ExecutionRequest {
   params: { id: string };
 }
 
+/** 作业队列执行与接续请求没有路径参数，body 由队列请求归一化收窄。 */
+export type ExecutionCopilotQueueRequest = ExecutionRequest;
+
 export interface ExecutionScheduleRequest extends ExecutionRequest {
   params: { scheduleId: string };
 }

@@ -1,9 +1,15 @@
 import type { ApiRequestLike } from '../utils/apiHelper.ts';
+import { resolveBoundedInteger } from '../utils/numericQueryHelper.ts';
 import type { ConnectionProfile } from '../services/connectionService.ts';
 import type { MaaVersionInfo } from '../services/maaExecutionService.ts';
 import type { MaaActivityEntry, MaaActivityFailure, MaaActivityStatus } from '../services/maaActivityService.ts';
 import type { ResourceInfo, ResourceUpdateResult } from '../services/resourceUpdateService.ts';
 import type { AutoUpdateConfig } from '../services/scheduleTriggerService.ts';
+import type { CopilotStageIdentity } from '../services/copilotPlanService.ts';
+import type { CopilotStageCatalogEntry } from '../services/copilotStageCatalogService.ts';
+import { normalizeCopilotStageId } from '../services/copilotStageCatalogService.ts';
+import { resolveCopilotMatch } from '../services/copilotMatchService.ts';
+import type { CopilotMatchSummary, OwnedOperatorSnapshot } from '../services/copilotMatchService.ts';
 import { parseWaitForCompletion } from './executionDto.ts';
 import { resolveRequestConnection } from './requestConnection.ts';
 
@@ -146,18 +152,79 @@ export function parseParadoxSearchQuery(query: unknown): MaintenanceParadoxSearc
   return { name: String(source.name || '').trim() };
 }
 
+export type MaintenanceCopilotSearchOrder = 'hot' | 'latest' | 'views';
+
+const COPILOT_SEARCH_ORDERS: readonly MaintenanceCopilotSearchOrder[] = ['hot', 'latest', 'views'];
+const COPILOT_SEARCH_OPERATOR_LIMIT = 20;
+const COPILOT_SEARCH_DEFAULT_LIMIT = 20;
+const COPILOT_SEARCH_MAX_LIMIT = 50;
+
 export interface MaintenanceCopilotSearchInput {
+  document: string;
   stage: string;
+  orderBy: MaintenanceCopilotSearchOrder;
+  includeOperators: string[];
+  excludeOperators: string[];
+  page: number;
+  limit: number;
+}
+
+function isCopilotSearchOrder(value: unknown): value is MaintenanceCopilotSearchOrder {
+  return typeof value === 'string' && (COPILOT_SEARCH_ORDERS as readonly string[]).includes(value);
+}
+
+function readCopilotSearchText(value: unknown): string {
+  const scalar = Array.isArray(value) ? value[0] : value;
+  return scalar === undefined || scalar === null ? '' : String(scalar).trim();
+}
+
+function readCopilotSearchBoundedInteger(value: unknown, defaultValue: number, max: number): number {
+  if (value === undefined || value === null || value === '') return defaultValue;
+  return resolveBoundedInteger(value, { defaultValue, min: 1, max });
+}
+
+/**
+ * 重复参数先合并成一个字符串再拆分：上游按单个逗号串区分包含与 `~` 排除项，
+ * 分开传多个 operator 参数会让排除项失效。
+ */
+function readCopilotSearchOperators(value: unknown): { include: string[]; exclude: string[] } {
+  const raw = Array.isArray(value) ? value : value === undefined ? [] : [value];
+  const merged = raw
+    .filter(entry => entry !== undefined && entry !== null)
+    .map(entry => String(entry))
+    .join(',');
+  const include = new Set<string>();
+  const exclude = new Set<string>();
+  for (const part of merged.split(',')) {
+    const name = part.trim();
+    if (!name) continue;
+    const excluded = name.startsWith('~');
+    const operator = (excluded ? name.slice(1) : name).trim();
+    if (!operator) continue;
+    const bucket = excluded ? exclude : include;
+    if (bucket.size < COPILOT_SEARCH_OPERATOR_LIMIT) bucket.add(operator);
+  }
+  return { include: [...include], exclude: [...exclude] };
 }
 
 export function parseCopilotSearchQuery(query: unknown): MaintenanceCopilotSearchInput {
   const source = isRecord(query) ? query : {};
-  return { stage: String(source.stage || '').trim() };
+  const orderBy = typeof source.orderBy === 'string' ? source.orderBy.trim() : '';
+  const operators = readCopilotSearchOperators(source.operator);
+  return {
+    document: readCopilotSearchText(source.document),
+    stage: readCopilotSearchText(source.level) || readCopilotSearchText(source.stage),
+    orderBy: isCopilotSearchOrder(orderBy) ? orderBy : 'hot',
+    includeOperators: operators.include,
+    excludeOperators: operators.exclude,
+    page: readCopilotSearchBoundedInteger(source.page, 1, Number.MAX_SAFE_INTEGER),
+    limit: readCopilotSearchBoundedInteger(source.limit, COPILOT_SEARCH_DEFAULT_LIMIT, COPILOT_SEARCH_MAX_LIMIT)
+  };
 }
 
-export type MaintenanceCopilotRaid = 'normal' | 'raid' | 'both';
+export type MaintenanceCopilotRaid = 'normal' | 'raid' | 'both' | 'auto';
 
-const COPILOT_RAID_MODES: readonly MaintenanceCopilotRaid[] = ['normal', 'raid', 'both'];
+const COPILOT_RAID_MODES: readonly MaintenanceCopilotRaid[] = ['normal', 'raid', 'both', 'auto'];
 
 function isCopilotRaid(value: unknown): value is MaintenanceCopilotRaid {
   return typeof value === 'string' && (COPILOT_RAID_MODES as readonly string[]).includes(value);
@@ -262,6 +329,7 @@ export interface PrtsCopilotQueryPayload {
   statusCode: unknown;
   items: Record<string, unknown>[];
   hasNext: boolean;
+  total?: number;
 }
 
 export function parsePrtsCopilotQueryPayload(value: unknown): PrtsCopilotQueryPayload {
@@ -269,10 +337,12 @@ export function parsePrtsCopilotQueryPayload(value: unknown): PrtsCopilotQueryPa
     throw new TypeError('PRTS 作业查询响应不是对象');
   }
   const body = isRecord(value.data) ? value.data : {};
+  const total = body.total;
   return {
     statusCode: value.status_code,
     items: Array.isArray(body.data) ? body.data.filter(isRecord) : [],
-    hasNext: Boolean(body.has_next)
+    hasNext: Boolean(body.has_next),
+    ...(typeof total === 'number' && Number.isFinite(total) ? { total } : {})
   };
 }
 
@@ -285,13 +355,52 @@ export interface MaintenanceCopilotEntry {
   title: unknown;
 }
 
-export interface MaintenanceCopilotSearchEntry extends MaintenanceCopilotEntry {
-  stageName: unknown;
+export type MaintenanceCopilotRecommendedMode = 'normal' | 'raid' | 'both';
+
+/** 单个干员的练度要求：字段名与客户端 `CopilotDetailOperator` 对齐。 */
+export interface CopilotOperatorDetail {
+  name: string;
+  group?: string;
+  elite?: number;
+  level?: number;
+  skillLevel?: number;
+  module?: string;
 }
 
-export interface MaintenanceCopilotSearchCandidate {
-  entry: MaintenanceCopilotSearchEntry;
-  titleStageCode: string;
+export interface MaintenanceCopilotSearchEntry {
+  id: unknown;
+  uri: string;
+  views: unknown;
+  hotScore: unknown;
+  title: unknown;
+  stageName: unknown;
+  stageId: string;
+  stageCode: string;
+  stageLabel: string;
+  operators: string[];
+  uploader?: string;
+  uploadTime?: string;
+  match?: CopilotMatchSummary;
+  details?: string;
+  operatorDetails?: CopilotOperatorDetail[];
+  groupNames?: string[];
+  recommendedMode?: MaintenanceCopilotRecommendedMode;
+}
+
+/**
+ * 单作业代理载荷追加展示关卡投影：`stage` 为可读代号，`stageId` 为作业内容里的
+ * 原始标识。解析结果为空时保持原载荷，旧字段与 `status_code` 不变。
+ */
+export function projectCopilotStage(
+  payload: unknown,
+  stage: CopilotStageIdentity
+): unknown {
+  if (!isRecord(payload)) return payload;
+  return {
+    ...payload,
+    ...(stage.stage ? { stage: stage.stage } : {}),
+    ...(stage.stageId ? { stageId: stage.stageId } : {})
+  };
 }
 
 function copilotDocTitle(value: unknown): unknown {
@@ -323,39 +432,160 @@ export function projectParadoxCopilot(item: Record<string, unknown>): Maintenanc
   };
 }
 
+const COPILOT_OPERATOR_LIMIT = 30;
+
+interface CopilotContentFields {
+  title: unknown;
+  stageName: unknown;
+  operators: string[];
+  parsed: Record<string, unknown> | null;
+}
+
+function readCopilotContentFields(content: unknown): CopilotContentFields {
+  try {
+    const parsed: unknown = JSON.parse(String(content || '{}'));
+    const operators = new Set<string>();
+    if (isRecord(parsed) && Array.isArray(parsed.opers)) {
+      for (const oper of parsed.opers) {
+        if (operators.size >= COPILOT_OPERATOR_LIMIT) break;
+        if (!isRecord(oper) || typeof oper.name !== 'string') continue;
+        const name = oper.name.trim();
+        if (name) operators.add(name);
+      }
+    }
+    return {
+      title: copilotDocTitle(parsed),
+      stageName: isRecord(parsed) ? parsed.stage_name : undefined,
+      operators: [...operators],
+      parsed: isRecord(parsed) ? parsed : null
+    };
+  } catch {
+    return { title: undefined, stageName: undefined, operators: [], parsed: null };
+  }
+}
+
+function copilotUploaderName(uploader: unknown, uploaderId: unknown): string | undefined {
+  if (typeof uploader === 'string' && uploader.trim()) return uploader;
+  if (uploaderId === undefined || uploaderId === null) return undefined;
+  return String(uploaderId);
+}
+
+function copilotRequirementNumber(value: unknown): number | undefined {
+  return typeof value === 'number' && Number.isFinite(value) ? value : undefined;
+}
+
+/** `module` 在上游是数字占位（-1 表示未装备），保持与客户端 `asModule` 相同的字符串化。 */
+function copilotRequirementModule(value: unknown): string | undefined {
+  if (typeof value === 'string' && value.trim()) return value;
+  if (typeof value === 'number' && Number.isFinite(value)) return String(value);
+  return undefined;
+}
+
+function readCopilotOperatorDetail(value: unknown): CopilotOperatorDetail | null {
+  if (!isRecord(value)) return null;
+  const name = typeof value.name === 'string' ? value.name.trim() : '';
+  if (!name) return null;
+  const requirements = isRecord(value.requirements) ? value.requirements : {};
+  const group = typeof value.group === 'string' && value.group.trim() ? value.group.trim() : undefined;
+  const elite = copilotRequirementNumber(requirements.elite);
+  const level = copilotRequirementNumber(requirements.level);
+  const skillLevel = copilotRequirementNumber(requirements.skill_level);
+  const module = copilotRequirementModule(requirements.module);
+  return {
+    name,
+    ...(group === undefined ? {} : { group }),
+    ...(elite === undefined ? {} : { elite }),
+    ...(level === undefined ? {} : { level }),
+    ...(skillLevel === undefined ? {} : { skillLevel }),
+    ...(module === undefined ? {} : { module })
+  };
+}
+
+/** 与 `operators` 同源、同上限：列表条目只带前 30 个干员的练度要求。 */
+function readCopilotOperatorDetails(parsed: Record<string, unknown> | null): CopilotOperatorDetail[] {
+  if (!parsed || !Array.isArray(parsed.opers)) return [];
+  const details: CopilotOperatorDetail[] = [];
+  const names = new Set<string>();
+  for (const oper of parsed.opers) {
+    if (details.length >= COPILOT_OPERATOR_LIMIT) break;
+    const detail = readCopilotOperatorDetail(oper);
+    if (!detail || names.has(detail.name)) continue;
+    names.add(detail.name);
+    details.push(detail);
+  }
+  return details;
+}
+
+function readCopilotGroupNames(parsed: Record<string, unknown> | null): string[] {
+  if (!parsed || !Array.isArray(parsed.groups)) return [];
+  const names: string[] = [];
+  for (const group of parsed.groups) {
+    if (!isRecord(group) || typeof group.name !== 'string') continue;
+    const name = group.name.trim();
+    if (name && !names.includes(name)) names.push(name);
+  }
+  return names;
+}
+
+function copilotRecommendedMode(value: unknown): MaintenanceCopilotRecommendedMode | undefined {
+  if (value === 0 || value === 1) return 'normal';
+  if (value === 2) return 'raid';
+  if (value === 3) return 'both';
+  return undefined;
+}
+
+function copilotDocDetails(value: unknown): string | undefined {
+  if (!isRecord(value) || !isRecord(value.doc)) return undefined;
+  const details = value.doc.details;
+  return typeof details === 'string' && details.trim() ? details : undefined;
+}
+
+export interface CopilotSearchProjectionOptions {
+  stageId?: string;
+  stageIndex?: ReadonlyMap<string, CopilotStageCatalogEntry>;
+  ownedOperators?: ReadonlyMap<string, OwnedOperatorSnapshot>;
+}
+
 /**
- * 关卡作业条目：标题与关卡名来自 content 文档，标题代号用于与请求关卡匹配；
- * content 不是 JSON 时沿用默认标题与请求关卡。
+ * 关卡作业条目：标题与关卡名来自 content 文档，content 不是 JSON 时沿用默认标题与请求关卡。
+ * 同时投影预览所需的说明、干员练度与分组：上游查询已返回完整 content，列表阶段带上这些字段
+ * 后，点开卡片无需再为同一份数据发起一次详情请求。
  */
 export function projectCopilotSearchItem(
   item: Record<string, unknown>,
-  stage: string
-): MaintenanceCopilotSearchCandidate {
-  let title: unknown = '无标题';
-  let stageName: unknown = stage;
-  let titleStageCode = '';
-  try {
-    const content = JSON.parse(String(item.content || '{}'));
-    title = copilotDocTitle(content) || '无标题';
-    stageName = isRecord(content) && content.stage_name ? content.stage_name : stage;
-    if (typeof title === 'string') {
-      const titleMatch = title.match(/^([A-Z]{2,4}-\d+[A-Z]?)/i);
-      if (titleMatch) titleStageCode = titleMatch[1].toUpperCase();
-    }
-  } catch {
-    // 非 JSON content：沿用默认标题与请求关卡
-  }
+  options: CopilotSearchProjectionOptions = {}
+): MaintenanceCopilotSearchEntry {
+  const content = readCopilotContentFields(item.content);
+  const stageName = content.stageName || options.stageId || '';
+  const stageId = normalizeCopilotStageId(String(stageName));
+  const stageEntry = stageId ? options.stageIndex?.get(stageId.toUpperCase()) : undefined;
+  const uploader = copilotUploaderName(item.uploader, item.uploader_id);
+  const uploadTime = typeof item.upload_time === 'string' ? item.upload_time : undefined;
+  const match = options.ownedOperators && content.parsed
+    ? resolveCopilotMatch(content.parsed, options.ownedOperators)
+    : null;
+  const details = copilotDocDetails(content.parsed);
+  const operatorDetails = readCopilotOperatorDetails(content.parsed);
+  const groupNames = readCopilotGroupNames(content.parsed);
+  const recommendedMode = content.parsed ? copilotRecommendedMode(content.parsed.difficulty) : undefined;
   return {
-    entry: {
-      id: item.id,
-      uri: `prts://${String(item.id)}`,
-      views: item.views,
-      hotScore: item.hot_score,
-      uploader: item.uploader_id,
-      title,
-      stageName
-    },
-    titleStageCode
+    id: item.id,
+    uri: `prts://${String(item.id)}`,
+    views: item.views,
+    hotScore: item.hot_score,
+    title: content.title || '无标题',
+    stageName,
+    stageId,
+    stageCode: stageEntry?.code ?? '',
+    stageLabel: stageEntry?.name ?? '',
+    operators: content.operators,
+    ...(uploader === undefined ? {} : { uploader }),
+    ...(uploadTime === undefined ? {} : { uploadTime }),
+    ...(match ? { match } : {}),
+    ...(details === undefined ? {} : { details }),
+    ...(operatorDetails.length ? { operatorDetails } : {}),
+    ...(groupNames.length ? { groupNames } : {}),
+    ...(recommendedMode === undefined ? {} : { recommendedMode })
   };
 }
 
@@ -367,9 +597,16 @@ export interface MaintenanceParadoxSearchPayload {
 }
 
 export interface MaintenanceCopilotSearchPayload {
+  keyword: string;
   stage: string;
+  stageId?: string;
+  orderBy: MaintenanceCopilotSearchOrder;
+  page: number;
+  limit: number;
+  total?: number;
+  hasNext: boolean;
   copilots: MaintenanceCopilotSearchEntry[];
-  recommended: MaintenanceCopilotSearchEntry;
+  recommended?: MaintenanceCopilotSearchEntry;
 }
 
 /** 维护动作计划：dryRun 只返回这些计划，不触发真实更新。 */

@@ -139,9 +139,10 @@ const depot = unwrapApiResponse(result)
 
 | 函数 | 端点 | 载荷校验 |
 | --- | --- | --- |
-| `searchCopilot(stageName, signal?)` | `GET /agent/copilot/search` | `copilots` 数组 |
+| `searchCopilot(request, signal?)` | `GET /agent/copilot/search` | `copilots` 数组；请求含 `keyword`/`level`/`includedOperators`/`excludedOperators`/`orderBy`/`page`/`limit`，映射为 `document`/`level`/`operator`（`~` 前缀排除）/`orderBy`/`page`/`limit` |
+| `getCopilotStages(signal?)` | `GET /agent/copilot/stages` | `data` 数组；关卡目录条目 |
 | `searchParadoxCopilot(operatorName, signal?)` | `GET /agent/paradox/search` | `copilots` 数组 |
-| `getCopilotInfo(copilotId, signal?)` | `GET /agent/copilots/:id` | PRTS 代理对象 |
+| `getCopilotInfo(copilotId, signal?)` | `GET /agent/copilots/:id` | PRTS 代理对象；服务端按资源追加 `stage`/`stageId` 展示关卡投影 |
 | `getCopilotSet(copilotId, signal?)` | `GET /agent/copilot-sets/:id` | PRTS 代理对象 |
 | `getCopilotSetPlan(copilotId, raid?, signal?)` | `GET /agent/copilot-sets/:id/plan` | `items`/`entries` 数组 |
 

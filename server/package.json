@@ -20,10 +20,9 @@
     "fetch-formulas": "node scripts/fetch-material-formulas.ts && node scripts/merge-formulas.ts",
     "fetch-all-materials": "node scripts/fetch-all-materials.ts",
     "fetch-drop-data": "node scripts/fetch-penguin-stats.ts",
-    "fetch-stages": "node scripts/fetch-stage-data.ts",
     "fetch-assets": "node scripts/fetch-game-assets.ts",
     "fetch-paradox": "node scripts/fetch-paradox-operators.ts",
-    "fetch-game-data": "pnpm run fetch-stages && pnpm run fetch-paradox"
+    "fetch-game-data": "pnpm run fetch-paradox"
   },
   "dependencies": {
     "@iarna/toml": "^2.2.5",

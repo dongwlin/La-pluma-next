@@ -32,6 +32,7 @@ export default function CombatExecutionProgressPanel({
   const stepText = progress.step
     ? `本次第 ${progress.step.current}${progress.step.total !== null ? ` / ${progress.step.total}` : ''} 项`
     : null
+  const modeLabel = progress.mode === 'raid' ? '突袭' : progress.mode === 'normal' ? '普通' : null
   if (!stepText && !progress.stage && !progress.name && !elapsed) return null
 
   return (
@@ -45,6 +46,7 @@ export default function CombatExecutionProgressPanel({
           <span className="font-medium brand-text">
             {progress.state === 'running' ? '正在执行 ' : ''}
             {stepText}
+            {modeLabel ? ` · ${modeLabel}` : ''}
           </span>
         )}
         {!stepText && progress.name && <span className="text-secondary">{progress.name}</span>}

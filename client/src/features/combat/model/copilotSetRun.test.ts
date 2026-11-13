@@ -126,6 +126,47 @@ describe('readCopilotSetRunProjection', () => {
     ])
   })
 
+  it('keeps the terminal summary errors alongside the per-entry failures', () => {
+    const projection = readCopilotSetRunProjection(run({
+      state: 'succeeded',
+      result: {
+        summary: {
+          setId: '48990',
+          mode: 'continuous',
+          totalEntries: 2,
+          taskResults: [
+            entry(0, 'failed', { error: '作战失败' }),
+            entry(1, 'success'),
+          ],
+          errors: [
+            { key: '0:100:normal', stage: 'TEST-1', error: '作战失败' },
+            { key: '3:103:raid', stage: 'TEST-4' },
+          ],
+        },
+      },
+    }))
+
+    expect(projection?.summaryErrors).toEqual([
+      { itemIndex: 0, stage: 'TEST-1', error: '作战失败' },
+      { itemIndex: 3, stage: 'TEST-4', error: '未知错误' },
+    ])
+    expect(projection?.failures).toEqual([
+      { itemIndex: 0, stage: 'TEST-1', error: '作战失败' },
+    ])
+  })
+
+  it('leaves summary errors empty when the summary does not provide them', () => {
+    const projection = readCopilotSetRunProjection(run({
+      state: 'running',
+      progress: { setId: '48990', taskResults: [entry(0, 'failed', { error: '设备断开' })] },
+    }))
+
+    expect(projection?.summaryErrors).toEqual([])
+    expect(projection?.failures).toEqual([
+      { itemIndex: 0, stage: 'TEST-1', error: '设备断开' },
+    ])
+  })
+
   it('does not invent completion when no progress or result is available', () => {
     const projection = readCopilotSetRunProjection(run({ state: 'accepted' }))
     expect(projection?.entries).toEqual([])

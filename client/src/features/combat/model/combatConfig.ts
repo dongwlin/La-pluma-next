@@ -12,6 +12,7 @@ import type {
   AutoFormationConfig,
   CombatAdvancedParams,
   CombatTaskInputs,
+  CopilotRaid,
   CopilotSetExecutionMode,
   CopilotSetSelections,
   FormationMode,
@@ -49,7 +50,7 @@ export function createDefaultCombatDraft(): CombatConfigDraft {
   return {
     taskInputs: {},
     advancedParams: {
-      copilot: { ignoreRequirements: true, loopTimes: '1', executionStrategy: 'continue', raid: 'normal' },
+      copilot: { ignoreRequirements: true, loopTimes: '1', executionStrategy: 'continue', raid: 'auto' },
       paradoxcopilot: { executionStrategy: 'continue' },
       ssscopilot: { loopTimes: '1' },
     },
@@ -60,7 +61,8 @@ export function createDefaultCombatDraft(): CombatConfigDraft {
 }
 
 /** 旧配置的 raid 值 `1`/`2` 与现行名称都接受，其余值按普通模式处理。 */
-export function normalizeRaidValue(value: unknown): 'normal' | 'raid' | 'both' {
+export function normalizeRaidValue(value: unknown): CopilotRaid {
+  if (value === 'auto') return 'auto'
   if (value === '1' || value === 'raid') return 'raid'
   if (value === '2' || value === 'both') return 'both'
   return 'normal'

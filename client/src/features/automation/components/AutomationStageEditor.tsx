@@ -188,6 +188,7 @@ export default function AutomationStageEditor({
                 <input
                   id={`${fieldId}-${stageIndex}`}
                   type="text"
+                  autoComplete="off"
                   list={suggestionsId}
                   aria-label={stageIndex === 0 ? undefined : `${field.label} ${stageIndex + 1}`}
                   value={stageName}

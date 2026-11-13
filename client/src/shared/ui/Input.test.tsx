@@ -67,6 +67,21 @@ describe('common form controls', () => {
     expect(hint?.textContent).toBe('可随时切换')
   })
 
+  it('keeps browser autofill history out of inputs unless a caller opts in', async () => {
+    await act(async () => {
+      root.render(
+        <>
+          <Input value="" onChange={vi.fn()} aria-label="默认字段" />
+          <Input value="" onChange={vi.fn()} aria-label="显式启用" autoComplete="on" />
+        </>,
+      )
+    })
+
+    const [defaulted, overridden] = container.querySelectorAll('input')
+    expect(defaulted?.getAttribute('autocomplete')).toBe('off')
+    expect(overridden?.getAttribute('autocomplete')).toBe('on')
+  })
+
   it('folds guidance into a focusable label tooltip when requested', async () => {
     await act(async () => {
       root.render(

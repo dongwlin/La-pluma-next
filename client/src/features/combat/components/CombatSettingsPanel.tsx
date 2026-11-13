@@ -1,3 +1,4 @@
+import { HintTooltip, Select } from '@/shared/ui'
 import type {
   CombatTask,
   CopilotRaid,
@@ -6,6 +7,7 @@ import type {
 } from '../types'
 import type { AdvancedValues } from '../model/combatCommands'
 import CombatAdvancedFields from './CombatAdvancedFields'
+import CombatSegmentedControl, { type CombatSegmentedOption } from './CombatSegmentedControl'
 
 interface CombatSettingsPanelProps {
   task: CombatTask
@@ -18,6 +20,24 @@ interface CombatSettingsPanelProps {
   onSetExecutionModeChange: (mode: CopilotSetExecutionMode) => void
   onAdvancedChange: (key: string, value: string | number | boolean) => void
 }
+
+const FORMATION_OPTIONS: readonly CombatSegmentedOption<FormationMode>[] = [
+  { value: 'auto', label: '自动决定' },
+  { value: 'on', label: '自动编队' },
+  { value: 'off', label: '保留当前编队' },
+]
+
+const RAID_OPTIONS: Array<{ value: CopilotRaid; label: string }> = [
+  { value: 'auto', label: '按作业标注' },
+  { value: 'normal', label: '普通模式' },
+  { value: 'raid', label: '突袭模式' },
+  { value: 'both', label: '普通+突袭' },
+]
+
+const SET_EXECUTION_MODE_OPTIONS: readonly CombatSegmentedOption<CopilotSetExecutionMode>[] = [
+  { value: 'cli', label: '连续执行' },
+  { value: 'manual', label: '手动逐关' },
+]
 
 export default function CombatSettingsPanel({
   task,
@@ -40,59 +60,51 @@ export default function CombatSettingsPanel({
         <span>执行设置</span>
       </h5>
 
-      <div className="mb-3 space-y-1.5">
-        <div className="flex items-center space-x-2">
-          <label htmlFor="combat-copilot-formation" className="w-12 shrink-0 text-xs text-secondary">编队</label>
-          <select
-            id="combat-copilot-formation"
-            name="maa-copilot-formation"
-            value={formationMode}
-            onChange={(e) => onFormationChange(e.target.value as FormationMode)}
-            className="app-input app-native-control min-h-11 min-w-0 flex-1 control-surface"
-          >
-            <option value="auto">自动决定</option>
-            <option value="on">自动编队</option>
-            <option value="off">保留当前编队</option>
-          </select>
+      <div className="mb-3">
+        <div className="mb-1.5 flex items-center gap-1">
+          <span className="text-xs text-secondary">编队</span>
+          <HintTooltip
+            id="combat-copilot-formation-hint"
+            label="编队"
+            hint="“自动决定”会在队列执行时启用自动编队，单作业沿用 Maa CLI 的默认设置。"
+          />
         </div>
-        <p className="pl-14 text-xs leading-relaxed text-tertiary">
-          作业集拆分执行时，“自动决定”会启用自动编队；单作业会使用默认设置。
-        </p>
+        <CombatSegmentedControl
+          ariaLabel="编队"
+          value={formationMode}
+          options={FORMATION_OPTIONS}
+          onChange={onFormationChange}
+          fullWidth
+        />
       </div>
 
-      <div className="mb-3 flex items-center space-x-2">
-        <label htmlFor="combat-copilot-raid" className="w-12 shrink-0 text-xs text-secondary">模式</label>
-        <select
+      <div className="mb-3">
+        <label htmlFor="combat-copilot-raid" className="mb-1.5 block text-xs text-secondary">难度</label>
+        <Select
           id="combat-copilot-raid"
           name="maa-copilot-raid"
           value={raid}
-          onChange={(e) => onRaidChange(e.target.value as CopilotRaid)}
-          className="app-input app-native-control min-h-11 min-w-0 flex-1 control-surface"
-        >
-          <option value="normal">普通模式</option>
-          <option value="raid">突袭模式</option>
-          <option value="both">普通+突袭</option>
-        </select>
+          options={RAID_OPTIONS}
+          onChange={(value) => onRaidChange(value as CopilotRaid)}
+        />
       </div>
 
-      <div className="space-y-1.5">
-        <div className="flex items-center space-x-2">
-          <label htmlFor="combat-copilot-set-mode" className="w-12 shrink-0 text-xs text-secondary">作业集</label>
-          <select
-            id="combat-copilot-set-mode"
-            name="maa-copilot-set-mode"
-            value={setExecutionMode}
-            onChange={(e) => onSetExecutionModeChange(e.target.value as CopilotSetExecutionMode)}
-            className="app-input app-native-control min-h-11 min-w-0 flex-1 control-surface"
-          >
-            <option value="app">顺序执行</option>
-            <option value="manual">手动逐关</option>
-            <option value="cli">连续执行</option>
-          </select>
+      <div>
+        <div className="mb-1.5 flex items-center gap-1">
+          <span className="text-xs text-secondary">执行方式</span>
+          <HintTooltip
+            id="combat-copilot-set-mode-hint"
+            label="执行方式"
+            hint="连续执行会自动开始下一项。手动逐关需要在每个执行步骤后确认。"
+          />
         </div>
-        <p className="pl-14 text-xs leading-relaxed text-tertiary">
-          顺序执行会保存进度：成功项自动移出待执行，失败项保留待重试。
-        </p>
+        <CombatSegmentedControl
+          ariaLabel="执行方式"
+          value={setExecutionMode === 'app' ? 'cli' : setExecutionMode}
+          options={SET_EXECUTION_MODE_OPTIONS}
+          onChange={onSetExecutionModeChange}
+          fullWidth
+        />
       </div>
 
       {task.hasAdvanced && (

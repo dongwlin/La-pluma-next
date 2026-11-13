@@ -168,6 +168,8 @@ import { Input, Select, Checkbox, Switch } from '@/shared/ui'
 
 `Input`、`Select` 均支持 `error` 和 `hint`，`Input` 额外支持前置 `icon`。`hint` 默认显示在控件下方；传 `hintPlacement="tooltip"` 时说明收敛为标签旁的 ⓘ 图标，悬停、聚焦或点击时以提示层显示同一段文字，控件仍通过 `aria-describedby` 关联这段说明。多行文本使用带 `app-input control-surface` 的原生 `textarea`。表单错误态使用 `error` prop，不要在页面里单独手写红色边框和错误文字。
 
+`Input` 默认关闭浏览器自动填充历史（`autoComplete="off"`），避免配置值与搜索词混入输入框下拉提示；确实需要浏览器记住输入时才显式传 `autoComplete`。原生 `input` 同样补上该属性。
+
 ---
 
 ### HintTooltip - 标签说明提示
@@ -237,6 +239,22 @@ import { ConfirmDialog, Loading } from '@/shared/ui'
 ```
 
 `ConfirmDialog.onConfirm` 可以返回 Promise：返回 `false` 或抛出错误时弹窗保持打开，并在弹窗内展示失败原因。
+
+`Modal` 的 `placement` 默认为 `center`（既有居中弹层）；传 `sheet` 时改为贴底 Sheet，最大高度 `85dvh`、顶部连续圆角并预留底部安全区，焦点陷阱、背景 `inert`、Esc、滚动锁与焦点归还保持与居中弹层一致。`dialogId` 可选，用于让触发元素的 `aria-controls` 指向对话框根节点。`onBodyScroll` 可选，透传正文滚动事件（滚动发生在正文层），用于滚动加载等场景；它不改变布局、焦点陷阱与背景锁。
+
+`useModalLayer(ref, enabled?)` 由 `shared/ui` 导出，用于把已有 portal 图层登记进同一个 Modal 栈：登记期间按栈序分配 `z-index`，非顶层弹窗自动设为 `inert`/`aria-hidden`，停用后移除内联层级并恢复原样式。它只负责图层栈，不创建弹窗；普通 `Modal` 仍自行管理背景锁与焦点陷阱。桌面端作业详情抽屉叠在“发现作业”弹窗之上时使用该能力，并在叠层期间提供 `aria-modal="true"` 与面板内的 Tab 循环；未叠层时保持非模态抽屉语义，不劫持 Tab。
+
+```tsx
+<Modal
+  isOpen={open}
+  onClose={close}
+  title="作业详情"
+  placement="sheet"
+  dialogId="combat-copilot-detail-panel"
+>
+  内容
+</Modal>
+```
 
 `ActivityIndicator` 是供 `Button` 和 `Loading` 内部复用的 iOS 活动指示器，页面不要直接调用或叠加第二个动态指示器。`DashboardSkeleton` 是控制台域专用骨架，位于 `features/dashboard/components/DashboardSkeleton.tsx`，不属于 `shared/ui` 的公共导出。
 

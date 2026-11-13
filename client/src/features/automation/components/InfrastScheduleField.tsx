@@ -31,6 +31,7 @@ export default function InfrastScheduleField({
           <input
             id={filenameId}
             type="text"
+            autoComplete="off"
             value={filename}
             placeholder="schedules/base.json"
             onChange={event => onChange('filename', event.target.value)}

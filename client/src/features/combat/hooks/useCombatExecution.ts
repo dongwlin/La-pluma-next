@@ -12,7 +12,18 @@ import {
   type AgentRun,
   type ExecutionController,
 } from '@/features/task-execution'
-import { continueCopilotSet, executeCopilotSetPlan, type CopilotSetRunMode } from '../api'
+import {
+  continueCopilotQueue,
+  continueCopilotSet,
+  executeCopilotQueue,
+  executeCopilotSetPlan,
+  skipCopilotQueueEntry,
+  type CopilotQueueFailurePolicy,
+  type CopilotQueueRunEntry,
+  type CopilotQueueRunMode,
+  type CopilotSetRunMode,
+} from '../api'
+import type { CopilotRaid } from '../types'
 import {
   describeCombatTaskTerminal,
   describeCopilotSetRunTerminal,
@@ -20,6 +31,11 @@ import {
   type CopilotSetEntryProjection,
   type CopilotSetRunProjection,
 } from '../model/copilotSetRun'
+import {
+  describeCopilotQueueRunTerminal,
+  readCopilotQueueRunProjection,
+  type CopilotQueueRunProjection,
+} from '../model/copilotQueueRun'
 
 export const COMBAT_EXECUTION_SCOPE = 'combat'
 
@@ -38,8 +54,18 @@ export interface CombatSetSubmission {
   setId: string
   /** 服务端模式；页面的 `app`/`cli` 都映射为 `continuous`。 */
   mode: CopilotSetRunMode
-  raid: 'normal' | 'raid' | 'both'
+  raid: CopilotRaid
   selectedIndexes: number[]
+  options: Record<string, unknown>
+  taskName: string
+}
+
+export interface CombatQueueSubmission {
+  queueId: string
+  name: string
+  mode: CopilotQueueRunMode
+  failurePolicy: CopilotQueueFailurePolicy
+  entries: CopilotQueueRunEntry[]
   options: Record<string, unknown>
   taskName: string
 }
@@ -54,14 +80,19 @@ export interface CombatExecution {
   isStopping: boolean
   /** 继续下一关的请求在途；按钮保持禁用，重复点击不会并发提交。 */
   isContinuing: boolean
+  isSkipping: boolean
   /** 提交请求在途；按钮保持禁用，重复点击不会产生第二个提交。 */
   isSubmitting: boolean
   /** 本页所属作业集 run 的投影；单作业运行或其它领域 run 时为 null。 */
   setRun: CopilotSetRunProjection | null
+  queueRun: CopilotQueueRunProjection | null
   run: AgentRun | null
   submitTask: (request: CombatTaskSubmission) => Promise<boolean>
   submitSet: (request: CombatSetSubmission) => Promise<boolean>
+  submitQueue: (request: CombatQueueSubmission) => Promise<boolean>
   continueSet: () => Promise<void>
+  continueQueue: () => Promise<void>
+  skipQueueEntry: () => Promise<void>
   stop: () => Promise<void>
 }
 
@@ -116,20 +147,24 @@ export function useCombatExecution({
   // 投影每次渲染都会新建对象；缓存到 trackedRun 变化为止，避免三个 Effect
   // 因同一份服务端快照的引用变化而重复执行。
   const setRun = useMemo(() => readCopilotSetRunProjection(trackedRun), [trackedRun])
+  const queueRun = useMemo(() => readCopilotQueueRunProjection(trackedRun), [trackedRun])
   const isWaitingForNext = Boolean(setRun?.isWaiting)
   const isSubmitting = execution.submission === 'pending'
 
   const [stopRequestPending, setStopRequestPending] = useState(false)
   const [stopAcknowledged, setStopAcknowledged] = useState(false)
   const [isContinuing, setIsContinuing] = useState(false)
+  const [isSkipping, setIsSkipping] = useState(false)
   const [autoStoppingRunId, setAutoStoppingRunId] = useState<string | null>(null)
   const stopRequestRef = useRef(false)
   const continuingRef = useRef(false)
+  const skippingRef = useRef(false)
   const autoStopRef = useRef<string | null>(null)
   const lastOwnedRunIdRef = useRef<string | null>(null)
   const observedActiveRunRef = useRef<string | null>(null)
   const announcedRunRef = useRef<string | null>(null)
   const itemMessageRef = useRef<string | null>(null)
+  const queueItemMessageRef = useRef<string | null>(null)
   const waitingMessageRef = useRef<string | null>(null)
   const runLabelsRef = useRef(new Map<string, string>())
 
@@ -143,11 +178,19 @@ export function useCombatExecution({
     setAutoStoppingRunId(null)
     stopRequestRef.current = false
     continuingRef.current = false
+    skippingRef.current = false
     autoStopRef.current = null
+    queueItemMessageRef.current = null
   }, [ownedRunId])
 
   const announceTerminal = useCallback((run: AgentRun) => {
     announcedRunRef.current = run.runId
+    const queueProjection = readCopilotQueueRunProjection(run)
+    if (queueProjection) {
+      const notice = describeCopilotQueueRunTerminal(run, queueProjection)
+      notify(notice.message, notice.type)
+      return
+    }
     const projection = readCopilotSetRunProjection(run)
     const notice = projection
       ? describeCopilotSetRunTerminal(run, projection)
@@ -179,6 +222,17 @@ export function useCombatExecution({
     const stage = entry?.stage ? `: ${entry.stage}` : ''
     notify(`正在执行作业 ${setRun.currentItemIndex + 1}/${Math.max(setRun.itemCount, 1)}${stage}`)
   }, [notify, setRun])
+
+  useEffect(() => {
+    if (queueRun?.state !== 'running' || !queueRun.currentClientId) return
+    const key = `${queueRun.runId}:${queueRun.currentClientId}`
+    if (queueItemMessageRef.current === key) return
+    queueItemMessageRef.current = key
+    const entry = queueRun.taskResults.find(item => item.clientId === queueRun.currentClientId)
+    const stage = entry?.stage ? `: ${entry.stage}` : ''
+    const position = queueRun.currentItemIndex ?? 0
+    notify(`正在执行队列第 ${position + 1}/${Math.max(queueRun.totalCount, 1)} 项${stage}`)
+  }, [notify, queueRun])
 
   const stop = useCallback(async () => {
     if (stopRequestRef.current) return
@@ -332,6 +386,45 @@ export function useCombatExecution({
     }
   }, [announceTerminal, controller, isRunning, notify])
 
+  const submitQueue = useCallback(async (request: CombatQueueSubmission) => {
+    if (isRunning || controller.getState().submission === 'pending') return false
+    if (!request.entries.length) {
+      notify('请至少选择一个作业', 'warning')
+      return false
+    }
+
+    notify(request.mode === 'manual' ? '正在执行作业队列（手动逐项）' : '正在连续执行作业队列')
+    try {
+      const result = await controller.submitExecution(
+        'run_copilot_queue',
+        ({ idempotencyKey }) => executeCopilotQueue({
+          queueId: request.queueId,
+          name: request.name,
+          mode: request.mode,
+          failurePolicy: request.failurePolicy,
+          entries: request.entries,
+          options: request.options,
+          waitForCompletion: false,
+        }, { idempotencyKey }),
+        { scope: COMBAT_EXECUTION_SCOPE },
+      )
+
+      if (!result.success) {
+        notify(`队列执行失败: ${getErrorMessage(result)}`, 'error')
+        return false
+      }
+
+      const runId = readSubmittedRunId(result.data)
+      if (runId) runLabelsRef.current.set(runId, request.taskName)
+      const submittedRun = runId ? readSubmittedRun(result.data, runId) : null
+      if (submittedRun && isTerminalRunState(submittedRun.state)) announceTerminal(submittedRun)
+      return true
+    } catch (error) {
+      notify(`无法确认队列执行状态: ${(error as Error).message}`, 'warning')
+      return false
+    }
+  }, [announceTerminal, controller, isRunning, notify])
+
   const continueSet = useCallback(async () => {
     if (continuingRef.current) return
     const state = controller.getState()
@@ -368,6 +461,76 @@ export function useCombatExecution({
     }
   }, [controller, notify])
 
+  const continueQueue = useCallback(async () => {
+    if (continuingRef.current) return
+    const state = controller.getState()
+    if (state.trackedScope !== COMBAT_EXECUTION_SCOPE || !state.trackedRunId) return
+
+    continuingRef.current = true
+    setIsContinuing(true)
+    notify('正在执行下一项...')
+
+    try {
+      const result = await continueCopilotQueue(state.trackedRunId, false)
+      if (!result.success) {
+        const code = result.errorInfo?.code
+        if (code === 'MAA_EXECUTION_BUSY') {
+          notify('设备正被其他任务占用，请稍后重试', 'warning')
+        } else if (code === 'AGENT_COPILOT_QUEUE_SESSION_LOST') {
+          notify('队列会话已失效，无法继续下一项，请重新提交队列', 'error')
+        } else if (code === 'AGENT_COPILOT_QUEUE_NOT_WAITING') {
+          notify('队列已不在等待下一项状态，正在重新确认', 'warning')
+        } else {
+          notify(`继续执行失败: ${getErrorMessage(result)}`, 'error')
+        }
+        await controller.refresh('manual')
+        return
+      }
+
+      if (result.data?.alreadyTerminal) notify('队列已经结束', 'warning')
+      await controller.refresh('manual')
+    } catch (error) {
+      notify(`无法确认下一项状态: ${(error as Error).message}`, 'warning')
+    } finally {
+      continuingRef.current = false
+      setIsContinuing(false)
+    }
+  }, [controller, notify])
+
+  const skipQueueEntry = useCallback(async () => {
+    if (skippingRef.current) return
+    const state = controller.getState()
+    if (state.trackedScope !== COMBAT_EXECUTION_SCOPE || !state.trackedRunId) return
+
+    skippingRef.current = true
+    setIsSkipping(true)
+    notify('正在跳过当前项...')
+
+    try {
+      const result = await skipCopilotQueueEntry(state.trackedRunId)
+      if (!result.success) {
+        const code = result.errorInfo?.code
+        if (code === 'AGENT_COPILOT_QUEUE_NOT_WAITING') {
+          notify('队列已不在等待下一项状态，正在重新确认', 'warning')
+        } else if (code === 'AGENT_COPILOT_QUEUE_SESSION_LOST') {
+          notify('队列会话已失效，无法跳过当前项，请重新提交队列', 'error')
+        } else {
+          notify(`跳过失败: ${getErrorMessage(result)}`, 'error')
+        }
+        await controller.refresh('manual')
+        return
+      }
+
+      notify(result.data?.finished ? '已跳过当前项，队列执行结束' : '已跳过当前项', 'success')
+      await controller.refresh('manual')
+    } catch (error) {
+      notify(`无法确认跳过结果: ${(error as Error).message}`, 'warning')
+    } finally {
+      skippingRef.current = false
+      setIsSkipping(false)
+    }
+  }, [controller, notify])
+
   const isStopping = isRunning
     && (trackedRun?.state === 'stopping' || stopRequestPending || stopAcknowledged)
 
@@ -377,12 +540,17 @@ export function useCombatExecution({
     isAutoStopping: Boolean(setRun) && autoStoppingRunId === setRun?.runId,
     isStopping,
     isContinuing,
+    isSkipping,
     isSubmitting,
     setRun,
+    queueRun,
     run: trackedRun,
     submitTask,
     submitSet,
+    submitQueue,
     continueSet,
+    continueQueue,
+    skipQueueEntry,
     stop,
   }
 }

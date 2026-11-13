@@ -14,6 +14,7 @@ import { resolveConnection } from './connectionService.ts';
 import { recordDrops } from './dropRecordService.ts';
 import { createOutboundHttpClient } from './outboundRequestService.ts';
 import { createCopilotProgressStore } from './copilotProgressStore.ts';
+import { readManagedCopilotFile } from './copilotFileService.ts';
 import {
   resolveEffectiveResourceFilePath,
   resetEffectiveResourceDirsCache
@@ -122,6 +123,8 @@ export type CopilotRaidMode = 'normal' | 'raid';
 
 export type CopilotRaid = CopilotRaidMode | 'both';
 
+export type CopilotRaidSelection = CopilotRaid | 'auto';
+
 export type CopilotContent = Record<string, unknown>;
 
 export interface StageCode {
@@ -136,6 +139,8 @@ export interface CopilotPlanItem {
   apCost: number | null;
   presetFormation: boolean;
   supportsRaid: boolean;
+  recommendedMode?: CopilotRaid;
+  details?: string;
   operators: unknown[];
   groups: unknown[];
 }
@@ -154,6 +159,7 @@ export interface CopilotExecutionEntry {
   presetFormation?: boolean;
   title?: string;
   uri?: string;
+  content?: CopilotContent;
 }
 
 export interface CopilotPlanEntry extends CopilotExecutionEntry {
@@ -164,6 +170,27 @@ export interface CopilotPlanEntry extends CopilotExecutionEntry {
   mode: CopilotRaidMode;
   presetFormation: boolean;
   completed?: boolean;
+}
+
+export type CopilotQueueSource = 'prts' | 'file';
+
+export type CopilotQueueFailurePolicy = 'stop' | 'continue';
+
+export interface CopilotQueueEntryInput {
+  clientId: string;
+  source: CopilotQueueSource;
+  copilotId?: number;
+  filename?: string;
+  mode: CopilotRaidSelection;
+}
+
+export interface CopilotQueuePlanEntry extends CopilotPlanEntry {
+  clientId: string;
+  source: CopilotQueueSource;
+}
+
+export interface CopilotQueuePlan {
+  entries: CopilotQueuePlanEntry[];
 }
 
 /**
@@ -456,12 +483,23 @@ export function isPresetFormationCopilot(copilot: unknown = {}): boolean {
     /_s\d+$/i.test(stageName);
 }
 
+const STAGE_CODE_PATTERN = /\b(?:[A-Z]{1,5}|\d{1,2})-(?:(?:EX|S|MO|TR)-)?\d+\b/i;
+
+function readTitleStageCode(title: string): string | undefined {
+  return title.match(STAGE_CODE_PATTERN)?.[0];
+}
+
 export function getNavigationStage(copilot: unknown = {}): string {
   const content = isRecord(copilot) ? copilot : {};
   const doc = isRecord(content.doc) ? content.doc : {};
   const title = String(doc.title || '').trim();
-  const code = title.match(/\b(?:[A-Z]{1,5}|\d{1,2})-(?:(?:EX|S|MO|TR)-)?\d+\b/i)?.[0];
-  return code || title || String(content.stage_name || '');
+  return readTitleStageCode(title) || title || String(content.stage_name || '');
+}
+
+function readDocDetails(content: CopilotContent): string | undefined {
+  const doc = isRecord(content.doc) ? content.doc : {};
+  const details = doc.details;
+  return typeof details === 'string' && details.trim() ? details : undefined;
 }
 
 async function loadStageCodeMap(stageIds: readonly unknown[]): Promise<Map<string, StageCode>> {
@@ -517,6 +555,48 @@ async function loadStageCodeMap(stageIds: readonly unknown[]): Promise<Map<strin
   }
 }
 
+function buildCopilotPlanItem(
+  content: CopilotContent,
+  {
+    id,
+    fallbackStage,
+    stageCodes
+  }: {
+    id: number;
+    fallbackStage: string;
+    stageCodes: ReadonlyMap<string, StageCode>;
+  }
+): CopilotPlanItem {
+  const stageId = typeof content.stage_name === 'string' ? content.stage_name : '';
+  const presetFormation = isPresetFormationCopilot(content);
+  const recommendedMode = readRecommendedMode(content.difficulty, presetFormation);
+  const details = readDocDetails(content);
+  return {
+    id,
+    stageId,
+    stage: stageCodes.get(stageId)?.code || getNavigationStage(content) || fallbackStage,
+    apCost: stageCodes.get(stageId)?.apCost ?? null,
+    presetFormation,
+    supportsRaid: !presetFormation,
+    ...(recommendedMode ? { recommendedMode } : {}),
+    ...(details ? { details } : {}),
+    operators: Array.isArray(content.opers) ? content.opers : [],
+    groups: Array.isArray(content.groups) ? content.groups : []
+  };
+}
+
+function readRecommendedMode(difficulty: unknown, presetFormation: boolean): CopilotRaid | undefined {
+  if (presetFormation || difficulty === 0 || difficulty === 1) return 'normal';
+  if (difficulty === 2) return 'raid';
+  if (difficulty === 3) return 'both';
+  return undefined;
+}
+
+function expandCopilotModes(raid: unknown): CopilotRaidMode[] {
+  if (raid === 'both') return ['normal', 'raid'];
+  return [raid === 'raid' ? 'raid' : 'normal'];
+}
+
 export async function buildCopilotPlan(setId: string | number, raid: unknown = 'normal'): Promise<CopilotPlan> {
   const setPayload = await fetchJson(`https://prts.maa.plus/set/get?id=${encodeURIComponent(String(setId))}`);
   const setRecord = isRecord(setPayload) ? setPayload : {};
@@ -527,25 +607,15 @@ export async function buildCopilotPlan(setId: string | number, raid: unknown = '
     copilotContents.push({ id, content: parseCopilotContent(data) });
   }
   const stageCodes = await loadStageCodeMap(copilotContents.map(item => item.content.stage_name));
-  const copilots: CopilotPlanItem[] = copilotContents.map(({ id, content }) => {
-    const stageId = typeof content.stage_name === 'string' ? content.stage_name : '';
-    return {
-      id: Number(id),
-      stageId,
-      stage: stageCodes.get(stageId)?.code || getNavigationStage(content) || `prts://${id}`,
-      apCost: stageCodes.get(stageId)?.apCost ?? null,
-      presetFormation: isPresetFormationCopilot(content),
-      supportsRaid: !isPresetFormationCopilot(content),
-      operators: Array.isArray(content.opers) ? content.opers : [],
-      groups: Array.isArray(content.groups) ? content.groups : []
-    };
-  });
+  const copilots: CopilotPlanItem[] = copilotContents.map(({ id, content }) => buildCopilotPlanItem(content, {
+    id: Number(id),
+    fallbackStage: `prts://${id}`,
+    stageCodes
+  }));
 
-  const requestedModes: CopilotRaidMode[] = raid === 'both'
-    ? ['normal', 'raid']
-    : [raid === 'raid' ? 'raid' : 'normal'];
   const entries: CopilotPlanEntry[] = [];
   for (const [itemIndex, copilot] of copilots.entries()) {
+    const requestedModes = expandCopilotModes(raid === 'auto' ? copilot.recommendedMode : raid);
     for (const mode of requestedModes) {
       if (mode === 'raid' && !copilot.supportsRaid) continue;
       entries.push({
@@ -568,6 +638,56 @@ export async function buildCopilotPlan(setId: string | number, raid: unknown = '
     items: copilots,
     entries: entries.map(entry => ({ ...entry, completed: completed.has(entry.key) }))
   };
+}
+
+export interface BuildCopilotQueuePlanOptions {
+  dataDir?: string;
+}
+
+/**
+ * 本地文件用负数占位 id（不参与远端请求，也不与真实 copilot id 冲突），
+ * 理智消耗与远端条目一样按本地关卡资源解析，缺失时保持未知。
+ */
+export async function buildCopilotQueuePlan(
+  entries: readonly CopilotQueueEntryInput[],
+  options: BuildCopilotQueuePlanOptions = {}
+): Promise<CopilotQueuePlan> {
+  const loaded: { entry: CopilotQueueEntryInput; content: CopilotContent }[] = [];
+  for (const entry of entries) {
+    if (entry.source === 'file') {
+      const file = await readManagedCopilotFile(entry.filename, { dataDir: options.dataDir });
+      loaded.push({ entry, content: file.content });
+    } else {
+      const data = await fetchJson(`https://prts.maa.plus/copilot/get/${entry.copilotId}`);
+      loaded.push({ entry, content: parseCopilotContent(data) });
+    }
+  }
+  const stageCodes = await loadStageCodeMap(loaded.map(item => item.content.stage_name));
+  const planEntries = loaded.flatMap(({ entry, content }, itemIndex): CopilotQueuePlanEntry[] => {
+    const remote = entry.source === 'prts';
+    const copilotId = remote ? Number(entry.copilotId) : -(itemIndex + 1);
+    const item = buildCopilotPlanItem(content, {
+      id: copilotId,
+      fallbackStage: remote ? `prts://${copilotId}` : '',
+      stageCodes
+    });
+    const modeSelection = entry.mode === 'auto' ? item.recommendedMode : entry.mode;
+    const modes = expandCopilotModes(modeSelection).filter(mode => mode !== 'raid' || item.supportsRaid);
+    return modes.map(mode => ({
+      key: modes.length > 1 && mode === 'raid' ? `${entry.clientId}/raid` : entry.clientId,
+      clientId: entry.clientId,
+      source: entry.source,
+      itemIndex,
+      copilotId,
+      stageId: item.stageId,
+      displayStage: item.stage || item.stageId,
+      apCost: item.apCost,
+      mode,
+      presetFormation: item.presetFormation,
+      content
+    }));
+  });
+  return { entries: planEntries };
 }
 
 /** MAA 任务定义：字段原样透传，合并只覆盖入口任务与 `BattleStart.next`。 */
@@ -768,7 +888,7 @@ function observeCopilotFileLoads({
   executionItems: readonly CopilotExecutionItem<CopilotPlanEntry>[];
   alreadyStartedKeys: readonly string[];
   onEntryStarted?: CopilotExecutionLifecycle['onEntryStarted'];
-  onEntrySettled?: CopilotExecutionLifecycle['onEntrySettled'];
+  onEntrySettled?: (entry: CopilotPlanEntry, status: CopilotEntryOutcomeStatus, error?: string) => void;
   resolveItemIndex?: (file: string) => number;
 }): () => void {
   if (!onEntryStarted && !onEntrySettled) return () => {};
@@ -863,8 +983,8 @@ async function prepareCopilotList<TEntry extends CopilotExecutionEntry>(
   const list: CopilotListEntry[] = [];
   const executionItems: CopilotExecutionItem<TEntry>[] = [];
   for (const entry of entries) {
-    const data = await fetchJson(`https://prts.maa.plus/copilot/get/${entry.copilotId}`);
-    const content = parseCopilotContent(data);
+    const content = entry.content
+      ?? parseCopilotContent(await fetchJson(`https://prts.maa.plus/copilot/get/${entry.copilotId}`));
     for (const { repeat, filename } of buildCopilotRepeatFiles(entry, loopTimes, planDir)) {
       await writeJsonFile(filename, content);
       list.push(buildCopilotListEntry(entry, filename, executionItems.length));
@@ -970,13 +1090,90 @@ function buildCopilotEntryOutcome({
   };
 }
 
-interface CopilotGroupOutcome {
-  statuses: CopilotEntrySettlement[];
+interface CopilotGroupOutcome<TEntry extends CopilotPlanEntry = CopilotPlanEntry> {
+  statuses: CopilotEntrySettlement<TEntry>[];
   error: unknown;
   stopped: boolean;
+  batchFailure?: 'before-start' | 'unconfirmed';
 }
 
-async function runCopilotGroup({
+const COPILOT_BATCH_LOG_BYTES = 64 * 1024 * 1024;
+
+async function settleFailedCopilotBatch<TEntry extends CopilotPlanEntry>({
+  checkpoint,
+  entries,
+  executionItems,
+  observedSuccesses,
+  commandStarted,
+  stopped,
+  error
+}: {
+  checkpoint: MaaLogCheckpoint | null;
+  entries: readonly TEntry[];
+  executionItems: readonly CopilotExecutionItem<TEntry>[];
+  observedSuccesses: ReadonlySet<string>;
+  commandStarted: boolean;
+  stopped: boolean;
+  error: unknown;
+}): Promise<CopilotGroupOutcome<TEntry>> {
+  const confirmed = new Set(observedSuccesses);
+  let current: TEntry | undefined;
+  let batchFailure: CopilotGroupOutcome['batchFailure'] = commandStarted ? 'unconfirmed' : 'before-start';
+  if (commandStarted) {
+    const log = await readMaaLogIncrement(checkpoint, COPILOT_BATCH_LOG_BYTES);
+    if (log.status === 'ok') {
+      let index = -1;
+      let loadedIndex = -1;
+      let clearedIndex = -1;
+      let starts = 0;
+      let failed = false;
+      let valid = true;
+      for (const event of parseMaaCallbackEvents(log.text, 'Copilot')) {
+        if (event.callback === 'TaskChainStart') starts += 1;
+        if (event.callback === 'TaskChainError') failed = true;
+        if (event.callback === 'SubTaskStart') {
+          if (event.subtask === 'MultiCopilotTask') index += 1;
+          const task = getCallbackDetails(event)?.task;
+          if (index === loadedIndex && (task === 'StageDrops-Stars-3' || task === 'StageDrops-Stars-Adverse')) {
+            clearedIndex = index;
+          }
+        }
+        if (event.callback !== 'SubTaskExtraInfo' || event.what !== 'CopilotListLoadTaskFileSuccess') continue;
+        const file = getCallbackDetails(event)?.file_name;
+        loadedIndex = typeof file === 'string' ? findCopilotExecutionItemIndex(executionItems, file) : -1;
+        if (loadedIndex < 0 || loadedIndex < index) valid = false;
+        index = loadedIndex;
+      }
+      if (starts === 1 && valid && (failed || stopped)) {
+        if (index === -1) batchFailure = 'before-start';
+        current = executionItems[index]?.entry;
+        if (current) {
+          batchFailure = undefined;
+          for (const entry of entries) {
+            if (entry.key === current.key) break;
+            confirmed.add(entry.key);
+          }
+          if (index === clearedIndex && executionItems[index + 1]?.entry.key !== current.key) {
+            confirmed.add(current.key);
+          }
+        }
+      }
+    }
+  }
+  const message = errorMessageOf(error) || '作业队列执行失败';
+  return {
+    statuses: entries.map(entry => {
+      if (confirmed.has(entry.key)) return { entry, status: 'success' };
+      if (entry.key === current?.key) return { entry, status: stopped ? 'stopped' : 'failed', error: message };
+      return { entry, status: 'pending' };
+    }),
+    error: stopped ? null : error,
+    stopped,
+    ...(batchFailure ? { batchFailure } : {})
+  };
+}
+
+async function runCopilotGroup<TEntry extends CopilotPlanEntry>({
   group,
   configDir,
   planDir,
@@ -984,19 +1181,25 @@ async function runCopilotGroup({
   options,
   name,
   taskPrefix,
-  lifecycle
+  taskLabel = `作业集 ${name}`,
+  lifecycle,
+  queueBatch = false
 }: {
-  group: CopilotExecutionGroup<CopilotPlanEntry>;
+  group: CopilotExecutionGroup<TEntry>;
   configDir: string;
   planDir: string;
   loopTimes: number;
   options: CopilotExecutionOptions;
   name: string;
   taskPrefix: string;
+  taskLabel?: string;
   lifecycle: CopilotExecutionLifecycle;
-}): Promise<CopilotGroupOutcome> {
+  queueBatch?: boolean;
+}): Promise<CopilotGroupOutcome<TEntry>> {
   const checkpoint = await createMaaLogCheckpoint();
-  let executionItems: CopilotExecutionItem<CopilotPlanEntry>[] = [];
+  let executionItems: CopilotExecutionItem<TEntry>[] = [];
+  const observedSuccesses = new Set<string>();
+  let commandStarted = false;
   try {
     const prepared = await prepareCopilotList(group.entries, { planDir, loopTimes });
     executionItems = prepared.executionItems;
@@ -1005,13 +1208,16 @@ async function runCopilotGroup({
     }
 
     // 只有真正开始执行的条目置为 running；组内后续条目由文件加载观察逐项推进。
-    lifecycle.onEntryStarted?.(group.entries[0], [group.entries[0]]);
+    if (!queueBatch) lifecycle.onEntryStarted?.(group.entries[0], [group.entries[0]]);
     const stopObserving = observeCopilotFileLoads({
       checkpoint,
       executionItems,
       alreadyStartedKeys: [group.entries[0].key],
       onEntryStarted: lifecycle.onEntryStarted,
-      onEntrySettled: lifecycle.onEntrySettled
+      onEntrySettled: queueBatch ? (entry, status, error) => {
+        if (status === 'success') observedSuccesses.add(entry.key);
+        lifecycle.onEntrySettled?.(entry, status, error);
+      } : lifecycle.onEntrySettled
     });
     try {
       const taskId = `${taskPrefix}_${Date.now()}`;
@@ -1021,7 +1227,19 @@ async function runCopilotGroup({
         params: buildCopilotTaskParams(prepared.list, group.presetFormation === true, options)
       };
       if (group.presetFormation) await ensurePresetFormationResource(configDir);
-      await execDynamicTask(taskId, taskConfig, `作业集 ${name}`, 'copilot', true, group.presetFormation || options.userResource === true);
+      await execDynamicTask(taskId, taskConfig, taskLabel, 'copilot', true, group.presetFormation || options.userResource === true, queueBatch ? {
+        lifecycle: {
+          onBeforeStart: async () => {
+            if (await lifecycle.shouldStop?.()) {
+              throw Object.assign(new Error('作业队列已停止'), { stopped: true });
+            }
+          },
+          onStarted: () => {
+            commandStarted = true;
+            lifecycle.onEntryStarted?.(group.entries[0], [group.entries[0]]);
+          }
+        }
+      } : undefined);
     } finally {
       // 观察在结算前停止：停止后未完成的日志读取不会再触发生命周期回调。
       stopObserving();
@@ -1030,11 +1248,22 @@ async function runCopilotGroup({
     // 轮末终止任务链并以非零码退出），组内条目按逐项 success 结算。
     return { statuses: group.entries.map(entry => ({ entry, status: 'success' })), error: null, stopped: false };
   } catch (error) {
+    const wasStopped = Boolean(readBooleanField(error, 'stopped')) || Boolean(await lifecycle.shouldStop?.());
+    if (queueBatch && group.entries.length > 1) {
+      return settleFailedCopilotBatch({
+        checkpoint,
+        entries: group.entries,
+        executionItems,
+        observedSuccesses,
+        commandStarted,
+        stopped: wasStopped,
+        error
+      });
+    }
     const logText = await readMaaLogSince(checkpoint).catch(() => '');
     const loadedFiles = extractLoadedCopilotFiles(logText);
     const currentFile = loadedFiles.at(-1) || '';
     const currentIndex = findCopilotExecutionItemIndex(executionItems, currentFile);
-    const wasStopped = Boolean(readBooleanField(error, 'stopped')) || Boolean(await lifecycle.shouldStop?.());
     const statuses = classifyCopilotEntryOutcomes({
       entries: group.entries,
       executionItems,
@@ -1132,6 +1361,29 @@ async function loadNativeStageCodes(stageIds: readonly string[]): Promise<Map<st
     } catch {}
   }));
   return codes;
+}
+
+/** 单作业的展示关卡：`stage` 是资源中的可读代号，`stageId` 是作业内容里的原始标识。 */
+export interface CopilotStageIdentity {
+  stageId: string;
+  stage: string;
+}
+
+/**
+ * 解析单作业的展示关卡。`payload` 接受 PRTS 单作业信封（`data.content`）或内层
+ * `{ content }`，`content` 可为 JSON 字符串或已解析对象；本地导入也传 `{ content }`。
+ * 代号优先取资源地图表，其次取文档标题中的代号；都没有时回退 `stage_name`，
+ * 避免把内部关卡 id 当作代号展示。
+ */
+export async function resolveCopilotStageIdentity(payload: unknown): Promise<CopilotStageIdentity> {
+  const source = isRecord(payload) && isRecord(payload.data) ? payload.data : payload;
+  const content = parseCopilotContent(source);
+  const stageId = typeof content.stage_name === 'string' ? content.stage_name.trim() : '';
+  if (!stageId) return { stageId: '', stage: '' };
+  const codes = await loadNativeStageCodes([stageId]);
+  const doc = isRecord(content.doc) ? content.doc : {};
+  const code = codes.get(stageId) ?? readTitleStageCode(String(doc.title || '').trim());
+  return { stageId, stage: code || stageId };
 }
 
 export interface CopilotNativeDelegationInput {
@@ -1615,18 +1867,134 @@ export async function executeCopilotEntries({
   });
 }
 
+export interface ExecuteCopilotQueueEntriesInput {
+  queueId: string;
+  name: string;
+  entries: readonly CopilotQueuePlanEntry[];
+  options?: CopilotExecutionOptions;
+  failurePolicy?: CopilotQueueFailurePolicy;
+  lifecycle?: CopilotExecutionLifecycle;
+}
+
+export interface CopilotQueueEntriesOutcome {
+  stopped: boolean;
+  error: unknown;
+  statuses: CopilotEntrySettlement<CopilotQueuePlanEntry>[];
+  completed: string[];
+  loopTimes: number;
+}
+
+export async function executeCopilotQueueEntries({
+  queueId,
+  name,
+  entries,
+  options = {},
+  failurePolicy = 'stop',
+  lifecycle = {}
+}: ExecuteCopilotQueueEntriesInput): Promise<CopilotQueueEntriesOutcome> {
+  const loopTimes = normalizeCopilotLoopTimes(options.loopTimes);
+  const statuses = new Map<string, CopilotEntrySettlement<CopilotQueuePlanEntry>>(
+    entries.map(entry => [entry.key, { entry, status: 'pending' }])
+  );
+  const completed: string[] = [];
+  let stopped = false;
+  let failure: unknown = null;
+
+  if (entries.length === 0) {
+    return { stopped: false, error: null, statuses: [...statuses.values()], completed, loopTimes };
+  }
+
+  await withMaaExecutionLease({
+    source: 'copilot-queue',
+    taskName: name,
+    command: 'copilot-queue'
+  }, async () => {
+    await lifecycle.onBeforeStart?.();
+    lifecycle.onStarted?.();
+    const configDir = (await getMaaConfigDir()).trim();
+    const planDir = join(configDir, 'copilot-plans', `queue-${queueId}`);
+    await mkdir(planDir, { recursive: true });
+
+    const attempts = groupEntries(entries);
+    for (let attemptIndex = 0; attemptIndex < attempts.length; attemptIndex += 1) {
+      const group = attempts[attemptIndex];
+      if (await lifecycle.shouldStop?.()) {
+        stopped = true;
+        break;
+      }
+      const outcome = await runCopilotGroup({
+        group,
+        configDir,
+        planDir,
+        loopTimes,
+        options,
+        name,
+        taskPrefix: `copilot_queue_${queueId}_${attemptIndex}`,
+        taskLabel: `作业队列 ${name}`,
+        lifecycle,
+        queueBatch: true
+      });
+      for (const settled of outcome.statuses) {
+        statuses.set(settled.entry.key, settled);
+        lifecycle.onEntrySettled?.(settled.entry, settled.status, settled.error);
+      }
+      const confirmed = outcome.statuses.filter(settled => settled.status === 'success').map(settled => settled.entry);
+      completed.push(...confirmed.map(entry => entry.key));
+      try {
+        await recordCompletedCopilotEntries(confirmed, loopTimes);
+      } catch (error) {
+        failure = error;
+        break;
+      }
+      if (outcome.stopped) {
+        stopped = true;
+        break;
+      }
+      if (outcome.batchFailure === 'before-start') {
+        attempts.splice(attemptIndex + 1, 0, ...group.entries.map(entry => ({
+          presetFormation: group.presetFormation,
+          entries: [entry]
+        })));
+        continue;
+      }
+      if (outcome.batchFailure === 'unconfirmed') {
+        failure = Object.assign(new Error('无法确认作业队列执行到了哪一步', { cause: outcome.error }), {
+          retryable: false
+        });
+        break;
+      }
+      if (!outcome.error) continue;
+      if (failurePolicy === 'stop') {
+        if (confirmed.length && !outcome.statuses.some(settled => settled.status === 'failed')) failure = outcome.error;
+        break;
+      }
+      const remaining = outcome.statuses.filter(settled => settled.status === 'pending').map(settled => settled.entry);
+      if (remaining.length) attempts.splice(attemptIndex + 1, 0, { ...group, entries: remaining });
+    }
+  });
+
+  return {
+    stopped,
+    error: stopped ? null : failure,
+    statuses: [...statuses.values()],
+    completed,
+    loopTimes
+  };
+}
+
 async function recordCompletedCopilotEntries(entries: readonly CopilotPlanEntry[], loopTimes: number): Promise<void> {
   for (const entry of entries) {
-    await recordDrops({
+    const recorded = await recordDrops({
       stage: entry.displayStage,
       times: loopTimes,
-      sanity: (entry.apCost ?? 0) * loopTimes,
+      ...(typeof entry.apCost === 'number' ? { sanity: entry.apCost * loopTimes } : {}),
       medicine: 0,
       stone: 0,
       items: [],
       source: 'copilot',
       mode: entry.mode
     });
+    if (!recorded.success) throw new Error(recorded.message);
   }
 }
 

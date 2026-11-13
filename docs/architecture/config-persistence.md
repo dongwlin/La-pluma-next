@@ -235,7 +235,7 @@ function CombatWorkspace() {
 | 完整提交 | `saveUserConfig('combat-tasks', wire)` 成功即完成；失败或传输异常保留 pending 与重试入口 |
 | 页面派生 | 五个配置字段都从 `draft` 派生；错误文案取协调器 `error`，重试按钮的 loading 取 `syncState === 'saving'`；仅手动 `retry()` 返回 true 时提示“自动战斗配置已同步” |
 
-默认草稿中 copilot 忽略干员要求、循环 1 次、失败继续、普通模式，作业集默认 `cli`。兼容约束：保留配置 key、本地键、pending 键与 wire 形状；服务端已知字段类型不合法时整份载荷回退本地草稿，不能采用部分异常值。迟到加载须由协调器裁决。
+默认草稿中 copilot 忽略干员要求、循环 1 次、失败继续、难度按作业标注（`auto`），作业集默认 `cli`。兼容约束：保留配置 key、本地键、pending 键与 wire 形状；服务端已知字段类型不合法时整份载荷回退本地草稿，不能采用部分异常值。迟到加载须由协调器裁决。
 
 ### 6.3 自动化适配器
 
