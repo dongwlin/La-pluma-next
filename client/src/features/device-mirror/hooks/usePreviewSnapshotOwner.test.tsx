@@ -49,7 +49,7 @@ describe('usePreviewSnapshotOwner', () => {
   beforeEach(() => {
     vi.useFakeTimers()
     mocks.captureScreen.mockReset().mockResolvedValue(captured())
-    usePreviewStore.setState({ mode: 'off', autoStart: false, quality: 'power', fps: 15, maxSize: 640, bitrateMbps: 1.5 })
+    usePreviewStore.setState({ mode: 'off', quality: 'power', fps: 15, maxSize: 640, bitrateMbps: 1.5 })
     window.localStorage.clear()
     visibility = 'visible'
     Object.defineProperty(document, 'visibilityState', { configurable: true, get: () => visibility })

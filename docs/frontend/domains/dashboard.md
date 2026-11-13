@@ -146,7 +146,7 @@ Dashboard（首屏门禁、页头、唯一刷新调度）
 | 设备温度历史 | `dashboardStore` | 保留 | 随完整快照缓存恢复 |
 | 摘要与当前活动 | `dashboardStore` | 保留 | 随完整快照缓存恢复；`lastRefreshError` 只在运行期 |
 | 活动卡 phase（loading/active/none/unavailable/stale） | `model/activityView.ts` | 保留 | 由快照与运行期刷新错误重新投影 |
-| 预览会话 | `device-mirror` | 仅解除总览视频绑定；应用级会话与截图采样保持，返回复用 | 按 `autoStart` 规则恢复模式 |
+| 预览会话 | `device-mirror` | 仅解除总览视频绑定；应用级会话与截图采样保持，返回复用 | 按持久化的预览偏好恢复模式 |
 | 导航回调 | `DashboardWorkspace` | 稳定 | 重建 |
 
 ### 8. 兼容与维护约束

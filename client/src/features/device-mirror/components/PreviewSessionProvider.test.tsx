@@ -107,7 +107,7 @@ describe('PreviewSessionProvider workspace lifetime', () => {
     mocks.captureScreen.mockReset().mockResolvedValue(captured())
     mocks.getWebrtcStatus.mockReset().mockResolvedValue({ success: true, data: { serverRunning: true, agentRunning: true } })
     vi.spyOn(HTMLMediaElement.prototype, 'play').mockResolvedValue(undefined)
-    usePreviewStore.setState({ mode: 'off', autoStart: false })
+    usePreviewStore.setState({ mode: 'off' })
     visibility = 'visible'
     Object.defineProperty(document, 'visibilityState', { configurable: true, get: () => visibility })
     container = document.createElement('div')
