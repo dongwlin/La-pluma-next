@@ -220,7 +220,7 @@ Web UI 的「作业队列」不是作业集：用户队列以显式条目提交�
 | `manual` | 首项执行后 Run 转 `waiting`；每次 continue 执行下一项，skip 把下一个 pending 项标为 `skipped` | 仅单项执行期间持有；等待时释放 |
 
 - 队列条目 1–50 项，`clientId` 在本次请求内唯一；`source=prts` 由服务端按 `copilotId` 取作业内容，`source=file` 只接受受管目录 `copilot-imports/` 内的绝对 `.json` 路径，服务端读取并解析 `stage_name` 后写入队列计划目录，不把用户路径直接交给 MaaCore。
-- `auto` 读取作业的 `difficulty`，缺省、`0` 和 `1` 为普通，`2` 为突袭，`3` 为两者。双模式按输入顺序为每个适用作业展开 `normal`、`raid` 两个相邻步骤，预设编队只展开普通。步骤共用来源的 `clientId` 和 `itemIndex`，用 `mode` 区分。计划文件写入 `copilot-plans/queue-<queueId>/`。
+- `auto` 读取作业的 `difficulty`，缺省、`0` 和 `1` 为普通，`2` 为突袭，`3` 为两者。双模式按输入顺序为每个适用作业展开 `normal`、`raid` 两个相邻步骤，预设编队只展开普通，显式 `raid` 的预设编队条目不进入计划。步骤共用来源的 `clientId` 和 `itemIndex`，用 `mode` 区分。计划文件写入 `copilot-plans/queue-<queueId>/`。
 - 连续模式按相邻步骤的编队配置分批，将每批作为一个 MaaCore `copilot_list` 执行。手动模式每次执行一步。连续执行失败时，服务端根据本批回调确认已完成步骤和失败位置。选择继续时从已确认的失败位置之后接续。无法确认执行位置时 Run 以执行错误结束，避免重复执行可能已经开战的步骤。
 - 队列执行不写 `copilot-progress.json`，历史通关不参与队列；这与作业集按计划进度跳过已完成项不同。
 - 运行中 `run.progress`（`enrichAgentRun` 注入）包含：`queueId`、`name`、`mode`、`failurePolicy`、`phase`（`starting`/`running`/`waiting_for_next`/`finished`/`stopped`）、`currentStep`、`totalSteps`、`currentClientId`、`currentTask`、`nextEntry`、`shouldStop`、`message` 与五类计数。`taskResults[]` 按条目给出 `clientId`、`itemIndex`、`stage`、`stageId`、`apCost`、`mode`、`status`（`pending`/`running`/`success`/`failed`/`skipped`/`stopped`）与可选 `error`。

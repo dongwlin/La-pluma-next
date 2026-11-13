@@ -126,7 +126,7 @@ curl -X POST http://localhost:3000/api/agent/actions/continue-copilot-set \
 
 #### 作业队列执行
 
-Web UI 的「作业队列」按显式条目提交 `run_copilot_queue`，不经过作业集计划，也不写入作业集的 `copilot-progress.json`。队列条目为 1–50 项，`clientId` 在本次请求内唯一（`[A-Za-z0-9][A-Za-z0-9._:-]{0,127}`）；`source=prts` 使用正整数 `copilotId`，`source=file` 使用受管目录 `copilot-imports/` 内的绝对 `.json` 路径。`mode` 为 `continuous`（默认，旧 `app`/`cli` 同义）或 `manual`；每项 `mode` 可用 `normal`（接口默认）、`raid`、`both` 或 `auto`。`failurePolicy` 为 `stop`（默认）或 `continue`；`queueId` 可选（缺省 `copilot-queue`，仅字母数字与 `.`/`_`/`-`，1–64 位），`name` 可选（缺省「作业队列」，最多 128 字）；`options` 与作业集执行使用同一组字段；`waitForCompletion` 默认 `true`，Web UI 传 `false` 以先取得 `runId` 再观察 Run。
+Web UI 的「作业队列」按显式条目提交 `run_copilot_queue`，不经过作业集计划，也不写入作业集的 `copilot-progress.json`。队列条目为 1–50 项，`clientId` 在本次请求内唯一（`[A-Za-z0-9][A-Za-z0-9._:-]{0,127}`）；`source=prts` 使用正整数 `copilotId`，`source=file` 使用受管目录 `copilot-imports/` 内的绝对 `.json` 路径。`mode` 为 `continuous`（默认，旧 `app`/`cli` 同义）或 `manual`；每项 `mode` 可用 `normal`（接口默认）、`raid`、`both` 或 `auto`；预设编队只按普通模式展开——`both` 只产出 `normal`，显式 `raid` 的预设编队条目不进入计划。`failurePolicy` 为 `stop`（默认）或 `continue`；`queueId` 可选（缺省 `copilot-queue`，仅字母数字与 `.`/`_`/`-`，1–64 位），`name` 可选（缺省「作业队列」，最多 128 字）；`options` 与作业集执行使用同一组字段；`waitForCompletion` 默认 `true`，Web UI 传 `false` 以先取得 `runId` 再观察 Run。
 
 ```bash
 # 提交显式队列；queueId/name 只是 Run 标签

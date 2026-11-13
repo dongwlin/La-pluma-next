@@ -66,6 +66,7 @@
 - 按天一文件，业务日期取 `TZ` 时区、缺省 `Asia/Shanghai`（`server/src/services/dropRecordService.ts:127-136,237-239`）；单次记录经 `updateJsonFile` 排队读改写，同时增量累加当日汇总。
 - 写入时既有文件不可解析则按失败处理，不覆盖或清空历史；读取历史时单日文件损坏只跳过该天并告警（`server/src/services/dropRecordService.ts:272-280,377-387`）。
 - 旧记录缺 `source`/`mode` 时补默认值 `fight`/`normal`（`server/src/services/dropRecordService.ts:157-191`）；历史查询天数夹取到 1-`MAX_DROP_HISTORY_DAYS`（365，`server/src/services/dropRecordService.ts:20,361-365`）。
+- 作业集与显式队列执行写入的记录（`source: 'copilot'`）只在计划解析出关卡理智消耗时携带 `sanity`；理智来自本地关卡资源，解析不到时省略该字段而不是写 0，当日汇总也不因此增加（`server/src/services/copilotPlanService.ts:1985-1998`）。记录写入失败（envelope `success: false`）会让本次执行以该错误结束，已结算的条目不回退为失败。
 - 后加字段 `recordKey`、`sanityBefore`、`maxSanity` 均可选（`server/src/services/dropRecordService.ts:33-48,167-189`）：`recordKey` 是同日记录的幂等键，同键重复写入被忽略；`sanityBefore`/`maxSanity` 记录开战前理智与理智上限。旧记录缺失或类型不符时按缺省处理，不使整份记录判为损坏；写盘时仅在请求提供合法值时落字段（`server/src/services/dropRecordService.ts:272-295`）。
 - 统计的材料表读取同时接受旧数组格式与脚本产出的 `{materials, recipes, stageSchedule}` 对象格式：对象按物品 id 取值，条目缺 `iconId` 时回退物品 id 作为图标键，统计条目同时带上独立的 `id` 供客户端优先按物品 id 取图，旧数组格式没有 `id` 时客户端回退图标键（`server/src/services/dropRecordService.ts:458-530`）；对象格式与养成计算的读取约定一致（`server/src/services/operatorTrainingStore.ts:318-336`）。材料表无法解析或格式无法识别时返回空映射，并按文件路径只告警一次，材料表恢复正常后再次损坏仍会重新告警。
 
