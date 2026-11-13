@@ -328,14 +328,8 @@ export async function searchParadox(req: MaintenanceRequest, res: ApiResponseWri
   return sendSuccess(res, req, payload);
 }
 
-async function loadCopilotStageIndex(): Promise<ReadonlyMap<string, CopilotStageCatalogEntry>> {
-  try {
-    const entries = await copilotStageCatalog.load();
-    return new Map(entries.map(entry => [entry.stageId.toUpperCase(), entry]));
-  } catch {
-    // 关卡目录只补充 code/label 展示字段，读取失败不应挡住已拿到的搜索结果。
-    return new Map();
-  }
+function stageIndexSnapshot(): ReadonlyMap<string, CopilotStageCatalogEntry> {
+  return new Map(copilotStageCatalog.snapshot().map(entry => [entry.stageId.toUpperCase(), entry]));
 }
 
 async function loadOwnedOperatorSnapshot(): Promise<ReadonlyMap<string, OwnedOperatorSnapshot> | null> {
@@ -389,8 +383,10 @@ export async function searchCopilot(req: MaintenanceRequest, res: ApiResponseWri
   searchParams.set('limit', String(limit));
 
   const { data } = await outboundHttp.requestJson(`https://prts.maa.plus/copilot/query?${searchParams.toString()}`);
+  // 关卡目录只补充展示字段：后台刷新，本次搜索用现有快照，失败也不影响结果。
+  void copilotStageCatalog.load().catch(() => {});
   const result = parsePrtsCopilotQueryPayload(data);
-  const stageIndex = await loadCopilotStageIndex();
+  const stageIndex = stageIndexSnapshot();
   const ownedOperators = await loadOwnedOperatorSnapshot();
   const copilots = result.statusCode === 200
     ? result.items.map(item => projectCopilotSearchItem(item, {

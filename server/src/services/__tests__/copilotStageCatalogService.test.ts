@@ -216,4 +216,61 @@ describe('createCopilotStageCatalog', () => {
     assert.equal(match.status === 'matched' ? match.stage.stageId : '', 'main_01-07');
     assert.equal(requests, 0);
   });
+
+  it('exposes an empty snapshot before the first load', () => {
+    const instance = createCopilotStageCatalog({
+      requestJson: async () => {
+        throw new Error('snapshot 不应发起请求');
+      }
+    });
+
+    assert.deepEqual(instance.snapshot(), []);
+  });
+
+  it('exposes the cached entries through the snapshot after a load', async () => {
+    let requests = 0;
+    const instance = createCopilotStageCatalog({
+      requestJson: async () => {
+        requests += 1;
+        return { data: { data: LEVELS } };
+      }
+    });
+
+    await instance.load();
+
+    assert.deepEqual(
+      instance.snapshot().map(entry => entry.stageId),
+      ['main_01-07', 'wk_melee_6', 'main_11-05', 'tough_11-05', 'lt_02_01', 'lt_02_02']
+    );
+    assert.equal(requests, 1);
+  });
+
+  it('keeps the stale snapshot after the ttl without touching the network', async () => {
+    let now = 0;
+    let requests = 0;
+    const instance = createCopilotStageCatalog({
+      requestJson: async () => {
+        requests += 1;
+        return { data: { data: LEVELS } };
+      },
+      now: () => now
+    });
+
+    await instance.load();
+    now = 31 * 60_000;
+
+    assert.equal(instance.snapshot().length, 6);
+    assert.equal(requests, 1);
+  });
+
+  it('empties the snapshot on clear', async () => {
+    const instance = createCopilotStageCatalog({
+      requestJson: async () => ({ data: { data: LEVELS } })
+    });
+
+    await instance.load();
+    instance.clear();
+
+    assert.deepEqual(instance.snapshot(), []);
+  });
 });

@@ -313,6 +313,7 @@ describe('Agent outbound read routes', () => {
         }
       })
     })
+    await findHandler('get', '/copilot/stages')({ headers: {} }, createResponse(), createNext().next)
     const res = createResponse()
     await findHandler('get', '/copilot/search')({ headers: {} }, res, createNext().next)
 
@@ -342,7 +343,7 @@ describe('Agent outbound read routes', () => {
       uploadTime: '2026-11-01T00:00:00.000Z'
     }])
     assert.equal(data.recommended, data.copilots[0])
-    assert.deepEqual(fetchCalls.map(call => new URL(call.url).pathname), ['/copilot/query', '/arknights/level'])
+    assert.deepEqual(fetchCalls.map(call => new URL(call.url).pathname), ['/arknights/level', '/copilot/query'])
   })
 
   it('resolves a level code and passes document, operator and sort filters upstream', async () => {

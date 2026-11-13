@@ -119,6 +119,7 @@ const {
   resourceInfoFallback,
   toChangelogEntry
 } = await import('../../controllers/maintenanceDto.ts');
+const { resetCopilotStageCatalogForTests } = await import('../../services/copilotStageCatalogService.ts');
 
 silenceLoggers(['Api', 'MaaService', 'AgentRoutes', 'ConfigStorage']);
 
@@ -188,6 +189,14 @@ function jsonResponse(body: unknown, status = 200): Response {
     status,
     statusText: status === 200 ? 'OK' : 'Error'
   });
+}
+
+async function fetchWithin(url: string, timeoutMs: number): Promise<Response> {
+  try {
+    return await fetch(url, { signal: AbortSignal.timeout(timeoutMs) });
+  } catch (error) {
+    throw new Error(`请求在 ${timeoutMs}ms 内未返回: ${url}`, { cause: error });
+  }
 }
 
 afterEach(async () => {
@@ -1041,6 +1050,7 @@ describe('moved maintenance routes keep HTTP contracts', () => {
   });
 
   it('keeps the paradox name requirement but browses copilots without filters', async t => {
+    resetCopilotStageCatalogForTests();
     const realFetch = globalThis.fetch;
     const outboundCalls: string[] = [];
     t.mock.method(globalThis, 'fetch', async (input: string | URL | Request, init?: RequestInit) => {
@@ -1070,6 +1080,9 @@ describe('moved maintenance routes keep HTTP contracts', () => {
     assert.equal(missingName.status, 400);
     assert.equal((await readError(missingName)).error.code, 'AGENT_VALIDATION_OPERATOR_NAME_REQUIRED');
 
+    const stages = await readSuccess<Array<{ stageId: string }>>(await fetch(`${baseUrl}/copilot/stages`));
+    assert.deepEqual(stages.data.map(entry => entry.stageId), ['main_01-07']);
+
     const browse = await fetch(`${baseUrl}/copilot/search`);
     assert.equal(browse.status, 200);
     const body = await readSuccess<{
@@ -1091,7 +1104,58 @@ describe('moved maintenance routes keep HTTP contracts', () => {
     assert.equal(body.data.hasNext, false);
     assert.equal(body.data.copilots[0]?.stageCode, '1-7');
     assert.equal(body.data.copilots[0]?.stageLabel, '暴君');
-    assert.deepEqual(outboundCalls.map(url => new URL(url).pathname), ['/copilot/query', '/arknights/level']);
+    assert.deepEqual(outboundCalls.map(url => new URL(url).pathname), ['/arknights/level', '/copilot/query']);
+  });
+
+  it('answers a search while the stage catalog request is still pending', async t => {
+    resetCopilotStageCatalogForTests();
+    const realFetch = globalThis.fetch;
+    const outboundPaths: string[] = [];
+    let releaseCatalog = (): void => {};
+    const catalogGate = new Promise<Response>(resolve => {
+      releaseCatalog = () => resolve(jsonResponse({
+        status_code: 200,
+        data: [{ stage_id: 'main_01-07', cat_one: '主题曲', cat_two: '第一章', cat_three: '1-7', name: '暴君' }]
+      }));
+    });
+    t.after(() => {
+      releaseCatalog();
+      resetCopilotStageCatalogForTests();
+    });
+    t.mock.method(globalThis, 'fetch', async (input: string | URL | Request, init?: RequestInit) => {
+      const href = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
+      const url = new URL(href);
+      if (url.hostname === '127.0.0.1') return realFetch(input, init);
+      outboundPaths.push(url.pathname);
+      if (url.pathname === '/arknights/level') return catalogGate;
+      return jsonResponse({
+        status_code: 200,
+        data: {
+          data: [{ id: 12, content: JSON.stringify({ stage_name: 'main_01-07', doc: { title: '1-7 挂机' } }) }],
+          total: 1,
+          has_next: false
+        }
+      });
+    });
+    const port = await startHttpServer(createLaPlumaApp({ env: {} }), servers);
+    const baseUrl = `http://127.0.0.1:${port}/api/agent`;
+
+    const cold = await readSuccess<MaintenanceCopilotSearchPayload>(
+      await fetchWithin(`${baseUrl}/copilot/search`, 2_000)
+    );
+    assert.equal(cold.data.copilots.length, 1);
+    assert.equal(cold.data.copilots[0]?.stageCode, '');
+    assert.deepEqual(outboundPaths, ['/copilot/query', '/arknights/level']);
+
+    releaseCatalog();
+    const stages = await readSuccess<Array<{ stageId: string }>>(
+      await fetchWithin(`${baseUrl}/copilot/stages`, 2_000)
+    );
+    assert.deepEqual(stages.data.map(entry => entry.stageId), ['main_01-07']);
+
+    const warm = await readSuccess<MaintenanceCopilotSearchPayload>(await fetch(`${baseUrl}/copilot/search`));
+    assert.equal(warm.data.copilots[0]?.stageCode, '1-7');
+    assert.equal(warm.data.copilots[0]?.stageLabel, '暴君');
   });
 
   it('matches search results against the latest owned-operator snapshot when available', async t => {

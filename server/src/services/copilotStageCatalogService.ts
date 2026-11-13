@@ -28,6 +28,8 @@ export interface CopilotStageCatalogPorts {
 }
 
 export interface CopilotStageCatalog {
+  /** 最近一次成功加载的条目，可能已过期；从不发起请求。 */
+  snapshot(): readonly CopilotStageCatalogEntry[];
   load(): Promise<readonly CopilotStageCatalogEntry[]>;
   resolve(input: unknown): Promise<CopilotStageMatch>;
   clear(): void;
@@ -154,6 +156,7 @@ export function createCopilotStageCatalog(ports: CopilotStageCatalogPorts = {}):
   };
 
   return {
+    snapshot: () => cached?.entries ?? [],
     load,
     resolve: async input => {
       const stageId = normalizeCopilotStageId(String(input ?? '').trim().toLowerCase());
