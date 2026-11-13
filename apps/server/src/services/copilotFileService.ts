@@ -136,10 +136,10 @@ function isOutsideImportDir(importDir: string, target: string): boolean {
   return !relativePath || relativePath.startsWith('..') || isAbsolute(relativePath);
 }
 
-export function validateManagedCopilotFileName(
+function resolveManagedCopilotFile(
   raw: unknown,
-  options: CopilotManagedFileReadOptions = {}
-): string {
+  options: CopilotManagedFileReadOptions
+): { filename: string; filePath: string; importDir: string } {
   if (typeof raw !== 'string' || raw.trim() === '') {
     throw new CopilotManagedFileInvalidError('filename_invalid', '作业文件路径必须是非空字符串');
   }
@@ -154,13 +154,26 @@ export function validateManagedCopilotFileName(
     throw new CopilotManagedFileInvalidError('filename_extension_invalid', '作业文件必须是 .json 文件');
   }
   const importDir = resolveImportDir(options.dataDir);
-  if (isOutsideImportDir(importDir, resolve(filename))) {
-    throw new CopilotManagedFileInvalidError(
-      'filename_outside_import_dir',
-      `作业文件必须位于受管目录 ${COPILOT_FILE_IMPORT_DIR} 内`
-    );
+  const resolvedFilename = resolve(filename);
+  if (!isOutsideImportDir(importDir, resolvedFilename)) return { filename, filePath: filename, importDir };
+  if (options.dataDir === undefined) {
+    const { serverRoot } = resolveAppPaths();
+    const legacyImportDir = resolve(serverRoot, '../..', 'server', 'data', COPILOT_FILE_IMPORT_DIR);
+    if (!isOutsideImportDir(legacyImportDir, resolvedFilename)) {
+      return { filename, filePath: join(importDir, relative(legacyImportDir, resolvedFilename)), importDir };
+    }
   }
-  return filename;
+  throw new CopilotManagedFileInvalidError(
+    'filename_outside_import_dir',
+    `作业文件必须位于受管目录 ${COPILOT_FILE_IMPORT_DIR} 内`
+  );
+}
+
+export function validateManagedCopilotFileName(
+  raw: unknown,
+  options: CopilotManagedFileReadOptions = {}
+): string {
+  return resolveManagedCopilotFile(raw, options).filename;
 }
 
 function parseManagedCopilotContent(text: string): {
@@ -183,8 +196,7 @@ export async function readManagedCopilotFile(
   raw: unknown,
   options: CopilotManagedFileReadOptions = {}
 ): Promise<CopilotManagedFile> {
-  const filename = validateManagedCopilotFileName(raw, options);
-  const importDir = resolveImportDir(options.dataDir);
+  const { filePath, importDir } = resolveManagedCopilotFile(raw, options);
   let importRoot: string;
   try {
     importRoot = await realpath(importDir);
@@ -193,7 +205,7 @@ export async function readManagedCopilotFile(
   }
   let resolvedPath: string;
   try {
-    resolvedPath = await realpath(filename);
+    resolvedPath = await realpath(filePath);
   } catch {
     throw new CopilotManagedFileInvalidError('file_missing', '作业文件不存在');
   }
