@@ -60,8 +60,6 @@ pnpm dev
 
 `pnpm dev` 同时启动前端 [http://localhost:5173](http://localhost:5173) 与后端 [http://localhost:3000](http://localhost:3000)。
 
-已有源码检出目录升级时，启动前请按[数据迁移说明](docs/server/persistence.md#备份与迁移注意事项)处理旧位置的运行数据，再从仓库根目录运行 `pnpm install`。
-
 ## 文档
 
 完整索引见 [文档索引](docs/README.md)，常用文档如下：
@@ -74,10 +72,11 @@ pnpm dev
 | [Agent API 使用指南](docs/api/agent.md) | manifest/status/actions、执行流程、幂等与鉴权 |
 | [架构与技术栈](docs/architecture/README.md) | 整体架构、前端 UI 与响应式壳层、技术栈和项目结构 |
 | [开发文档](docs/development/README.md) | 主要技术点、样式与测试治理、常用检查命令 |
+| [维护说明](docs/development/maintaining.md) | 分支管理、发布流程、兼容性标识与文档归属 |
 
 ## 贡献
 
-欢迎提交 Issue 和 Pull Request！开发环境与常用检查见 [开发文档](docs/development/README.md)，分支管理、发布流程和兼容性约定见 [维护说明](docs/development/maintaining.md)。
+欢迎提交 Issue 和 Pull Request！
 
 ## 许可证
 
@@ -85,7 +84,7 @@ pnpm dev
 
 ## 致谢
 
-La Pluma Next 是 [La Pluma 原项目](https://github.com/mps233/La-pluma) 的社区维护分支，自 2026-10 起独立维护，不再跟随上游更新。
+La Pluma Next 是 [La Pluma](https://github.com/mps233/La-pluma) 的社区维护分支，自 2026-10 起独立维护，不再跟随上游更新。
 
 - [MAA (MaaAssistantArknights)](https://github.com/MaaAssistantArknights/MaaAssistantArknights) - 明日方舟游戏助手
 - [maa-cli](https://github.com/MaaAssistantArknights/maa-cli) - MAA 命令行工具
