@@ -136,6 +136,21 @@ function activeRun(runId: string, state: AgentRun['state'] = 'running'): AgentRu
   }
 }
 
+function waitingForCombatRun(runId: string): AgentRun {
+  return {
+    ...activeRun(runId),
+    progress: {
+      message: '等待战斗结束后终止',
+      stopIntent: {
+        mode: 'after-combat',
+        requestedAt: '2026-10-25T00:00:00.000Z',
+        deadline: '2026-10-25T00:10:00.000Z',
+        combat: true,
+      },
+    },
+  }
+}
+
 function runSnapshot(overrides: Partial<RunSnapshot> = {}): RunSnapshot {
   const activeRuns = overrides.activeRuns ?? []
   const run = overrides.run ?? activeRuns[0] ?? null
@@ -382,7 +397,9 @@ describe('RoguelikeTasks execution', () => {
     await flush()
     await renderPage()
 
-    expect(buttonByText('终止执行')).toBeDefined()
+    expect(buttonByText('立即终止')).toBeDefined()
+    expect(buttonByText('等待战斗结束')).toBeDefined()
+    expect(buttonByText('终止执行')).toBeUndefined()
     expect(container.querySelector('[role="log"]')).toBeNull()
     expect(container.textContent).not.toContain('查看本次日志')
     expect(mocks.getRealtimeLogs).not.toHaveBeenCalled()
@@ -420,7 +437,7 @@ describe('RoguelikeTasks execution', () => {
     await flush()
 
     expect(mocks.executePredefinedTask).toHaveBeenCalledOnce()
-    expect(buttonByText('终止执行')).toBeDefined()
+    expect(buttonByText('立即终止')).toBeDefined()
   })
 
   it('builds the command from the active mode and advanced fields', async () => {
@@ -747,7 +764,7 @@ describe('RoguelikeTasks execution', () => {
     startController()
     await flush()
     await renderPage()
-    expect(buttonByText('终止执行')).toBeDefined()
+    expect(buttonByText('立即终止')).toBeDefined()
 
     await act(async () => root.unmount())
     root = createRoot(document.createElement('div'))
@@ -768,7 +785,7 @@ describe('RoguelikeTasks execution', () => {
     await flush()
     await renderPage()
 
-    expect(buttonByText('终止执行')).toBeDefined()
+    expect(buttonByText('立即终止')).toBeDefined()
     expect(mocks.executePredefinedTask).not.toHaveBeenCalled()
 
     api.fetchSnapshot.mockResolvedValue(ok(runSnapshot({ lastRun: activeRun('run-7', 'succeeded') })))
@@ -805,7 +822,8 @@ describe('RoguelikeTasks execution', () => {
     await renderPage()
 
     expect(buttonByText('立即执行')).toBeDefined()
-    expect(buttonByText('终止执行')).toBeUndefined()
+    expect(buttonByText('立即终止')).toBeUndefined()
+    expect(buttonByText('等待战斗结束')).toBeUndefined()
   })
 
   it('stops by runId once and keeps confirming until the run reaches a terminal state', async () => {
@@ -815,10 +833,10 @@ describe('RoguelikeTasks execution', () => {
     await flush()
     await renderPage()
 
-    await click(buttonByText('终止执行')!)
+    await click(buttonByText('立即终止')!)
 
     expect(api.stopRun).toHaveBeenCalledOnce()
-    expect(api.stopRun).toHaveBeenCalledWith('run-1')
+    expect(api.stopRun).toHaveBeenCalledWith('run-1', { mode: 'now' })
     expect(mocks.setMessage).toHaveBeenCalledWith('正在终止肉鸽任务...', 'warning')
     expect(buttonByText('正在终止')?.disabled).toBe(true)
 
@@ -852,7 +870,7 @@ describe('RoguelikeTasks execution', () => {
       deviceStopRequested: true,
       run: activeRun('run-1', 'running'),
     }))
-    await click(buttonByText('终止执行')!)
+    await click(buttonByText('立即终止')!)
     expect(buttonByText('正在终止')?.disabled).toBe(true)
 
     const renderMode = async (mode: 'visible' | 'hidden') => {
@@ -890,7 +908,7 @@ describe('RoguelikeTasks execution', () => {
       deviceStopRequested: true,
       run: activeRun('run-1', 'running'),
     }))
-    await click(buttonByText('终止执行')!)
+    await click(buttonByText('立即终止')!)
     expect(buttonByText('正在终止')?.disabled).toBe(true)
 
     await act(async () => {
@@ -902,9 +920,9 @@ describe('RoguelikeTasks execution', () => {
       '终止失败: 终止请求已发送，但尚未确认任务停止',
       'error',
     )
-    expect(buttonByText('终止执行')?.disabled).toBe(false)
+    expect(buttonByText('立即终止')?.disabled).toBe(false)
 
-    await click(buttonByText('终止执行')!)
+    await click(buttonByText('立即终止')!)
     expect(api.stopRun).toHaveBeenCalledTimes(2)
   })
 
@@ -916,10 +934,101 @@ describe('RoguelikeTasks execution', () => {
     await flush()
     await renderPage()
 
-    await click(buttonByText('终止执行')!)
+    await click(buttonByText('立即终止')!)
 
     expect(mocks.setMessage).toHaveBeenCalledWith('终止失败: 目标运行已不是当前运行', 'error')
-    expect(buttonByText('终止执行')?.disabled).toBe(false)
+    expect(buttonByText('立即终止')?.disabled).toBe(false)
+  })
+
+  it('requests the wait-for-combat stop and keeps the immediate stop available', async () => {
+    useIdentity({ runId: 'run-1', operationId: 'run_task', scope: 'roguelike' })
+    api.fetchSnapshot.mockResolvedValue(ok(runSnapshot({ activeRuns: [activeRun('run-1')] })))
+    api.stopRun.mockResolvedValueOnce(ok({
+      stopRequested: false,
+      deviceStopRequested: false,
+      run: activeRun('run-1'),
+      pendingStop: {
+        mode: 'after-combat',
+        requestedAt: '2026-10-25T00:00:00.000Z',
+        deadline: '2026-10-25T00:10:00.000Z',
+        combat: true,
+      },
+    }))
+    startController()
+    await flush()
+    await renderPage()
+
+    await click(buttonByText('等待战斗结束')!)
+
+    expect(api.stopRun).toHaveBeenCalledWith('run-1', { mode: 'after-combat' })
+    expect(mocks.setMessage).toHaveBeenCalledWith('已受理，等待战斗结束后终止', 'warning')
+    expect(buttonByText('等待战斗结束')?.disabled).toBe(true)
+    expect(buttonByText('等待战斗结束')?.title).toBe('最多等待 10 分钟')
+    expect(buttonByText('立即终止')?.disabled).toBe(false)
+    expect(buttonByText('正在终止')).toBeUndefined()
+  })
+
+  it('keeps the wait state from the run progress without tripping the stop confirm timeout', async () => {
+    vi.useFakeTimers()
+    useIdentity({ runId: 'run-1', operationId: 'run_task', scope: 'roguelike' })
+    api.fetchSnapshot.mockResolvedValue(ok(runSnapshot({ activeRuns: [waitingForCombatRun('run-1')] })))
+    startController()
+    await flush()
+    await renderPage()
+
+    expect(buttonByText('等待战斗结束')?.disabled).toBe(true)
+    expect(buttonByText('等待战斗结束')?.title).toBe('最多等待 10 分钟')
+    expect(buttonByText('立即终止')?.disabled).toBe(false)
+    expect(api.stopRun).not.toHaveBeenCalled()
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(15_000)
+    })
+    await flush()
+
+    expect(mocks.setMessage).not.toHaveBeenCalledWith(
+      '终止失败: 终止请求已发送，但尚未确认任务停止',
+      'error',
+    )
+    expect(buttonByText('等待战斗结束')?.disabled).toBe(true)
+    expect(buttonByText('立即终止')?.disabled).toBe(false)
+  })
+
+  it('cancels the wait by sending an immediate stop from the left action', async () => {
+    useIdentity({ runId: 'run-1', operationId: 'run_task', scope: 'roguelike' })
+    api.fetchSnapshot.mockResolvedValue(ok(runSnapshot({ activeRuns: [waitingForCombatRun('run-1')] })))
+    startController()
+    await flush()
+    await renderPage()
+
+    await click(buttonByText('立即终止')!)
+
+    expect(api.stopRun).toHaveBeenCalledWith('run-1', { mode: 'now' })
+    expect(mocks.setMessage).toHaveBeenCalledWith('正在终止肉鸽任务...', 'warning')
+
+    api.fetchSnapshot.mockResolvedValue(ok(runSnapshot({ activeRuns: [activeRun('run-1', 'stopping')] })))
+    await refreshController()
+
+    expect(buttonByText('正在终止')?.disabled).toBe(true)
+  })
+
+  it('reports a degraded wait as an immediate stop outside combat', async () => {
+    useIdentity({ runId: 'run-1', operationId: 'run_task', scope: 'roguelike' })
+    api.fetchSnapshot.mockResolvedValue(ok(runSnapshot({ activeRuns: [activeRun('run-1')] })))
+    api.stopRun.mockResolvedValueOnce(ok({
+      stopRequested: true,
+      deviceStopRequested: true,
+      run: activeRun('run-1'),
+    }))
+    startController()
+    await flush()
+    await renderPage()
+
+    await click(buttonByText('等待战斗结束')!)
+
+    expect(mocks.setMessage).toHaveBeenCalledWith('未在战斗中，已立即终止', 'warning')
+    expect(buttonByText('正在终止')?.disabled).toBe(true)
+    expect(buttonByText('等待战斗结束')?.getAttribute('title')).toBeNull()
   })
 
   it('reports a failed run and returns to the execute action', async () => {
@@ -955,7 +1064,7 @@ describe('RoguelikeTasks execution', () => {
     })
     await flush()
 
-    expect(buttonByText('终止执行')).toBeDefined()
+    expect(buttonByText('立即终止')).toBeDefined()
     expect(mocks.setMessage).not.toHaveBeenCalledWith('肉鸽任务已终止', 'warning')
   })
 

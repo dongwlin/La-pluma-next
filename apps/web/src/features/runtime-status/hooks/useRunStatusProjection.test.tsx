@@ -11,6 +11,7 @@ import {
 } from '@/features/task-execution'
 import { useRunStatusProjection } from './useRunStatusProjection'
 import { useStatusStore } from '../store/statusStore'
+import { isRunStatusBusy } from '../utils/runStatus'
 
 ;(globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true
 
@@ -149,6 +150,27 @@ describe('run status projection', () => {
     expect(useStatusStore.getState().runStatus.phase).toBe('waiting')
     expect(useStatusStore.getState().runStatus.label).toBe('等待继续')
     expect(useStatusStore.getState().runStatus.isRunning).toBe(true)
+  })
+
+  it('keeps a run waiting for combat to end busy under its own label', async () => {
+    const run = buildRun({
+      progress: {
+        message: '等待战斗结束后终止',
+        stopIntent: {
+          mode: 'after-combat',
+          requestedAt: '2026-10-25T00:00:00.000Z',
+          deadline: '2026-10-25T00:10:00.000Z',
+          combat: true,
+        },
+      },
+    })
+    await applySnapshot(buildSnapshot({ run, activeRuns: [run], occupancy: 'run' }))
+
+    const status = useStatusStore.getState().runStatus
+    expect(status.phase).toBe('running')
+    expect(status.label).toBe('等待战斗结束后停止')
+    expect(status.detail).toBe('等待战斗结束后终止')
+    expect(isRunStatusBusy(status)).toBe(true)
   })
 
   it('labels a stopping run', async () => {

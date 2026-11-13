@@ -18,6 +18,7 @@ export interface GlobalRunStatus {
 
 const RUNNING_LABEL = '任务执行中'
 const WAITING_LABEL = '等待继续'
+const WAITING_FOR_COMBAT_STOP_LABEL = '等待战斗结束后停止'
 const STOPPING_LABEL = '正在停止'
 const OCCUPIED_LABEL = '设备被其他任务占用'
 const UNKNOWN_LABEL = '执行状态未知'
@@ -36,8 +37,9 @@ function readRunMessage(run: AgentRun): string | null {
 }
 
 function readRunLabel(run: AgentRun): string {
-  if (run.state === 'waiting') return WAITING_LABEL
   if (run.state === 'stopping') return STOPPING_LABEL
+  if (run.progress?.stopIntent) return WAITING_FOR_COMBAT_STOP_LABEL
+  if (run.state === 'waiting') return WAITING_LABEL
   const task = run.progress?.currentTask
   return typeof task === 'string' && task.trim() ? `正在执行: ${task.trim()}` : RUNNING_LABEL
 }

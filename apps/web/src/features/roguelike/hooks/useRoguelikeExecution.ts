@@ -10,13 +10,20 @@ import {
   useExecutionSnapshot,
   type AgentRun,
   type ExecutionController,
+  type StopMode,
   type TaskConfig,
 } from '@/features/task-execution'
+import { describeRoguelikeTerminalRun, projectRoguelikeStopState } from '../model/executionState'
 
 export const ROGUELIKE_EXECUTION_SCOPE = 'roguelike'
 
 /** 停止请求成功但 run 长期没有离开 running 时，解锁按钮允许重试。 */
 export const ROGUELIKE_STOP_CONFIRM_TIMEOUT_MS = 15_000
+
+const STOP_REQUEST_MESSAGES: Record<StopMode, string> = {
+  now: '正在终止肉鸽任务...',
+  'after-combat': '正在请求战斗结束后停止...',
+}
 
 export interface RoguelikeExecutionRequest {
   command: string
@@ -28,33 +35,23 @@ export interface RoguelikeExecutionRequest {
 export interface RoguelikeExecution {
   /** 本页发起且仍处于活动状态的 run，或身份已持久化但快照尚未解析出来。 */
   isRunning: boolean
-  /** 停止确认中：服务端已进入 stopping，或停止请求已成功等待终态。 */
+  /** 停止确认中：服务端已进入 stopping，或停止请求在途/已成功且等待终态。 */
   isStopping: boolean
+  /** 等待战斗结束后停止：run 仍是 running，右侧按钮进入等待态。 */
+  isWaitingForCombat: boolean
+  /** 已发出但尚未返回的停止请求模式，用于在对应按钮上显示加载态。 */
+  pendingStopMode: StopMode | null
   /** 启动请求在途；按钮保持禁用，重复点击不会产生第二个提交。 */
   isSubmitting: boolean
   /** 本页 owned 的 run（活动或终态），供结果面板读取结构化摘要。 */
   trackedRun: AgentRun | null
   execute: (request: RoguelikeExecutionRequest) => Promise<void>
-  stop: () => Promise<void>
+  stop: (mode?: StopMode) => Promise<void>
 }
 
 interface UseRoguelikeExecutionOptions {
   notify: (message: string, type?: StatusMessageType) => void
   controller?: ExecutionController
-}
-
-function describeTerminalRun(run: AgentRun, label: string | undefined): { message: string; type: StatusMessageType } {
-  if (run.state === 'succeeded') {
-    return { message: label ? `${label} 执行成功` : '肉鸽任务执行成功', type: 'success' }
-  }
-  if (run.state === 'stopped') return { message: '肉鸽任务已终止', type: 'warning' }
-  if (run.state === 'failed') {
-    return { message: `执行失败: ${run.error?.message || '任务未能完成'}`, type: 'error' }
-  }
-  return {
-    message: `任务已中断: ${run.error?.message || '服务重启后无法确认执行结果'}`,
-    type: 'warning',
-  }
 }
 
 export function useRoguelikeExecution({
@@ -71,23 +68,38 @@ export function useRoguelikeExecution({
   const isRunning = Boolean(activeRun) || unresolved
   const isSubmitting = execution.submission === 'pending'
 
-  const [stopRequestPending, setStopRequestPending] = useState(false)
+  const [pendingStopMode, setPendingStopMode] = useState<StopMode | null>(null)
   const [stopAcknowledged, setStopAcknowledged] = useState(false)
-  const stopRequestRef = useRef(false)
+  const [waitAccepted, setWaitAccepted] = useState(false)
+  const stopRequestRef = useRef<StopMode | null>(null)
   const lastOwnedRunIdRef = useRef<string | null>(null)
   const observedActiveRunRef = useRef<string | null>(null)
   const announcedRunRef = useRef<string | null>(null)
   const runLabelsRef = useRef(new Map<string, string>())
+
+  const isLeaving = trackedRun?.state === 'stopping'
+  const { isWaitingForCombat, isStopping } = projectRoguelikeStopState({
+    run: trackedRun,
+    hasActiveRun: isRunning,
+    acceptedWait: waitAccepted,
+    requestedMode: pendingStopMode,
+    stopAcknowledged,
+  })
 
   // 新 run 身份出现或解除时，停止确认状态属于上一个 run，不能沿用到新一次执行。
   // 用 ref 比较而不是只在依赖变化时重置：Activity 恢复会重新执行全部 Effects。
   useEffect(() => {
     if (lastOwnedRunIdRef.current === ownedRunId) return
     lastOwnedRunIdRef.current = ownedRunId
-    setStopRequestPending(false)
+    setPendingStopMode(null)
     setStopAcknowledged(false)
-    stopRequestRef.current = false
+    setWaitAccepted(false)
+    stopRequestRef.current = null
   }, [ownedRunId])
+
+  useEffect(() => {
+    if (waitAccepted && (!isRunning || isLeaving)) setWaitAccepted(false)
+  }, [isLeaving, isRunning, waitAccepted])
 
   useEffect(() => {
     if (!ownedRunId) return
@@ -103,12 +115,12 @@ export function useRoguelikeExecution({
     observedActiveRunRef.current = null
     announcedRunRef.current = trackedRun.runId
     const label = runLabelsRef.current.get(trackedRun.runId)
-    const terminal = describeTerminalRun(trackedRun, label)
+    const terminal = describeRoguelikeTerminalRun(trackedRun, label)
     notify(terminal.message, terminal.type)
   }, [activeRun, notify, ownedRunId, trackedRun])
 
   useEffect(() => {
-    if (!stopAcknowledged || !isRunning) return
+    if (!stopAcknowledged || !isRunning || isWaitingForCombat) return
     // 服务端已经进入 stopping 时继续等待终态；只有仍显示 running 或状态未知才解锁。
     if (trackedRun?.state === 'stopping') return
 
@@ -118,7 +130,7 @@ export function useRoguelikeExecution({
     }, ROGUELIKE_STOP_CONFIRM_TIMEOUT_MS)
 
     return () => window.clearTimeout(timer)
-  }, [isRunning, notify, stopAcknowledged, trackedRun?.state])
+  }, [isRunning, isWaitingForCombat, notify, stopAcknowledged, trackedRun?.state])
 
   const execute = useCallback(async ({ command, params, taskConfig, taskName }: RoguelikeExecutionRequest) => {
     if (isRunning || controller.getState().submission === 'pending') return
@@ -154,16 +166,17 @@ export function useRoguelikeExecution({
     }
   }, [controller, isRunning, notify])
 
-  const stop = useCallback(async () => {
+  const stop = useCallback(async (mode: StopMode = 'now') => {
     if (stopRequestRef.current) return
     if (!controller.getState().trackedRunId) return
 
-    stopRequestRef.current = true
-    setStopRequestPending(true)
-    notify('正在终止肉鸽任务...', 'warning')
+    stopRequestRef.current = mode
+    setPendingStopMode(mode)
+    if (mode === 'now') setWaitAccepted(false)
+    notify(STOP_REQUEST_MESSAGES[mode], 'warning')
 
     try {
-      const result = await controller.stopTrackedRun()
+      const result = await controller.stopTrackedRun({ mode })
       if (!result) {
         notify('未找到可终止的肉鸽运行', 'warning')
         setStopAcknowledged(false)
@@ -174,18 +187,33 @@ export function useRoguelikeExecution({
         setStopAcknowledged(false)
         return
       }
+      if (result.data?.pendingStop) {
+        setWaitAccepted(true)
+        setStopAcknowledged(false)
+        notify('已受理，等待战斗结束后终止', 'warning')
+        return
+      }
       setStopAcknowledged(!result.data?.alreadyTerminal)
+      if (mode === 'after-combat' && !result.data?.alreadyTerminal) {
+        notify('未在战斗中，已立即终止', 'warning')
+      }
     } catch (error) {
       notify(`终止失败: ${(error as Error).message}`, 'error')
       setStopAcknowledged(false)
     } finally {
-      stopRequestRef.current = false
-      setStopRequestPending(false)
+      stopRequestRef.current = null
+      setPendingStopMode(null)
     }
   }, [controller, notify])
 
-  const isStopping = isRunning
-    && (trackedRun?.state === 'stopping' || stopRequestPending || stopAcknowledged)
-
-  return { isRunning, isStopping, isSubmitting, trackedRun, execute, stop }
+  return {
+    isRunning,
+    isStopping,
+    isWaitingForCombat,
+    pendingStopMode,
+    isSubmitting,
+    trackedRun,
+    execute,
+    stop,
+  }
 }

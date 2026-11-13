@@ -19,7 +19,7 @@
 | 当前模式、配置订阅、执行订阅与同步反馈 | `features/roguelike/components/RoguelikeWorkspace.tsx` | 跨面板状态的唯一容器；模式选择不写入持久化载荷 |
 | 模式分段控件的测量与键盘导航 | `features/roguelike/components/RoguelikeModePanel.tsx` | 受控组件；只持有 `useFluidTabIndicator` 的测量状态 |
 | 主题快捷项与自定义代号 | `features/roguelike/components/RoguelikeThemePanel.tsx` | 从草稿派生值，编辑经回调交给工作区 |
-| 高级字段与运行/停止按钮 | `features/roguelike/components/RoguelikeSettingsPanel.tsx` | 只渲染当前生效的字段并调用注入的执行动作，不创建执行状态机 |
+| 高级字段与三态底部操作（空闲执行 / 运行中双停止 / 等待战斗结束） | `features/roguelike/components/RoguelikeSettingsPanel.tsx` | 只渲染当前生效的字段与注入的执行投影，不创建执行状态机 |
 | 核心干员单选字段 | `features/roguelike/components/RoguelikeCoreOperatorField.tsx` | 复用 `features/training` 的 `OperatorSelectModal`；字段值仍是单个中文干员名，只读目录用于回显头像 |
 | 配置 key、本地草稿、pending 与 300ms 提交 | `features/roguelike/model/roguelikeConfig.ts` + `features/user-config` | 配置适配器维持 key、本地键和 wire 协议 |
 | 主题、模式、分队、职业组、难度与黑流树海枚举 | `features/roguelike/model/roguelikeOptionCatalog.ts` | 纯数据与候选项解析 |
@@ -30,12 +30,12 @@
 | 结果摘要解析与展示投影 | `features/roguelike/model/runSummary.ts` | 防御式读取 `run.result.summary` / `run.error.details.summary`，非法载荷返回 null；纯函数 |
 | CLI/动态任务执行计划与 Core 参数构造 | `features/roguelike/model/roguelikeExecution.ts` | 纯模型；决定走 CLI 还是 `run` + taskConfig |
 | 执行前校验 | `features/roguelike/model/roguelikeValidation.ts` | 纯模型；返回面向用户的中文错误 |
-| 运行提交、观察、停止与终态提示 | `features/roguelike/hooks/useRoguelikeExecution.ts` + `task-execution` | 页面只订阅一份快照并发送意图；额外暴露 `trackedRun` 供结果面板读取 |
+| 运行提交、观察、停止（立即 / 等待战斗结束）与终态提示 | `features/roguelike/hooks/useRoguelikeExecution.ts` + `task-execution` | 页面只订阅一份快照并发送意图；额外暴露 `trackedRun` 供结果面板读取 |
 
 维护约束：
 
 - 不持久化 `activeMode`，也不把模式选择写进 `roguelike-tasks` 配置。
-- 不改变服务端端点、配置 key、本地存储键或 wire 形状。
+- 不改变服务端端点、配置 key、本地存储键或配置 wire 形状；停止请求与运行进度只做可选字段的增量扩展。
 - 不在面板内复制配置、pending、停止确认或终态提示状态。
 
 ### 2. 组合与状态边界
@@ -45,7 +45,7 @@ RoguelikeTasks（页面壳：页头、预览布局）
 └─ RoguelikeWorkspace（配置/执行/模式唯一容器）
    ├─ RoguelikeModePanel（受控分段控件 + 高亮测量）
    ├─ RoguelikeThemePanel（主题快捷项 + 自定义输入）
-   ├─ RoguelikeSettingsPanel（高级字段 + 运行/停止按钮）
+   ├─ RoguelikeSettingsPanel（高级字段 + 三态执行操作）
    ├─ RoguelikeResultPanel（结果摘要 + 辅助诊断）
    └─ aside（DeviceMonitorPanel，共享实时会话）
 ```
@@ -53,7 +53,8 @@ RoguelikeTasks（页面壳：页头、预览布局）
 - **当前模式**是跨面板的局部交互状态：它决定主题与高级字段面板展示哪一份 `taskInputs`/`advancedParams`。它不进入配置 wire；`Activity` 隐藏/恢复保留，真正卸载或刷新后回到默认的 `roguelike`。
 - **配置草稿**只由工作区的一次 `useUserConfig(roguelikeConfigAdapter)` 读取。主题与高级字段编辑分别合并当前 `taskInputs`/`advancedParams` 后交给同一个通道；页面、面板都不直接调用 `saveUserConfig`/`loadUserConfig` 或写 `localStorage`。
 - **同步反馈**由工作区从通道的 `error`/`syncState` 派生：失败时显示页内 `role="alert"` 与“重新同步”，`syncState === 'saving'` 期间按钮显示“同步中”；只有手动 `retry()` 返回 true 才提示“肉鸽配置已同步”。
-- **执行**只由工作区的一次 `useRoguelikeExecution` 订阅。设置面板拿到的是 `isRunning`/`isStopping`/`isSubmitting` 与 `onExecute`/`onStop` 投影；停止确认、终态提示和 run 身份仍由 hook/控制器持有，面板没有第二份状态机。结果面板另取同一次订阅返回的 `trackedRun`，不新建观察者。
+- **执行**只由工作区的一次 `useRoguelikeExecution` 订阅。设置面板拿到的是 `isRunning`/`isStopping`/`isWaitingForCombat`/`pendingStopMode`/`isSubmitting` 与 `onExecute`/`onStop(mode)` 投影；停止确认、等待意图、终态提示和 run 身份仍由 hook/控制器持有，面板没有第二份状态机。结果面板另取同一次订阅返回的 `trackedRun`，不新建观察者。
+- **停止**分两种意图：运行中左「立即终止」发 `mode: 'now'`，右「等待战斗结束」发 `mode: 'after-combat'`；空闲态仍是单个「立即执行」。`after-combat` 被受理后 run 仍是 `running`，等待态由 `trackedRun.progress.stopIntent`（或刚收到的 `pendingStop`）派生，右侧按钮禁用并提示最多等待 10 分钟，左侧保持可点用于取消等待并立即停止；响应没有 `pendingStop` 表示服务端退化为立即停止，页面提示“未在战斗中，已立即终止”而不进入等待态。等待态不属于停止确认，不触发 15s 确认超时。
 - 模式面板只保存 `useFluidTabIndicator` 的容器 ref、高亮矩形与键盘处理；这些测量状态不参与配置或执行。
 
 ### 3. 纯命令模型
@@ -139,7 +140,7 @@ maa-cli 0.7.8 只认识部分主题、模式与参数；MaaCore 新增的黑流�
 ### 7. 兼容与维护约束
 
 - 配置 key、本地草稿、pending 与 wire 形状以[配置持久化协调器](../../architecture/config-persistence.md)为准；面板不另建持久化格式。
-- 服务端端点、执行提交参数与幂等键语义未变化；停止仍走控制器 `stopTrackedRun()`。结果摘要只是 Run 载荷的增量字段，客户端缺失时显示“无可用结果”，不从退出码或消息推断成功。
+- 服务端端点、执行提交参数与幂等键语义未变化；停止仍走控制器 `stopTrackedRun({ mode })`，`mode` 与 `pendingStop`/`stopIntent` 都是增量字段，缺省请求仍是原来的立即停止。结果摘要只是 Run 载荷的增量字段，客户端缺失时显示“无可用结果”，不从退出码或消息推断成功。
 - 辅助诊断端点只读，除 ADB 连接探测外无副作用、不创建 Run；诊断会话不进入 Query、`statusStore`、localStorage 或 URL。
 - 保持渲染结构、DOM/CSS 类名与字段 `id`；字段键沿用迁移后的 camelCase，新增字段按含义插入相应分组，不改动已有键。核心干员字段的控件从原生输入换成按钮触发器，但字段 `id`、配置键与 wire 值保持不变。
 - 字段的默认值语义以命令模型为准：生息演算默认模式为 `1`，集成战略默认职业组为 `稳扎稳打`；两者都会写入 wire 与命令。
@@ -161,7 +162,7 @@ maa-cli 0.7.8 只认识部分主题、模式与参数；MaaCore 新增的黑流�
 - 归一化不修改入参；`resolveRoguelikeAdvancedValue` 的首项回落只用于显示，不参与命令构造；重启锚点草稿缺少模式时归一化补 `16`。
 - 旧草稿：没有新字段的 wire 与本地草稿仍可读，未知扩展字段与显式值原样往返。
 - 模式是局部状态：不进入配置 wire，跨模式草稿合并、空主题拒绝，Activity 隐藏保留而真正卸载回到 `roguelike`。
-- 执行接线：按当前模式提交，停止/超时/失败/断线恢复由控制器 runId 持有，不重新提交。
+- 执行接线：按当前模式提交，停止/超时/失败/断线恢复由控制器 runId 持有，不重新提交；等待战斗结束期间 run 仍是 `running`，页面不触发 15s 停止确认超时，也不显示“正在终止”。
 - 结果摘要：成功读 `run.result.summary`、失败读 `run.error.details.summary`；字段缺失或类型不符解析为 null 并显示“无可用结果”，不把活动 run、原始 stderr 或退出码当作结算；新 run 活动期间保留上次终态摘要并标注，Activity 隐藏/恢复保留，真正卸载重建。
 - 辅助诊断：默认不发起请求；显式运行后单在途、可取消，取消不显示为失败，失败保留旧报告；当前任务 command 透传到诊断请求；每项检查保留可读 summary、证据与定位信息。
 
