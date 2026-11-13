@@ -13,6 +13,7 @@ import {
   GAME_ASSET_ROUTE_PREFIX,
   isGameAssetRequestPath
 } from './services/gameAssetService.ts';
+import { COPILOT_FILE_MAX_BYTES } from './services/copilotFileService.ts';
 import type { InfrastScheduleService } from './services/infrastScheduleService.ts';
 import { createUserConfigRouter } from './routes/userConfig.ts';
 import { createRuntimeReadinessTracker } from './services/runtimeReadinessService.ts';
@@ -59,6 +60,10 @@ const MAX_SIGNALING_LOGINS_PER_WINDOW = 30;
 // 无 token 的本地/LAN 模式没有鉴权边界，而 /diagnostics 会启动 MAA 版本、ADB 与
 // 资源目录等多项外部探测；按来源限流，避免任意页面通过并发请求放大探测开销。
 const MAX_ANONYMOUS_DIAGNOSTICS_PER_WINDOW = 30;
+
+// content 是 JSON 字符串字段，控制字符最坏会转义成 \uXXXX（每字节 6 字节）；
+// 上限按文件上限推导并留 64 KiB 包装余量，实际文件大小仍由 COPILOT_FILE_MAX_BYTES 限制。
+export const COPILOT_FILES_JSON_BODY_LIMIT_BYTES = COPILOT_FILE_MAX_BYTES * 6 + 64 * 1024;
 
 export function createLaPlumaApp({
   env = process.env,
@@ -170,7 +175,11 @@ export function createLaPlumaApp({
   // 探针、信令登录和前端资源不读取业务 JSON 请求体。
   const api = express.Router();
   api.use(optionalApiAuth);
-  api.use('/copilot-files', express.json({ limit: '2mb' }), createCopilotFilesRouter());
+  api.use(
+    '/copilot-files',
+    express.json({ limit: COPILOT_FILES_JSON_BODY_LIMIT_BYTES }),
+    createCopilotFilesRouter()
+  );
   api.use(express.json());
   // 令牌模式由 optionalApiAuth 承担边界；无令牌模式给诊断入口补一层每来源限流。
   if (apiToken === '') {
