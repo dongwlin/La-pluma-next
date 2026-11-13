@@ -36,13 +36,14 @@ import { FloatingStatusIndicator } from '@/features/runtime-status'
 
 <PageHeader
   title="自动战斗"
-  subtitle="配置自动刷关卡任务"
   mobileLayout="inline"
   actions={<FloatingStatusIndicator />}
 />
 ```
 
 页面标题统一使用全局品牌色，不再支持页面单独传入渐变色。一级工作区标题不使用 `icon-well`，只有确有身份识别需要的独立页面才传入 `icon`。手机端默认使用 `stack` 保护长标题和多操作；控制台及同级 `ios-workspace-page` 使用 `mobileLayout="inline"`，由右侧状态浮条主动收缩。
+
+`subtitle` 可选，只在需要补充标题与布局无法表达的信息时传入，不用来复述页面用途或铺陈说明。
 
 ---
 
