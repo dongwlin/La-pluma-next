@@ -1031,6 +1031,26 @@ describe('RoguelikeTasks execution', () => {
     expect(buttonByText('等待战斗结束')?.getAttribute('title')).toBeNull()
   })
 
+  it('does not claim an immediate stop when the run is already stopping', async () => {
+    useIdentity({ runId: 'run-1', operationId: 'run_task', scope: 'roguelike' })
+    api.fetchSnapshot.mockResolvedValue(ok(runSnapshot({ activeRuns: [activeRun('run-1')] })))
+    api.stopRun.mockResolvedValueOnce(ok({
+      stopRequested: true,
+      deviceStopRequested: false,
+      alreadyStopping: true,
+      run: activeRun('run-1', 'stopping'),
+    }))
+    startController()
+    await flush()
+    await renderPage()
+
+    await click(buttonByText('等待战斗结束')!)
+
+    expect(mocks.setMessage).not.toHaveBeenCalledWith('未在战斗中，已立即终止', 'warning')
+    expect(buttonByText('等待战斗结束')?.getAttribute('title')).toBeNull()
+    expect(buttonByText('正在终止')?.disabled).toBe(true)
+  })
+
   it('reports a failed run and returns to the execute action', async () => {
     useIdentity({ runId: 'run-1', operationId: 'run_task', scope: 'roguelike' })
     api.fetchSnapshot.mockResolvedValue(ok(runSnapshot({ activeRuns: [activeRun('run-1')] })))

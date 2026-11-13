@@ -194,7 +194,7 @@ export function useRoguelikeExecution({
         return
       }
       setStopAcknowledged(!result.data?.alreadyTerminal)
-      if (mode === 'after-combat' && !result.data?.alreadyTerminal) {
+      if (mode === 'after-combat' && !result.data?.alreadyTerminal && !result.data?.alreadyStopping) {
         notify('未在战斗中，已立即终止', 'warning')
       }
     } catch (error) {
