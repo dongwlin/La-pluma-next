@@ -15,6 +15,7 @@ export interface ScenarioState {
   runState: 'running' | 'stopping' | 'stopped' | 'succeeded'
   runId: string
   staleRunId: string
+  flowScheduleId: string
   stopCalls: string[]
   submissions: ScenarioRequest[]
   automationConfig: Record<string, unknown>
@@ -114,7 +115,7 @@ export function makeSnapshot(state: ScenarioState): Record<string, unknown> {
     lastRun: active ? makeRun('stopped', state.staleRunId) : run,
     schedule: {
       isRunning: active,
-      scheduleId: 'manual',
+      scheduleId: state.flowScheduleId,
       runId: state.runId,
       currentStep: 1,
       totalSteps: 3,
@@ -132,7 +133,7 @@ export function makeSnapshot(state: ScenarioState): Record<string, unknown> {
       runState: active ? state.runState : null,
       sources: active ? ['run', 'task', 'schedule'] : [],
       task: { isRunning: active, taskName: active ? '跨页场景任务' : null, taskType: 'run_daily_flow', stopRequested: state.runState === 'stopping' },
-      schedule: { isRunning: active, scheduleId: 'manual', runId: active ? state.runId : null, currentStep: 1, totalSteps: 3, currentTask: active ? '理智作战' : null, shouldStop: state.runState === 'stopping' },
+      schedule: { isRunning: active, scheduleId: state.flowScheduleId, runId: active ? state.runId : null, currentStep: 1, totalSteps: 3, currentTask: active ? '理智作战' : null, shouldStop: state.runState === 'stopping' },
     },
   }
 }
@@ -180,6 +181,7 @@ export function createScenarioState(): ScenarioState {
     runState: 'running',
     runId: stateRunId,
     staleRunId: 'run-cross-page-stale-terminal',
+    flowScheduleId: 'manual',
     stopCalls: [],
     submissions: [],
     automationConfig: createInitialAutomationConfig(),
@@ -224,11 +226,13 @@ async function respondToApi(route: Route, state: ScenarioState): Promise<void> {
     return fulfill(route, ok({ ...makeRun('succeeded', 'run-statistics-recognition'), operationId: 'run_task' }))
   }
 
-  if (path === '/agent/schedules/manual/execute' && method === 'POST') {
+  const dailyFlowExecute = /^\/agent\/schedules\/(manual|dashboard-quick-start)\/execute$/.exec(path)
+  if (dailyFlowExecute && method === 'POST') {
     state.submissions.push({ method, path, body })
+    state.flowScheduleId = dailyFlowExecute[1]!
     state.runState = 'running'
     const run = makeRun(state.runState, state.runId)
-    return fulfill(route, ok({ accepted: true, runId: state.runId, run, scheduleId: 'manual', totalSteps: 3 }), 202)
+    return fulfill(route, ok({ accepted: true, runId: state.runId, run, scheduleId: state.flowScheduleId, totalSteps: 3 }), 202)
   }
   if (path === '/agent/actions/stop' && method === 'POST') {
     const requestedRunId = (body as { runId?: string } | null)?.runId ?? url.searchParams.get('runId') ?? ''
