@@ -1,10 +1,9 @@
 import assert from 'node:assert/strict';
-import { copyFile, mkdir, mkdtemp, readFile, readdir, rm, stat } from 'node:fs/promises';
+import { mkdtemp, readFile, readdir, rm, stat } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { basename, dirname, join, resolve, sep } from 'node:path';
+import { basename, dirname, join, resolve } from 'node:path';
 import { describe, it } from 'node:test';
 import type { TestContext } from 'node:test';
-import { pathToFileURL } from 'node:url';
 import { resolveAppPaths } from '../../config/runtimeConfig.ts';
 import {
   COPILOT_FILE_IMPORT_DIR,
@@ -73,40 +72,13 @@ describe('sanitizeCopilotFileName', () => {
   });
 });
 
-describe('legacy managed Copilot paths', () => {
-  const { serverRoot } = resolveAppPaths();
-  const legacyImportDir = resolve(serverRoot, '../..', 'server', 'data', COPILOT_FILE_IMPORT_DIR);
+describe('validateManagedCopilotFileName', () => {
+  it('rejects absolute paths saved before the server directory moved', () => {
+    const { serverRoot } = resolveAppPaths();
+    const legacyPath = resolve(serverRoot, '../..', 'server', 'data', COPILOT_FILE_IMPORT_DIR, 'a.json');
 
-  it('preserves a stored path in requests and reads the import from the migrated data directory', async t => {
-    const root = await makeDataDir(t);
-    const sourceDir = join(root, 'apps', 'server', 'src');
-    const serviceFile = join(sourceDir, 'services/copilotFileService.ts');
-    await Promise.all(['config/runtimeConfig.ts', 'utils/fileHelper.ts', 'services/copilotFileService.ts'].map(async file => {
-      const destination = join(sourceDir, file);
-      await mkdir(dirname(destination), { recursive: true });
-      await copyFile(join(serverRoot, 'src', file), destination);
-    }));
-    const service: typeof import('../copilotFileService.ts') = await import(pathToFileURL(serviceFile).href);
-    const content = validContent();
-    const saved = await service.saveCopilotFile({ content });
-    const legacyPath = join(root, 'server', 'data', COPILOT_FILE_IMPORT_DIR, basename(saved.path));
-
-    assert.equal(service.validateManagedCopilotFileName(legacyPath), legacyPath);
-    const imported = await service.readManagedCopilotFile(legacyPath);
-    assert.equal(imported.stageName, '1-7');
-    assert.deepEqual(imported.content, JSON.parse(content));
-  });
-
-  it('rejects paths outside the legacy import directory and with explicit data directory overrides', async t => {
-    const dataDir = await makeDataDir(t);
-    assert.throws(() => validateManagedCopilotFileName(join(legacyImportDir, 'a.json'), { dataDir }), {
+    assert.throws(() => validateManagedCopilotFileName(legacyPath), {
       reason: 'filename_outside_import_dir'
-    });
-    assert.throws(() => validateManagedCopilotFileName(`${legacyImportDir}-other${sep}a.json`), {
-      reason: 'filename_outside_import_dir'
-    });
-    assert.throws(() => validateManagedCopilotFileName(`${legacyImportDir}${sep}..${sep}a.json`), {
-      reason: 'filename_traversal'
     });
   });
 });
