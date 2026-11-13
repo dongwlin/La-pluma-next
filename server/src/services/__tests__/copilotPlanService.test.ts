@@ -114,6 +114,7 @@ const {
   setCopilotPlanPathPlatformForTests
 } = await import('../copilotPlanService.ts');
 const { CopilotManagedFileInvalidError } = await import('../copilotFileService.ts');
+const { getLocalDateString } = await import('../dropRecordService.ts');
 
 beforeEach(async () => {
   resetCopilotPlanCachesForTests();
@@ -1407,5 +1408,39 @@ test('queue execution records known sanity costs and leaves unknown costs absent
     assert.equal('sanity' in unknown, false);
   } finally {
     stub.restore();
+  }
+});
+
+test('queue execution surfaces drop recording failures without reverting settled entries', async () => {
+  const recordsDir = join(fixtureDir, 'drop-records');
+  await mkdir(recordsDir, { recursive: true });
+  const recordPath = join(recordsDir, `${getLocalDateString()}.json`);
+  await writeFile(recordPath, JSON.stringify({ date: getLocalDateString(), records: [] }));
+  const restoreFetch = stubCopilotContent();
+  try {
+    const outcome = await executeCopilotQueueEntries({
+      queueId: 'run-drop-failure',
+      name: '记录失败队列',
+      entries: queueEntriesFor(),
+      options: {}
+    });
+    assert.equal(outcome.stopped, false);
+    assert.deepEqual(outcome.statuses.map(item => item.status), ['success', 'success']);
+    assert.ok(outcome.error instanceof Error);
+    assert.match(outcome.error.message, /记录掉落失败/);
+
+    await rm(recordPath, { force: true });
+    const recovered = await executeCopilotQueueEntries({
+      queueId: 'run-drop-recovered',
+      name: '记录恢复队列',
+      entries: queueEntriesFor(),
+      options: {}
+    });
+    assert.equal(recovered.error, null);
+    assert.deepEqual(recovered.statuses.map(item => item.status), ['success', 'success']);
+    const records = await readDropRecords();
+    assert.ok(records.some(record => record.stage === '1-1'));
+  } finally {
+    restoreFetch();
   }
 });

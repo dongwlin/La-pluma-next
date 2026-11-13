@@ -1984,7 +1984,7 @@ export async function executeCopilotQueueEntries({
 
 async function recordCompletedCopilotEntries(entries: readonly CopilotPlanEntry[], loopTimes: number): Promise<void> {
   for (const entry of entries) {
-    await recordDrops({
+    const recorded = await recordDrops({
       stage: entry.displayStage,
       times: loopTimes,
       ...(typeof entry.apCost === 'number' ? { sanity: entry.apCost * loopTimes } : {}),
@@ -1994,6 +1994,7 @@ async function recordCompletedCopilotEntries(entries: readonly CopilotPlanEntry[
       source: 'copilot',
       mode: entry.mode
     });
+    if (!recorded.success) throw new Error(recorded.message);
   }
 }
 
