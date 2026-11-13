@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { mkdir, mkdtemp, readFile, rm, stat, symlink, utimes, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, readdir, rm, stat, symlink, utimes, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, sep } from 'node:path';
 import test, { after, beforeEach } from 'node:test';
@@ -142,6 +142,24 @@ function readObject(value: unknown): Record<string, unknown> {
 async function readUserTasks(configDir: string): Promise<Record<string, unknown>> {
   const parsed: unknown = JSON.parse(await readFile(join(configDir, 'resource', 'tasks', 'tasks.json'), 'utf8'));
   return readObject(parsed);
+}
+
+async function readDropRecords(): Promise<Record<string, unknown>[]> {
+  const recordsDir = join(fixtureDir, 'drop-records');
+  let files: string[] = [];
+  try {
+    files = (await readdir(recordsDir)).filter(name => name.endsWith('.json'));
+  } catch {
+    return [];
+  }
+  const records: Record<string, unknown>[] = [];
+  for (const file of files) {
+    const parsed: unknown = JSON.parse(await readFile(join(recordsDir, file), 'utf8'));
+    const day = readObject(parsed);
+    if (!Array.isArray(day.records)) continue;
+    for (const record of day.records) records.push(readObject(record));
+  }
+  return records;
 }
 
 function stubPlanFetch(stageName: string, difficulty?: number): () => void {
@@ -1333,5 +1351,61 @@ test('queue execution writes managed local content into the queue plan directory
     assert.deepEqual(readObject(written), localContent);
   } finally {
     globalThis.fetch = originalFetch;
+  }
+});
+
+test('queue execution records known sanity costs and leaves unknown costs absent', async () => {
+  const resourceDir = join(fixtureDir, 'queue-cost-resource');
+  await mkdir(join(resourceDir, 'Arknights-Tile-Pos'), { recursive: true });
+  await writeFile(join(resourceDir, 'stages.json'), JSON.stringify([
+    { stageId: 'ap_test_01', code: 'AP-1', apCost: 21 }
+  ]));
+  process.env.FAKE_MAA_RESOURCE_DIR = resourceDir;
+  const dataDir = join(fixtureDir, 'queue-cost-data');
+  const importDir = join(dataDir, 'copilot-imports');
+  await mkdir(importDir, { recursive: true });
+  const knownFile = join(importDir, 'known.json');
+  await writeFile(knownFile, JSON.stringify({
+    stage_name: 'ap_test_01',
+    doc: { title: 'AP-1' },
+    opers: [{ name: '能天使' }],
+    groups: []
+  }));
+  const unknownFile = join(importDir, 'unknown.json');
+  await writeFile(unknownFile, JSON.stringify({
+    stage_name: 'ap_missing_01',
+    doc: { title: 'AP-未知' },
+    opers: [{ name: '能天使' }],
+    groups: []
+  }));
+  await rm(join(fixtureDir, 'drop-records'), { recursive: true, force: true });
+  const stub = stubQueueContent([]);
+  try {
+    const plan = await buildCopilotQueuePlan([
+      { clientId: 'known', source: 'file', filename: knownFile, mode: 'normal' },
+      { clientId: 'unknown', source: 'file', filename: unknownFile, mode: 'normal' }
+    ], { dataDir });
+    assert.equal(plan.entries[0]?.apCost, 21);
+    assert.equal(plan.entries[1]?.apCost, null);
+
+    const outcome = await executeCopilotQueueEntries({
+      queueId: 'run-cost',
+      name: '理智消耗队列',
+      entries: plan.entries,
+      options: { loopTimes: 2 }
+    });
+    assert.equal(outcome.error, null);
+    assert.deepEqual(outcome.statuses.map(item => item.status), ['success', 'success']);
+
+    const records = await readDropRecords();
+    const known = records.find(record => record.stage === 'AP-1');
+    assert.ok(known, 'known stage should be recorded');
+    assert.equal(known.sanity, 42);
+    assert.equal(known.times, 2);
+    const unknown = records.find(record => record.stage === 'AP-未知');
+    assert.ok(unknown, 'unknown stage should be recorded');
+    assert.equal('sanity' in unknown, false);
+  } finally {
+    stub.restore();
   }
 });

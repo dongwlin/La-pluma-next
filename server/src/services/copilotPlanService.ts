@@ -645,7 +645,8 @@ export interface BuildCopilotQueuePlanOptions {
 }
 
 /**
- * 本地文件用负数占位 id（不参与远端请求，也不与真实 copilot id 冲突），理智消耗保持未知。
+ * 本地文件用负数占位 id（不参与远端请求，也不与真实 copilot id 冲突），
+ * 理智消耗与远端条目一样按本地关卡资源解析，缺失时保持未知。
  */
 export async function buildCopilotQueuePlan(
   entries: readonly CopilotQueueEntryInput[],
@@ -680,7 +681,7 @@ export async function buildCopilotQueuePlan(
       copilotId,
       stageId: item.stageId,
       displayStage: item.stage || item.stageId,
-      apCost: remote ? item.apCost : null,
+      apCost: item.apCost,
       mode,
       presetFormation: item.presetFormation,
       content
@@ -1986,7 +1987,7 @@ async function recordCompletedCopilotEntries(entries: readonly CopilotPlanEntry[
     await recordDrops({
       stage: entry.displayStage,
       times: loopTimes,
-      sanity: (entry.apCost ?? 0) * loopTimes,
+      ...(typeof entry.apCost === 'number' ? { sanity: entry.apCost * loopTimes } : {}),
       medicine: 0,
       stone: 0,
       items: [],
