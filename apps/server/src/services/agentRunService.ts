@@ -1224,6 +1224,12 @@ export function getAgentRun(runId: string): AgentRunDto | null {
   return toAgentRunDto(runs.get(runId)?.run);
 }
 
+export function getAgentRunInput(runId: string): unknown {
+  assertAgentRunStoreReadable();
+  const record = runs.get(runId);
+  return record ? cloneJson(record.run.input) : null;
+}
+
 export function listAgentRuns({
   operationId = null,
   state = null,

@@ -83,6 +83,12 @@ import {
   isRoguelikeCommand
 } from '../services/roguelikeResultService.ts';
 import type { RoguelikeResultSummary } from '../services/roguelikeResultService.ts';
+import {
+  beginRoguelikeStopIntent,
+  cancelRoguelikeStopIntent,
+  releaseAllRoguelikeStopIntents
+} from '../services/roguelikeStopIntentService.ts';
+import type { RoguelikeStopIntent } from '../services/roguelikeStopIntentService.ts';
 import { createLogger } from '../utils/logger.ts'
 import { withExecutionLogContext } from '../utils/logContext.ts'
 import { resolveRequestConnection } from './requestConnection.ts';
@@ -91,6 +97,7 @@ import {
   isStopped,
   parseContinueRunId,
   parseRequestedRunId,
+  parseStopRequestMode,
   parseWaitForCompletion,
   readField,
   readIdempotencyKey,
@@ -103,7 +110,8 @@ import type {
   ExecutionRequest,
   ExecutionResponseWriter,
   ExecutionRunPayload,
-  ExecutionScheduleRequest
+  ExecutionScheduleRequest,
+  StopRequestMode
 } from './executionDto.ts';
 
 const logger = createLogger('AgentRoutes');
@@ -134,6 +142,8 @@ export interface ExecutionStopPayload extends Record<string, unknown> {
   waitingRunStopped?: boolean;
   alreadyTerminal?: boolean;
   alreadyStopping?: boolean;
+  pendingStop?: RoguelikeStopIntent;
+  alreadyPending?: boolean;
 }
 
 /** 响应文案可以是固定文本，或按实际结果生成；空结果回退到调用方兜底。 */
@@ -1535,26 +1545,67 @@ function sendStopSuccess(
   );
 }
 
+function sendStopRunNotFound(
+  res: ExecutionResponseWriter,
+  req: MaybeApiRequest,
+  runId: string
+): void {
+  sendError(res, req, agentError('AGENT_RUN_NOT_FOUND', `未找到 Agent run: ${runId}`, {
+    statusCode: 404,
+    details: { runId },
+    retryable: false
+  }));
+}
+
+function sendStopAlreadyTerminal(
+  res: ExecutionResponseWriter,
+  req: MaybeApiRequest,
+  run: AgentRunDto
+): void {
+  sendSuccess(res, req, {
+    stopRequested: false,
+    deviceStopRequested: false,
+    alreadyTerminal: true,
+    run
+  }, '任务已经结束');
+}
+
+function sendStopTargetNotCurrent(
+  res: ExecutionResponseWriter,
+  req: MaybeApiRequest,
+  requestedRunId: string,
+  run: AgentRunDto,
+  currentRunId: string | null
+): void {
+  if (run.state === 'stopping') {
+    sendSuccess(res, req, {
+      stopRequested: true,
+      deviceStopRequested: false,
+      alreadyStopping: true,
+      run
+    }, '任务正在终止');
+    return;
+  }
+  sendError(res, req, agentError('AGENT_RUN_NOT_CURRENT', '目标 run 不是当前执行，未发送终止命令', {
+    statusCode: 409,
+    details: { requestedRunId, currentRunId },
+    retryable: false
+  }));
+}
+
 async function stopRequestedRun(
   res: ExecutionResponseWriter,
   req: MaybeApiRequest,
-  requestedRunId: string
+  requestedRunId: string,
+  mode: StopRequestMode
 ): Promise<unknown> {
   const requestedRun = getAgentRun(requestedRunId);
   if (!requestedRun) {
-    return sendError(res, req, agentError('AGENT_RUN_NOT_FOUND', `未找到 Agent run: ${requestedRunId}`, {
-      statusCode: 404,
-      details: { runId: requestedRunId },
-      retryable: false
-    }));
+    return sendStopRunNotFound(res, req, requestedRunId);
   }
+  if (mode === 'now') cancelRoguelikeStopIntent(requestedRunId);
   if (TERMINAL_RUN_STATES.has(requestedRun.state)) {
-    return sendSuccess(res, req, {
-      stopRequested: false,
-      deviceStopRequested: false,
-      alreadyTerminal: true,
-      run: requestedRun
-    }, '任务已经结束');
+    return sendStopAlreadyTerminal(res, req, requestedRun);
   }
 
   if (requestedRun.operationId === 'run_copilot_set') {
@@ -1611,19 +1662,33 @@ async function stopRequestedRun(
 
   const currentRun = getCurrentAgentRun();
   if (!currentRun || currentRun.runId !== requestedRunId) {
-    if (requestedRun.state === 'stopping') {
+    cancelRoguelikeStopIntent(requestedRunId);
+    return sendStopTargetNotCurrent(res, req, requestedRunId, requestedRun, currentRun?.runId || null);
+  }
+
+  if (mode === 'after-combat') {
+    const outcome = await beginRoguelikeStopIntent(requestedRunId);
+    if (outcome.status !== 'immediate') {
+      const pendingRun = getAgentRun(requestedRunId) || requestedRun;
       return sendSuccess(res, req, {
         stopRequested: true,
         deviceStopRequested: false,
-        alreadyStopping: true,
-        run: requestedRun
-      }, '任务正在终止');
+        pendingStop: outcome.intent,
+        ...(outcome.status === 'already-pending' ? { alreadyPending: true } : {}),
+        run: enrichAgentRun(pendingRun)
+      }, outcome.status === 'already-pending'
+        ? '已在等待战斗结束后终止'
+        : '已记录停止意图，等待本场战斗结束后终止');
     }
-    return sendError(res, req, agentError('AGENT_RUN_NOT_CURRENT', '目标 run 不是当前执行，未发送终止命令', {
-      statusCode: 409,
-      details: { requestedRunId, currentRunId: currentRun?.runId || null },
-      retryable: false
-    }));
+
+    const latestRun = getAgentRun(requestedRunId);
+    if (!latestRun) return sendStopRunNotFound(res, req, requestedRunId);
+    if (TERMINAL_RUN_STATES.has(latestRun.state)) return sendStopAlreadyTerminal(res, req, latestRun);
+    const latestCurrent = getCurrentAgentRun();
+    if (!latestCurrent || latestCurrent.runId !== requestedRunId) {
+      cancelRoguelikeStopIntent(requestedRunId);
+      return sendStopTargetNotCurrent(res, req, requestedRunId, latestRun, latestCurrent?.runId || null);
+    }
   }
 
   const task = stopCurrentTask();
@@ -1643,6 +1708,7 @@ async function stopCurrentExecution(
   res: ExecutionResponseWriter,
   req: MaybeApiRequest
 ): Promise<unknown> {
+  releaseAllRoguelikeStopIntents();
   const task = stopCurrentTask();
   const scheduleStopped = stopScheduleExecution();
   const deviceStopRequested = task.success || scheduleStopped;
@@ -2119,6 +2185,7 @@ export async function stopExecution(
   res: ExecutionResponseWriter
 ): Promise<unknown> {
   const requestedRunId = parseRequestedRunId(req.body, req.query);
-  if (requestedRunId) return stopRequestedRun(res, req, requestedRunId);
+  const mode = parseStopRequestMode(readField(req.body, 'mode'));
+  if (requestedRunId) return stopRequestedRun(res, req, requestedRunId, mode);
   return stopCurrentExecution(res, req);
 }

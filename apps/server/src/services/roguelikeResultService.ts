@@ -145,6 +145,10 @@ export function isRoguelikeCommand(command: unknown): command is RoguelikeComman
   return command === 'roguelike' || command === 'reclamation';
 }
 
+export function getRoguelikeTaskchain(command: RoguelikeCommand): string {
+  return TASKCHAIN_BY_COMMAND[command];
+}
+
 export function readRoguelikeTheme(args: readonly string[] = []): string {
   const theme = args[0];
   return typeof theme === 'string' ? theme.trim() : '';

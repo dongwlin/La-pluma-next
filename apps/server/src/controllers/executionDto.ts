@@ -81,6 +81,18 @@ export function parseWaitForCompletion(value: unknown, defaultValue = true): boo
   return normalized;
 }
 
+export type StopRequestMode = 'now' | 'after-combat';
+
+export function parseStopRequestMode(value: unknown): StopRequestMode {
+  const normalized = value ?? 'now';
+  if (normalized === 'now' || normalized === 'after-combat') return normalized;
+  throw agentError('AGENT_VALIDATION_STOP_MODE_INVALID', 'mode 必须是 now 或 after-combat', {
+    statusCode: 400,
+    details: { received: normalized, allowed: ['now', 'after-combat'] },
+    retryable: false
+  });
+}
+
 function parseRunId(requested: unknown): string {
   if (typeof requested !== 'string' || !requested.trim()) {
     throw agentError('AGENT_VALIDATION_RUN_ID_INVALID', 'runId 必须是非空字符串', {
