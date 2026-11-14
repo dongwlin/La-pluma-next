@@ -64,7 +64,7 @@ function getFocusableElements(container: HTMLElement) {
 }
 
 function isSelectPopupOpen() {
-  return Boolean(document.querySelector('[data-slot="select-content"]'))
+  return Boolean(document.querySelector('[data-slot="select-content"][data-open]'))
 }
 
 interface ModalLayerProps extends Omit<ModalProps, 'isOpen'> {
