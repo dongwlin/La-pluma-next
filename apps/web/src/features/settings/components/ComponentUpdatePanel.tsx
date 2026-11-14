@@ -87,8 +87,8 @@ export default function ComponentUpdatePanel() {
 
   return (
     <>
-      <div className="grid gap-(--app-space-card) md:grid-cols-2 xl:grid-cols-1">
-        <section className="surface-soft flex min-w-0 flex-col rounded-xl p-(--app-space-panel)">
+      <div className="grid gap-3.5 md:grid-cols-2 xl:grid-cols-1">
+        <section className="surface-soft flex min-w-0 flex-col rounded-xl p-4">
           <div className="flex flex-wrap items-center gap-2">
             <h3 className="text-base font-semibold text-foreground">MaaCore</h3>
             {versionInfo && <span className="text-sm brand-text">{versionInfo.core}</span>}
@@ -115,7 +115,7 @@ export default function ComponentUpdatePanel() {
             </div>
           )}
           {versionInfo?.resource && versionInfo.resource.status !== 'current' && (
-            <p className="mt-2 text-xs leading-5 text-(--app-warning)">{versionInfo.resource.message}</p>
+            <p className="mt-2 text-xs leading-5 text-warning">{versionInfo.resource.message}</p>
           )}
           <div className="mt-auto grid gap-2 pt-4 sm:grid-cols-2">
             <Button
@@ -153,7 +153,7 @@ export default function ComponentUpdatePanel() {
           </div>
         </section>
 
-        <section className="surface-soft flex min-w-0 flex-col rounded-xl p-(--app-space-panel)">
+        <section className="surface-soft flex min-w-0 flex-col rounded-xl p-4">
           <div className="flex flex-wrap items-center gap-2">
             <h3 className="text-base font-semibold text-foreground">MAA CLI</h3>
             {versionInfo && <span className="text-sm brand-text">{versionInfo.cli}</span>}

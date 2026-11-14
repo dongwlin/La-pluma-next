@@ -26,7 +26,7 @@ export default function AutoUpdateConfigPanel() {
   }
 
   return (
-    <section className="surface-soft rounded-xl p-(--app-space-panel)">
+    <section className="surface-soft rounded-xl p-4">
       <div className="flex items-center justify-between gap-3.5">
         <div className="flex min-w-0 items-start gap-3.5">
           <span className="icon-well flex h-9 w-9 shrink-0 items-center justify-center rounded-lg brand-text">
@@ -51,7 +51,7 @@ export default function AutoUpdateConfigPanel() {
             animate={{ opacity: 1, y: 0 }}
             exit={shouldReduceMotion ? { opacity: 0 } : { opacity: 0, y: -6 }}
             transition={{ duration: shouldReduceMotion ? 0.12 : 0.2 }}
-            className="mt-4 grid gap-3.5 border-t border-(--app-border) pt-4 md:grid-cols-[12rem_minmax(0,1fr)] md:items-end xl:grid-cols-1 xl:items-stretch"
+            className="mt-4 grid gap-3.5 border-t border-border pt-4 md:grid-cols-[12rem_minmax(0,1fr)] md:items-end xl:grid-cols-1 xl:items-stretch"
           >
             <Input
               type="text"
@@ -92,7 +92,7 @@ export default function AutoUpdateConfigPanel() {
         </div>
       )}
 
-      <div className="mt-4 flex flex-wrap items-center justify-between gap-3.5 border-t border-(--app-border) pt-4">
+      <div className="mt-4 flex flex-wrap items-center justify-between gap-3.5 border-t border-border pt-4">
         <p className="text-xs text-tertiary">{autoUpdateDirty ? '有尚未保存的更改' : '设置会在保存后生效'}</p>
         <Button
           type="button"

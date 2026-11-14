@@ -41,7 +41,7 @@ export default function DeviceConnectionPanel({
   }
 
   return (
-    <section className="surface-soft rounded-xl p-(--app-space-panel)" aria-label="模拟器查找与连接测试">
+    <section className="surface-soft rounded-xl p-4" aria-label="模拟器查找与连接测试">
       <div className="flex flex-wrap items-start justify-between gap-3.5">
         <div className="flex min-w-0 items-start gap-3.5">
           <span className="icon-well flex h-9 w-9 shrink-0 items-center justify-center rounded-lg brand-text">
@@ -87,7 +87,7 @@ export default function DeviceConnectionPanel({
       )}
 
       {discoveredDevices.length > 0 && (
-        <div className="config-device-list mt-3 divide-y divide-(--app-border) overflow-hidden rounded-lg bg-(--app-surface) shadow-[inset_0_0_0_1px_var(--app-border)]">
+        <div className="config-device-list mt-3 divide-y divide-border overflow-hidden rounded-lg bg-card shadow-[inset_0_0_0_1px_var(--border)]">
           {discoveredDevices.map(device => {
             const selectable = device.state === 'device' || device.state === 'candidate'
             const stateLabel = device.state === 'device'
@@ -105,13 +105,13 @@ export default function DeviceConnectionPanel({
                 type="button"
                 disabled={disabled || !selectable || testingConnection}
                 onClick={() => void handleUseDiscoveredDevice(device)}
-                className="flex min-h-12 w-full items-center justify-between gap-3.5 px-3 py-2.5 text-left transition-colors hover:bg-(--app-accent-soft) focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-(--app-accent) disabled:cursor-not-allowed disabled:opacity-50"
+                className="flex min-h-12 w-full items-center justify-between gap-3.5 px-3 py-2.5 text-left transition-colors hover:bg-primary-soft focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary disabled:cursor-not-allowed disabled:opacity-50"
               >
                 <span className="min-w-0">
                   <span className="block truncate text-sm font-medium text-foreground">{device.address}</span>
                   <span className="mt-0.5 block truncate text-xs text-tertiary">{device.details || (device.source === 'adb' ? 'ADB 已识别设备' : device.source === 'emulator-adb' ? '模拟器内置 ADB' : '本机端口')}</span>
                 </span>
-                <span className="shrink-0 rounded-full bg-(--app-surface-muted) px-2 py-1 text-xs text-muted-foreground">{stateLabel}</span>
+                <span className="shrink-0 rounded-full bg-muted px-2 py-1 text-xs text-muted-foreground">{stateLabel}</span>
               </button>
             )
           })}

@@ -91,7 +91,7 @@ export default function ConnectionConfigPanel({ isActive }: ConnectionConfigPane
       onSave={handleSave}
       onReset={handleReset}
     >
-      <div className="grid min-w-0 gap-(--app-space-card) md:grid-cols-2">
+      <div className="grid min-w-0 gap-3.5 md:grid-cols-2">
         <Input
           label="ADB 路径"
           value={configData.adb_path}
@@ -120,7 +120,7 @@ export default function ConnectionConfigPanel({ isActive }: ConnectionConfigPane
         disabled={!connectionLoaded}
       />
 
-      <div className="grid min-w-0 gap-(--app-space-card) md:grid-cols-2 md:items-end">
+      <div className="grid min-w-0 gap-3.5 md:grid-cols-2 md:items-end">
         <Select
           label="连接预设"
           value={configData.preset}
