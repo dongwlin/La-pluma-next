@@ -23,10 +23,6 @@ vi.mock('framer-motion', () => ({
   ),
 }))
 
-vi.mock('@/shared/stores', () => ({
-  useUIStore: (selector: (state: { theme: 'dark' }) => unknown) => selector({ theme: 'dark' }),
-}))
-
 vi.mock('./layout/Layout', async () => {
   const { useNavigate } = await import('react-router')
   const { appTabRoute } = await import('@/shared/navigation')

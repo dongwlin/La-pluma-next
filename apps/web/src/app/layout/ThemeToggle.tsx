@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useId, useRef, useState } from 'react'
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion'
 import { Check, Monitor, Moon, Sun, type LucideIcon } from 'lucide-react'
-import { useUIStore } from '@/shared/stores'
+import { useTheme } from '@/shared/theme/useTheme'
 
 type ThemeMode = 'light' | 'dark' | 'system'
 
@@ -18,8 +18,7 @@ const themeOptions: Array<{ value: ThemeMode; label: string; icon: LucideIcon }>
 ]
 
 export default function ThemeToggle() {
-  const theme = useUIStore(state => state.theme)
-  const setTheme = useUIStore(state => state.setTheme)
+  const { mode: theme, setMode: setTheme } = useTheme()
   const shouldReduceMotion = useReducedMotion()
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
   const mobileTriggerRef = useRef<HTMLButtonElement>(null)
