@@ -126,7 +126,7 @@ export function DashboardSkeleton() {
 
           <div ref={flowPreviewRef} className="min-w-0">
             <SmoothPanel data-dashboard-preview-card className="status-border-beam" aria-hidden="true">
-              <div className="dashboard-preview-header flex items-center justify-between gap-3.5 border-b border-(--app-border) px-4 py-2.5">
+              <div className="dashboard-preview-header flex items-center justify-between gap-3.5 border-b border-border px-4 py-2.5">
                 <div className="flex items-center gap-2">
                   <Skeleton variant="circle" className="h-1.5 w-1.5" />
                   <Skeleton variant="text" className="h-3 w-28" />
@@ -142,9 +142,9 @@ export function DashboardSkeleton() {
 
         <div className="dashboard-device-section" aria-hidden="true">
           <div className="flex items-center gap-2">
-            <div className="h-0.5 flex-1 rounded-full bg-(--app-border)" />
+            <div className="h-0.5 flex-1 rounded-full bg-border" />
             <Skeleton variant="text" className="h-3 w-16" />
-            <div className="h-0.5 flex-1 rounded-full bg-(--app-border)" />
+            <div className="h-0.5 flex-1 rounded-full bg-border" />
           </div>
           <div className="dashboard-device-grid">
             {[1, 2, 3, 4].map((item, index) => (
