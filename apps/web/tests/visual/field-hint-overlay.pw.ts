@@ -54,6 +54,12 @@ test.describe('field hint overlay behavior', () => {
 
     await hint.hover()
     await expect(tooltip).toBeVisible()
+    const tooltipBox = await tooltip.boundingBox()
+    expect(tooltipBox).not.toBeNull()
+    await expectTooltipDoesNotCatchPoint(tooltip, {
+      x: tooltipBox!.x + tooltipBox!.width / 2,
+      y: tooltipBox!.y + tooltipBox!.height / 2,
+    })
 
     const point = await pointInsideTooltipOver(tooltip, 'button', undefined, true)
     expect(point, 'tooltip should cover an inactive formation option').not.toBeNull()
@@ -84,6 +90,12 @@ test.describe('field hint overlay behavior', () => {
 
     await hint.hover()
     await expect(tooltip).toBeVisible()
+    const tooltipBox = await tooltip.boundingBox()
+    expect(tooltipBox).not.toBeNull()
+    await expectTooltipDoesNotCatchPoint(tooltip, {
+      x: tooltipBox!.x + tooltipBox!.width / 2,
+      y: tooltipBox!.y + tooltipBox!.height / 2,
+    })
 
     const point = await pointInsideTooltipOver(tooltip, '[role="combobox"]', '不切换（沿用游戏内难度）')
     expect(point, 'tooltip should cover the difficulty select').not.toBeNull()
