@@ -21,26 +21,26 @@ jobs:
     runs-on: ${{ inputs.runner }}
     timeout-minutes: 25
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           persist-credentials: false
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: 24.22.1
       - name: Set image name
         id: image
         run: echo "name=ghcr.io/${GITHUB_REPOSITORY,,}" >> "$GITHUB_OUTPUT"
-      - uses: docker/setup-buildx-action@v3
+      - uses: docker/setup-buildx-action@v4
       - name: Log in for release builds
         if: inputs.publish
-        uses: docker/login-action@v3
+        uses: docker/login-action@v4
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
       - name: Build candidate image
         id: build
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: .
           platforms: ${{ inputs.platform }}
@@ -69,7 +69,7 @@ jobs:
       # 子路径部署的 base path 在构建时写死到前端产物，必须单独构建一个只用于
       # 冒烟、不推送的变体；不复用 cache-to，避免覆盖根路径发布缓存。
       - name: Build sub-path variant for the startup check
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: .
           platforms: ${{ inputs.platform }}
@@ -90,7 +90,7 @@ jobs:
           [[ "$DIGEST" =~ ^sha256:[a-f0-9]{64}$ ]]
           mkdir -p "$DIGEST_DIRECTORY"
           touch "$DIGEST_DIRECTORY/${DIGEST#sha256:}"
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: inputs.publish
         with:
           name: digests-${{ inputs.arch }}
