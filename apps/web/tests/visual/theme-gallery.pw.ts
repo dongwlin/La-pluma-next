@@ -49,8 +49,26 @@ for (const theme of THEMES) {
       const controls = page.locator('[data-region="gallery-form-controls"]')
       await controls.scrollIntoViewIfNeeded()
       await expect(controls).toBeVisible()
-      await expect(page.getByRole('checkbox', { name: '部分选择（混合态）' }))
-        .toHaveAttribute('aria-checked', 'mixed')
+
+      const mixed = page.getByRole('checkbox', { name: '部分选择（混合态）', exact: true })
+      const checked = page.getByRole('checkbox', { name: '自动补位', exact: true })
+      await expect(mixed).toHaveAttribute('aria-checked', 'mixed')
+      const [mixedStyle, checkedStyle] = await Promise.all([
+        mixed.evaluate(element => {
+          const style = getComputedStyle(element)
+          return { borderColor: style.borderColor, backgroundColor: style.backgroundColor }
+        }),
+        checked.evaluate(element => {
+          const style = getComputedStyle(element)
+          return { borderColor: style.borderColor, backgroundColor: style.backgroundColor }
+        }),
+      ])
+      expect(mixedStyle).toEqual(checkedStyle)
+
+      const errorInput = page.getByRole('textbox', { name: '作业 URI', exact: true })
+      await expect(errorInput).toHaveAttribute('aria-invalid', 'true')
+      await expect(errorInput).toHaveAccessibleDescription('未找到匹配的作业')
+
       await expect(controls).toHaveScreenshot(`theme-gallery-form-controls-${theme}.png`, {
         animations: 'disabled',
         caret: 'hide',

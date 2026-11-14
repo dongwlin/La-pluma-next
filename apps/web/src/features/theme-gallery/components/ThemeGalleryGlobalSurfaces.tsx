@@ -222,10 +222,12 @@ export function ThemeGalleryGlobalSurfaces() {
                   type="text"
                   autoComplete="off"
                   aria-invalid
+                  aria-describedby="gallery-input-error-message"
+                  aria-errormessage="gallery-input-error-message"
                   value="maa://10086"
                   onChange={() => undefined}
                 />
-                <p role="alert" className="mt-2 text-xs form-error-text">未找到匹配的作业</p>
+                <p id="gallery-input-error-message" role="alert" className="mt-2 text-xs form-error-text">未找到匹配的作业</p>
               </div>
             </div>
             <div>

@@ -1090,9 +1090,9 @@
   }
 
   [data-slot="checkbox"][data-indeterminate] {
-    border-color: var(--primary);
-    background-color: var(--primary);
-    color: var(--primary-foreground);
+    border-color: var(--primary) !important;
+    background-color: var(--primary) !important;
+    color: var(--primary-foreground) !important;
   }
 
   [data-slot="checkbox"][data-indeterminate] [data-slot="checkbox-indicator"] svg {
