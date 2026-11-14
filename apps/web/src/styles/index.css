@@ -130,7 +130,6 @@
     --app-danger: var(--destructive);
     --app-danger-action: var(--destructive-action);
     --app-info: var(--info);
-    --app-radius-xs: var(--radius-sm);
     --app-radius-sm: var(--radius-md);
     --app-radius-md: var(--radius-lg);
     --app-radius-lg: var(--radius-xl);
