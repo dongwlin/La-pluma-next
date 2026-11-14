@@ -39,7 +39,7 @@ export function ThemeGalleryGlobalSurfaces() {
       <Card>
         <CardHeader title="整页骨架" />
         <CardContent>
-          <div className="h-72 overflow-hidden rounded-xl border border-(--app-border)">
+          <div className="h-72 overflow-hidden rounded-xl border border-border">
             <PageSkeleton variant="config" />
           </div>
         </CardContent>
