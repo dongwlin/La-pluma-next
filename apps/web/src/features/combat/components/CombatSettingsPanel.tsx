@@ -1,4 +1,4 @@
-import { HintTooltip, Select } from '@/shared/ui'
+import { HintTooltip, Select } from '@/shared/components'
 import type {
   CombatTask,
   CopilotRaid,

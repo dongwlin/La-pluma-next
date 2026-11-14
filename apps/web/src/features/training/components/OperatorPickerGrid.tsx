@@ -1,6 +1,6 @@
 import { useState, type ReactNode } from 'react'
 import { getOperatorAvatarUrl, useItemIconCacheVersion } from '@/features/game-data'
-import { Button } from '@/shared/ui'
+import { Button } from '@/shared/components'
 import { OPERATOR_RENDER_BATCH_SIZE } from '../model/operatorRows'
 
 export interface OperatorPickerGridItem {

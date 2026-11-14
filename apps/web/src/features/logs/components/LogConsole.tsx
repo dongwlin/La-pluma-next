@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useReducer, useRef } from 'react'
 import { AlertCircle, ArrowDown, ArrowLeft, FileText, Search } from 'lucide-react'
-import { Button, Card, CardContent, CardHeader, Loading } from '@/shared/ui'
+import { Button, Card, CardContent, CardHeader, Loading } from '@/shared/components'
 import { countAppendedRows, initialLogFollowState, reduceLogFollow } from '../model/logFollow'
 import { getLogIdentity, getLogSourceText, type LogView } from '../model/logModel'
 import type { LogEntry, LogFile } from '../types'

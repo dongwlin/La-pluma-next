@@ -1,5 +1,5 @@
 import { ChevronRight, Play, Square } from 'lucide-react'
-import { Button } from '@/shared/ui'
+import { Button } from '@/shared/components'
 import type { CombatTask } from '../types'
 
 export interface CombatRunActionProps {

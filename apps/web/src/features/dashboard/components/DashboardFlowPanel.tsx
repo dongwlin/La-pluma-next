@@ -1,5 +1,5 @@
 import { Activity, CalendarDays, Play } from 'lucide-react'
-import { Button, Card } from '@/shared/ui'
+import { Button, Card } from '@/shared/components'
 import { useDashboardStore } from '../store/dashboardStore'
 import { useDashboardFlowActions } from '../hooks/useDashboardFlowActions'
 import { buildDashboardFlowView } from '../model/flowView'

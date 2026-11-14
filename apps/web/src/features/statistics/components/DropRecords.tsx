@@ -1,10 +1,10 @@
 import { useState } from 'react'
 import { Package as PackageIcon } from 'lucide-react'
-import Icons from '@/shared/ui/Icons'
+import Icons from '@/shared/components/Icons'
 import { getItemIconUrl, useItemIconCacheVersion } from '@/features/game-data'
 import { DROP_ITEM_DISPLAY_LIMIT, sortDropItems, sortDropStages } from '../model/dropRecords'
 import type { DropRecordsProps } from '../types'
-import { Button, Card, EmptyState, Loading } from '@/shared/ui'
+import { Button, Card, EmptyState, Loading } from '@/shared/components'
 
 interface DropRecordsViewProps extends DropRecordsProps {
   isLoading?: boolean

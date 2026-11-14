@@ -1,5 +1,5 @@
 import { Plus, Trash2 } from 'lucide-react'
-import { Button, IconButton, Input } from '@/shared/ui'
+import { Button, IconButton, Input } from '@/shared/components'
 
 interface ThemeListEditorProps {
   themes: string[]

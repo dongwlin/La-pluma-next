@@ -1,7 +1,7 @@
 // 实例选项与连接配置分属同一 MAA profile 的不同 section：面板只在 instance
 // section 渲染，但草稿与读取反馈由模块级 owner 持有，切换 section 不丢草稿。
 
-import { Select, Switch } from '@/shared/ui'
+import { Select, Switch } from '@/shared/components'
 import { useStatusStore } from '@/features/runtime-status'
 import { useConfigDraftPanel } from '../hooks/useConfigDraftPanel'
 import { useSettingsInstanceOptions } from '../hooks/useSettingsInstanceOptions'

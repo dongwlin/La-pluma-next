@@ -1,5 +1,5 @@
 import { Download, Pause, Play, Search, Trash2 } from 'lucide-react'
-import { Button, Card, CardContent, Input, Select, Switch } from '@/shared/ui'
+import { Button, Card, CardContent, Input, Select, Switch } from '@/shared/components'
 import type { LogEventFilter, LogFilter } from '../model/logModel'
 
 interface LogsToolbarProps {

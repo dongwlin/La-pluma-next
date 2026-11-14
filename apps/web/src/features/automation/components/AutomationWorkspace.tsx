@@ -12,7 +12,7 @@ import {
   SlidersHorizontal,
 } from 'lucide-react'
 import { DeviceMonitorPanel } from '@/features/device-mirror'
-import { Button, EmptyState, HintTooltip, SmoothPanel, Switch } from '@/shared/ui'
+import { Button, EmptyState, HintTooltip, SmoothPanel, Switch } from '@/shared/components'
 import { useAutomationAvailability, useStatusStore } from '@/features/runtime-status'
 import { useUserConfig } from '@/features/user-config'
 import { useResourceInvalidation, type ResourceInvalidation } from '@/features/resource-invalidation'

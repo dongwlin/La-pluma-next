@@ -2,7 +2,7 @@
 // 也不清空草稿与保存/读取反馈。
 
 import { useCallback } from 'react'
-import { Input, Select, Switch } from '@/shared/ui'
+import { Input, Select, Switch } from '@/shared/components'
 import { useStatusStore } from '@/features/runtime-status'
 import { useConfigDraftPanel } from '../hooks/useConfigDraftPanel'
 import { useSettingsConnectionConfig } from '../hooks/useSettingsConnectionConfig'

@@ -2,7 +2,7 @@ import {
   ThemeGalleryCurrentTheme,
   ThemeGalleryGlobalSurfaces,
 } from '@/features/theme-gallery'
-import { PageHeader } from '@/shared/ui'
+import { PageHeader } from '@/shared/components'
 
 export default function ThemeGalleryPage() {
   return (

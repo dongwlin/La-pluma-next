@@ -1,4 +1,4 @@
-import { Checkbox, Input, Select, Switch } from '@/shared/ui'
+import { Checkbox, Input, Select, Switch } from '@/shared/components'
 import { useStatusStore } from '@/features/runtime-status'
 import { useConfigDraftPanel } from '../hooks/useConfigDraftPanel'
 import { useSettingsResourceSource } from '../hooks/useSettingsResourceSource'

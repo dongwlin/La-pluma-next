@@ -8,7 +8,7 @@ import {
   type OperatorDetailed,
 } from '@/features/game-data'
 import { OperatorSelectModal, type OperatorPickerOption } from '@/features/training'
-import { Button, IconButton, Select } from '@/shared/ui'
+import { Button, IconButton, Select } from '@/shared/components'
 import {
   OPER_PROGRESS_ROLES,
   resolveOperProgressRole,

@@ -1,4 +1,4 @@
-import { HintTooltip } from '@/shared/ui'
+import { HintTooltip } from '@/shared/components'
 
 interface AutomationFieldLabelProps {
   htmlFor: string

@@ -2,8 +2,8 @@ import { useEffect, useRef, useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { AlertCircle, Save } from 'lucide-react'
 import { getErrorMessage, isRecord } from '@/shared/api'
-import { Button, Input, Select } from '@/shared/ui'
-import { Modal } from '@/shared/ui/Modal'
+import { Button, Input, Select } from '@/shared/components'
+import { Modal } from '@/shared/components/Modal'
 import { saveInfrastSchedule } from '../api'
 import {
   addInfrastPlan,

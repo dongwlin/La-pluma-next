@@ -8,8 +8,8 @@ import {
 } from '@/features/game-data'
 import { motion, useReducedMotion } from 'framer-motion'
 import { Download, Play, RotateCcw } from 'lucide-react'
-import Icons from '@/shared/ui/Icons'
-import { Button, Card, EmptyState, Loading } from '@/shared/ui'
+import Icons from '@/shared/components/Icons'
+import { Button, Card, EmptyState, Loading } from '@/shared/components'
 import {
   DEFAULT_OPERATOR_FILTERS,
   buildKnownOperatorIdSet,

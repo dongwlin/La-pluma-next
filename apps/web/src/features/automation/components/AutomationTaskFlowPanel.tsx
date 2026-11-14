@@ -12,7 +12,7 @@ import {
   Square,
   Trash2,
 } from 'lucide-react'
-import { Button, EmptyState, SmoothPanel, Switch } from '@/shared/ui'
+import { Button, EmptyState, SmoothPanel, Switch } from '@/shared/components'
 import AutomationTaskPicker from './AutomationTaskPicker'
 import AutomationExecutionSummary from './AutomationExecutionSummary'
 import {

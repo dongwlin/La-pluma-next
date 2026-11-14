@@ -1,6 +1,6 @@
 import { ServerOff, WifiOff } from 'lucide-react'
-import { Button, SmoothPanel } from '@/shared/ui'
-import Icons from '@/shared/ui/Icons'
+import { Button, SmoothPanel } from '@/shared/components'
+import Icons from '@/shared/components/Icons'
 import { useDashboardServiceStatus } from '../hooks/useDashboardServiceStatus'
 
 interface DashboardConnectionAlertProps {

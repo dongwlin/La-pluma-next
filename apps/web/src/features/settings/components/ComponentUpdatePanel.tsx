@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { Download, RefreshCw } from 'lucide-react'
-import { Button, Select } from '@/shared/ui'
+import { Button, Select } from '@/shared/components'
 import { useStatusStore } from '@/features/runtime-status'
 import { saveUpdateChannel } from '../api'
 import { resolveCoreChannel } from '../model/updateCommandPolicy'

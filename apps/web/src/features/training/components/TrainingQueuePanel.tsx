@@ -1,7 +1,7 @@
 import { useRef } from 'react'
 import { ArrowDown, ArrowUp, ArrowUpToLine, ClipboardList, Plus, Trash2, UserRoundSearch } from 'lucide-react'
 import { getOperatorAvatarUrl, useItemIconCacheVersion } from '@/features/game-data'
-import { Button, EmptyState, IconButton, Loading } from '@/shared/ui'
+import { Button, EmptyState, IconButton, Loading } from '@/shared/components'
 import { getQueueMaterials, selectMissingMaterials } from '../model/materials'
 import TrainingLoadError from './TrainingLoadError'
 import UndoToast from './UndoToast'

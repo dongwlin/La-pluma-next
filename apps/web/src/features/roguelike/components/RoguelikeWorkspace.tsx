@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Button } from '@/shared/ui'
+import { Button } from '@/shared/components'
 import { useAutomationAvailability, useStatusStore } from '@/features/runtime-status'
 import { DeviceMonitorPanel } from '@/features/device-mirror'
 import { useUserConfig } from '@/features/user-config'

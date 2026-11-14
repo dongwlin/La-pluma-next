@@ -1,4 +1,4 @@
-import { Button } from '@/shared/ui'
+import { Button } from '@/shared/components'
 import { usePanelState } from '../hooks/usePanelState'
 import type { PanelStateStore } from '../model/panelState'
 import type { ParadoxSearchResult } from '../types'

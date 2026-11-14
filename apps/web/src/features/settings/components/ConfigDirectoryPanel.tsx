@@ -1,5 +1,5 @@
 import { FolderOpen, RefreshCw } from 'lucide-react'
-import { Button, Card, CardContent } from '@/shared/ui'
+import { Button, Card, CardContent } from '@/shared/components'
 import { useStatusStore } from '@/features/runtime-status'
 import { useSettingsConfigDirectory } from '../hooks/useSettingsConfigDirectory'
 

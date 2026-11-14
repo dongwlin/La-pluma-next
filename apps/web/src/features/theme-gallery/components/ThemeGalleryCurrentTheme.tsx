@@ -2,7 +2,7 @@ import { Monitor, Moon, Sun, type LucideIcon } from 'lucide-react'
 import type { ThemeMode } from '@/shared/theme/bootTheme'
 import { DEFAULT_THEME_ID } from '@/shared/theme/registry'
 import { useTheme } from '@/shared/theme/useTheme'
-import { Button, Card, CardContent, CardHeader } from '@/shared/ui'
+import { Button, Card, CardContent, CardHeader } from '@/shared/components'
 
 const modeOptions: Array<{ value: ThemeMode; label: string; icon: LucideIcon }> = [
   { value: 'light', label: '亮色', icon: Sun },

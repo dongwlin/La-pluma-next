@@ -1,5 +1,5 @@
 import { ChevronRight, Target } from 'lucide-react'
-import { Card, IconButton } from '@/shared/ui'
+import { Card, IconButton } from '@/shared/components'
 import { useDashboardStore } from '../store/dashboardStore'
 
 const sectionTitleClass = 'text-base font-bold text-foreground'

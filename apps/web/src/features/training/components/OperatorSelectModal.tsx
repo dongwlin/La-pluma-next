@@ -6,8 +6,8 @@ import {
   operatorCatalogQueryOptions,
   type OperatorDetailed,
 } from '@/features/game-data'
-import { Button, EmptyState, Input, Loading, Select } from '@/shared/ui'
-import { Modal } from '@/shared/ui/Modal'
+import { Button, EmptyState, Input, Loading, Select } from '@/shared/components'
+import { Modal } from '@/shared/components/Modal'
 import {
   OPERATOR_RENDER_BATCH_SIZE,
   filterOperatorRows,

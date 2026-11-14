@@ -1,5 +1,5 @@
 import { Cpu, Database, HardDrive, Thermometer } from 'lucide-react'
-import { SmoothPanel } from '@/shared/ui'
+import { SmoothPanel } from '@/shared/components'
 import { useDashboardStore } from '../store/dashboardStore'
 import { buildTemperatureSeries, getUsageTone, type UsageTone } from '../model/deviceView'
 

@@ -1,5 +1,5 @@
-import { Card, SmoothPanel } from '@/shared/ui'
-import { PageHeaderSkeleton, Skeleton } from '@/shared/ui/Loading'
+import { Card, SmoothPanel } from '@/shared/components'
+import { PageHeaderSkeleton, Skeleton } from '@/shared/components/Loading'
 import { useDashboardFlowLayout } from '../hooks/useDashboardFlowLayout'
 
 function DashboardSummarySkeleton({ variant }: { variant: 'training' | 'drops' }) {

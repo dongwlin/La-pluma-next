@@ -7,7 +7,7 @@ import {
   useItemIconCacheVersion,
 } from '@/features/game-data'
 import { OperatorSelectModal, type OperatorPickerOption } from '@/features/training'
-import { Button, IconButton } from '@/shared/ui'
+import { Button, IconButton } from '@/shared/components'
 
 export interface RoguelikeCoreOperatorFieldProps {
   id: string

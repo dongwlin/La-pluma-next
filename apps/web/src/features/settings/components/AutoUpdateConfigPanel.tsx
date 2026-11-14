@@ -5,7 +5,7 @@ import {
   Checkbox,
   Input,
   Switch,
-} from '@/shared/ui'
+} from '@/shared/components'
 import { useStatusStore } from '@/features/runtime-status'
 import { useSettingsAutoUpdate } from '../hooks/useSettingsAutoUpdate'
 

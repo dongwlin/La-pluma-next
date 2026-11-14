@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { FileJson } from 'lucide-react'
-import { Button } from '@/shared/ui'
+import { Button } from '@/shared/components'
 import { normalizeInfrastPlanIndex } from '../model/infrastScheduleEditing'
 import InfrastScheduleEditor from './InfrastScheduleEditor'
 

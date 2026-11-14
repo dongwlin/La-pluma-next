@@ -1,5 +1,5 @@
-import { Button } from '@/shared/ui'
-import Icons from '@/shared/ui/Icons'
+import { Button } from '@/shared/components'
+import Icons from '@/shared/components/Icons'
 
 interface InlineDataErrorProps {
   title: string

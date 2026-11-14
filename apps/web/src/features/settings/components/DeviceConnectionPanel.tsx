@@ -1,5 +1,5 @@
 import { Cable, Search } from 'lucide-react'
-import { Button } from '@/shared/ui'
+import { Button } from '@/shared/components'
 import { useSettingsDeviceConnection } from '../hooks/useSettingsDeviceConnection'
 import type { DiscoveredDevice } from '../model/deviceConnection'
 

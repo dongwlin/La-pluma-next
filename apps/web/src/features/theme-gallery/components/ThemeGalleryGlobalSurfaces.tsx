@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { RefreshCw, Save, Trash2 } from 'lucide-react'
-import Icons from '@/shared/ui/Icons'
+import Icons from '@/shared/components/Icons'
 import {
   Button,
   Card,
@@ -13,7 +13,7 @@ import {
   PageSkeleton,
   SmoothPanel,
   Switch,
-} from '@/shared/ui'
+} from '@/shared/components'
 
 export function ThemeGalleryGlobalSurfaces() {
   const [address, setAddress] = useState('')

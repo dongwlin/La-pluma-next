@@ -1,5 +1,5 @@
 import { ChevronDown, Plus, Trash2 } from 'lucide-react'
-import { Button, Checkbox, IconButton, Input, Select } from '@/shared/ui'
+import { Button, Checkbox, IconButton, Input, Select } from '@/shared/components'
 import {
   INFRASTRUCT_MANUFACTURE_PRODUCTS,
   INFRASTRUCT_SCHEDULE_FACILITIES,

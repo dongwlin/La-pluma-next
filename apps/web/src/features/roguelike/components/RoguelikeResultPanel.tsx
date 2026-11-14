@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { FileText } from 'lucide-react'
-import { EmptyState, SmoothPanel } from '@/shared/ui'
+import { EmptyState, SmoothPanel } from '@/shared/components'
 import { isActiveRunState, isTerminalRunState, type AgentRun } from '@/features/task-execution'
 import { RuntimeDiagnosticsPanel } from '@/features/runtime-status'
 import {

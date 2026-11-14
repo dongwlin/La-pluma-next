@@ -1,4 +1,4 @@
-import { Card } from '@/shared/ui'
+import { Card } from '@/shared/components'
 import type { AdvancedValues } from '../model/combatCommands'
 import { splitCopilotInputToArgs } from '../utils/copilotUri'
 import type { CombatTask } from '../types'

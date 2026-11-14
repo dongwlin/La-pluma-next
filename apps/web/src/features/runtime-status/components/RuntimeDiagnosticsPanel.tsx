@@ -1,5 +1,5 @@
 import { AlertTriangle, CheckCircle2, CircleHelp, XCircle } from 'lucide-react'
-import { Button } from '@/shared/ui'
+import { Button } from '@/shared/components'
 import type {
   RuntimeDiagnosticCheck,
   RuntimeDiagnosticCheckStatus,
