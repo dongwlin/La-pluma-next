@@ -1734,6 +1734,15 @@
     height: 1.5rem !important;
   }
 
+  /*
+   * Base UI Select 的弹层经 portal 挂在 body 下，上游 z-50 低于应用 chrome
+   * （navbar 60 / tabbar 70）与 app-modal-layer 80；未分层规则压过生成组件上的
+   * z-50 utilities，使其与 HintTooltip、FilterMenu 的 z-2000 浮层约定一致。
+   */
+  div:has(> [data-slot="select-content"]) {
+    z-index: 2000;
+  }
+
 }
 
 @layer page {
