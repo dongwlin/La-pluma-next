@@ -141,6 +141,26 @@ const hintGap = async (label: Locator, hint: Locator) => {
   }
 }
 
+const expectTooltipNotClipped = async (tooltip: Locator) => {
+  const clippedByAncestor = await tooltip.evaluate(element => {
+    const rect = element.getBoundingClientRect()
+    let ancestor = element.parentElement
+    while (ancestor && ancestor !== document.body) {
+      const style = getComputedStyle(ancestor)
+      const clipsX = style.overflowX !== 'visible'
+      const clipsY = style.overflowY !== 'visible'
+      if (clipsX || clipsY) {
+        const ancestorRect = ancestor.getBoundingClientRect()
+        if (clipsX && (rect.left < ancestorRect.left || rect.right > ancestorRect.right)) return true
+        if (clipsY && (rect.top < ancestorRect.top || rect.bottom > ancestorRect.bottom)) return true
+      }
+      ancestor = ancestor.parentElement
+    }
+    return false
+  })
+  expect(clippedByAncestor).toBe(false)
+}
+
 const FIGHT_HINTS: Array<[string, string]> = [
   ['关卡计划说明', '使用 HD-数字代表当前活动关卡；置顶关卡会优先执行。次数为该关卡的累计作战局数上限（连战中的每一局都计 1），留空表示不限制局数'],
   ['掉落目标说明', '任一物品达到目标数量后停止；格式为物品 ID=数量，多个目标用逗号分隔'],
@@ -270,6 +290,71 @@ test.describe('automation field hints', () => {
     await expectNoBrowserErrors(page)
   })
 
+  test('hands off between adjacent hints and lets pointers pass through the open tooltip', async ({ page }) => {
+    const environment = await installDeterministicEnvironment(page)
+    await page.goto('/app/automation')
+    await waitForPageReady(page, 'automation')
+
+    const accountHint = page.getByRole('button', { name: '切换账号说明', exact: true })
+    const launchHint = page.getByRole('button', { name: '启动游戏客户端说明', exact: true })
+    const accountTooltip = page.getByRole('tooltip').filter({ hasText: ACCOUNT_HINT })
+    const launchTooltip = page.getByRole('tooltip').filter({ hasText: LAUNCH_HINT })
+
+    await accountHint.hover()
+    await expect(accountTooltip).toBeVisible()
+
+    const accountBox = await accountTooltip.boundingBox()
+    const launchBox = await launchHint.boundingBox()
+    expect(accountBox).not.toBeNull()
+    expect(launchBox).not.toBeNull()
+
+    const overlap = {
+      x: Math.max(accountBox!.x, launchBox!.x),
+      y: Math.max(accountBox!.y, launchBox!.y),
+      right: Math.min(accountBox!.x + accountBox!.width, launchBox!.x + launchBox!.width),
+      bottom: Math.min(accountBox!.y + accountBox!.height, launchBox!.y + launchBox!.height),
+    }
+    expect(overlap.right).toBeGreaterThan(overlap.x)
+    expect(overlap.bottom).toBeGreaterThan(overlap.y)
+
+    const overlapPoint = { x: (overlap.x + overlap.right) / 2, y: (overlap.y + overlap.bottom) / 2 }
+    expect(await accountTooltip.evaluate((element, point) => {
+      const hit = document.elementFromPoint(point.x, point.y)
+      return hit !== null && !element.contains(hit)
+    }, overlapPoint)).toBe(true)
+    expect(await launchHint.evaluate((element, point) => {
+      const hit = document.elementFromPoint(point.x, point.y)
+      return hit !== null && (hit === element || element.contains(hit))
+    }, overlapPoint)).toBe(true)
+
+    const accountTriggerBox = await accountHint.boundingBox()
+    const launchTriggerBox = await launchHint.boundingBox()
+    expect(accountTriggerBox).not.toBeNull()
+    expect(launchTriggerBox).not.toBeNull()
+    await page.mouse.move(
+      accountTriggerBox!.x + accountTriggerBox!.width / 2,
+      accountTriggerBox!.y + accountTriggerBox!.height / 2,
+    )
+    await expect(accountTooltip).toBeVisible()
+    await page.mouse.move(
+      launchTriggerBox!.x + launchTriggerBox!.width / 2,
+      launchTriggerBox!.y + launchTriggerBox!.height / 2,
+    )
+    await expect(accountTooltip).toBeHidden()
+    await expect(launchTooltip).toBeVisible()
+
+    await page.keyboard.press('Escape')
+    await expect(launchTooltip).toBeHidden()
+    await accountHint.hover()
+    await expect(accountTooltip).toBeVisible()
+    await page.mouse.click(overlapPoint.x, overlapPoint.y)
+    await expect(accountTooltip).toBeHidden()
+    await expect(launchTooltip).toBeVisible()
+
+    environment.assertNoUnmatchedApi()
+    await expectNoBrowserErrors(page)
+  })
+
   test('keeps the revealed hint inside the viewport and above the panels', async ({ page }) => {
     const environment = await installDeterministicEnvironment(page)
     await page.goto('/app/automation')
@@ -289,17 +374,19 @@ test.describe('automation field hints', () => {
     expect(box!.x + box!.width).toBeLessThanOrEqual(viewport.width)
     expect(box!.y + box!.height).toBeLessThanOrEqual(viewport.height)
 
-    // 提示层挂在 body 下而不是面板里，面板的 overflow 裁切不会截断它。
-    expect(await accountTooltip.evaluate(element => element.closest('.smooth-panel-surface') === null)).toBe(true)
+    // 提示层挂在 body 下，祖先链上没有会裁切它的 overflow 容器。
+    await expectTooltipNotClipped(accountTooltip)
     // 提示层与旧实现一样位于应用 chrome（navbar 60 / tabbar 70）和模态层 80 之上。
     expect(await accountTooltip.evaluate(element => {
       const positioner = element.parentElement
       return positioner ? Number(getComputedStyle(positioner).zIndex) : 0
     })).toBeGreaterThanOrEqual(2000)
+    // 纯文本提示不接收指针事件，覆盖到相邻控件时不能吞掉点击。
+    expect(await accountTooltip.evaluate(element => getComputedStyle(element).pointerEvents)).toBe('none')
     expect(await accountTooltip.evaluate(element => {
       const rect = element.getBoundingClientRect()
-      const topmost = document.elementFromPoint(rect.left + rect.width / 2, rect.top + rect.height / 2)
-      return topmost !== null && element.contains(topmost)
+      const hit = document.elementFromPoint(rect.left + rect.width / 2, rect.top + rect.height / 2)
+      return hit !== null && !element.contains(hit)
     })).toBe(true)
 
     // 说明文字不再有常驻段落：打开时只有 tooltip 一处承载它。
@@ -610,7 +697,8 @@ test.describe('automation field hints', () => {
     expect(box!.y).toBeGreaterThanOrEqual(0)
     expect(box!.x + box!.width).toBeLessThanOrEqual(viewport.width)
     expect(box!.y + box!.height).toBeLessThanOrEqual(viewport.height)
-    expect(await accountTooltip.evaluate(element => element.closest('.smooth-panel-surface') === null)).toBe(true)
+    await expectTooltipNotClipped(accountTooltip)
+    expect(await accountTooltip.evaluate(element => getComputedStyle(element).pointerEvents)).toBe('none')
     expect(await accountTooltip.evaluate(element => {
       const positioner = element.parentElement
       return positioner ? Number(getComputedStyle(positioner).zIndex) : 0
