@@ -5,10 +5,13 @@ import { join } from 'node:path'
 import { cwd } from 'node:process'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import {
-  applyTheme,
+  applyUiSettings,
   BOOT_THEME_COLORS,
   createBootScript,
-  readStoredTheme,
+  DEFAULT_THEME_SETTINGS,
+  LEGACY_THEME_STORAGE_KEY,
+  readLegacyThemeMode,
+  readStoredSettings,
   resolveDark,
   THEME_STORAGE_KEY,
 } from './bootTheme'
@@ -30,6 +33,7 @@ function installThemeEnvironment() {
   }))
   document.documentElement.className = ''
   document.documentElement.removeAttribute('style')
+  document.documentElement.removeAttribute('data-theme')
   document.body.innerHTML = '<div id="app-root"></div>'
   document.head.innerHTML = [
     '<meta name="theme-color" content="" />',
@@ -37,25 +41,51 @@ function installThemeEnvironment() {
   ].join('')
 }
 
-describe('readStoredTheme', () => {
-  it.each(['light', 'dark', 'system'] as const)('reads the stored %s preference', (theme) => {
-    expect(readStoredTheme(JSON.stringify({ state: { theme } }))).toBe(theme)
+describe('readStoredSettings', () => {
+  it.each(['light', 'dark', 'system'] as const)('reads the stored %s setting', (mode) => {
+    expect(readStoredSettings(JSON.stringify({ themeId: 'default', mode }))).toEqual({
+      themeId: 'default',
+      mode,
+    })
   })
 
-  it('falls back to dark for unsupported or missing state', () => {
-    expect(readStoredTheme(JSON.stringify({ state: { theme: 'sepia' } }))).toBe('dark')
-    expect(readStoredTheme(JSON.stringify({ state: {} }))).toBe('dark')
-    expect(readStoredTheme(JSON.stringify({}))).toBe('dark')
-    expect(readStoredTheme(null)).toBe('dark')
+  it('fills in the defaults per missing field', () => {
+    expect(readStoredSettings(JSON.stringify({ mode: 'light' }))).toEqual({ themeId: 'default', mode: 'light' })
+    expect(readStoredSettings(JSON.stringify({ themeId: 'default' }))).toEqual({ themeId: 'default', mode: 'dark' })
   })
 
-  it('falls back to dark when the persisted JSON is corrupt', () => {
-    expect(readStoredTheme('{invalid-json')).toBe('dark')
+  it('falls back per field for unknown values and returns null when both are unusable', () => {
+    expect(readStoredSettings(JSON.stringify({ themeId: 'missing-theme', mode: 'light' }))).toEqual({
+      themeId: 'default',
+      mode: 'light',
+    })
+    expect(readStoredSettings(JSON.stringify({ themeId: 'missing-theme', mode: 'sepia' }))).toBeNull()
+    expect(readStoredSettings(JSON.stringify({}))).toBeNull()
+    expect(readStoredSettings(JSON.stringify(null))).toBeNull()
+    expect(readStoredSettings(null)).toBeNull()
+  })
+
+  it('returns null when the persisted JSON is corrupt', () => {
+    expect(readStoredSettings('{invalid-json')).toBeNull()
+  })
+})
+
+describe('readLegacyThemeMode', () => {
+  it.each(['light', 'dark', 'system'] as const)('reads the legacy %s preference', (mode) => {
+    expect(readLegacyThemeMode(JSON.stringify({ state: { theme: mode }, version: 0 }))).toBe(mode)
+  })
+
+  it('returns null for unsupported, missing or corrupt state', () => {
+    expect(readLegacyThemeMode(JSON.stringify({ state: { theme: 'sepia' } }))).toBeNull()
+    expect(readLegacyThemeMode(JSON.stringify({ state: {} }))).toBeNull()
+    expect(readLegacyThemeMode(JSON.stringify({}))).toBeNull()
+    expect(readLegacyThemeMode(null)).toBeNull()
+    expect(readLegacyThemeMode('{invalid-json')).toBeNull()
   })
 })
 
 describe('resolveDark', () => {
-  it('resolves explicit themes and the system preference independently', () => {
+  it('resolves explicit modes and the system preference independently', () => {
     expect(resolveDark('dark', false)).toBe(true)
     expect(resolveDark('light', true)).toBe(false)
     expect(resolveDark('system', true)).toBe(true)
@@ -63,12 +93,12 @@ describe('resolveDark', () => {
   })
 })
 
-describe('applyTheme', () => {
+describe('applyUiSettings', () => {
   beforeEach(installThemeEnvironment)
 
   it.each([
     {
-      theme: 'light',
+      mode: 'light',
       systemDark: false,
       dark: false,
       background: 'rgb(242, 242, 247)',
@@ -76,7 +106,7 @@ describe('applyTheme', () => {
       statusBar: 'default',
     },
     {
-      theme: 'dark',
+      mode: 'dark',
       systemDark: false,
       dark: true,
       background: 'rgb(0, 0, 0)',
@@ -84,7 +114,7 @@ describe('applyTheme', () => {
       statusBar: 'black-translucent',
     },
     {
-      theme: 'system',
+      mode: 'system',
       systemDark: true,
       dark: true,
       background: 'rgb(0, 0, 0)',
@@ -92,15 +122,15 @@ describe('applyTheme', () => {
       statusBar: 'black-translucent',
     },
     {
-      theme: 'system',
+      mode: 'system',
       systemDark: false,
       dark: false,
       background: 'rgb(242, 242, 247)',
       themeColor: '#f6f8fb',
       statusBar: 'default',
     },
-  ] as const)('applies $theme with systemDark=$systemDark', ({
-    theme,
+  ] as const)('applies $mode with systemDark=$systemDark', ({
+    mode,
     systemDark: prefersDark,
     dark,
     background,
@@ -108,29 +138,110 @@ describe('applyTheme', () => {
     statusBar,
   }) => {
     systemDark = prefersDark
+    document.documentElement.setAttribute('data-theme', 'stale-theme')
 
-    applyTheme(theme)
+    applyUiSettings({ themeId: 'default', mode })
 
     expect(document.documentElement.classList.contains('dark')).toBe(dark)
     expect(document.getElementById('app-root')?.classList.contains('dark')).toBe(dark)
     expect(document.documentElement.style.colorScheme).toBe(dark ? 'dark' : 'light')
     expect(document.documentElement.style.backgroundColor).toBe(background)
+    expect(document.documentElement.hasAttribute('data-theme')).toBe(false)
     expect(document.querySelector('meta[name="theme-color"]')?.getAttribute('content')).toBe(themeColor)
     expect(document.querySelector('meta[name="apple-mobile-web-app-status-bar-style"]')?.getAttribute('content')).toBe(statusBar)
+  })
+
+  it('applies the default theme boot colors for unknown theme ids', () => {
+    systemDark = false
+
+    applyUiSettings({ themeId: 'removed-theme', mode: 'dark' })
+
+    expect(document.documentElement.classList.contains('dark')).toBe(true)
+    expect(document.documentElement.style.backgroundColor).toBe('rgb(0, 0, 0)')
+    expect(document.documentElement.hasAttribute('data-theme')).toBe(false)
   })
 })
 
 describe('createBootScript', () => {
   beforeEach(installThemeEnvironment)
 
-  it('boots into the dark default when no preference is stored', () => {
-    expect(window.localStorage.getItem(THEME_STORAGE_KEY)).toBeNull()
-
+  it('boots into the dark default when nothing is stored', () => {
     window.eval(createBootScript())
 
     expect(document.documentElement.classList.contains('dark')).toBe(true)
     expect(document.documentElement.style.colorScheme).toBe('dark')
     expect(document.documentElement.style.backgroundColor).toBe('rgb(0, 0, 0)')
+    expect(document.documentElement.hasAttribute('data-theme')).toBe(false)
+  })
+
+  it('migrates the legacy ui-storage mode on read without writing anything', () => {
+    window.localStorage.setItem(
+      LEGACY_THEME_STORAGE_KEY,
+      JSON.stringify({ state: { theme: 'light' }, version: 0 }),
+    )
+
+    window.eval(createBootScript())
+
+    expect(document.documentElement.classList.contains('dark')).toBe(false)
+    expect(document.documentElement.style.backgroundColor).toBe('rgb(242, 242, 247)')
+    expect(window.localStorage.getItem(THEME_STORAGE_KEY)).toBeNull()
+    expect(window.localStorage.getItem(LEGACY_THEME_STORAGE_KEY)).toBe(JSON.stringify({ state: { theme: 'light' }, version: 0 }))
+  })
+
+  it('prefers the lpn-ui settings over the legacy storage', () => {
+    window.localStorage.setItem(
+      LEGACY_THEME_STORAGE_KEY,
+      JSON.stringify({ state: { theme: 'light' }, version: 0 }),
+    )
+    window.localStorage.setItem(THEME_STORAGE_KEY, JSON.stringify({ themeId: 'default', mode: 'dark' }))
+
+    window.eval(createBootScript())
+
+    expect(document.documentElement.classList.contains('dark')).toBe(true)
+  })
+
+  it('boots light from stored settings', () => {
+    window.localStorage.setItem(THEME_STORAGE_KEY, JSON.stringify({ themeId: 'default', mode: 'light' }))
+
+    window.eval(createBootScript())
+
+    expect(document.documentElement.classList.contains('dark')).toBe(false)
+    expect(document.querySelector('meta[name="theme-color"]')?.getAttribute('content')).toBe('#f6f8fb')
+  })
+
+  it('falls back to the default theme for unknown theme ids', () => {
+    window.localStorage.setItem(THEME_STORAGE_KEY, JSON.stringify({ themeId: 'removed-theme', mode: 'light' }))
+
+    window.eval(createBootScript())
+
+    expect(document.documentElement.classList.contains('dark')).toBe(false)
+    expect(document.documentElement.hasAttribute('data-theme')).toBe(false)
+    expect(window.localStorage.getItem(THEME_STORAGE_KEY)).toBe(JSON.stringify({ themeId: 'removed-theme', mode: 'light' }))
+  })
+
+  it('marks the standalone viewport', () => {
+    window.matchMedia = vi.fn().mockImplementation((query: string) => ({
+      matches: query === '(display-mode: standalone)',
+      media: query,
+      onchange: null,
+      addListener: vi.fn(),
+      removeListener: vi.fn(),
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+      dispatchEvent: vi.fn(),
+    }))
+
+    window.eval(createBootScript())
+
+    expect(document.documentElement.classList.contains('la-pluma-standalone')).toBe(true)
+    expect(document.documentElement.classList.contains('device-full-viewport')).toBe(true)
+  })
+})
+
+describe('default settings', () => {
+  it('keeps the dark default consistent with the boot colors', () => {
+    expect(DEFAULT_THEME_SETTINGS).toEqual({ themeId: 'default', mode: 'dark' })
+    expect(BOOT_THEME_COLORS.dark.background).toBe('#000000')
   })
 })
 

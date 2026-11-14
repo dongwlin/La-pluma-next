@@ -24,14 +24,15 @@ export const READY_MARKER: Record<string, { text?: string; input?: string }> = {
   logs: { text: '任务执行完成' },
   statistics: { text: '能天使' },
   config: { text: 'v5.12.3' },
+  gallery: { text: '主题画廊' },
 }
 
-/** 主题种子：与 shared/stores/uiStore.ts 的 persist key/结构保持一致。 */
+/** 主题种子：与 shared/theme/bootTheme.ts 的 lpn-ui key/结构保持一致。 */
 export function themeSeedScript(theme: Theme) {
   return `
-    localStorage.setItem('ui-storage', JSON.stringify({
-      state: { theme: ${JSON.stringify(theme)} },
-      version: 0,
+    localStorage.setItem('lpn-ui', JSON.stringify({
+      themeId: 'default',
+      mode: ${JSON.stringify(theme)},
     }))
   `
 }

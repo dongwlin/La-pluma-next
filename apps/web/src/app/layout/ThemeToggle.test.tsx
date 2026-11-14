@@ -3,7 +3,8 @@
 import { act, forwardRef, type ButtonHTMLAttributes, type HTMLAttributes, type ReactNode } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { useUIStore } from '@/shared/stores'
+import { THEME_STORAGE_KEY } from '@/shared/theme/bootTheme'
+import { ThemeProvider } from '@/shared/theme/ThemeProvider'
 import ThemeToggle from './ThemeToggle'
 
 ;(globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true
@@ -43,6 +44,10 @@ const mediaQueryList = (query: string): MediaQueryList => ({
   dispatchEvent: vi.fn(),
 })
 
+function storedSettings(): { themeId: string; mode: string } {
+  return JSON.parse(window.localStorage.getItem(THEME_STORAGE_KEY) ?? '{}')
+}
+
 describe('ThemeToggle mobile menu', () => {
   beforeEach(() => {
     window.matchMedia = vi.fn(mediaQueryList)
@@ -51,7 +56,8 @@ describe('ThemeToggle mobile menu', () => {
       return 1
     })
     window.cancelAnimationFrame = vi.fn()
-    useUIStore.getState().setTheme('system')
+    window.localStorage.clear()
+    window.localStorage.setItem(THEME_STORAGE_KEY, JSON.stringify({ themeId: 'default', mode: 'system' }))
     container = document.createElement('div')
     document.body.appendChild(container)
     root = createRoot(container)
@@ -64,7 +70,7 @@ describe('ThemeToggle mobile menu', () => {
   })
 
   it('opens an anchored radio menu and applies the selected theme', async () => {
-    await act(async () => root.render(<ThemeToggle />))
+    await act(async () => root.render(<ThemeProvider><ThemeToggle /></ThemeProvider>))
     const trigger = container.querySelector<HTMLButtonElement>('[aria-haspopup="menu"]')!
 
     await act(async () => trigger.click())
@@ -77,13 +83,14 @@ describe('ThemeToggle mobile menu', () => {
       .find(option => option.textContent?.includes('亮色模式'))!
     await act(async () => lightOption.click())
 
-    expect(useUIStore.getState().theme).toBe('light')
+    expect(storedSettings()).toMatchObject({ themeId: 'default', mode: 'light' })
+    expect(document.documentElement.classList.contains('dark')).toBe(false)
     expect(container.querySelector('[role="menu"]')).toBeNull()
     expect(document.activeElement).toBe(trigger)
   })
 
-  it('keeps the desktop segmented control and store selection in sync', async () => {
-    await act(async () => root.render(<ThemeToggle />))
+  it('keeps the desktop segmented control and stored selection in sync', async () => {
+    await act(async () => root.render(<ThemeProvider><ThemeToggle /></ThemeProvider>))
 
     const group = container.querySelector<HTMLElement>('[role="group"][aria-label="界面主题"]')!
     const buttons = Array.from(group.querySelectorAll<HTMLButtonElement>('button'))
@@ -99,13 +106,13 @@ describe('ThemeToggle mobile menu', () => {
 
     await act(async () => buttons[0]?.click())
 
-    expect(useUIStore.getState().theme).toBe('light')
+    expect(storedSettings().mode).toBe('light')
     expect(group.dataset.theme).toBe('light')
     expect(buttons.filter(button => button.getAttribute('aria-pressed') === 'true')).toEqual([buttons[0]])
   })
 
   it('closes with Escape and restores focus to the trigger', async () => {
-    await act(async () => root.render(<ThemeToggle />))
+    await act(async () => root.render(<ThemeProvider><ThemeToggle /></ThemeProvider>))
     const trigger = container.querySelector<HTMLButtonElement>('[aria-haspopup="menu"]')!
     await act(async () => trigger.click())
 
@@ -118,7 +125,7 @@ describe('ThemeToggle mobile menu', () => {
   it('moves through options with arrow keys and closes when tabbing away', async () => {
     await act(async () => root.render(
       <div className="la-pluma-navbar-actions">
-        <ThemeToggle />
+        <ThemeProvider><ThemeToggle /></ThemeProvider>
         <a href="https://github.com/dongwlin/La-pluma-next" className="la-pluma-github-link" aria-label="打开 GitHub 仓库">GitHub</a>
       </div>,
     ))

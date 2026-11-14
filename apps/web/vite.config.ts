@@ -66,7 +66,7 @@ export const createWorkboxConfig = (basePath: string): WorkboxConfig => ({
   cleanupOutdatedCaches: true,
   globPatterns: [
     '**/*.{css,html,ico,png,svg,woff,woff2}',
-    'assets/{index,react-vendor,motion-vendor,workbox-window.prod.es5,rolldown-runtime}-*.js',
+    'assets/{index,react-vendor,motion-vendor,ui-vendor,workbox-window.prod.es5,rolldown-runtime}-*.js',
   ],
   navigateFallbackDenylist: createNavigateFallbackDenylist(basePath),
   importScripts: [`${basePath}legacy-page-cache-cleanup.js`],
@@ -284,6 +284,7 @@ export const createViteConfig = (basePath: string, env: Record<string, string | 
         manualChunks(id: string) {
           if (/node_modules\/(react|react-dom|scheduler)\//.test(id)) return 'react-vendor'
           if (/node_modules\/(framer-motion|motion-dom|motion-utils)\//.test(id)) return 'motion-vendor'
+          if (/node_modules\/(@base-ui\/react|@base-ui\/utils|sonner|clsx|tailwind-merge|class-variance-authority)\//.test(id)) return 'ui-vendor'
           return undefined
         }
       }
