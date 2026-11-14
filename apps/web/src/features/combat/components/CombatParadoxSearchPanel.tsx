@@ -74,7 +74,7 @@ export default function CombatParadoxSearchPanel({
             <span className="font-medium brand-text">{result.operator}</span>
             <span className="text-tertiary">{result.copilots.length} 个作业</span>
           </div>
-          <div className="max-h-56 divide-y divide-(--app-border) overflow-hidden overflow-y-auto rounded-lg border border-(--app-border) bg-(--app-surface-solid)">
+          <div className="max-h-56 divide-y divide-border overflow-hidden overflow-y-auto rounded-lg border border-border bg-card">
             {result.copilots.slice(0, 6).map((copilot, idx) => {
               const stars = Math.min(5, Math.max(1, Math.ceil(copilot.hotScore)))
 
@@ -82,7 +82,7 @@ export default function CombatParadoxSearchPanel({
                 <button
                   key={copilot.id}
                   onClick={() => onSelectUri(copilot.uri)}
-                  className="min-h-11 w-full px-3 py-2 text-left text-xs transition-colors hover:bg-(--app-surface-muted) focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-(--app-accent)"
+                  className="min-h-11 w-full px-3 py-2 text-left text-xs transition-colors hover:bg-muted focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary"
                 >
                   <div className="flex min-w-0 items-center justify-between gap-2">
                     <span className="truncate font-mono brand-text">{copilot.uri}</span>

@@ -17,7 +17,7 @@ export default function CombatAdvancedFields({
 
   return (
     <motion.div
-      className="mt-3 space-y-3 border-t border-(--app-border) pt-3"
+      className="mt-3 space-y-3 border-t border-border pt-3"
       initial={{ opacity: 0, height: 0 }}
       animate={{ opacity: 1, height: "auto" }}
       transition={{ duration: 0.3 }}
@@ -35,7 +35,7 @@ export default function CombatAdvancedFields({
                 onChange={(e) => onChange(option.key, e.target.checked)}
                 className="custom-checkbox h-4 w-4 cursor-pointer"
               />
-              <span className="min-w-0 truncate transition-colors group-hover:text-(--app-accent)">{option.label}</span>
+              <span className="min-w-0 truncate transition-colors group-hover:text-primary">{option.label}</span>
             </label>
           ) : option.type === 'select' && option.options ? (
             <div className="grid min-w-0 gap-1.5 sm:grid-cols-[7rem_minmax(0,1fr)] sm:items-center">
