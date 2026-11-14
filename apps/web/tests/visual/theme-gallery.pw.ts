@@ -38,6 +38,55 @@ for (const theme of THEMES) {
       await expectNoBrowserErrors(page)
     })
 
+    test(`form controls ${theme}`, async ({ page }) => {
+      test.skip(test.info().project.name !== 'desktop', 'the form control group is captured once per theme')
+
+      const environment = await installDeterministicEnvironment(page)
+
+      await page.goto('/dev/theme-gallery')
+      await waitForPageReady(page, 'gallery')
+
+      const controls = page.locator('[data-region="gallery-form-controls"]')
+      await controls.scrollIntoViewIfNeeded()
+      await expect(controls).toBeVisible()
+      await expect(page.getByRole('checkbox', { name: '部分选择（混合态）' }))
+        .toHaveAttribute('aria-checked', 'mixed')
+      await expect(controls).toHaveScreenshot(`theme-gallery-form-controls-${theme}.png`, {
+        animations: 'disabled',
+        caret: 'hide',
+      })
+
+      environment.assertNoUnmatchedApi()
+      await expectNoBrowserErrors(page)
+    })
+
+    test(`select popup ${theme}`, async ({ page }) => {
+      test.skip(test.info().project.name !== 'desktop', 'the select popup state is captured once per theme')
+
+      const environment = await installDeterministicEnvironment(page)
+
+      await page.goto('/dev/theme-gallery')
+      await waitForPageReady(page, 'gallery')
+
+      const trigger = page.locator('#gallery-select-source')
+      await trigger.evaluate(element => {
+        element.scrollIntoView({ block: 'center' })
+      })
+      await trigger.click()
+      const listbox = page.getByRole('listbox')
+      await expect(listbox).toBeVisible()
+      const disabledOption = page.getByRole('option', { name: '离线镜像（禁用）', exact: true })
+      await expect(disabledOption).toBeVisible()
+      await expect(disabledOption).toHaveAttribute('aria-disabled', 'true')
+      await expect(listbox).toHaveScreenshot(`theme-gallery-select-popup-${theme}.png`, {
+        animations: 'disabled',
+        caret: 'hide',
+      })
+
+      environment.assertNoUnmatchedApi()
+      await expectNoBrowserErrors(page)
+    })
+
     test(`sidebar ${theme}`, async ({ page }) => {
       test.skip(test.info().project.name !== 'desktop', 'the workspace sidebar is desktop-only')
 
