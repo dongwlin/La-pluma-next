@@ -20,7 +20,7 @@ export default function InlineDataError({
       role="alert"
     >
       <div className="min-w-0">
-        <p className="font-semibold text-primary">{title}</p>
+        <p className="font-semibold text-foreground">{title}</p>
         <p className="mt-1 wrap-break-word text-sm leading-6 wrap-anywhere form-error-text">{description}</p>
       </div>
       <Button

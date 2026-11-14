@@ -27,7 +27,7 @@ export default function CombatAdvancedFields({
         return (
         <div key={option.key} className="min-w-0">
           {option.type === 'checkbox' ? (
-            <label htmlFor={controlId} className="group flex min-h-11 w-full min-w-0 cursor-pointer items-center gap-2 py-2 text-sm text-secondary">
+            <label htmlFor={controlId} className="group flex min-h-11 w-full min-w-0 cursor-pointer items-center gap-2 py-2 text-sm text-muted-foreground">
               <input
                 id={controlId}
                 type="checkbox"
@@ -39,7 +39,7 @@ export default function CombatAdvancedFields({
             </label>
           ) : option.type === 'select' && option.options ? (
             <div className="grid min-w-0 gap-1.5 sm:grid-cols-[7rem_minmax(0,1fr)] sm:items-center">
-              <label htmlFor={controlId} className="text-sm text-secondary">{option.label}</label>
+              <label htmlFor={controlId} className="text-sm text-muted-foreground">{option.label}</label>
               <select
                 id={controlId}
                 name={`maa-${taskId}-${option.key}`}
@@ -54,7 +54,7 @@ export default function CombatAdvancedFields({
             </div>
           ) : (
             <div className="grid min-w-0 gap-1.5 sm:grid-cols-[7rem_minmax(0,1fr)] sm:items-center">
-              <label htmlFor={controlId} className="text-sm text-secondary">{option.label}</label>
+              <label htmlFor={controlId} className="text-sm text-muted-foreground">{option.label}</label>
               <input
                 id={controlId}
                 type={option.type}

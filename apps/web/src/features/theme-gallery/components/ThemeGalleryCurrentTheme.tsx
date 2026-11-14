@@ -20,7 +20,7 @@ export function ThemeGalleryCurrentTheme() {
       <CardHeader title="当前主题" />
       <CardContent className="app-stack-card">
         <div className="flex flex-wrap items-baseline gap-x-3.5 gap-y-1">
-          <span className="text-sm font-medium text-primary">{activeTheme.name}</span>
+          <span className="text-sm font-medium text-foreground">{activeTheme.name}</span>
           <span className="text-xs text-tertiary">{activeTheme.description}</span>
         </div>
 
@@ -33,7 +33,7 @@ export function ThemeGalleryCurrentTheme() {
                 aria-hidden="true"
               />
               <span>
-                <span className="block text-xs text-secondary">{swatch.label}</span>
+                <span className="block text-xs text-muted-foreground">{swatch.label}</span>
                 <span className="block font-mono text-xs text-tertiary">{swatch[resolvedMode]}</span>
               </span>
             </div>

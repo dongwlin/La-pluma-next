@@ -106,8 +106,8 @@ export default function CombatTaskHeading({
           {task.icon}
         </div>
         <div className="min-w-0">
-          <h4 className="truncate text-lg font-semibold text-primary">{task.name}</h4>
-          <p className="mt-1 text-sm leading-relaxed text-secondary">{task.description}</p>
+          <h4 className="truncate text-lg font-semibold text-foreground">{task.name}</h4>
+          <p className="mt-1 text-sm leading-relaxed text-muted-foreground">{task.description}</p>
         </div>
       </div>
 

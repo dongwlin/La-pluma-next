@@ -157,7 +157,7 @@ export default function AutomationTaskFlowPanel({
         )}
 
         {lastDeletedTaskName && (
-          <div className="mx-3.5 flex min-h-11 items-center justify-between gap-3.5 border-t border-(--app-border) text-xs text-secondary sm:mx-4" role="status">
+          <div className="mx-3.5 flex min-h-11 items-center justify-between gap-3.5 border-t border-(--app-border) text-xs text-muted-foreground sm:mx-4" role="status">
             <span className="min-w-0 truncate">已删除“{lastDeletedTaskName}”</span>
             <button
               type="button"

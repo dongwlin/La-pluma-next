@@ -3,7 +3,7 @@ import { SmoothPanel } from '@/shared/ui'
 import { useDashboardStore } from '../store/dashboardStore'
 import { buildTemperatureSeries, getUsageTone, type UsageTone } from '../model/deviceView'
 
-const labelClass = 'text-secondary'
+const labelClass = 'text-muted-foreground'
 const progressTrackClass = 'h-1.5 rounded-full bg-(--app-surface-muted) overflow-hidden'
 
 const getUsageBarClass = (tone: UsageTone) => {
@@ -15,7 +15,7 @@ const getUsageBarClass = (tone: UsageTone) => {
 const getUsageValueClass = (tone: UsageTone) => {
   if (tone === 'danger') return 'text-(--app-danger)'
   if (tone === 'warning') return 'text-(--app-warning)'
-  return 'text-primary'
+  return 'text-foreground'
 }
 
 function TemperatureSparkline({ values }: { values: number[] }) {
@@ -80,11 +80,11 @@ export default function DashboardDeviceSection() {
                   <Icon className={`h-4 w-4 ${labelClass}`} strokeWidth={1.5} />
                 </div>
                 <div className="min-w-0">
-                  <div className="text-xs font-medium text-primary">{label}</div>
+                  <div className="text-xs font-medium text-foreground">{label}</div>
                   <div className={`truncate text-xs ${labelClass}`}>{sub || '实时采样'}</div>
                 </div>
                 {value != null && (
-                  <div className="ml-auto text-sm font-semibold text-primary">{value}</div>
+                  <div className="ml-auto text-sm font-semibold text-foreground">{value}</div>
                 )}
               </div>
               {label === '温度' ? (

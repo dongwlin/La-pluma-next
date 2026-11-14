@@ -152,7 +152,7 @@ export default function InfrastScheduleEditor({
       closeOnOverlay={!saving}
       footer={(
         <div className="flex w-full flex-wrap items-center justify-between gap-3.5">
-          <span className="text-xs text-secondary">
+          <span className="text-xs text-muted-foreground">
             {document ? `${document.plans.length} 个方案` : '未加载排班文件'}
           </span>
           <div className="flex items-center gap-2">
@@ -185,13 +185,13 @@ export default function InfrastScheduleEditor({
             <Button variant="secondary" disabled={saving || loading} onClick={load}>加载</Button>
             <Button variant="secondary" disabled={saving || loading} onClick={createNew}>新建排班</Button>
           </div>
-          <p className="text-xs leading-5 text-secondary">
+          <p className="text-xs leading-5 text-muted-foreground">
             相对路径基于 MAA 配置目录的 infrast 文件夹，与 maa-cli 解析 filename 的规则一致；保存时省略默认值，未编辑的房间保持原样。
           </p>
 
           {listQuery.data && (
             <div className="space-y-2">
-              <p className="text-xs text-secondary">目录：{listQuery.data.directory}</p>
+              <p className="text-xs text-muted-foreground">目录：{listQuery.data.directory}</p>
               {schedules.length > 0 ? (
                 <div className="max-h-40 space-y-1 overflow-y-auto rounded-lg border border-(--app-border) p-2">
                   {schedules.map(schedule => (
@@ -199,7 +199,7 @@ export default function InfrastScheduleEditor({
                       key={schedule.name}
                       type="button"
                       disabled={saving}
-                      className="flex min-h-11 w-full items-center justify-between gap-2 rounded-md px-2 text-left text-sm text-secondary hover:bg-(--app-surface-muted)"
+                      className="flex min-h-11 w-full items-center justify-between gap-2 rounded-md px-2 text-left text-sm text-muted-foreground hover:bg-(--app-surface-muted)"
                       onClick={() => {
                         setName(schedule.name)
                         setLoadName(schedule.name)
@@ -207,14 +207,14 @@ export default function InfrastScheduleEditor({
                       }}
                     >
                       <span className="truncate">{schedule.name}</span>
-                      <span className="shrink-0 text-xs text-secondary">
+                      <span className="shrink-0 text-xs text-muted-foreground">
                         {schedule.valid ? `${schedule.planCount} 个方案` : '无法解析'}
                       </span>
                     </button>
                   ))}
                 </div>
               ) : (
-                <p className="text-xs text-secondary">目录中还没有排班文件，填写文件名后点击“新建排班”。</p>
+                <p className="text-xs text-muted-foreground">目录中还没有排班文件，填写文件名后点击“新建排班”。</p>
               )}
             </div>
           )}
@@ -293,19 +293,19 @@ export default function InfrastScheduleEditor({
             </section>
 
             <section className="space-y-2 border-t border-(--app-border) pt-4">
-              <h4 className="text-sm font-semibold text-primary">房间</h4>
+              <h4 className="text-sm font-semibold text-foreground">房间</h4>
               <InfrastScheduleRoomsEditor
                 plan={plan}
                 disabled={saving}
                 onChange={next => updatePlan(() => next)}
               />
-              <p className="text-xs leading-5 text-secondary">
+              <p className="text-xs leading-5 text-muted-foreground">
                 无人机、菲亚梅塔、干员编组、时间段与其他扩展字段不在本编辑器内，保存时原样保留。
               </p>
             </section>
           </>
         ) : (
-          <p className="text-sm text-secondary">
+          <p className="text-sm text-muted-foreground">
             输入或选择已有排班文件后点击“加载”；新文件可点击“新建排班”后再保存。
           </p>
         )}

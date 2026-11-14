@@ -58,7 +58,7 @@ export function ThemeGalleryGlobalSurfaces() {
             <Icons.Document />
             <Icons.Target />
           </div>
-          <div className="flex items-center gap-3.5 text-secondary">
+          <div className="flex items-center gap-3.5 text-muted-foreground">
             <Icons.TrendingUp />
             <Icons.Zap />
             <Icons.Star />
@@ -72,13 +72,13 @@ export function ThemeGalleryGlobalSurfaces() {
         <CardHeader title="面板容器" />
         <CardContent className="grid gap-3.5 md:grid-cols-3">
           <Card>
-            <p className="text-sm text-secondary">基础卡片，外层负责阴影与边框。</p>
+            <p className="text-sm text-muted-foreground">基础卡片，外层负责阴影与边框。</p>
           </Card>
           <Card smoothCorners>
-            <p className="text-sm text-secondary">连续圆角卡片，内部表面负责裁切。</p>
+            <p className="text-sm text-muted-foreground">连续圆角卡片，内部表面负责裁切。</p>
           </Card>
           <SmoothPanel surfaceClassName="flex items-center px-4 py-4">
-            <p className="text-sm text-secondary">连续圆角独立面板。</p>
+            <p className="text-sm text-muted-foreground">连续圆角独立面板。</p>
           </SmoothPanel>
         </CardContent>
       </Card>

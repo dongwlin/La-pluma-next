@@ -71,12 +71,12 @@ function OperatorPickerCard({ item, eager }: OperatorPickerCardProps) {
       </div>
 
       <div className="space-y-2 text-center">
-        <div className="truncate text-sm font-semibold text-primary" title={item.name}>
+        <div className="truncate text-sm font-semibold text-foreground" title={item.name}>
           {item.name || '未知干员'}
         </div>
         <div className="flex min-h-5 flex-wrap items-center justify-center gap-1 text-xs">
           {isOwned && item.elite !== undefined && (
-            <span className="whitespace-nowrap rounded-full px-2 py-0.5 surface-panel text-secondary">
+            <span className="whitespace-nowrap rounded-full px-2 py-0.5 surface-panel text-muted-foreground">
               精{item.elite}{item.level ? ` · ${item.level} 级` : ''}
             </span>
           )}

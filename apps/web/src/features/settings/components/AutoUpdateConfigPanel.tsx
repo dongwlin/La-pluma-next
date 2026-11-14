@@ -33,7 +33,7 @@ export default function AutoUpdateConfigPanel() {
             <Clock3 size={18} aria-hidden="true" />
           </span>
           <div className="min-w-0">
-            <h3 className="text-sm font-semibold text-primary">自动更新</h3>
+            <h3 className="text-sm font-semibold text-foreground">自动更新</h3>
             <p className="mt-1 text-xs leading-5 text-tertiary">每天按设定时间更新所选组件</p>
           </div>
         </div>

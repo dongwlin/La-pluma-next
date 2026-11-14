@@ -22,7 +22,7 @@ const DashboardPreviewEntry = memo(function DashboardPreviewEntry() {
             aria-label={statusText}
             title={statusText}
           />
-          <span className="truncate text-xs font-medium text-secondary">画面预览</span>
+          <span className="truncate text-xs font-medium text-muted-foreground">画面预览</span>
         </div>
         <PreviewModeSegmented unavailable={!available} />
       </div>
@@ -56,7 +56,7 @@ const DashboardPreviewEntry = memo(function DashboardPreviewEntry() {
               <div className="device-preview-empty-icon mx-auto mb-3 flex h-10 w-10 items-center justify-center rounded-lg">
                 <Monitor size={17} strokeWidth={2} />
               </div>
-              <div className="text-sm font-semibold text-primary">{statusText}</div>
+              <div className="text-sm font-semibold text-foreground">{statusText}</div>
             </div>
           </div>
         )}

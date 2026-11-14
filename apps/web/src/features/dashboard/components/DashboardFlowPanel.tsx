@@ -5,9 +5,9 @@ import { useDashboardFlowActions } from '../hooks/useDashboardFlowActions'
 import { buildDashboardFlowView } from '../model/flowView'
 import { buildDashboardActivityView } from '../model/activityView'
 
-const labelClass = 'text-secondary'
+const labelClass = 'text-muted-foreground'
 const dashboardChipClass = 'brand-chip rounded-lg px-2.5 py-1 text-xs font-medium'
-const mutedChipClass = 'rounded-lg px-2.5 py-1 surface-soft text-secondary text-xs'
+const mutedChipClass = 'rounded-lg px-2.5 py-1 surface-soft text-muted-foreground text-xs'
 
 interface DashboardFlowPanelProps {
   refreshDashboard: () => Promise<void>
@@ -68,7 +68,7 @@ export default function DashboardFlowPanel({ refreshDashboard, onMissingFlow }: 
             <Activity className="h-4 w-4" strokeWidth={1.8} />
           </div>
           <div className="min-w-0">
-            <div className="dashboard-flow-title text-base font-bold text-primary">今日流程</div>
+            <div className="dashboard-flow-title text-base font-bold text-foreground">今日流程</div>
           </div>
         </div>
       </div>
@@ -76,7 +76,7 @@ export default function DashboardFlowPanel({ refreshDashboard, onMissingFlow }: 
       <div className="dashboard-flow-command" data-dashboard-flow-command>
         <div className="min-w-0">
           <div className={`text-xs font-medium ${labelClass}`}>{view.statusLabel}</div>
-          <div className="mt-0.5 truncate text-xl font-bold text-primary">{view.commandTitle}</div>
+          <div className="mt-0.5 truncate text-xl font-bold text-foreground">{view.commandTitle}</div>
           <div className={`mt-1 truncate text-xs ${labelClass}`}>{view.commandDescription}</div>
         </div>
         <div className="dashboard-flow-actions">
@@ -130,7 +130,7 @@ export default function DashboardFlowPanel({ refreshDashboard, onMissingFlow }: 
             )}
           </div>
         </div>
-        <div className="mt-2 wrap-break-word text-sm font-bold text-primary">
+        <div className="mt-2 wrap-break-word text-sm font-bold text-foreground">
           {activityView.title}
         </div>
         {activityView.detail && (
@@ -158,7 +158,7 @@ export default function DashboardFlowPanel({ refreshDashboard, onMissingFlow }: 
         <div className="flex items-center justify-between gap-3.5">
           <div className="flex items-center gap-2">
             <span className="dashboard-flow-rail-dot" />
-            <span className="text-xs font-semibold text-primary">今日开放关卡</span>
+            <span className="text-xs font-semibold text-foreground">今日开放关卡</span>
           </div>
           <span className={`text-[11px] ${labelClass}`}>{openStageSummary.open.length} 个日常本</span>
         </div>

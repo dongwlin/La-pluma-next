@@ -64,8 +64,8 @@ export default function DepotPanel({ isActive, command }: DepotPanelProps) {
                 <Icons.Package />
               </div>
               <div className="min-w-0">
-                <h2 className="text-lg font-semibold text-primary">仓库识别</h2>
-                <p className="mt-1 text-sm leading-relaxed text-secondary">
+                <h2 className="text-lg font-semibold text-foreground">仓库识别</h2>
+                <p className="mt-1 text-sm leading-relaxed text-muted-foreground">
                   汇总物品库存、材料分类与数量
                 </p>
               </div>
@@ -117,39 +117,39 @@ export default function DepotPanel({ isActive, command }: DepotPanelProps) {
                 aria-label="仓库数据概览"
               >
                 <div className={statCardClass}>
-                  <p className="text-xs text-secondary">物品种类</p>
-                  <p className="mt-1 text-2xl font-semibold text-primary">
+                  <p className="text-xs text-muted-foreground">物品种类</p>
+                  <p className="mt-1 text-2xl font-semibold text-foreground">
                     {overview.itemCount}
                   </p>
                 </div>
                 <div className={statCardClass}>
-                  <p className="text-xs text-secondary">材料种类</p>
-                  <p className="mt-1 text-2xl font-semibold text-primary">
+                  <p className="text-xs text-muted-foreground">材料种类</p>
+                  <p className="mt-1 text-2xl font-semibold text-foreground">
                     {overview.materialKinds}
                   </p>
                 </div>
                 <div className={statCardClass}>
-                  <p className="text-xs text-secondary">识别分类</p>
-                  <p className="mt-1 text-2xl font-semibold text-primary">
+                  <p className="text-xs text-muted-foreground">识别分类</p>
+                  <p className="mt-1 text-2xl font-semibold text-foreground">
                     {overview.categoryCount}
                   </p>
                 </div>
                 <div className={statCardClass}>
-                  <p className="text-xs text-secondary">库存总量</p>
-                  <p className="mt-1 text-2xl font-semibold text-primary">
+                  <p className="text-xs text-muted-foreground">库存总量</p>
+                  <p className="mt-1 text-2xl font-semibold text-foreground">
                     {overview.totalCount.toLocaleString()}
                   </p>
                 </div>
                 <div className={statCardClass}>
-                  <p className="text-xs text-secondary">库存最多</p>
-                  <p className="mt-1 truncate text-sm font-semibold text-primary">
+                  <p className="text-xs text-muted-foreground">库存最多</p>
+                  <p className="mt-1 truncate text-sm font-semibold text-foreground">
                     {overview.topItem?.name ?? '-'}
                   </p>
                 </div>
                 {depotData.timestamp && (
                   <div className={statCardClass}>
-                    <p className="text-xs text-secondary">最近识别</p>
-                    <p className="mt-1 truncate text-sm font-semibold text-primary">
+                    <p className="text-xs text-muted-foreground">最近识别</p>
+                    <p className="mt-1 truncate text-sm font-semibold text-foreground">
                       {new Date(depotData.timestamp).toLocaleString('zh-CN')}
                     </p>
                   </div>
@@ -158,10 +158,10 @@ export default function DepotPanel({ isActive, command }: DepotPanelProps) {
 
               {overview.groups.length > 0 && (
                 <section className="rounded-xl surface-soft p-3" aria-labelledby="depot-category-title">
-                  <h3 id="depot-category-title" className="mb-2 text-sm font-semibold text-primary">分类汇总</h3>
+                  <h3 id="depot-category-title" className="mb-2 text-sm font-semibold text-foreground">分类汇总</h3>
                   <div className="flex flex-wrap gap-2">
                     {overview.groups.map((group) => (
-                      <div key={group.type} className="control-surface rounded-full px-3 py-1.5 text-xs text-secondary">
+                      <div key={group.type} className="control-surface rounded-full px-3 py-1.5 text-xs text-muted-foreground">
                         <span className="font-medium">{group.label}</span>
                         <span className="mx-1 brand-text">·</span>
                         <span>{group.kinds} 种</span>
@@ -202,7 +202,7 @@ export default function DepotPanel({ isActive, command }: DepotPanelProps) {
                         </div>
 
                         <div className="flex-1 min-w-0">
-                          <div className="text-sm font-bold text-primary truncate" title={item.name}>
+                          <div className="text-sm font-bold text-foreground truncate" title={item.name}>
                             {item.name}
                           </div>
                           <div className="flex items-center gap-2 mt-1">

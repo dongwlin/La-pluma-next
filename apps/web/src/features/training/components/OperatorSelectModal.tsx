@@ -179,7 +179,7 @@ export default function OperatorSelectModal({
       size="xl"
       footer={(
         <div className="flex w-full flex-wrap items-center justify-between gap-3.5">
-          <span className="text-sm text-secondary">
+          <span className="text-sm text-muted-foreground">
             {selectedOperator ? `已选择 ${selectedOperator.name}` : '选择一名干员'}
           </span>
           <div className="flex items-center gap-3.5">

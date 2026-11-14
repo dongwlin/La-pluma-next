@@ -41,7 +41,7 @@ export default function RoguelikeCoreOperatorField({
 
   return (
     <div>
-      <label htmlFor={id} className="mb-2 block text-sm font-medium text-secondary">{label}</label>
+      <label htmlFor={id} className="mb-2 block text-sm font-medium text-muted-foreground">{label}</label>
       <div className="roguelike-core-operator-control">
         {operatorName === '' ? (
           <span className="roguelike-core-operator-placeholder">未选择</span>

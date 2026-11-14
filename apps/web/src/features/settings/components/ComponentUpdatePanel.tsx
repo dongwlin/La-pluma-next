@@ -90,7 +90,7 @@ export default function ComponentUpdatePanel() {
       <div className="grid gap-(--app-space-card) md:grid-cols-2 xl:grid-cols-1">
         <section className="surface-soft flex min-w-0 flex-col rounded-xl p-(--app-space-panel)">
           <div className="flex flex-wrap items-center gap-2">
-            <h3 className="text-base font-semibold text-primary">MaaCore</h3>
+            <h3 className="text-base font-semibold text-foreground">MaaCore</h3>
             {versionInfo && <span className="text-sm brand-text">{versionInfo.core}</span>}
             <Select
               aria-label="MaaCore 更新渠道"
@@ -101,7 +101,7 @@ export default function ComponentUpdatePanel() {
               className="ml-auto w-32"
             />
           </div>
-          <p className="mt-1 text-xs leading-5 text-secondary">核心组件与游戏资源</p>
+          <p className="mt-1 text-xs leading-5 text-muted-foreground">核心组件与游戏资源</p>
           {versionInfo?.resource && (
             <div className="mt-3 flex flex-wrap items-center gap-2 text-xs">
               <span className="text-tertiary">
@@ -155,7 +155,7 @@ export default function ComponentUpdatePanel() {
 
         <section className="surface-soft flex min-w-0 flex-col rounded-xl p-(--app-space-panel)">
           <div className="flex flex-wrap items-center gap-2">
-            <h3 className="text-base font-semibold text-primary">MAA CLI</h3>
+            <h3 className="text-base font-semibold text-foreground">MAA CLI</h3>
             {versionInfo && <span className="text-sm brand-text">{versionInfo.cli}</span>}
             <Select
               aria-label="MAA CLI 更新渠道"
@@ -166,7 +166,7 @@ export default function ComponentUpdatePanel() {
               className="ml-auto w-32"
             />
           </div>
-          <p className="mt-1 text-xs leading-5 text-secondary">命令行工具与任务运行入口</p>
+          <p className="mt-1 text-xs leading-5 text-muted-foreground">命令行工具与任务运行入口</p>
           <div className="mt-auto pt-4">
             <Button
               onClick={handleUpdateCli}

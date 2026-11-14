@@ -52,7 +52,7 @@ export default function LogsToolbar({
       <CardContent className="log-toolbar">
         <div className="log-toolbar-controls">
           <div className={`log-toggle-control flex min-h-11 min-w-0 items-center justify-between gap-3.5 ${viewingHistory ? 'opacity-50' : ''}`}>
-            <span className="truncate text-xs font-medium text-secondary">自动滚动</span>
+            <span className="truncate text-xs font-medium text-muted-foreground">自动滚动</span>
             <Switch
               compact
               checked={autoScroll}
@@ -62,7 +62,7 @@ export default function LogsToolbar({
             />
           </div>
           <div className="log-toggle-control flex min-h-11 min-w-0 items-center justify-between gap-3.5">
-            <span className="truncate text-xs font-medium text-secondary">折叠重复</span>
+            <span className="truncate text-xs font-medium text-muted-foreground">折叠重复</span>
             <Switch
               compact
               checked={collapseRepeats}

@@ -27,11 +27,11 @@ export default function ConfigDirectoryPanel() {
               <FolderOpen size={20} aria-hidden="true" />
             </span>
             <div className="min-w-0">
-              <h2 className="text-base font-semibold text-primary">配置目录</h2>
+              <h2 className="text-base font-semibold text-foreground">配置目录</h2>
               {configDirStatus === 'error' ? (
                 <p className="mt-1 wrap-break-word text-sm text-danger wrap-anywhere" role="alert">{configDirError}</p>
               ) : (
-                <p className="mt-1 wrap-break-word font-mono text-xs leading-5 text-secondary wrap-anywhere" aria-live="polite">
+                <p className="mt-1 wrap-break-word font-mono text-xs leading-5 text-muted-foreground wrap-anywhere" aria-live="polite">
                   {configDirStatus === 'loading' ? '正在读取目录...' : configDir}
                 </p>
               )}

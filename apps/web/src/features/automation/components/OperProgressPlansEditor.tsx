@@ -107,20 +107,20 @@ export default function OperProgressPlansEditor({ plans, disabled, onChange }: O
 
   return (
     <div className="@container space-y-3.5">
-      <p className="text-xs leading-5 text-secondary">在游戏内提升干员，按精英阶段、技能等级、专精的顺序处理。执行会消耗已有资源，可能自动合成材料或用采购凭证购买芯片助剂；专精会占用训练室。每轮执行最多启动一项专精训练，其余专精目标留待后续执行。</p>
-      {plans.length === 0 && <p className="text-sm text-secondary">添加干员并选择培养目标。</p>}
+      <p className="text-xs leading-5 text-muted-foreground">在游戏内提升干员，按精英阶段、技能等级、专精的顺序处理。执行会消耗已有资源，可能自动合成材料或用采购凭证购买芯片助剂；专精会占用训练室。每轮执行最多启动一项专精训练，其余专精目标留待后续执行。</p>
+      {plans.length === 0 && <p className="text-sm text-muted-foreground">添加干员并选择培养目标。</p>}
       {plans.map((plan, index) => {
         const professionLabel = plan.name ? roleLabel(plan.role) : null
         return (
           <fieldset key={index} disabled={disabled} className="min-w-0 space-y-3 border-t border-(--app-border) pt-3">
-            <legend className="px-1 text-sm font-semibold text-primary">培养计划 {index + 1}</legend>
+            <legend className="px-1 text-sm font-semibold text-foreground">培养计划 {index + 1}</legend>
             <div className="flex min-w-0 flex-wrap items-center gap-3.5">
               <PlanOperatorAvatar operatorId={planOperatorIds[index] ?? null} />
               <div className="min-w-0 flex-1">
-                <p className={`truncate text-sm font-semibold ${plan.name ? 'text-primary' : 'text-secondary'}`}>
+                <p className={`truncate text-sm font-semibold ${plan.name ? 'text-foreground' : 'text-muted-foreground'}`}>
                   {plan.name || '未选择干员'}
                 </p>
-                {professionLabel && <p className="text-xs text-secondary">{professionLabel}</p>}
+                {professionLabel && <p className="text-xs text-muted-foreground">{professionLabel}</p>}
               </div>
               <Button
                 variant="secondary"
@@ -153,7 +153,7 @@ export default function OperProgressPlansEditor({ plans, disabled, onChange }: O
         )
       })}
       <Button variant="secondary" icon={<Plus size={16} />} disabled={disabled} onClick={() => onChange([...plans, { role: 'Unknown', name: '' }])}>添加培养计划</Button>
-      <p className="text-xs leading-5 text-secondary">只处理明确选择的目标。专精可能先启动前置等级，实际结果以执行详情为准。</p>
+      <p className="text-xs leading-5 text-muted-foreground">只处理明确选择的目标。专精可能先启动前置等级，实际结果以执行详情为准。</p>
       <OperatorSelectModal
         isOpen={pickerPlanIndex !== null}
         onClose={() => setPickerPlanIndex(null)}

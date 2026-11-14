@@ -27,7 +27,7 @@ const BADGE_SURFACE: Record<ResultBadgeTone, string> = {
   warning: 'status-warning',
   danger: 'status-danger',
   info: 'status-info',
-  neutral: 'surface-soft text-secondary',
+  neutral: 'surface-soft text-muted-foreground',
 }
 
 function formatRunDuration(durationMs: number | null): string | null {

@@ -175,7 +175,7 @@ export default function OperatorPicker({
   })
 
   return (
-    <Modal isOpen={isOpen} onClose={onClose} title="添加干员" size="xl" footer={<div className="flex w-full items-center justify-between gap-3.5"><span className="text-sm text-secondary">已加入 {queueLength} 名干员</span><Button onClick={onClose} variant="secondary">完成选择</Button></div>}>
+    <Modal isOpen={isOpen} onClose={onClose} title="添加干员" size="xl" footer={<div className="flex w-full items-center justify-between gap-3.5"><span className="text-sm text-muted-foreground">已加入 {queueLength} 名干员</span><Button onClick={onClose} variant="secondary">完成选择</Button></div>}>
       {operationError && <div role="alert" className="training-feedback status-danger">{operationError}</div>}
       <div className="space-y-3.5">
         <div className="flex flex-col gap-3.5">
