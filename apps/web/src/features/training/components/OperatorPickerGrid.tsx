@@ -55,7 +55,7 @@ function OperatorPickerCard({ item, eager }: OperatorPickerCardProps) {
               }}
             />
             {item.scrim && imageLoaded && (
-              <div className={`absolute inset-0 ${isOwned ? 'bg-(--app-surface)/25' : 'bg-(--app-surface)/50'}`} />
+              <div className={`absolute inset-0 ${isOwned ? 'bg-card/25' : 'bg-card/50'}`} />
             )}
           </>
         ) : (
