@@ -140,7 +140,7 @@
   .la-pluma-app .la-pluma-navbar {
     box-sizing: border-box;
     width: 100%;
-    min-height: calc(var(--app-navbar-height) + env(safe-area-inset-top, 0px));
+    min-height: calc(4.75rem + env(safe-area-inset-top, 0px));
     padding-top: env(safe-area-inset-top, 0);
     position: sticky;
     top: 0;
@@ -155,7 +155,7 @@
     display: grid;
     box-sizing: border-box;
     width: 100%;
-    min-height: var(--app-navbar-height);
+    min-height: 4.75rem;
     grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
     align-items: center;
     padding-right: calc(0.875rem + env(safe-area-inset-right, 0px));
@@ -310,7 +310,7 @@
         'sidebar header'
         'sidebar main';
       grid-template-columns: var(--la-pluma-sidebar-width) minmax(0, 1fr);
-      grid-template-rows: calc(var(--app-navbar-height) + env(safe-area-inset-top, 0px)) minmax(0, 1fr);
+      grid-template-rows: calc(4.75rem + env(safe-area-inset-top, 0px)) minmax(0, 1fr);
     }
 
     .la-pluma-app .la-pluma-sidebar {
@@ -457,7 +457,7 @@
     z-index: 1;
     display: grid;
     grid-template-columns: var(--la-pluma-sidebar-width) minmax(0, 1fr);
-    min-height: calc(var(--la-pluma-viewport-height) - var(--app-navbar-height) - env(safe-area-inset-top, 0px));
+    min-height: calc(var(--la-pluma-viewport-height) - 4.75rem - env(safe-area-inset-top, 0px));
   }
 
   .la-pluma-sidebar {
@@ -532,8 +532,8 @@
 
   .la-pluma-scroll-host {
     min-width: 0;
-    height: calc(var(--la-pluma-viewport-height) - var(--app-navbar-height) - env(safe-area-inset-top, 0px));
-    min-height: calc(var(--la-pluma-viewport-height) - var(--app-navbar-height) - env(safe-area-inset-top, 0px));
+    height: calc(var(--la-pluma-viewport-height) - 4.75rem - env(safe-area-inset-top, 0px));
+    min-height: calc(var(--la-pluma-viewport-height) - 4.75rem - env(safe-area-inset-top, 0px));
     overflow-x: hidden;
     overflow-y: auto;
     overscroll-behavior: contain;
@@ -1220,7 +1220,7 @@
 
     .la-pluma-app .la-pluma-content {
       padding-top: calc(
-        var(--app-navbar-height) + env(safe-area-inset-top, 0px) + 1.25rem
+        4.75rem + env(safe-area-inset-top, 0px) + 1.25rem
       );
       padding-right: max(1.25rem, env(safe-area-inset-right));
       padding-left: max(1.25rem, env(safe-area-inset-left));
@@ -1235,14 +1235,14 @@
       -webkit-mask-image: linear-gradient(
         to bottom,
         transparent 0,
-        #000 calc(env(safe-area-inset-top, 0px) + var(--app-navbar-height)),
+        #000 calc(env(safe-area-inset-top, 0px) + 4.75rem),
         #000 calc(100% - var(--la-pluma-tabbar-reserved-height)),
         transparent 100%
       );
       mask-image: linear-gradient(
         to bottom,
         transparent 0,
-        #000 calc(env(safe-area-inset-top, 0px) + var(--app-navbar-height)),
+        #000 calc(env(safe-area-inset-top, 0px) + 4.75rem),
         #000 calc(100% - var(--la-pluma-tabbar-reserved-height)),
         transparent 100%
       );
@@ -1268,7 +1268,7 @@
 
     .la-pluma-app .la-pluma-content {
       padding-top: calc(
-        var(--app-navbar-height) + env(safe-area-inset-top, 0px) + 0.875rem
+        4.75rem + env(safe-area-inset-top, 0px) + 0.875rem
       );
       padding-right: max(0.875rem, env(safe-area-inset-right));
       padding-left: max(0.875rem, env(safe-area-inset-left));
