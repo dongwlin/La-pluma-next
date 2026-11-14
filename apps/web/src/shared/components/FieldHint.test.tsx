@@ -45,7 +45,9 @@ describe('FieldHint', () => {
     expect(tooltip?.textContent).toBe(HINT)
 
     await act(async () => trigger!.blur())
+    await act(async () => {})
     expect(trigger!.getAttribute('aria-describedby')).toBeNull()
+    expect(document.querySelector('[role="tooltip"]')).toBeNull()
   })
 
   it('opens on click and stays open when the trigger is clicked again', async () => {

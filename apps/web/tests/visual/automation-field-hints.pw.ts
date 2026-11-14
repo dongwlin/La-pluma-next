@@ -161,6 +161,23 @@ const expectTooltipNotClipped = async (tooltip: Locator) => {
   expect(clippedByAncestor).toBe(false)
 }
 
+const isMobileProject = () => test.info().project.name === 'mobile'
+
+const revealHint = async (hint: Locator) => {
+  if (isMobileProject()) await hint.tap()
+  else await hint.hover()
+}
+
+const dismissHint = async (page: Page) => {
+  if (isMobileProject()) await page.touchscreen.tap(4, 4)
+  else await page.mouse.move(4, 4)
+}
+
+const clickOutside = async (page: Page) => {
+  if (isMobileProject()) await page.touchscreen.tap(4, 4)
+  else await page.mouse.click(4, 4)
+}
+
 const FIGHT_HINTS: Array<[string, string]> = [
   ['关卡计划说明', '使用 HD-数字代表当前活动关卡；置顶关卡会优先执行。次数为该关卡的累计作战局数上限（连战中的每一局都计 1），留空表示不限制局数'],
   ['掉落目标说明', '任一物品达到目标数量后停止；格式为物品 ID=数量，多个目标用逗号分隔'],
@@ -199,14 +216,14 @@ test.describe('automation field hints', () => {
     await expect(launchTooltip).toBeHidden()
     expect(await accountHint.getAttribute('aria-describedby')).toBeNull()
 
-    await accountHint.hover()
+    await revealHint(accountHint)
     await expect(accountTooltip).toBeVisible()
     await expect(accountTooltip).toHaveText(ACCOUNT_HINT)
     const describedBy = await accountHint.getAttribute('aria-describedby')
     expect(describedBy).not.toBeNull()
     await expect(page.locator(`#${describedBy}`)).toHaveAttribute('role', 'tooltip')
 
-    await page.mouse.move(4, 4)
+    await dismissHint(page)
     await expect(accountTooltip).toBeHidden()
     expect(await accountHint.getAttribute('aria-describedby')).toBeNull()
 
@@ -219,7 +236,7 @@ test.describe('automation field hints', () => {
 
     await accountHint.click()
     await expect(accountTooltip).toBeVisible()
-    await page.mouse.click(4, 4)
+    await clickOutside(page)
     await expect(accountTooltip).toBeHidden()
 
     environment.assertNoUnmatchedApi()
@@ -271,10 +288,10 @@ test.describe('automation field hints', () => {
 
     const discountHint = page.getByRole('button', { name: '只买折扣商品说明', exact: true })
     const discountTooltip = page.getByRole('tooltip').filter({ hasText: MALL_HINTS[0].copy })
-    await discountHint.hover()
+    await revealHint(discountHint)
     await expect(discountTooltip).toBeVisible()
     await expect(discountTooltip).toHaveText(MALL_HINTS[0].copy)
-    await page.mouse.move(4, 4)
+    await dismissHint(page)
     await expect(discountTooltip).toBeHidden()
 
     const creditFightHint = page.getByRole('button', { name: '信用助战说明', exact: true })
@@ -291,6 +308,7 @@ test.describe('automation field hints', () => {
   })
 
   test('hands off between adjacent hints and lets pointers pass through the open tooltip', async ({ page }) => {
+    test.skip(isMobileProject(), 'hover handoff is a mouse behavior; mobile tap handoff is covered by the tap cases')
     const environment = await installDeterministicEnvironment(page)
     await page.goto('/app/automation')
     await waitForPageReady(page, 'automation')
@@ -363,7 +381,7 @@ test.describe('automation field hints', () => {
     const accountHint = page.getByRole('button', { name: '切换账号说明', exact: true })
     const accountTooltip = page.getByRole('tooltip').filter({ hasText: ACCOUNT_HINT })
 
-    await accountHint.hover()
+    await revealHint(accountHint)
     await expect(accountTooltip).toBeVisible()
 
     const viewport = page.viewportSize()!
@@ -415,9 +433,9 @@ test.describe('automation field hints', () => {
     }
 
     const forceRefreshHint = page.getByRole('button', { name: '无许可时仍刷新说明', exact: true })
-    await forceRefreshHint.hover()
+    await revealHint(forceRefreshHint)
     await expect(page.getByRole('tooltip').filter({ hasText: RECRUIT_HINTS['无许可时仍刷新说明'] })).toBeVisible()
-    await page.mouse.move(4, 4)
+    await dismissHint(page)
 
     const timesHint = page.getByRole('button', { name: '招募次数说明', exact: true })
     await timesHint.focus()
@@ -467,10 +485,10 @@ test.describe('automation field hints', () => {
     }
 
     const advancedHint = page.getByRole('button', { name: '多选 Tag 策略说明', exact: true })
-    await advancedHint.hover()
+    await revealHint(advancedHint)
     await expect(page.getByRole('tooltip').filter({ hasText: RECRUIT_ADVANCED_HINTS['多选 Tag 策略说明'] }))
       .toBeVisible()
-    await page.mouse.move(4, 4)
+    await dismissHint(page)
 
     const themeFieldset = page.locator('#automation-task-editor fieldset').last()
     const themeText = await labelTextRect(page, themeFieldset.locator('legend'))
@@ -542,11 +560,11 @@ test.describe('automation field hints', () => {
     const shiftModeTooltip = page.getByRole('tooltip').filter({ hasText: INFRAST_HINT })
     await expect(shiftModeTooltip).toBeHidden()
 
-    await shiftModeHint.hover()
+    await revealHint(shiftModeHint)
     await expect(shiftModeTooltip).toBeVisible()
     await expect(shiftModeTooltip).toHaveText(INFRAST_HINT)
 
-    await page.mouse.move(4, 4)
+    await dismissHint(page)
     await expect(shiftModeTooltip).toBeHidden()
 
     await shiftModeHint.focus()
@@ -609,11 +627,11 @@ test.describe('automation field hints', () => {
       await expect(trigger).toBeVisible()
       await expect(tooltip).toBeHidden()
 
-      await trigger.hover()
+      await revealHint(trigger)
       await expect(tooltip).toBeVisible()
       await expect(tooltip).toHaveText(copy)
 
-      await page.mouse.move(4, 4)
+      await dismissHint(page)
       await expect(tooltip).toBeHidden()
 
       await trigger.focus()
@@ -632,7 +650,7 @@ test.describe('automation field hints', () => {
       await expect(trigger).toBeVisible()
       await expect(tooltip).toBeHidden()
 
-      await trigger.hover()
+      await revealHint(trigger)
       await expect(tooltip).toBeVisible()
       await expect(tooltip).toHaveText(copy)
 
@@ -660,7 +678,8 @@ test.describe('automation field hints', () => {
     const comboHint = page.getByRole('button', { name: '连战说明', exact: true })
     const comboCopy = FIGHT_HINTS.find(([name]) => name === '连战说明')![1]
     await comboHint.evaluate(element => element.scrollIntoView({ block: 'end' }))
-    await comboHint.hover()
+    await revealHint(comboHint)
+    await page.waitForTimeout(500)
 
     const comboTooltip = page.getByRole('tooltip').filter({ hasText: comboCopy })
     await expect(comboTooltip).toBeVisible()
@@ -675,20 +694,25 @@ test.describe('automation field hints', () => {
     await expectNoBrowserErrors(page)
   })
 
-  test('opens the hint tooltip by tap on a touch viewport', async ({ page }) => {
-    test.skip(test.info().project.name !== 'mobile', 'touch input is only emulated on the mobile project')
+  test('keeps a tapped hint open until an outside touch', async ({ page }) => {
+    test.skip(!isMobileProject(), 'touch input is only emulated on the mobile project')
 
     const environment = await installDeterministicEnvironment(page)
     await page.goto('/app/automation')
     await waitForPageReady(page, 'automation')
 
+    await page.locator('#automation-startup-visual-1-accountName').tap()
     const accountHint = page.getByRole('button', { name: '切换账号说明', exact: true })
-    await accountHint.scrollIntoViewIfNeeded()
     await accountHint.tap()
+    await page.waitForTimeout(500)
 
     const accountTooltip = page.getByRole('tooltip').filter({ hasText: ACCOUNT_HINT })
     await expect(accountTooltip).toBeVisible()
     await expect(accountTooltip).toHaveText(ACCOUNT_HINT)
+    await expect(accountTooltip).toHaveAttribute('data-open', '')
+    const describedBy = await accountHint.getAttribute('aria-describedby')
+    expect(describedBy).not.toBeNull()
+    await expect(page.locator(`#${describedBy}`)).toHaveAttribute('role', 'tooltip')
 
     const viewport = page.viewportSize()!
     const box = await accountTooltip.boundingBox()
@@ -706,6 +730,43 @@ test.describe('automation field hints', () => {
 
     await page.touchscreen.tap(4, 4)
     await expect(accountTooltip).toBeHidden()
+    expect(await accountHint.getAttribute('aria-describedby')).toBeNull()
+
+    environment.assertNoUnmatchedApi()
+    await expectNoBrowserErrors(page)
+  })
+
+  test('hands off between tapped hints when the mouse rests over another hint', async ({ page }) => {
+    test.skip(!isMobileProject(), 'touch input is only emulated on the mobile project')
+
+    const environment = await installDeterministicEnvironment(page)
+    await page.goto('/app/automation')
+    await waitForPageReady(page, 'automation')
+
+    const accountHint = page.getByRole('button', { name: '切换账号说明', exact: true })
+    const launchHint = page.getByRole('button', { name: '启动游戏客户端说明', exact: true })
+    const accountTooltip = page.getByRole('tooltip').filter({ hasText: ACCOUNT_HINT })
+    const launchTooltip = page.getByRole('tooltip').filter({ hasText: LAUNCH_HINT })
+
+    await launchHint.hover()
+    await expect(page.getByRole('tooltip')).toBeHidden()
+
+    await accountHint.tap()
+    await page.waitForTimeout(500)
+    await expect(accountTooltip).toBeVisible()
+    await expect(accountTooltip).toHaveAttribute('data-open', '')
+
+    await launchHint.tap()
+    await page.waitForTimeout(500)
+    await expect(accountTooltip).toBeHidden()
+    await expect(launchTooltip).toBeVisible()
+    await expect(launchTooltip).toHaveAttribute('data-open', '')
+    const describedBy = await launchHint.getAttribute('aria-describedby')
+    expect(describedBy).not.toBeNull()
+    await expect(page.locator(`#${describedBy}`)).toHaveAttribute('role', 'tooltip')
+
+    await page.touchscreen.tap(4, 4)
+    await expect(launchTooltip).toBeHidden()
 
     environment.assertNoUnmatchedApi()
     await expectNoBrowserErrors(page)

@@ -34,12 +34,15 @@ const expectTooltipDoesNotCatchPoint = async (tooltip: Locator, point: { x: numb
   }, point)).toBe(true)
 }
 
+const isMobileProject = () => test.info().project.name === 'mobile'
+
 test.describe('field hint overlay behavior', () => {
   test.beforeEach(async ({ page }) => {
     recordBrowserErrors(page)
   })
 
   test('combat hint closes when moving into its covered control and lets clicks through', async ({ page }) => {
+    const mobile = isMobileProject()
     const environment = await installDeterministicEnvironment(page)
     await page.goto('/app/combat')
     await waitForPageReady(page, 'combat')
@@ -49,11 +52,16 @@ test.describe('field hint overlay behavior', () => {
     await expect(hint).toBeVisible()
 
     const autoFormation = page.getByRole('button', { name: '自动编队', exact: true })
-    await autoFormation.click()
+    if (mobile) await autoFormation.tap()
+    else await autoFormation.click()
     await expect(autoFormation).toHaveAttribute('aria-pressed', 'true')
 
-    await hint.hover()
+    if (mobile) await hint.tap()
+    else await hint.hover()
+    await page.waitForTimeout(500)
     await expect(tooltip).toBeVisible()
+    await expect(tooltip).toHaveAttribute('data-open', '')
+    await expect(hint).toHaveAttribute('aria-describedby', /.+/)
     const tooltipBox = await tooltip.boundingBox()
     expect(tooltipBox).not.toBeNull()
     await expectTooltipDoesNotCatchPoint(tooltip, {
@@ -65,14 +73,18 @@ test.describe('field hint overlay behavior', () => {
     expect(point, 'tooltip should cover an inactive formation option').not.toBeNull()
     await expectTooltipDoesNotCatchPoint(tooltip, point!)
 
-    await page.mouse.move(point!.x, point!.y)
-    await expect(tooltip).toBeHidden()
-
     const coveredOption = page.getByRole('button', { name: point!.label, exact: true })
-    await hint.focus()
-    await expect(tooltip).toBeVisible()
-    await page.mouse.click(point!.x, point!.y)
-    await expect(tooltip).toBeHidden()
+    if (mobile) {
+      await page.touchscreen.tap(point!.x, point!.y)
+      await expect(tooltip).toBeHidden()
+    } else {
+      await page.mouse.move(point!.x, point!.y)
+      await expect(tooltip).toBeHidden()
+      await hint.focus()
+      await expect(tooltip).toBeVisible()
+      await page.mouse.click(point!.x, point!.y)
+      await expect(tooltip).toBeHidden()
+    }
     await expect(coveredOption).toHaveAttribute('aria-pressed', 'true')
 
     environment.assertNoUnmatchedApi()
@@ -80,16 +92,27 @@ test.describe('field hint overlay behavior', () => {
   })
 
   test('roguelike hint closes when moving into its covered select and lets clicks through', async ({ page }) => {
+    const mobile = isMobileProject()
     const environment = await installDeterministicEnvironment(page)
     await page.goto('/app/roguelike')
     await waitForPageReady(page, 'roguelike')
+
+    if (mobile) {
+      await page.locator('#roguelike-roguelike-difficulty').tap()
+      await expect(page.getByRole('listbox')).toBeVisible()
+      await page.getByRole('option', { name: '不切换（沿用游戏内难度）', exact: true }).tap()
+    }
 
     const hint = page.getByRole('button', { name: '难度说明', exact: true })
     const tooltip = page.getByRole('tooltip').filter({ hasText: ROGUELIKE_DIFFICULTY_HINT })
     await expect(hint).toBeVisible()
 
-    await hint.hover()
+    if (mobile) await hint.tap()
+    else await hint.hover()
+    await page.waitForTimeout(500)
     await expect(tooltip).toBeVisible()
+    await expect(tooltip).toHaveAttribute('data-open', '')
+    await expect(hint).toHaveAttribute('aria-describedby', /.+/)
     const tooltipBox = await tooltip.boundingBox()
     expect(tooltipBox).not.toBeNull()
     await expectTooltipDoesNotCatchPoint(tooltip, {
@@ -101,13 +124,17 @@ test.describe('field hint overlay behavior', () => {
     expect(point, 'tooltip should cover the difficulty select').not.toBeNull()
     await expectTooltipDoesNotCatchPoint(tooltip, point!)
 
-    await page.mouse.move(point!.x, point!.y)
-    await expect(tooltip).toBeHidden()
-
-    await hint.focus()
-    await expect(tooltip).toBeVisible()
-    await page.mouse.click(point!.x, point!.y)
-    await expect(tooltip).toBeHidden()
+    if (mobile) {
+      await page.touchscreen.tap(point!.x, point!.y)
+      await expect(tooltip).toBeHidden()
+    } else {
+      await page.mouse.move(point!.x, point!.y)
+      await expect(tooltip).toBeHidden()
+      await hint.focus()
+      await expect(tooltip).toBeVisible()
+      await page.mouse.click(point!.x, point!.y)
+      await expect(tooltip).toBeHidden()
+    }
     await expect(page.getByRole('listbox')).toBeVisible()
 
     environment.assertNoUnmatchedApi()
