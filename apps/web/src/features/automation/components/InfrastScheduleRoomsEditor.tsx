@@ -82,7 +82,7 @@ function RoomEditor({ facility, index, room, disabled, onChange, onRemove }: Roo
     : products
 
   return (
-    <div className="space-y-3 rounded-lg border border-(--app-border) p-3">
+    <div className="space-y-3 rounded-lg border border-border p-3">
       <div className="flex items-center justify-between gap-2">
         <span className="text-sm font-medium text-foreground">房间 {index + 1}</span>
         <IconButton
@@ -192,7 +192,7 @@ export default function InfrastScheduleRoomsEditor({ plan, disabled, onChange }:
         const state = getInfrastFacilityState(plan, facility.key)
         const rooms = readInfrastFacilityRooms(plan, facility.key)
         return (
-          <details key={facility.key} className="group rounded-lg border border-(--app-border) px-3 py-2">
+          <details key={facility.key} className="group rounded-lg border border-border px-3 py-2">
             <summary className="flex min-h-11 cursor-pointer list-none items-center justify-between gap-3.5 text-sm font-medium text-foreground marker:hidden [&::-webkit-details-marker]:hidden">
               <span className="flex items-center gap-2">
                 <ChevronDown size={15} strokeWidth={2} className="transition-transform group-open:rotate-180" aria-hidden="true" />
@@ -203,7 +203,7 @@ export default function InfrastScheduleRoomsEditor({ plan, disabled, onChange }:
               </span>
             </summary>
 
-            <div className="mt-3 space-y-3 border-t border-(--app-border) pt-3">
+            <div className="mt-3 space-y-3 border-t border-border pt-3">
               <Select
                 label="设施处理方式"
                 aria-label={`${facility.label}设施处理方式`}

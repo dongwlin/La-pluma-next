@@ -112,7 +112,7 @@ export default function OperProgressPlansEditor({ plans, disabled, onChange }: O
       {plans.map((plan, index) => {
         const professionLabel = plan.name ? roleLabel(plan.role) : null
         return (
-          <fieldset key={index} disabled={disabled} className="min-w-0 space-y-3 border-t border-(--app-border) pt-3">
+          <fieldset key={index} disabled={disabled} className="min-w-0 space-y-3 border-t border-border pt-3">
             <legend className="px-1 text-sm font-semibold text-foreground">培养计划 {index + 1}</legend>
             <div className="flex min-w-0 flex-wrap items-center gap-3.5">
               <PlanOperatorAvatar operatorId={planOperatorIds[index] ?? null} />

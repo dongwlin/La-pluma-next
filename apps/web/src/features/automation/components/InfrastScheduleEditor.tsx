@@ -193,13 +193,13 @@ export default function InfrastScheduleEditor({
             <div className="space-y-2">
               <p className="text-xs text-muted-foreground">目录：{listQuery.data.directory}</p>
               {schedules.length > 0 ? (
-                <div className="max-h-40 space-y-1 overflow-y-auto rounded-lg border border-(--app-border) p-2">
+                <div className="max-h-40 space-y-1 overflow-y-auto rounded-lg border border-border p-2">
                   {schedules.map(schedule => (
                     <button
                       key={schedule.name}
                       type="button"
                       disabled={saving}
-                      className="flex min-h-11 w-full items-center justify-between gap-2 rounded-md px-2 text-left text-sm text-muted-foreground hover:bg-(--app-surface-muted)"
+                      className="flex min-h-11 w-full items-center justify-between gap-2 rounded-md px-2 text-left text-sm text-muted-foreground hover:bg-muted"
                       onClick={() => {
                         setName(schedule.name)
                         setLoadName(schedule.name)
@@ -222,7 +222,7 @@ export default function InfrastScheduleEditor({
 
         {document && plan ? (
           <>
-            <section className="space-y-3 border-t border-(--app-border) pt-4">
+            <section className="space-y-3 border-t border-border pt-4">
               <div className="grid min-w-0 gap-3.5 @sm:grid-cols-2">
                 <Input
                   label="排班表标题"
@@ -241,7 +241,7 @@ export default function InfrastScheduleEditor({
               </div>
             </section>
 
-            <section className="space-y-3 border-t border-(--app-border) pt-4">
+            <section className="space-y-3 border-t border-border pt-4">
               <div className="flex flex-wrap items-end gap-2">
                 <Select
                   label="方案"
@@ -292,7 +292,7 @@ export default function InfrastScheduleEditor({
               </div>
             </section>
 
-            <section className="space-y-2 border-t border-(--app-border) pt-4">
+            <section className="space-y-2 border-t border-border pt-4">
               <h4 className="text-sm font-semibold text-foreground">房间</h4>
               <InfrastScheduleRoomsEditor
                 plan={plan}
