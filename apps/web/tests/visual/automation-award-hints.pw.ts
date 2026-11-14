@@ -29,18 +29,18 @@ test.describe('automation award field hints', () => {
     await expect(anniversaryHint).toBeVisible()
     await expect(signInHint).toBeVisible()
 
-    const tooltipOf = (hint: string) => page.locator('[role="tooltip"]').filter({ hasText: hint })
+    const tooltipOf = (hint: string) => page.getByRole('tooltip').filter({ hasText: hint })
     const recruitTooltip = tooltipOf(RECRUIT_HINT)
     const anniversaryTooltip = tooltipOf(ANNIVERSARY_HINT)
     const signInTooltip = tooltipOf(SIGN_IN_HINT)
 
-    // 说明文字只存在于默认收起的提示层里，不再有常驻段落。
-    await expect(recruitTooltip).toHaveCount(1)
-    await expect(anniversaryTooltip).toHaveCount(1)
-    await expect(signInTooltip).toHaveCount(1)
+    // 说明文字只在打开提示层时挂载，不再有常驻段落。
     await expect(recruitTooltip).toBeHidden()
     await expect(anniversaryTooltip).toBeHidden()
     await expect(signInTooltip).toBeHidden()
+    await expect(page.getByText(RECRUIT_HINT, { exact: true })).toHaveCount(0)
+    await expect(page.getByText(ANNIVERSARY_HINT, { exact: true })).toHaveCount(0)
+    await expect(page.getByText(SIGN_IN_HINT, { exact: true })).toHaveCount(0)
 
     await recruitHint.hover()
     await expect(recruitTooltip).toBeVisible()
