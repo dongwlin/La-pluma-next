@@ -12,7 +12,6 @@ const gameTaskFixtures = [
   { path: '/agent/schedules', method: 'POST', payload: ok({}) },
 ]
 
-
 async function chooseComboboxOption(page: Page, name: string, optionLabel: string) {
   const trigger = page.getByRole('combobox', { name, exact: true })
   await trigger.click()

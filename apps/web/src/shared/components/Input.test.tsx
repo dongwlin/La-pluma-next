@@ -226,4 +226,3 @@ describe('Select consumption contract', () => {
     expect(isSelectOpen()).toBe(false)
   })
 })
-

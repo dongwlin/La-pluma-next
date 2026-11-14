@@ -16,7 +16,6 @@ import RoguelikeTasks from './RoguelikeTasks'
 
 ;(globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true
 
-
 const mocks = vi.hoisted(() => ({
   controller: { current: null as unknown as ExecutionController },
   executePredefinedTask: vi.fn(),
@@ -597,10 +596,8 @@ describe('RoguelikeTasks execution', () => {
     await renderPage()
     await setTheme('Sarkaz')
     await chooseSelectOption('maa-roguelike-squad', '蓝图测绘分队')
-    console.log('DEBUG after choose:', controlForName('maa-roguelike-squad').textContent, 'hidden:', container.querySelector<HTMLInputElement>('input[name="maa-roguelike-squad"]')?.value)
 
     await setTheme('Sami')
-    console.log('DEBUG after setTheme: trigger=', controlForName('maa-roguelike-squad').textContent, 'hidden=', container.querySelector<HTMLInputElement>('input[name="maa-roguelike-squad"]')?.value)
 
     const squad = controlForName('maa-roguelike-squad')
     expect(squad.textContent).toContain('蓝图测绘分队（不适用于当前主题）')
@@ -612,7 +609,6 @@ describe('RoguelikeTasks execution', () => {
     )
 
     await chooseSelectOption('maa-roguelike-squad', '指挥分队')
-    console.log('DBG storage=', localStorage.getItem('roguelikeAdvancedParams'))
     await click(buttonByText('立即执行')!)
 
     expect(mocks.executePredefinedTask).toHaveBeenCalledWith(
