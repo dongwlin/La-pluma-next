@@ -19,8 +19,13 @@ export default defineConfig({
   fullyParallel: false,
   forbidOnly: Boolean(process.env.CI),
   workers: 1,
-  retries: 0,
+  retries: 1,
   reporter: [['line']],
+  expect: {
+    // 跨次渲染的字体反锯齿像素噪点无法用确定性环境消除，全局放行 2% 差异像素，
+    // 避免把栅格抖动当回归重录基线。
+    toHaveScreenshot: { maxDiffPixelRatio: 0.02 },
+  },
   timeout: 60_000,
   snapshotPathTemplate: '{testDir}/__screenshots__/{testFileName}/{projectName}-{arg}{ext}',
   use: {

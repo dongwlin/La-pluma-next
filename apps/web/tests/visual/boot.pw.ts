@@ -1,5 +1,6 @@
 import { expect, test } from '@playwright/test'
 import { expectNoBrowserErrors, recordBrowserErrors } from './browser-errors'
+import { BOOT_THEME_COLORS } from '../../src/shared/theme/bootTheme'
 import {
   THEMES,
   installDeterministicEnvironment,
@@ -12,6 +13,8 @@ import {
  */
 for (const theme of THEMES) {
   test(`boot-shell ${theme}`, async ({ page }) => {
+    test.skip(test.info().project.name !== 'desktop', 'boot shell is captured once per theme on desktop')
+
     await page.addInitScript(themeSeedScript(theme))
     recordBrowserErrors(page)
     const environment = await installDeterministicEnvironment(page)
@@ -26,6 +29,15 @@ for (const theme of THEMES) {
       animations: 'disabled',
       caret: 'hide',
     })
+
+    // PWA theme-color 双机制：入口 JS 被 abort，meta 停留在构建期注入的深色默认值，
+    // 运行时 Provider 的改写机制在此状态不可达。
+    if (theme === 'dark') {
+      await expect(page.locator('meta[name="theme-color"]')).toHaveAttribute(
+        'content',
+        BOOT_THEME_COLORS.dark.themeColor,
+      )
+    }
 
     environment.assertNoUnmatchedApi()
     await expectNoBrowserErrors(page)
