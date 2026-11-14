@@ -71,7 +71,7 @@ function DeviceNavigationButtons({
       aria-label={label}
       className={immersive
         ? 'group flex h-11 w-11 items-center justify-center rounded-full border border-white/20 bg-white/10 text-white backdrop-blur-xs transition hover:bg-white/20 disabled:cursor-not-allowed disabled:opacity-35'
-        : `control-surface flex h-11 min-h-11 w-11 min-w-11 items-center justify-center rounded-full text-muted-foreground transition-colors hover:text-(--app-accent) disabled:cursor-not-allowed disabled:opacity-35 ${compact ? 'automation-preview-glass-button' : ''}`}
+        : `control-surface flex h-11 min-h-11 w-11 min-w-11 items-center justify-center rounded-full text-muted-foreground transition-colors hover:text-primary disabled:cursor-not-allowed disabled:opacity-35 ${compact ? 'automation-preview-glass-button' : ''}`}
     >
       <Icon className="h-3.5 w-3.5" strokeWidth={1.8} />
     </button>
@@ -451,7 +451,7 @@ export default function ScrcpyDeviceView({
           }${
             webrtc.status === 'connected'
               ? 'is-connected bg-black'
-              : 'is-empty ring-1 ring-inset ring-(--app-border)'
+              : 'is-empty ring-1 ring-inset ring-border'
           }`}
           aria-busy={previewBusy}
         >
@@ -515,7 +515,7 @@ export default function ScrcpyDeviceView({
             disabled={webrtc.status !== 'connected'}
             title="全屏"
             aria-label="全屏"
-            className={`control-surface flex h-11 min-h-11 w-11 min-w-11 items-center justify-center rounded-full text-muted-foreground transition-colors hover:text-(--app-accent) disabled:cursor-not-allowed disabled:opacity-35 ${isCompact ? 'automation-preview-glass-button' : ''}`}
+            className={`control-surface flex h-11 min-h-11 w-11 min-w-11 items-center justify-center rounded-full text-muted-foreground transition-colors hover:text-primary disabled:cursor-not-allowed disabled:opacity-35 ${isCompact ? 'automation-preview-glass-button' : ''}`}
           >
             <Maximize2 className="h-3.5 w-3.5" strokeWidth={1.8} />
           </button>
@@ -709,7 +709,7 @@ export default function ScrcpyDeviceView({
                   />
                 </div>
               </div>
-              <p className={`text-xs leading-5 ${settingsDirty ? 'text-(--app-accent)' : 'text-muted-foreground'}`} role="status">
+              <p className={`text-xs leading-5 ${settingsDirty ? 'text-primary' : 'text-muted-foreground'}`} role="status">
                 {settingsDirty ? '画质已修改，重连预览后生效' : '画质调整会在下次连接时生效'}
               </p>
             </div>
