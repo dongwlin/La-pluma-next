@@ -167,9 +167,27 @@ import { Input, Select, Checkbox, Switch } from '@/shared/components'
 />
 ```
 
-`Input`、`Select` 使用 `@/shared/ui` 的 shadcn 原语，不内置 `hint`/`error` 布局；字段行由各 feature 的 field helper 组合标签、说明与错误态。需要把说明收敛为标签旁的 ⓘ 时，用 `@/shared/ui/tooltip` 组合 `Tooltip`、`TooltipTrigger`（通过 `render` 承载按钮）与 `TooltipContent`，触发器保留 `${label}说明` 的 `aria-label`。多行文本使用原生 `textarea`。表单错误态使用 `aria-invalid` 与 `aria-errormessage`，不要在页面里单独手写红色边框和错误文字。
+`Input`、`Select` 使用 `@/shared/ui` 的 shadcn 原语，不内置 `hint`/`error` 布局；字段行由各 feature 的 field helper 组合标签与错误态，说明提示使用下方 `FieldHint`。多行文本使用原生 `textarea`。表单错误态使用 `aria-invalid` 与 `aria-errormessage`，不要在页面里单独手写红色边框和错误文字。
 
 `Input` 默认关闭浏览器自动填充历史（`autoComplete="off"`），避免配置值与搜索词混入输入框下拉提示；确实需要浏览器记住输入时才显式传 `autoComplete`。原生 `input` 同样补上该属性。
+
+---
+
+### FieldHint - 标签说明提示
+
+**文件位置**：`apps/web/src/shared/components/FieldHint.tsx`
+
+**适用场景**：字段说明需要从控件下方的常驻段落收敛为标签旁的 ⓘ 提示。通过 `@/shared/components` 导入，不要在页面里重复拼装触发器。
+
+```tsx
+import { FieldHint } from '@/shared/components'
+
+<FieldHint id="field-hint" label="难度" hint="不切换时沿用游戏内当前难度。" />
+```
+
+组件在打开时才挂载提示内容，内容带 `role="tooltip"`，触发器的 `aria-describedby` 仅在打开时指向内容 id；触发器保留 `${label}说明` 的 `aria-label`，并同时支持悬停、聚焦、点击与触屏点按。提示内容只承载文本，使用 `pointer-events-none`，根节点设置 `disableHoverablePopup`，避免覆盖相邻控件时吞掉悬停或点击。
+
+自定义触发器时，用 `@/shared/ui/tooltip` 组合 `Tooltip`、`TooltipTrigger`（通过 `render` 承载按钮）与 `TooltipContent`，并保持上述受控 `open`、点击/触屏打开、`role`/`aria-describedby` 与非遮挡约定。
 
 ---
 
