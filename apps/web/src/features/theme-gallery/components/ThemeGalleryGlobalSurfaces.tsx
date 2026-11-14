@@ -227,7 +227,11 @@ export function ThemeGalleryGlobalSurfaces() {
             <Select
               items={GALLERY_SOURCE_OPTIONS}
               value={source}
-              onValueChange={next => { if (next !== null) setSource(next) }}
+              onValueChange={(next, details) => {
+                // Base UI 在受控值未注册到当前选项时以 reason 为 none 自动回退；写回会清空仍未渲染选项的值。
+                if (details.reason === 'none' || next === null) return
+                setSource(next)
+              }}
             >
               <SelectTrigger id="gallery-select-source" className="w-full">
                 <SelectValue />
