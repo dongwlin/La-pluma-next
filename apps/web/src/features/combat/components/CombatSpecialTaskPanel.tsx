@@ -52,9 +52,9 @@ export default function CombatSpecialTaskPanel({
       />
 
       <div className="combat-special-layout">
-        <div className="min-w-0 space-y-4">
+        <div className="min-w-0 space-y-3.5">
           <div className="combat-workspace-section">
-            <div className="mb-3 flex items-center justify-between gap-3">
+            <div className="mb-3 flex items-center justify-between gap-3.5">
               <h5 className="flex items-center gap-2 text-sm font-semibold text-primary">
                 <svg className="h-4 w-4 brand-text" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
@@ -126,16 +126,16 @@ export default function CombatSpecialTaskPanel({
           <div className="combat-workspace-section">
             <h5 className="mb-3 text-sm font-semibold text-primary">参数概览</h5>
             <div className="space-y-2 text-xs">
-              <div className="flex items-center justify-between gap-3">
+              <div className="flex items-center justify-between gap-3.5">
                 <span className="text-tertiary">命令</span>
                 <span className="font-mono brand-text">{task.command}</span>
               </div>
-              <div className="flex items-center justify-between gap-3">
+              <div className="flex items-center justify-between gap-3.5">
                 <span className="text-tertiary">输入</span>
                 <span className="text-primary">{taskUris.length ? `${taskUris.length} 项` : '待填写'}</span>
               </div>
               {isParadox && (
-                <div className="flex items-center justify-between gap-3">
+                <div className="flex items-center justify-between gap-3.5">
                   <span className="text-tertiary">队列策略</span>
                   <span className="text-primary">
                     {advanced.executionStrategy === 'stop' ? '失败停止' : '失败继续'}

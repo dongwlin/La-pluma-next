@@ -19,12 +19,12 @@ export function ThemeGalleryCurrentTheme() {
     <Card>
       <CardHeader title="当前主题" />
       <CardContent className="app-stack-card">
-        <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+        <div className="flex flex-wrap items-baseline gap-x-3.5 gap-y-1">
           <span className="text-sm font-medium text-primary">{activeTheme.name}</span>
           <span className="text-xs text-tertiary">{activeTheme.description}</span>
         </div>
 
-        <div className="flex flex-wrap gap-3">
+        <div className="flex flex-wrap gap-3.5">
           {activeTheme.swatches.map(swatch => (
             <div key={swatch.label} className="flex items-center gap-2.5 rounded-xl px-3 py-2 surface-soft">
               <span

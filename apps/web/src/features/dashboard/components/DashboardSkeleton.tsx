@@ -79,7 +79,7 @@ export function DashboardSkeleton() {
             <div className="dashboard-flow-glow-shell status-border-beam">
               <Card smoothCorners className="dashboard-flow-card dashboard-flow-skeleton p-0!">
                 <div className="dashboard-flow-header">
-                  <div className="flex items-center gap-3">
+                  <div className="flex items-center gap-3.5">
                     <Skeleton variant="rect" className="h-8 w-8 rounded-lg" />
                     <Skeleton variant="title" className="h-4 w-20" />
                   </div>
@@ -106,7 +106,7 @@ export function DashboardSkeleton() {
                 </div>
 
                 <div className="dashboard-flow-stages" data-dashboard-flow-stages>
-                  <div className="flex items-center justify-between gap-4">
+                  <div className="flex items-center justify-between gap-3.5">
                     <div className="flex items-center gap-2">
                       <span className="dashboard-flow-rail-dot" />
                       <Skeleton variant="text" className="h-3 w-24" />
@@ -126,7 +126,7 @@ export function DashboardSkeleton() {
 
           <div ref={flowPreviewRef} className="min-w-0">
             <SmoothPanel data-dashboard-preview-card className="status-border-beam" aria-hidden="true">
-              <div className="dashboard-preview-header flex items-center justify-between gap-3 border-b border-(--app-border) px-4 py-2.5">
+              <div className="dashboard-preview-header flex items-center justify-between gap-3.5 border-b border-(--app-border) px-4 py-2.5">
                 <div className="flex items-center gap-2">
                   <Skeleton variant="circle" className="h-1.5 w-1.5" />
                   <Skeleton variant="text" className="h-3 w-28" />

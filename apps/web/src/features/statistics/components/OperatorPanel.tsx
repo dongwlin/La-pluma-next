@@ -215,8 +215,8 @@ export default function OperatorPanel({ isActive, command }: OperatorPanelProps)
         className={taskPanelClass(command.activeTask === 'operbox')}
       >
         <div className="data-statistics-task-content app-stack-card">
-          <div className="data-statistics-task-header flex items-start gap-3 sm:items-center">
-            <div className="flex w-full min-w-0 flex-1 items-center gap-3 sm:w-auto">
+          <div className="data-statistics-task-header flex items-start gap-3.5 sm:items-center">
+            <div className="flex w-full min-w-0 flex-1 items-center gap-3.5 sm:w-auto">
               <div className="flex h-10 w-10 flex-none items-center justify-center" aria-hidden="true">
                 <Icons.Users />
               </div>
@@ -304,7 +304,7 @@ export default function OperatorPanel({ isActive, command }: OperatorPanelProps)
               </div>
 
               <section className="rounded-xl surface-soft p-3" aria-labelledby="operator-filter-title">
-                <div className="mb-3 flex items-center justify-between gap-3">
+                <div className="mb-3 flex items-center justify-between gap-3.5">
                   <div className="min-w-0">
                     <h3 id="operator-filter-title" className="text-sm font-semibold text-primary">筛选与排序</h3>
                     {operBoxData.timestamp && (

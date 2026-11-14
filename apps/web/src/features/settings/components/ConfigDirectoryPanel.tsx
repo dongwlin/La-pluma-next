@@ -21,8 +21,8 @@ export default function ConfigDirectoryPanel() {
   return (
     <Card smoothCorners className="config-directory-card p-0!">
       <CardContent>
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div className="flex min-w-0 items-start gap-3">
+        <div className="flex flex-wrap items-center justify-between gap-3.5">
+          <div className="flex min-w-0 items-start gap-3.5">
             <span className="icon-well flex h-10 w-10 shrink-0 items-center justify-center rounded-lg brand-text">
               <FolderOpen size={20} aria-hidden="true" />
             </span>

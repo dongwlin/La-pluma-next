@@ -151,7 +151,7 @@ export default function InfrastScheduleEditor({
       dismissible={!saving}
       closeOnOverlay={!saving}
       footer={(
-        <div className="flex w-full flex-wrap items-center justify-between gap-3">
+        <div className="flex w-full flex-wrap items-center justify-between gap-3.5">
           <span className="text-xs text-secondary">
             {document ? `${document.plans.length} 个方案` : '未加载排班文件'}
           </span>
@@ -164,7 +164,7 @@ export default function InfrastScheduleEditor({
         </div>
       )}
     >
-      <div className="@container space-y-4">
+      <div className="@container space-y-3.5">
         {error && (
           <div role="alert" className="status-danger flex items-start gap-2 rounded-lg px-3 py-2 text-sm leading-5">
             <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
@@ -223,7 +223,7 @@ export default function InfrastScheduleEditor({
         {document && plan ? (
           <>
             <section className="space-y-3 border-t border-(--app-border) pt-4">
-              <div className="grid min-w-0 gap-3 @sm:grid-cols-2">
+              <div className="grid min-w-0 gap-3.5 @sm:grid-cols-2">
                 <Input
                   label="排班表标题"
                   value={typeof document.title === 'string' ? document.title : ''}
@@ -274,7 +274,7 @@ export default function InfrastScheduleEditor({
                   删除方案
                 </Button>
               </div>
-              <div className="grid min-w-0 gap-3 @sm:grid-cols-2">
+              <div className="grid min-w-0 gap-3.5 @sm:grid-cols-2">
                 <Input
                   label="方案名称"
                   value={typeof plan.name === 'string' ? plan.name : ''}

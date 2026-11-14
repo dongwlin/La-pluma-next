@@ -397,7 +397,7 @@ export default function ScrcpyDeviceView({
     <>
     <div className={`scrcpy-device-layout ${isCompact ? 'is-compact' : ''}`}>
       <div className="space-y-3 min-w-0">
-        <div className={`scrcpy-view-header flex items-center justify-between gap-3 ${isCompact ? 'is-compact' : 'flex-wrap'}`}>
+        <div className={`scrcpy-view-header flex items-center justify-between gap-3.5 ${isCompact ? 'is-compact' : 'flex-wrap'}`}>
           <div className="min-w-0">
             <div className="scrcpy-view-title-row flex items-center gap-2">
               <span

@@ -58,8 +58,8 @@ export default function DepotPanel({ isActive, command }: DepotPanelProps) {
         className={taskPanelClass(command.activeTask === 'depot')}
       >
         <div className="data-statistics-task-content app-stack-card">
-          <div className="data-statistics-task-header flex items-start gap-3 sm:items-center">
-            <div className="flex w-full min-w-0 flex-1 items-center gap-3 sm:w-auto">
+          <div className="data-statistics-task-header flex items-start gap-3.5 sm:items-center">
+            <div className="flex w-full min-w-0 flex-1 items-center gap-3.5 sm:w-auto">
               <div className="flex h-10 w-10 flex-none items-center justify-center" aria-hidden="true">
                 <Icons.Package />
               </div>
@@ -182,7 +182,7 @@ export default function DepotPanel({ isActive, command }: DepotPanelProps) {
                     return (
                       <div
                         key={itemKey}
-                        className="data-statistics-depot-item flex min-w-0 items-center gap-3 p-3"
+                        className="data-statistics-depot-item flex min-w-0 items-center gap-3.5 p-3"
                       >
                         <div className="flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-(--app-surface-muted)">
                           {failedDepotImages[imageKey] ? (

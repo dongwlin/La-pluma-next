@@ -20,7 +20,7 @@ function DropRecordsError({ description, onRetry }: DropRecordsErrorProps) {
   return (
     <Card smoothCorners className="drop-records-panel p-0!">
       <div className="drop-records-panel-content">
-        <div className="form-error-surface flex flex-col items-start gap-3 rounded-xl p-4 sm:flex-row sm:items-center sm:justify-between" role="alert">
+        <div className="form-error-surface flex flex-col items-start gap-3.5 rounded-xl p-4 sm:flex-row sm:items-center sm:justify-between" role="alert">
           <div className="min-w-0">
             <p className="font-semibold text-primary">掉落记录读取失败</p>
             <p className="mt-1 wrap-break-word text-sm leading-6 wrap-anywhere form-error-text">{description}</p>
@@ -104,7 +104,7 @@ export default function DropRecords({
   return (
     <div className="app-stack-section">
       {error && (
-        <div className="form-error-surface flex flex-col items-start gap-3 rounded-xl p-4 sm:flex-row sm:items-center sm:justify-between" role="alert">
+        <div className="form-error-surface flex flex-col items-start gap-3.5 rounded-xl p-4 sm:flex-row sm:items-center sm:justify-between" role="alert">
           <div className="min-w-0">
             <p className="font-semibold text-primary">掉落记录刷新失败</p>
             <p className="mt-1 wrap-break-word text-sm leading-6 wrap-anywhere form-error-text">{error}</p>
@@ -138,7 +138,7 @@ export default function DropRecords({
         ))}
       </div>
 
-      <div className="flex flex-col items-stretch justify-between gap-3 sm:flex-row sm:items-center">
+      <div className="flex flex-col items-stretch justify-between gap-3.5 sm:flex-row sm:items-center">
         <div className="flex min-w-0 flex-col gap-2 sm:flex-row sm:items-center">
           <span className="text-sm text-secondary">统计周期</span>
           <div className="grid w-full grid-cols-4 gap-1 sm:inline-grid sm:w-auto" role="group" aria-label="统计周期">
@@ -201,7 +201,7 @@ export default function DropRecords({
             return (
               <div
                 key={itemData.name}
-                className="drop-records-item-row group flex min-w-0 items-center gap-3 p-3 transition-colors hover:bg-(--app-surface-muted)"
+                className="drop-records-item-row group flex min-w-0 items-center gap-3.5 p-3 transition-colors hover:bg-(--app-surface-muted)"
               >
                 {iconKey && (
                   <div className="flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-(--app-surface-muted)">

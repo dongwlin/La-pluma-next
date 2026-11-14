@@ -146,7 +146,7 @@ export default function ConnectionConfigPanel({ isActive }: ConnectionConfigPane
           hint="选择与服务器系统匹配的平台预设"
         />
       </div>
-      <div className="config-reconnect-row flex min-h-14 items-center justify-between gap-3 py-1">
+      <div className="config-reconnect-row flex min-h-14 items-center justify-between gap-3.5 py-1">
         <div className="min-w-0">
           <div className="text-sm font-medium text-primary">自动重连</div>
           <div className="mt-1 text-xs leading-5 text-tertiary">连接中断后自动尝试恢复</div>

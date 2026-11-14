@@ -372,7 +372,7 @@ export default function AutomationWorkspace() {
       {configSyncError && (
         <div
           role="alert"
-          className="status-warning flex min-h-11 flex-wrap items-center justify-between gap-3 rounded-lg px-3 py-2 text-sm leading-5"
+          className="status-warning flex min-h-11 flex-wrap items-center justify-between gap-3.5 rounded-lg px-3 py-2 text-sm leading-5"
         >
           <span className="min-w-0 flex-1">{configSyncError}</span>
           <Button
@@ -762,7 +762,7 @@ export default function AutomationWorkspace() {
 
                     {task.commandId === 'fight' && (
                       <details className="group mt-3 rounded-lg border border-(--app-border) bg-(--app-surface-muted) px-3 py-2">
-                        <summary className="flex min-h-11 cursor-pointer list-none items-center justify-between gap-3 text-sm font-medium text-gray-700 marker:hidden dark:text-gray-200 [&::-webkit-details-marker]:hidden">
+                        <summary className="flex min-h-11 cursor-pointer list-none items-center justify-between gap-3.5 text-sm font-medium text-gray-700 marker:hidden dark:text-gray-200 [&::-webkit-details-marker]:hidden">
                           <span className="flex items-center gap-2">
                             <SlidersHorizontal size={15} strokeWidth={1.9} />
                             高级设置
@@ -870,7 +870,7 @@ export default function AutomationWorkspace() {
 
                     {task.commandId === 'infrast' && (
                       <details className="group mt-3 rounded-lg border border-(--app-border) bg-(--app-surface-muted) px-3 py-2">
-                        <summary className="flex min-h-11 cursor-pointer list-none items-center justify-between gap-3 text-sm font-medium text-gray-700 marker:hidden dark:text-gray-200 [&::-webkit-details-marker]:hidden">
+                        <summary className="flex min-h-11 cursor-pointer list-none items-center justify-between gap-3.5 text-sm font-medium text-gray-700 marker:hidden dark:text-gray-200 [&::-webkit-details-marker]:hidden">
                           <span className="flex items-center gap-2">
                             <SlidersHorizontal size={15} strokeWidth={1.9} />
                             高级设置
@@ -962,7 +962,7 @@ export default function AutomationWorkspace() {
 
                     {task.commandId === 'recruit' && (
                       <details className="group mt-3 rounded-lg border border-(--app-border) bg-(--app-surface-muted) px-3 py-2">
-                        <summary className="flex min-h-11 cursor-pointer list-none items-center justify-between gap-3 text-sm font-medium text-gray-700 marker:hidden dark:text-gray-200 [&::-webkit-details-marker]:hidden">
+                        <summary className="flex min-h-11 cursor-pointer list-none items-center justify-between gap-3.5 text-sm font-medium text-gray-700 marker:hidden dark:text-gray-200 [&::-webkit-details-marker]:hidden">
                           <span className="flex items-center gap-2">
                             <SlidersHorizontal size={15} strokeWidth={1.9} />
                             高级设置

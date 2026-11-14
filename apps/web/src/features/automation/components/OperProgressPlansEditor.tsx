@@ -106,7 +106,7 @@ export default function OperProgressPlansEditor({ plans, disabled, onChange }: O
   }
 
   return (
-    <div className="@container space-y-4">
+    <div className="@container space-y-3.5">
       <p className="text-xs leading-5 text-secondary">在游戏内提升干员，按精英阶段、技能等级、专精的顺序处理。执行会消耗已有资源，可能自动合成材料或用采购凭证购买芯片助剂；专精会占用训练室。每轮执行最多启动一项专精训练，其余专精目标留待后续执行。</p>
       {plans.length === 0 && <p className="text-sm text-secondary">添加干员并选择培养目标。</p>}
       {plans.map((plan, index) => {
@@ -114,7 +114,7 @@ export default function OperProgressPlansEditor({ plans, disabled, onChange }: O
         return (
           <fieldset key={index} disabled={disabled} className="min-w-0 space-y-3 border-t border-(--app-border) pt-3">
             <legend className="px-1 text-sm font-semibold text-primary">培养计划 {index + 1}</legend>
-            <div className="flex min-w-0 flex-wrap items-center gap-3">
+            <div className="flex min-w-0 flex-wrap items-center gap-3.5">
               <PlanOperatorAvatar operatorId={planOperatorIds[index] ?? null} />
               <div className="min-w-0 flex-1">
                 <p className={`truncate text-sm font-semibold ${plan.name ? 'text-primary' : 'text-secondary'}`}>
@@ -142,11 +142,11 @@ export default function OperProgressPlansEditor({ plans, disabled, onChange }: O
               )}
               <IconButton icon={<Trash2 size={16} />} title={`删除培养计划 ${index + 1}`} disabled={disabled} onClick={() => onChange(plans.filter((_, current) => current !== index))} />
             </div>
-            <div className="grid min-w-0 gap-3 @sm:grid-cols-2">
+            <div className="grid min-w-0 gap-3.5 @sm:grid-cols-2">
               <Select label="精英目标" aria-label={`培养计划 ${index + 1} 精英目标`} value={plan.elite ?? ''} options={eliteOptions} disabled={disabled} onChange={value => updatePlan(index, updateOperProgressTarget(plan, 'elite', value))} />
               <Select label="技能等级" aria-label={`培养计划 ${index + 1} 技能等级`} value={plan.skill_level ?? ''} options={skillOptions} disabled={disabled} onChange={value => updatePlan(index, updateOperProgressTarget(plan, 'skill_level', value))} />
             </div>
-            <div className="grid min-w-0 gap-3 @sm:grid-cols-2 @md:grid-cols-3">
+            <div className="grid min-w-0 gap-3.5 @sm:grid-cols-2 @md:grid-cols-3">
               {[0, 1, 2].map(skill => <Select key={skill} label={`技能 ${skill + 1} 专精`} aria-label={`培养计划 ${index + 1} 技能 ${skill + 1} 专精`} value={plan.skill_mastery?.[skill] ?? 0} options={masteryOptions} disabled={disabled} onChange={value => updatePlan(index, updateOperProgressMastery(plan, skill, value))} />)}
             </div>
           </fieldset>

@@ -91,7 +91,7 @@ export default function AppTabbar({ activeTab, onNavigate }: AppTabbarProps) {
             <Ellipsis aria-hidden="true" />
           </SheetTrigger>
           <SheetContent side="bottom" showCloseButton={false} className="la-pluma-more-sheet">
-            <SheetHeader className="la-pluma-more-sheet-header flex-row items-start justify-between gap-4 p-0 pt-0.5">
+            <SheetHeader className="la-pluma-more-sheet-header flex-row items-start justify-between gap-3.5 p-0 pt-0.5">
               <SheetTitle>更多工作区</SheetTitle>
               <SheetClose aria-label="关闭更多工作区" className="la-pluma-more-sheet-close">
                 <X aria-hidden="true" />

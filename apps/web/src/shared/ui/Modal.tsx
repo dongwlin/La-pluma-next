@@ -220,7 +220,7 @@ function ModalLayer({
           style={isSheet ? { paddingBottom: 'env(safe-area-inset-bottom)' } : undefined}
         >
           {(title || showClose) && (
-            <div className="flex min-h-14 items-center justify-between gap-4 px-5 py-3 shadow-[inset_0_-1px_0_var(--app-border)] sm:px-6">
+            <div className="flex min-h-14 items-center justify-between gap-3.5 px-5 py-3 shadow-[inset_0_-1px_0_var(--app-border)] sm:px-6">
               {title
                 ? <h2 id={titleId} className="min-w-0 text-base font-semibold text-primary sm:text-lg">{title}</h2>
                 : <span />}
@@ -247,7 +247,7 @@ function ModalLayer({
           </div>
 
           {footer && (
-            <div className="flex flex-wrap items-center justify-end gap-3 px-5 py-4 shadow-[inset_0_1px_0_var(--app-border)] sm:px-6">
+            <div className="flex flex-wrap items-center justify-end gap-3.5 px-5 py-4 shadow-[inset_0_1px_0_var(--app-border)] sm:px-6">
               {footer}
             </div>
           )}

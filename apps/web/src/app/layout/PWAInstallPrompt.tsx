@@ -239,7 +239,7 @@ export default function PWAInstallPrompt() {
               : { type: 'spring', stiffness: 390, damping: 35, mass: 0.8 }}
             className="pwa-install-prompt surface-panel fixed z-50 rounded-xl p-4 sm:w-96"
           >
-            <div className="flex items-start gap-3">
+            <div className="flex items-start gap-3.5">
               <img
                 src={logoUrl}
                 alt=""

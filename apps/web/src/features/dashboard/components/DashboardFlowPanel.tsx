@@ -63,7 +63,7 @@ export default function DashboardFlowPanel({ refreshDashboard, onMissingFlow }: 
     >
       <Card smoothCorners className="dashboard-flow-card p-0!">
       <div className="dashboard-flow-header">
-        <div className="flex min-w-0 items-center gap-3">
+        <div className="flex min-w-0 items-center gap-3.5">
           <div className="dashboard-flow-mark" aria-hidden="true">
             <Activity className="h-4 w-4" strokeWidth={1.8} />
           </div>
@@ -155,7 +155,7 @@ export default function DashboardFlowPanel({ refreshDashboard, onMissingFlow }: 
       </div>
 
       <div className="dashboard-flow-stages" data-dashboard-flow-stages>
-        <div className="flex items-center justify-between gap-3">
+        <div className="flex items-center justify-between gap-3.5">
           <div className="flex items-center gap-2">
             <span className="dashboard-flow-rail-dot" />
             <span className="text-xs font-semibold text-primary">今日开放关卡</span>

@@ -16,7 +16,7 @@ export default function DashboardConnectionAlert({ refreshDashboard }: Dashboard
     <SmoothPanel
       cornerSize="compact"
       className="dashboard-connection-alert"
-      surfaceClassName={`app-info-card flex min-w-0 flex-wrap items-center gap-3 ${serviceStatus === 'offline' ? 'status-warning' : 'status-danger'}`}
+      surfaceClassName={`app-info-card flex min-w-0 flex-wrap items-center gap-3.5 ${serviceStatus === 'offline' ? 'status-warning' : 'status-danger'}`}
       role="alert"
     >
       {serviceStatus === 'offline'

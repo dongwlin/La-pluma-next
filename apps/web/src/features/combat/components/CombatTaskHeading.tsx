@@ -100,8 +100,8 @@ export default function CombatTaskHeading({
   ...run
 }: CombatTaskHeadingProps) {
   return (
-    <div className="combat-task-heading flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-      <div className="flex min-w-0 items-center gap-3">
+    <div className="combat-task-heading flex flex-col gap-3.5 md:flex-row md:items-center md:justify-between">
+      <div className="flex min-w-0 items-center gap-3.5">
         <div className="combat-task-icon">
           {task.icon}
         </div>

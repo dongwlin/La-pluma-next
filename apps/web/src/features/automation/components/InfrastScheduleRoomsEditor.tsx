@@ -193,7 +193,7 @@ export default function InfrastScheduleRoomsEditor({ plan, disabled, onChange }:
         const rooms = readInfrastFacilityRooms(plan, facility.key)
         return (
           <details key={facility.key} className="group rounded-lg border border-(--app-border) px-3 py-2">
-            <summary className="flex min-h-11 cursor-pointer list-none items-center justify-between gap-3 text-sm font-medium text-primary marker:hidden [&::-webkit-details-marker]:hidden">
+            <summary className="flex min-h-11 cursor-pointer list-none items-center justify-between gap-3.5 text-sm font-medium text-primary marker:hidden [&::-webkit-details-marker]:hidden">
               <span className="flex items-center gap-2">
                 <ChevronDown size={15} strokeWidth={2} className="transition-transform group-open:rotate-180" aria-hidden="true" />
                 {facility.label}

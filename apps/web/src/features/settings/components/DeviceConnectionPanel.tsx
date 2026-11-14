@@ -42,8 +42,8 @@ export default function DeviceConnectionPanel({
 
   return (
     <section className="surface-soft rounded-xl p-(--app-space-panel)" aria-label="模拟器查找与连接测试">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div className="flex min-w-0 items-start gap-3">
+      <div className="flex flex-wrap items-start justify-between gap-3.5">
+        <div className="flex min-w-0 items-start gap-3.5">
           <span className="icon-well flex h-9 w-9 shrink-0 items-center justify-center rounded-lg brand-text">
             <Cable size={18} aria-hidden="true" />
           </span>
@@ -105,7 +105,7 @@ export default function DeviceConnectionPanel({
                 type="button"
                 disabled={disabled || !selectable || testingConnection}
                 onClick={() => void handleUseDiscoveredDevice(device)}
-                className="flex min-h-12 w-full items-center justify-between gap-3 px-3 py-2.5 text-left transition-colors hover:bg-(--app-accent-soft) focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-(--app-accent) disabled:cursor-not-allowed disabled:opacity-50"
+                className="flex min-h-12 w-full items-center justify-between gap-3.5 px-3 py-2.5 text-left transition-colors hover:bg-(--app-accent-soft) focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-(--app-accent) disabled:cursor-not-allowed disabled:opacity-50"
               >
                 <span className="min-w-0">
                   <span className="block truncate text-sm font-medium text-primary">{device.address}</span>

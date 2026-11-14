@@ -174,8 +174,8 @@ export default function ResourceSourcePanel({ isActive }: ResourceSourcePanelPro
         </>
       )}
 
-      <div className="config-switch-list flex flex-col gap-3">
-        <div className="config-reconnect-row flex min-h-14 items-center justify-between gap-3 py-1">
+      <div className="config-switch-list flex flex-col gap-3.5">
+        <div className="config-reconnect-row flex min-h-14 items-center justify-between gap-3.5 py-1">
           <div className="min-w-0">
             <div className="text-sm font-medium text-primary">自动更新资源</div>
             <div className="mt-1 text-xs leading-5 text-tertiary">由 maa-cli 在运行前按需同步 MaaResource</div>
@@ -190,7 +190,7 @@ export default function ResourceSourcePanel({ isActive }: ResourceSourcePanelPro
             disabled={!loaded}
           />
         </div>
-        <div className="config-reconnect-row flex min-h-14 items-center justify-between gap-3 py-1">
+        <div className="config-reconnect-row flex min-h-14 items-center justify-between gap-3.5 py-1">
           <div className="min-w-0">
             <div className="text-sm font-medium text-primary">更新失败时告警</div>
             <div className="mt-1 text-xs leading-5 text-tertiary">资源自动更新失败时输出警告而不是静默跳过</div>
