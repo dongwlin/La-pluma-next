@@ -72,6 +72,14 @@ export default defineConfig([
       'tailwindcss/enforces-canonical-classname': 'error',
     },
   },
+  // shadcn CLI 生成物随上游原样入库（hook 与 variants 常量是官方 API 面的一部分），
+  // fast refresh 检查不对生成物生效；自研组件仍在约束范围内。
+  {
+    files: ['src/shared/ui/{button,input,separator,skeleton,tooltip,sheet,sidebar}.tsx'],
+    rules: {
+      'react-refresh/only-export-components': 'off',
+    },
+  },
   // flat config 中同一规则后置块会整体覆盖前置块，因此每个块都写全该目录需要的 patterns。
   {
     files: ['src/**/*.{ts,tsx}'],

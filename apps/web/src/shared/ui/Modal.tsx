@@ -10,7 +10,7 @@ import {
   type UIEvent,
 } from 'react'
 import { createPortal } from 'react-dom'
-import Button, { IconButton } from './Button'
+import Button, { IconButton } from './LegacyButton'
 import {
   isTopModal,
   lockBackground,
