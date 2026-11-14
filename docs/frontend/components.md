@@ -167,25 +167,9 @@ import { Input, Select, Checkbox, Switch } from '@/shared/components'
 />
 ```
 
-`Input`、`Select` 均支持 `error` 和 `hint`，`Input` 额外支持前置 `icon`。`hint` 默认显示在控件下方；传 `hintPlacement="tooltip"` 时说明收敛为标签旁的 ⓘ 图标，悬停、聚焦或点击时以提示层显示同一段文字，控件仍通过 `aria-describedby` 关联这段说明。多行文本使用带 `app-input control-surface` 的原生 `textarea`。表单错误态使用 `error` prop，不要在页面里单独手写红色边框和错误文字。
+`Input`、`Select` 使用 `@/shared/ui` 的 shadcn 原语，不内置 `hint`/`error` 布局；字段行由各 feature 的 field helper 组合标签、说明与错误态。需要把说明收敛为标签旁的 ⓘ 时，用 `@/shared/ui/tooltip` 组合 `Tooltip`、`TooltipTrigger`（通过 `render` 承载按钮）与 `TooltipContent`，触发器保留 `${label}说明` 的 `aria-label`。多行文本使用原生 `textarea`。表单错误态使用 `aria-invalid` 与 `aria-errormessage`，不要在页面里单独手写红色边框和错误文字。
 
 `Input` 默认关闭浏览器自动填充历史（`autoComplete="off"`），避免配置值与搜索词混入输入框下拉提示；确实需要浏览器记住输入时才显式传 `autoComplete`。原生 `input` 同样补上该属性。
-
----
-
-### HintTooltip - 标签说明提示
-
-**文件位置**：`apps/web/src/shared/components/HintTooltip.tsx`
-
-**适用场景**：字段说明需要从控件下方的常驻段落收敛为标签旁的 ⓘ 提示。`Input`、`Select` 的 `hintPlacement="tooltip"` 已内置该组件；自定义标签行时直接复用。
-
-```tsx
-import { HintTooltip } from '@/shared/components'
-
-<HintTooltip id="field-hint" label="难度" hint="不切换时沿用游戏内当前难度。" />
-```
-
-`id` 同时是提示层元素 id，调用方用它把控件与说明通过 `aria-describedby` 关联；`label` 组成图标按钮的可访问名称（`${label}说明`）。提示层渲染到 `document.body`，避免被面板圆角容器裁切。
 
 ---
 
