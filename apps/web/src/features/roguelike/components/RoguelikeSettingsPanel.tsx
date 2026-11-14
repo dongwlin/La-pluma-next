@@ -1,10 +1,11 @@
-import type { ComponentProps } from 'react'
-import { LoaderCircle, Play, Square } from 'lucide-react'
+import { useState, type ComponentProps } from 'react'
+import { Info, LoaderCircle, Play, Square } from 'lucide-react'
 import { Button } from '@/shared/ui/button'
-import { HintTooltip, SmoothPanel } from '@/shared/components'
+import { SmoothPanel } from '@/shared/components'
 import { Input } from '@/shared/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/shared/ui/select'
 import { Switch } from '@/shared/ui/switch'
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/shared/ui/tooltip'
 import type { StopMode } from '@/features/task-execution'
 import {
   getRoguelikeAdvancedOptions,
@@ -14,6 +15,35 @@ import {
 } from '../model/roguelikeTasks'
 import RoguelikeCoreOperatorField from './RoguelikeCoreOperatorField'
 import type { RoguelikeAdvancedOption, RoguelikeAdvancedValues, RoguelikeTask } from '../types'
+
+interface FieldHintProps {
+  id: string
+  label: string
+  hint: string
+}
+
+function FieldHint({ id, label, hint }: FieldHintProps) {
+  const [open, setOpen] = useState(false)
+
+  return (
+    <Tooltip open={open} onOpenChange={setOpen}>
+      <TooltipTrigger
+        render={<button type="button" className="-my-1 inline-flex h-7 w-7 flex-none items-center justify-center rounded-full text-tertiary transition-colors hover:bg-muted hover:text-muted-foreground focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-primary" />}
+        aria-label={`${label}说明`}
+        aria-describedby={open ? id : undefined}
+        closeOnClick={false}
+        onClick={() => setOpen(true)}
+        onFocus={() => setOpen(true)}
+        onBlur={() => setOpen(false)}
+      >
+        <Info className="h-3.5 w-3.5" strokeWidth={2} aria-hidden="true" />
+      </TooltipTrigger>
+      <TooltipContent id={id} role="tooltip" side="bottom" sideOffset={6}>
+        {hint}
+      </TooltipContent>
+    </Tooltip>
+  )
+}
 
 interface RoguelikeSelectProps {
   id: string
@@ -44,7 +74,7 @@ function RoguelikeSelect({
       <div className="mb-2 flex items-center gap-1">
         <label htmlFor={id} className="text-sm font-medium text-muted-foreground">{label}</label>
         {hintPlacement === 'tooltip' && hint && (
-          <HintTooltip id={hintId} label={label} hint={hint} />
+          <FieldHint id={hintId} label={label} hint={hint} />
         )}
       </div>
       <Select
@@ -90,7 +120,7 @@ function RoguelikeFieldInput({
       <div className="mb-2 flex items-center gap-1">
         <label htmlFor={id} className="text-sm font-medium text-muted-foreground">{label}</label>
         {hintPlacement === 'tooltip' && hint && (
-          <HintTooltip id={hintId} label={label} hint={hint} />
+          <FieldHint id={hintId} label={label} hint={hint} />
         )}
       </div>
       <Input id={id} autoComplete="off" aria-describedby={hint && hintPlacement === 'below' ? hintId : undefined} {...inputProps} />
