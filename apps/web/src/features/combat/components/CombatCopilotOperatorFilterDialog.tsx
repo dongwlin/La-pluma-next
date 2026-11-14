@@ -101,6 +101,7 @@ function OperatorSection({
         <Search size={17} strokeWidth={1.9} aria-hidden="true" className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-tertiary" />
         <Input
           type="text"
+          autoComplete="off"
           aria-label={`搜索${title}`}
           placeholder="搜索干员名称或拼音"
           value={term}

@@ -57,6 +57,7 @@ export default function InfrastScheduleField({
           <Input
             id={planId}
             type="number"
+            autoComplete="off"
             min={0}
             value={planIndex === '' ? '' : normalizeInfrastPlanIndex(planIndex)}
             onChange={event => onChange('plan_index', normalizeInfrastPlanIndex(event.target.value))}

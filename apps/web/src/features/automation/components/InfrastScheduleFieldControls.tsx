@@ -19,7 +19,7 @@ export function FieldInput({
   return (
     <div className={className}>
       <label htmlFor={id} className="mb-2 block text-sm font-medium text-muted-foreground">{label}</label>
-      <Input id={id} aria-describedby={hint ? hintId : undefined} {...inputProps} />
+      <Input id={id} autoComplete="off" aria-describedby={hint ? hintId : undefined} {...inputProps} />
       {hint && <p id={hintId} className="mt-2 text-xs text-tertiary">{hint}</p>}
     </div>
   )

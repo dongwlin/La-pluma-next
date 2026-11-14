@@ -93,7 +93,7 @@ function RoguelikeFieldInput({
           <HintTooltip id={hintId} label={label} hint={hint} />
         )}
       </div>
-      <Input id={id} aria-describedby={hint && hintPlacement === 'below' ? hintId : undefined} {...inputProps} />
+      <Input id={id} autoComplete="off" aria-describedby={hint && hintPlacement === 'below' ? hintId : undefined} {...inputProps} />
       {hint && hintPlacement === 'below' && <p id={hintId} className="mt-2 text-xs text-tertiary">{hint}</p>}
     </div>
   )

@@ -211,6 +211,7 @@ export default function AutomationStageEditor({
                   <Input
                     id={`${fieldId}-${stageIndex}-times`}
                     type="number"
+                    autoComplete="off"
                     aria-label={`${field.label} ${stageIndex + 1} 执行次数`}
                     value={stageTimes}
                     onChange={event => updateStageTimes(stageIndex, event.target.value)}

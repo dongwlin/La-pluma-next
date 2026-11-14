@@ -113,6 +113,12 @@ describe('LogsToolbar', () => {
     expect(findSwitchByLabel('自动滚动')?.getAttribute('aria-disabled')).toBe('true')
   })
 
+  it('turns browser autofill off for the log search field', async () => {
+    await renderToolbar()
+    const search = container.querySelector('input[aria-label="搜索日志内容"]')
+    expect(search?.getAttribute('autocomplete')).toBe('off')
+  })
+
   it('distinguishes clearing the screen and exporting selected records', async () => {
     const onClear = vi.fn()
     await renderToolbar({ onClear })

@@ -145,6 +145,7 @@ export default function LogsToolbar({
             <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-tertiary" aria-hidden="true" />
             <Input
               value={search}
+              autoComplete="off"
               onChange={event => onSearchChange(event.target.value)}
               placeholder="搜索日志内容"
               aria-label="搜索日志内容"

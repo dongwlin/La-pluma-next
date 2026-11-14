@@ -18,6 +18,7 @@ export default function ThemeListEditor({ themes, disabled, onChange }: ThemeLis
         <div className="flex min-w-0 items-center gap-2" key={index}>
           <Input
             className="min-w-0 flex-1"
+            autoComplete="off"
             aria-label={`主题 ${index + 1}`}
             value={theme}
             placeholder="游戏内主题名"

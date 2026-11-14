@@ -55,6 +55,7 @@ export default function RoguelikeThemePanel({
             id={`roguelike-${task.id}-theme`}
             name={`maa-${task.id}-theme`}
             type="text"
+            autoComplete="off"
             placeholder={task.placeholder}
             value={theme}
             onChange={event => onThemeChange(event.target.value)}

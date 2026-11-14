@@ -593,6 +593,7 @@ export default function AutomationWorkspace() {
                                   <Input
                                     id={`${fieldId}-times`}
                                     type="number"
+                                    autoComplete="off"
                                     aria-label={`${field.label}执行次数`}
                                     value={task.params.times || ''}
                                     onChange={(e) => updateTaskParam(index, 'times', e.target.value)}
@@ -731,6 +732,7 @@ export default function AutomationWorkspace() {
                                     <Input
                                       id={fieldId}
                                       type="number"
+                                      autoComplete="off"
                                       value={task.params[field.key] || ''}
                                       onChange={(e) => updateTaskParam(index, field.key, e.target.value)}
                                       placeholder={field.placeholder}
@@ -1057,6 +1059,7 @@ export default function AutomationWorkspace() {
                                     <Input
                                       id={recruitmentTimeId}
                                       type="number"
+                                      autoComplete="off"
                                       value={recruitmentTime[key] ?? 540}
                                       onChange={(e) => updateTaskParam(index, 'recruitment_time', { ...recruitmentTime, [key]: e.target.value })}
                                       onBlur={(e) => updateTaskParam(index, 'recruitment_time', {

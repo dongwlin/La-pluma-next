@@ -92,6 +92,7 @@ export default function CombatCopilotSearchBar({
             <Search size={17} strokeWidth={1.9} aria-hidden="true" className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-tertiary" />
             <Input
               type="text"
+              autoComplete="off"
               className="combat-copilot-discovery-keyword pl-9"
               aria-label="搜索作业关键词"
               placeholder="搜索作业标题、说明"
