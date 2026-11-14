@@ -119,7 +119,6 @@
     --app-text-muted: var(--muted-foreground);
     --app-text-soft: var(--tertiary-foreground);
     --app-accent: var(--primary);
-    --app-accent-strong: var(--primary-strong);
     --app-accent-action: var(--primary-action);
     --app-accent-action-pressed: var(--primary-action-pressed);
     --app-accent-soft: var(--primary-soft);
@@ -130,9 +129,7 @@
     --app-danger-action: var(--destructive-action);
     --app-info: var(--info);
     --app-radius-sm: var(--radius-md);
-    --app-radius-md: var(--radius-lg);
     --app-radius-lg: var(--radius-xl);
-    --app-radius-pill: 9999px;
     --app-continuous-radius: var(--continuous-radius);
     --app-space-1: 0.25rem;
     --app-space-2: 0.5rem;
@@ -204,7 +201,6 @@
     --app-text-muted: var(--muted-foreground);
     --app-text-soft: var(--tertiary-foreground);
     --app-accent: var(--primary);
-    --app-accent-strong: var(--primary-strong);
     --app-accent-action: var(--primary-action);
     --app-accent-action-pressed: var(--primary-action-pressed);
     --app-accent-soft: var(--primary-soft);
