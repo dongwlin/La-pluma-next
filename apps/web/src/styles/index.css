@@ -1,6 +1,8 @@
 @layer theme, base, components, page, utilities;
 
 @import "tailwindcss"; /* stylelint-disable-line import-notation -- Tailwind v4 只解析字符串形式的入口 */
+@import "tw-animate-css"; /* stylelint-disable-line import-notation -- Tailwind v4 只解析字符串形式的入口 */
+@import "shadcn/tailwind.css"; /* stylelint-disable-line import-notation -- Tailwind v4 只解析字符串形式的入口 */
 
 @custom-variant dark (&:is(.dark *));
 
@@ -19,6 +21,47 @@
   --radius-lg: var(--app-radius-md);
   --radius-xl: var(--app-radius-lg);
   --radius-full: var(--app-radius-pill);
+}
+
+/*
+ * shadcn 语义变量到 Tailwind 颜色档位的运行时映射。--color-primary 与
+ * --color-secondary 暂不映射：生成的 text-primary / text-secondary 工具类会与
+ * @layer components 里的同名自研类冲突（utilities 层靠后直接覆盖正文色语义），
+ * 两处映射随自研类消费点改写一并补上。
+ */
+@theme inline {
+  --font-sans: var(--font-app);
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-success: var(--success);
+  --color-warning: var(--warning);
+  --color-info: var(--info);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-chart-1: var(--chart-1);
+  --color-chart-2: var(--chart-2);
+  --color-chart-3: var(--chart-3);
+  --color-chart-4: var(--chart-4);
+  --color-chart-5: var(--chart-5);
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-ring: var(--sidebar-ring);
 }
 
 @utility gap-3 {
@@ -203,6 +246,48 @@
     --app-font-body: 0.875rem;
     --app-font-caption: 0.75rem;
     --app-font-meta: 0.6875rem;
+
+    /*
+     * shadcn 语义变量基线：取值与 --app-* 族一致，保证旧观感零变化。
+     * --font-app 是主题包可覆盖的运行时字体变量，经 @theme inline 供给 font-sans。
+     */
+    --font-app: -apple-system, 'BlinkMacSystemFont', 'SF Pro Text', 'SF UI Text', system-ui, sans-serif;
+    --background: #f2f2f7;
+    --foreground: #1c1c1e;
+    --card: #fff;
+    --card-foreground: #1c1c1e;
+    --popover: #fff;
+    --popover-foreground: #1c1c1e;
+    --primary: #007aff;
+    --primary-foreground: #fff;
+    --secondary: #e5e5ea;
+    --secondary-foreground: #1c1c1e;
+    --muted: rgb(118 118 128 / 12%);
+    --muted-foreground: #636366;
+    --accent: rgb(118 118 128 / 12%);
+    --accent-foreground: #1c1c1e;
+    --destructive: #ff3b30;
+    --destructive-foreground: #fff;
+    --success: #34c759;
+    --warning: #ff9500;
+    --info: #5856d6;
+    --border: rgb(60 60 67 / 18%);
+    --input: rgb(60 60 67 / 28%);
+    --ring: #007aff;
+    --chart-1: oklch(87% 0 0deg);
+    --chart-2: oklch(55.6% 0 0deg);
+    --chart-3: oklch(43.9% 0 0deg);
+    --chart-4: oklch(37.1% 0 0deg);
+    --chart-5: oklch(26.9% 0 0deg);
+    --radius: 0.625rem;
+    --sidebar: #f2f2f7;
+    --sidebar-foreground: #1c1c1e;
+    --sidebar-primary: #007aff;
+    --sidebar-primary-foreground: #fff;
+    --sidebar-accent: rgb(118 118 128 / 12%);
+    --sidebar-accent-foreground: #1c1c1e;
+    --sidebar-border: rgb(60 60 67 / 18%);
+    --sidebar-ring: #007aff;
   }
 
   html.dark,
@@ -231,6 +316,42 @@
     --app-danger-action: #ff453a;
     --app-info: #5e5ce6;
     --app-select-chevron: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20' fill='none' stroke='%239aa8b5' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 8 4 4 4-4'/%3E%3C/svg%3E");
+
+    --background: #000;
+    --foreground: #f2f2f7;
+    --card: #1c1c1e;
+    --card-foreground: #f2f2f7;
+    --popover: #1c1c1e;
+    --popover-foreground: #f2f2f7;
+    --primary: #0a84ff;
+    --primary-foreground: #fff;
+    --secondary: #1c1c1e;
+    --secondary-foreground: #f2f2f7;
+    --muted: rgb(118 118 128 / 24%);
+    --muted-foreground: #aeaeb2;
+    --accent: rgb(118 118 128 / 24%);
+    --accent-foreground: #f2f2f7;
+    --destructive: #ff453a;
+    --destructive-foreground: #fff;
+    --success: #30d158;
+    --warning: #ff9f0a;
+    --info: #5e5ce6;
+    --border: rgb(235 235 245 / 18%);
+    --input: rgb(235 235 245 / 28%);
+    --ring: #0a84ff;
+    --chart-1: oklch(87% 0 0deg);
+    --chart-2: oklch(55.6% 0 0deg);
+    --chart-3: oklch(43.9% 0 0deg);
+    --chart-4: oklch(37.1% 0 0deg);
+    --chart-5: oklch(26.9% 0 0deg);
+    --sidebar: #1c1c1e;
+    --sidebar-foreground: #f2f2f7;
+    --sidebar-primary: #0a84ff;
+    --sidebar-primary-foreground: #fff;
+    --sidebar-accent: rgb(118 118 128 / 24%);
+    --sidebar-accent-foreground: #f2f2f7;
+    --sidebar-border: rgb(235 235 245 / 18%);
+    --sidebar-ring: #0a84ff;
   }
 
   @media (width <= 640px) {
@@ -253,6 +374,7 @@
     background-color: var(--app-bg);
     background-image: linear-gradient(180deg, var(--app-bg) 0%, var(--app-bg-soft) 48%, var(--app-bg) 100%);
     color: var(--app-text);
+    font-family: var(--font-app);
     overscroll-behavior-y: none;
     scrollbar-width: none;
     -ms-overflow-style: none;
