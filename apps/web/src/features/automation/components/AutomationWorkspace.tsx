@@ -18,7 +18,7 @@ import { Checkbox } from '@/shared/ui/checkbox'
 import { Input } from '@/shared/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/shared/ui/select'
 import { Switch } from '@/shared/ui/switch'
-import { EmptyState, SmoothPanel } from '@/shared/components'
+import { EmptyState, FieldHint, SmoothPanel } from '@/shared/components'
 import { useAutomationAvailability, useStatusStore } from '@/features/runtime-status'
 import { useUserConfig } from '@/features/user-config'
 import { useResourceInvalidation, type ResourceInvalidation } from '@/features/resource-invalidation'
@@ -34,7 +34,6 @@ import {
   AutomationCheckboxField,
   AutomationFieldLabel,
   AutomationFieldLegend,
-  FieldHint,
 } from './AutomationFieldControls'
 import { AVAILABLE_TASKS } from './automationTaskCatalog'
 import { useAutomationExecution } from '../hooks/useAutomationExecution'

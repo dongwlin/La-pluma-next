@@ -7,7 +7,7 @@ export function AppProviders({ children }: { children: ReactNode }) {
   return (
     <QueryProvider>
       <MotionConfig reducedMotion="user">
-        <TooltipProvider delay={0}>
+        <TooltipProvider>
           {children}
         </TooltipProvider>
       </MotionConfig>
