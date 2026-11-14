@@ -302,8 +302,8 @@ La Pluma Next 是一个高密度的本地自动化控制台，不是营销页面
 整体气质是**精密而克制**：控件像加工过的系统零件，尺寸和反馈都精确，但不以装饰、渐变或夸张动效吸引注意。
 
 ### Buttons
-- **Shape:** `rounded-xl`（16px），无边框；`Button` 和 `IconButton` 共享高度档位。
-- **Sizes:** `sm` 36px、`md` 44px、`lg` 48px；手机断点和粗指针设备把所有标准按钮、图标按钮与表单点击区提升到至少 44px。
+- **Shape:** `rounded-lg`（12px），无边框；`Button` 的尺寸档位由 shadcn base-nova 提供。
+- **Sizes:** `xs` 24px、`sm` 28px、`default` 32px、`lg` 36px；图标档 `icon-xs` 24px、`icon-sm` 28px、`icon` 32px、`icon-lg` 36px。手机断点和粗指针设备沿用同一紧凑档位，不额外放大。
 - **Primary:** `brand-action`（`#0066cc` 实心、白字、轻微蓝色投影）；hover 只压暗，不增加渐变或光晕。
 - **Secondary / Outline:** `control-surface` + `text-foreground`；hover 使用弱主题背景和轻描边。
 - **Danger / Success:** `status-danger-action` / `status-success-action`，语义必须与操作后果一致。
@@ -312,10 +312,10 @@ La Pluma Next 是一个高密度的本地自动化控制台，不是营销页面
 - **Disabled / Loading:** disabled 使用 `opacity-50`、`cursor-not-allowed`，关闭点击与 hover；loading 期间自动禁用，仅显示加载指示器和 `loadingText`。不要在调用处叠加 `h-*`、`px-*`、`py-*` 缩小标准控件。
 
 ### Inputs / Fields
-- **Style:** 44px 高、16px 圆角、`app-input control-surface`；静态边界使用 `inset 0 0 0 1px var(--input)` 和极轻的投影。
+- **Style:** 32px 高（`h-8`）、`rounded-lg`（12px）的 shadcn `Input`；边框、背景与状态色使用 shadcn 语义 token。
 - **Focus:** `inset 0 0 0 1px var(--primary), 0 0 0 3px var(--primary-soft)`；不要用高饱和外发光。
 - **Error:** `form-error-surface` 红色内描边，错误文字使用 `form-error-text`；`hint` 只在没有错误时显示。
-- **Controls:** 二元启停使用 `Switch`（51×31px 胶囊，compact 41×25px）；多选或参数组合使用 `Checkbox`；新增表单优先使用 `Input`、`Select`、`Checkbox`、`Switch`，手写原生控件使用 `app-input control-surface`、`app-checkbox`。
+- **Controls:** 二元启停使用 `Switch`（默认 32×18.4px 胶囊，`sm` 24×14px）；多选或参数组合使用 `Checkbox`（16×16px）；新增表单优先使用 `Input`、`Select`、`Checkbox`、`Switch`，手写原生控件使用 `app-input control-surface`、`app-checkbox`。
 
 ### Cards / Containers
 - **Corner Style:** 普通卡片 16px；需要连续圆角时使用 `SmoothPanel` 的 20px / 16px。
@@ -363,7 +363,7 @@ La Pluma Next 是一个高密度的本地自动化控制台，不是营销页面
 - **Do** 先读 `apps/web/src/styles/index.css` 和 `apps/web/src/styles/ios-theme.css`，再用语义类实现界面；新页面优先使用 `Layout`、`PageHeader`、`Card`、`Button`、`Input` 等现有组件。
 - **Do** 把间距收敛到 Tailwind 原生档位与组件类、圆角收敛到 `--radius` 派生档位，保持 4px 基线和 1px 发丝线。
 - **Do** 让系统蓝保持稀缺：只用于当前项、主操作、焦点和运行中状态；状态色只表达语义。
-- **Do** 在手机和粗指针设备上保证至少 44px 的点击区域，并检查 light/dark、loading、disabled、empty、error 以及长标题/长操作文案。
+- **Do** 在手机和粗指针设备上沿用 shadcn base-nova 的紧凑控件度量，不额外放大表单控件，并检查 light/dark、loading、disabled、empty、error 以及长标题/长操作文案。
 - **Do** 在 `viewport-fit=cover` 的安全区设备上确认 chrome 与页面内容没有双重留白。
 - **Do** 为所有可点击元素提供 `focus-visible` 状态，装饰图标加 `aria-hidden="true"`。
 
