@@ -184,7 +184,7 @@ export default function DepotPanel({ isActive, command }: DepotPanelProps) {
                         key={itemKey}
                         className="data-statistics-depot-item flex min-w-0 items-center gap-3.5 p-3"
                       >
-                        <div className="flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-(--app-surface-muted)">
+                        <div className="flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-muted">
                           {failedDepotImages[imageKey] ? (
                             <span role="img" aria-label={`${item.name}图标不可用`}>
                               <PackageIcon className="h-6 w-6 brand-text" aria-hidden="true" />

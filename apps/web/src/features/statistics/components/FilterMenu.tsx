@@ -48,10 +48,10 @@ const filterButtonClass = (isActive: boolean) =>
 const menuSurfaceClass = 'data-statistics-menu-surface fixed z-2000 overflow-y-auto overscroll-contain rounded-xl py-1 surface-panel'
 
 const menuOptionClass = (isActive: boolean) =>
-  `min-h-11 w-full px-3 text-left text-xs transition-colors focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-(--app-accent) ${
+  `min-h-11 w-full px-3 text-left text-xs transition-colors focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary ${
     isActive
       ? 'brand-chip font-medium'
-      : 'text-muted-foreground hover:bg-(--app-surface-muted) hover:text-foreground'
+      : 'text-muted-foreground hover:bg-muted hover:text-foreground'
   }`
 
 export default function FilterMenu({

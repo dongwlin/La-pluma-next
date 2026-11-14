@@ -313,7 +313,7 @@ export default function OperatorPanel({ isActive, command }: OperatorPanelProps)
                       </p>
                     )}
                     {recognitionHint && (
-                      <p role="status" className="mt-1 text-xs leading-5 text-(--app-warning)">
+                      <p role="status" className="mt-1 text-xs leading-5 text-warning">
                         {recognitionHint}
                       </p>
                     )}
@@ -444,11 +444,11 @@ export default function OperatorPanel({ isActive, command }: OperatorPanelProps)
                           </div>
                         )}
 
-                        <div className="relative mb-2 aspect-square w-full overflow-hidden rounded-xl bg-(--app-surface-muted)">
+                        <div className="relative mb-2 aspect-square w-full overflow-hidden rounded-xl bg-muted">
                           {oper.id ? (
                             <>
                               {!imageLoaded && (
-                                <div className="absolute inset-0 animate-pulse bg-(--app-surface-muted)"></div>
+                                <div className="absolute inset-0 animate-pulse bg-muted"></div>
                               )}
                               <img
                                 src={getOperatorAvatarUrl(oper.id, 'base', itemIconVersion)}
@@ -471,7 +471,7 @@ export default function OperatorPanel({ isActive, command }: OperatorPanelProps)
                                 }}
                               />
                               {!isOwned && imageLoaded && (
-                                <div className="absolute inset-0 bg-[color-mix(in_srgb,var(--app-bg)_62%,transparent)]"></div>
+                                <div className="absolute inset-0 bg-[color-mix(in_srgb,var(--background)_62%,transparent)]"></div>
                               )}
                             </>
                           ) : (

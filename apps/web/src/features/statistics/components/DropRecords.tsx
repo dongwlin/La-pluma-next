@@ -201,10 +201,10 @@ export default function DropRecords({
             return (
               <div
                 key={itemData.name}
-                className="drop-records-item-row group flex min-w-0 items-center gap-3.5 p-3 transition-colors hover:bg-(--app-surface-muted)"
+                className="drop-records-item-row group flex min-w-0 items-center gap-3.5 p-3 transition-colors hover:bg-muted"
               >
                 {iconKey && (
-                  <div className="flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-(--app-surface-muted)">
+                  <div className="flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-muted">
                     {failedItemImages[itemData.name] ? (
                       <span role="img" aria-label={`${itemData.name}图标不可用`}>
                         <PackageIcon className="h-6 w-6 brand-text" aria-hidden="true" />
