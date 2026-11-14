@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { motion, useReducedMotion } from 'framer-motion'
 import { AlertTriangle, CheckCircle2, ChevronDown, CircleMinus } from 'lucide-react'
-import { formatExecutionActionSummary, isUnconfirmedGameAction } from '@/shared/utils/executionSummary'
+import { formatExecutionActionSummary, isUnconfirmedGameAction } from '@/shared/lib/executionSummary'
 import {
   executionSummaryHasFailure,
   type AutomationExecutionSummary as AutomationExecutionSummaryData,

@@ -8,7 +8,7 @@ import {
   SheetTitle,
   SheetTrigger,
 } from '@/shared/ui/sheet'
-import { cn } from '@/shared/ui/cn'
+import { cn } from '@/shared/lib/utils'
 import type { AppTab } from '@/shared/navigation'
 import { appTabs, type AppTabDefinition } from '../router/tabs'
 
