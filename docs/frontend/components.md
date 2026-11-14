@@ -185,7 +185,7 @@ import { FieldHint } from '@/shared/components'
 <FieldHint id="field-hint" label="难度" hint="不切换时沿用游戏内当前难度。" />
 ```
 
-组件在打开时才挂载提示内容，内容带 `role="tooltip"`，触发器的 `aria-describedby` 仅在打开时指向内容 id；触发器保留 `${label}说明` 的 `aria-label`，并同时支持悬停、聚焦、点击与触屏点按。提示内容只承载文本，使用 `pointer-events-none`，根节点设置 `disableHoverablePopup`，避免覆盖相邻控件时吞掉悬停或点击。
+组件在打开时才挂载提示内容，内容带 `role="tooltip"`，触发器的 `aria-describedby` 仅在打开时指向内容 id；触发器保留 `${label}说明` 的 `aria-label`，并同时支持悬停、聚焦、点击与触屏点按。粗指针设备忽略 Base UI 合成的 hover 开关，提示由点按、点击或聚焦打开，直到 Escape、外部点按或 blur 关闭。提示内容只承载文本，使用 `pointer-events-none`，根节点设置 `disableHoverablePopup`，避免覆盖相邻控件时吞掉悬停或点击。
 
 自定义触发器时，用 `@/shared/ui/tooltip` 组合 `Tooltip`、`TooltipTrigger`（通过 `render` 承载按钮）与 `TooltipContent`，并保持上述受控 `open`、点击/触屏打开、`role`/`aria-describedby` 与非遮挡约定。
 
