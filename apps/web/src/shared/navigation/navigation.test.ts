@@ -7,6 +7,7 @@ import {
   appTabFromPathname,
   appTabRoute,
   isAppTab,
+  isDevRoutePathname,
   routerBasename,
 } from './index'
 
@@ -68,5 +69,19 @@ describe('shared navigation vocabulary', () => {
     }
     expect(isAppTab('not-a-tab')).toBe(false)
     expect(isAppTab(undefined)).toBe(false)
+  })
+
+  it('matches dev routes by their /dev prefix', () => {
+    expect(isDevRoutePathname('/dev/theme-gallery')).toBe(true)
+    expect(isDevRoutePathname('/dev')).toBe(true)
+    expect(isDevRoutePathname('/dev/')).toBe(true)
+    expect(isDevRoutePathname('/dev/theme-gallery/sub')).toBe(true)
+  })
+
+  it('does not match app routes or dev-prefixed words', () => {
+    expect(isDevRoutePathname('/app/dashboard')).toBe(false)
+    expect(isDevRoutePathname('/developer')).toBe(false)
+    expect(isDevRoutePathname('/')).toBe(false)
+    expect(isDevRoutePathname('')).toBe(false)
   })
 })

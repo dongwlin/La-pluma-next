@@ -24,6 +24,7 @@ export const READY_MARKER: Record<string, { text?: string; input?: string }> = {
   logs: { text: '任务执行完成' },
   statistics: { text: '能天使' },
   config: { text: 'v5.12.3' },
+  gallery: { text: '主题画廊' },
 }
 
 /** 主题种子：与 shared/theme/bootTheme.ts 的 lpn-ui key/结构保持一致。 */
