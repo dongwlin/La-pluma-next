@@ -414,8 +414,7 @@
   }
 
   @media (max-width: 768px) {
-    /* Textareas grow from their row/content sizing; inputs and selects retain
-       the shared 44px touch target on compact screens. */
+    /* Textareas grow from their row/content sizing instead of a fixed control height. */
     textarea {
       min-height: auto !important;
     }
@@ -1088,6 +1087,24 @@
     align-items: center;
     gap: 0.5rem;
     cursor: pointer;
+  }
+
+  [data-slot="checkbox"][data-indeterminate] {
+    border-color: var(--primary);
+    background-color: var(--primary);
+    color: var(--primary-foreground);
+  }
+
+  [data-slot="checkbox"][data-indeterminate] [data-slot="checkbox-indicator"] svg {
+    display: none;
+  }
+
+  [data-slot="checkbox"][data-indeterminate] [data-slot="checkbox-indicator"]::before {
+    content: '';
+    width: 0.5rem;
+    height: 1.5px;
+    border-radius: 9999px;
+    background-color: currentcolor;
   }
 
   @media (max-width: 640px) {
