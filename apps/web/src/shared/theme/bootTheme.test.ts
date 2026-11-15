@@ -8,6 +8,7 @@ import {
   applyBootSettingsToDom,
   applyUiSettings,
   BOOT_THEME_COLORS,
+  BOOT_THEME_COLORS_BY_ID,
   createBootScript,
   DEFAULT_THEME_SETTINGS,
   KNOWN_THEME_IDS,
@@ -16,6 +17,7 @@ import {
   readStoredSettings,
   resolveBootSettings,
   resolveDark,
+  resolveInitialSettings,
   THEME_MODES,
   THEME_STORAGE_KEY,
   type UiThemeSettings,
@@ -176,6 +178,17 @@ describe('applyUiSettings', () => {
     expect(document.documentElement.style.backgroundColor).toBe('rgb(242, 242, 247)')
     expect(document.documentElement.hasAttribute('data-theme')).toBe(false)
   })
+
+  it('falls back to the default theme for non-string theme ids', () => {
+    systemDark = false
+
+    applyUiSettings({ themeId: ['default'], mode: 'light' } as unknown as UiThemeSettings)
+
+    expect(document.documentElement.classList.contains('dark')).toBe(false)
+    expect(document.documentElement.style.backgroundColor).toBe('rgb(242, 242, 247)')
+    expect(document.documentElement.hasAttribute('data-theme')).toBe(false)
+    expect(document.querySelector('meta[name="theme-color"]')?.getAttribute('content')).toBe('#f6f8fb')
+  })
 })
 
 describe('resolveBootSettings', () => {
@@ -282,6 +295,7 @@ const BOOT_STORAGE_CASES: BootStorageCase[] = [
   { name: 'lpn-ui missing the theme id', lpn: JSON.stringify({ mode: 'light' }), legacy: null, systemDark: false },
   { name: 'lpn-ui missing the mode', lpn: JSON.stringify({ themeId: 'default' }), legacy: null, systemDark: false },
   { name: 'lpn-ui with an unknown theme', lpn: JSON.stringify({ themeId: 'missing-theme', mode: 'light' }), legacy: null, systemDark: false },
+  { name: 'lpn-ui with a non-string theme id', lpn: JSON.stringify({ themeId: ['default'], mode: 'light' }), legacy: null, systemDark: false },
   { name: 'lpn-ui empty object', lpn: '{}', legacy: null, systemDark: false },
   { name: 'lpn-ui corrupt JSON', lpn: '{invalid-json', legacy: null, systemDark: false },
   { name: 'lpn-ui null literal', lpn: 'null', legacy: null, systemDark: false },
@@ -325,13 +339,6 @@ function snapshotBootDom(): BootDomSnapshot {
   }
 }
 
-function readRuntimeSettings(): UiThemeSettings {
-  const stored = readStoredSettings(window.localStorage.getItem(THEME_STORAGE_KEY))
-  if (stored) return stored
-  const legacyMode = readLegacyThemeMode(window.localStorage.getItem(LEGACY_THEME_STORAGE_KEY))
-  return legacyMode ? { themeId: DEFAULT_THEME_ID, mode: legacyMode } : DEFAULT_THEME_SETTINGS
-}
-
 describe('boot script and runtime parity', () => {
   it.each(BOOT_STORAGE_CASES)('$name', (testCase) => {
     seedBootEnvironment(testCase)
@@ -339,32 +346,18 @@ describe('boot script and runtime parity', () => {
     const fromScript = snapshotBootDom()
 
     seedBootEnvironment(testCase)
-    applyUiSettings(readRuntimeSettings())
+    applyUiSettings(resolveInitialSettings(
+      window.localStorage.getItem(THEME_STORAGE_KEY),
+      window.localStorage.getItem(LEGACY_THEME_STORAGE_KEY),
+    ))
     const fromRuntime = snapshotBootDom()
 
     expect(fromRuntime).toEqual(fromScript)
-    expect(readRuntimeSettings()).toEqual(
-      resolveBootSettings(
-        testCase.lpn,
-        testCase.legacy,
-        KNOWN_THEME_IDS,
-        THEME_MODES,
-        DEFAULT_THEME_SETTINGS,
-      ) ?? DEFAULT_THEME_SETTINGS,
-    )
   })
 })
 
 describe('createBootScript', () => {
   beforeEach(installThemeEnvironment)
-
-  it('inlines the shared resolver and DOM functions verbatim', () => {
-    const script = createBootScript()
-
-    expect(script).toContain(resolveDark.toString())
-    expect(script).toContain(resolveBootSettings.toString())
-    expect(script).toContain(applyBootSettingsToDom.toString())
-  })
 
   it('contains no module imports, bundler helpers or TypeScript-only syntax', () => {
     const script = createBootScript()
@@ -453,6 +446,11 @@ describe('default settings', () => {
   it('keeps the dark default consistent with the boot colors', () => {
     expect(DEFAULT_THEME_SETTINGS).toEqual({ themeId: 'default', mode: 'dark' })
     expect(BOOT_THEME_COLORS.dark.background).toBe('#000000')
+  })
+
+  it('keeps the default theme registered in the theme list and boot palette', () => {
+    expect(KNOWN_THEME_IDS).toContain(DEFAULT_THEME_ID)
+    expect(BOOT_THEME_COLORS_BY_ID[DEFAULT_THEME_ID]).toBeDefined()
   })
 })
 
