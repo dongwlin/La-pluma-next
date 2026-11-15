@@ -666,12 +666,6 @@
     color: var(--primary-strong) !important;
   }
 
-  .app-modal-backdrop {
-    background: rgba(2, 6, 23, 0.54);
-    backdrop-filter: blur(6px);
-    -webkit-backdrop-filter: blur(6px);
-  }
-
   .pwa-update-chip {
     right: max(0.75rem, env(safe-area-inset-right));
     bottom: max(1rem, env(safe-area-inset-bottom));
@@ -1470,14 +1464,10 @@
   }
 
   @media (prefers-reduced-transparency: reduce) {
-    .surface-panel,
-    .app-modal-backdrop {
-      backdrop-filter: none !important;
-      -webkit-backdrop-filter: none !important;
-    }
-
     .surface-panel {
       background: var(--card) !important;
+      backdrop-filter: none !important;
+      -webkit-backdrop-filter: none !important;
     }
 
     .app-card-smooth-surface,
@@ -1492,10 +1482,6 @@
       background: transparent !important;
       backdrop-filter: none !important;
       -webkit-backdrop-filter: none !important;
-    }
-
-    .app-modal-backdrop {
-      background: rgba(2, 6, 23, 0.72) !important;
     }
   }
 
@@ -1728,9 +1714,8 @@
 
   /*
    * Base UI Select/Tooltip 的弹层经 portal 挂在 body 下，上游 z-50 低于应用
-   * chrome（navbar 60 / tabbar 70）与 app-modal-layer 80；utilities 层拥有
-   * z-50，只有 components 层的 !important 能压过它，使弹层与 FilterMenu 的
-   * z-2000 约定一致。
+   * chrome（navbar 60 / tabbar 70）；utilities 层拥有 z-50，只有 components
+   * 层的 !important 能压过它，使弹层与 FilterMenu 的 z-2000 约定一致。
    */
   div:has(> [data-slot="select-content"]),
   div:has(> [data-slot="tooltip-content"]) {
