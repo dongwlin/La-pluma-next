@@ -1459,6 +1459,10 @@
       animation: none !important;
     }
 
+    [data-slot='skeleton'] {
+      animation: none !important;
+    }
+
     .app-card,
     .app-button,
     .app-icon-button,
