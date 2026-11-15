@@ -73,6 +73,7 @@ test.describe('app tabs', () => {
     await expect(title).toHaveText('概览')
     await expect(page.getByRole('heading', { level: 1 })).toHaveCount(1)
     expect(await title.evaluate(element => getComputedStyle(element).fontSize)).toBe('24px')
+    expect(await title.evaluate(element => getComputedStyle(element).fontWeight)).toBe('600')
     await expect(page).toHaveTitle('概览 · La Pluma Next')
 
     await page.goto('/app/automation')
