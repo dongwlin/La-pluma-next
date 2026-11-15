@@ -114,6 +114,27 @@ describe('ConfirmAlertDialog', () => {
     expect(document.querySelector('[role="alert"]')?.textContent).toContain('清理失败，请稍后重试')
   })
 
+  it('closes on an outside press while idle but not while pending', async () => {
+    let resolveConfirm: (() => void) | undefined
+    const onClose = vi.fn()
+    await renderDialog({
+      onConfirm: () => new Promise<void>(resolve => {
+        resolveConfirm = resolve
+      }),
+      onClose,
+    })
+
+    document.body.dispatchEvent(new MouseEvent('pointerdown', { bubbles: true }))
+    expect(onClose).toHaveBeenCalledOnce()
+
+    onClose.mockClear()
+    await clickButton('确认')
+    document.body.dispatchEvent(new MouseEvent('pointerdown', { bubbles: true }))
+
+    expect(onClose).not.toHaveBeenCalled()
+    await act(async () => resolveConfirm?.())
+  })
+
   it('does not close from Escape while the confirmation is pending', async () => {
     let resolveConfirm: (() => void) | undefined
     const onClose = vi.fn()

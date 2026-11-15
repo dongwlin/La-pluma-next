@@ -50,6 +50,25 @@ export function ConfirmAlertDialog({
     else setIsPending(false)
   }, [isOpen])
 
+  useEffect(() => {
+    if (!isOpen) return
+    let closing = false
+    const handleOutsidePress = (event: MouseEvent) => {
+      if (isPending || closing || !(event.target instanceof Node)) return
+      const content = document.querySelector('[data-slot="alert-dialog-content"]')
+      if (!content || content.contains(event.target)) return
+      closing = true
+      onClose()
+    }
+
+    document.addEventListener('pointerdown', handleOutsidePress)
+    document.addEventListener('mousedown', handleOutsidePress)
+    return () => {
+      document.removeEventListener('pointerdown', handleOutsidePress)
+      document.removeEventListener('mousedown', handleOutsidePress)
+    }
+  }, [isOpen, isPending, onClose])
+
   const handleClose = () => {
     if (!isPending) onClose()
   }
