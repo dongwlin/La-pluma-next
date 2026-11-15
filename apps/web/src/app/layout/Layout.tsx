@@ -148,7 +148,7 @@ export default function Layout({ activeTab, children }: LayoutProps) {
           <AppNavbar pageTitle={pageTitle} />
           <AppSidebar activeTab={activeTab} onNavigate={navigateToTab} />
           <main className="la-pluma-scroll-host">
-            <div className="la-pluma-content app-shell">
+            <div className="la-pluma-content">
               {children}
             </div>
           </main>
