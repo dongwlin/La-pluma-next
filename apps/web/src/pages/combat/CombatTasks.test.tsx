@@ -2153,6 +2153,64 @@ describe('CombatTasks execution', () => {
     expect(copilotDrawer()?.textContent).not.toContain('旧预览')
   })
 
+  it('dismisses stale preview progress when the input changes and keeps the next preview notice', async () => {
+    const stalePreview = deferred<ApiResponse>()
+    const nextPreview = deferred<ApiResponse>()
+    mocks.getCopilotInfo
+      .mockReturnValueOnce(stalePreview.promise)
+      .mockReturnValueOnce(nextPreview.promise)
+    await renderComponent()
+    await setRecognitionMode('single')
+    const input = container.querySelector<HTMLInputElement>('input[name="maa-copilot-uri"]')!
+
+    await setInputValue(input, 'prts://1')
+    mocks.dismissNotice.mockClear()
+    await click(buttonByText('预览')!)
+    expect(mocks.notifyProgress).toHaveBeenCalledWith('正在获取作业信息...', 'combat-preview')
+    expect(mocks.dismissNotice).not.toHaveBeenCalled()
+
+    await setInputValue(input, 'prts://2')
+    await flush()
+
+    expect(mocks.dismissNotice).toHaveBeenCalledTimes(1)
+    expect(mocks.dismissNotice).toHaveBeenCalledWith('combat-preview')
+    expect(mocks.notify).not.toHaveBeenCalledWith(expect.anything(), undefined, {
+      id: 'combat-preview',
+    })
+
+    await click(buttonByText('预览')!)
+    expect(mocks.notifyProgress).toHaveBeenCalledTimes(2)
+    expect(mocks.notifyProgress).toHaveBeenLastCalledWith('正在获取作业信息...', 'combat-preview')
+    expect(mocks.dismissNotice).toHaveBeenCalledTimes(1)
+
+    await act(async () => stalePreview.resolve({
+      success: true,
+      data: {
+        status_code: 200,
+        data: { content: JSON.stringify({ doc: { title: '旧预览' }, stage_name: 'OLD-1' }) },
+      },
+    }))
+    await flush()
+    expect(mocks.notify).not.toHaveBeenCalledWith('已加载作业：旧预览', undefined, {
+      id: 'combat-preview',
+    })
+    expect(mocks.dismissNotice).toHaveBeenCalledTimes(1)
+
+    await act(async () => nextPreview.resolve({
+      success: true,
+      data: {
+        status_code: 200,
+        data: { content: JSON.stringify({ doc: { title: '新预览' }, stage_name: 'NEW-2' }) },
+      },
+    }))
+    await flush()
+
+    expect(mocks.notify).toHaveBeenCalledWith('已加载作业：新预览', undefined, {
+      id: 'combat-preview',
+    })
+    expect(mocks.dismissNotice).toHaveBeenCalledTimes(1)
+  })
+
   it('syncs a previewed set into the queue and submits its checked members as a set run', async () => {
     mocks.getCopilotSetPlan.mockResolvedValue({
       success: true,
@@ -2341,6 +2399,7 @@ describe('CombatTasks execution', () => {
     await submitDiscoverySearch('1-7')
     const plan = deferred<ApiResponse>()
     mocks.getCopilotSetPlan.mockReturnValueOnce(plan.promise)
+    mocks.notify.mockClear()
 
     await click(buttonByAriaLabel('加入队列: 取消预览作业')!)
     await renderActivityMode('hidden')
@@ -2348,9 +2407,7 @@ describe('CombatTasks execution', () => {
     await settleQueries()
 
     expect(mocks.dismissNotice).toHaveBeenCalledWith('combat-queue-preview')
-    expect(mocks.notify).not.toHaveBeenCalledWith(expect.anything(), undefined, {
-      id: 'combat-queue-preview',
-    })
+    expect(mocks.notify).not.toHaveBeenCalled()
   })
 
   it('shows recommendations without changing the current job input', async () => {

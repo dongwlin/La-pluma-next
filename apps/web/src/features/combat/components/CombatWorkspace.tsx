@@ -214,6 +214,7 @@ export default function CombatWorkspace() {
     setPendingPreviewTarget(null)
     clearPreviewData()
     setCopilotDetail(current => current?.type === 'preview' ? null : current)
+    dismissNotice(COMBAT_PREVIEW_NOTICE_ID)
   }, [clearPreviewData])
   const [isResettingProgress, setIsResettingProgress] = useState(false)
   const [isImportingCopilotFile, setIsImportingCopilotFile] = useState(false)
