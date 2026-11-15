@@ -71,7 +71,7 @@ export default function DashboardDeviceSection() {
           return (
             <Card
               key={label}
-              className="dashboard-device-card-shell dashboard-device-card group surface-panel-hover gap-0 p-0! transition-colors"
+              className="dashboard-device-card-shell dashboard-device-card group surface-panel-hover gap-0 p-3.5! max-sm:p-4! transition-colors"
             >
               <div className="flex items-center gap-2.5 mb-3">
                 <div className="flex h-8 w-8 shrink-0 items-center justify-center text-tertiary">

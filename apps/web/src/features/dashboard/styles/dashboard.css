@@ -21,7 +21,6 @@
   .dashboard-device-card {
     min-width: 0;
     border-radius: var(--radius-xl);
-    padding: 0.875rem;
   }
 
   .dashboard-temperature-chart {
@@ -527,10 +526,6 @@
   }
 
   @media (max-width: 640px) {
-    .dashboard-device-card {
-      padding: 1rem;
-    }
-
     .dashboard-flow-skeleton .dashboard-flow-command {
       min-height: 142px;
       height: auto;
