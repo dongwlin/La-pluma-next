@@ -48,7 +48,7 @@ La-pluma-next/
 │   │   ├── src/
 │   │   │   ├── main.tsx       # 入口：import './styles' 并挂载 @/app/App
 │   │   │   ├── app/           # 应用组装层：router（路由表、URL 归一与保活出口）、layout、providers
-│   │   │   ├── pages/         # 页面层：按域组合页头与领域工作区
+│   │   │   ├── pages/         # 页面层：按域组合页面壳与领域工作区
 │   │   │   ├── features/      # 功能域（对外只有 index.ts）：dashboard、automation、combat、roguelike、training、
 │   │   │   │                  #   statistics、logs、settings 等页面域，以及 task-execution、user-config、game-data、
 │   │   │   │                  #   resource-invalidation、runtime-status、device-mirror、operator-quotes 等跨域微域

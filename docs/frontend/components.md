@@ -263,7 +263,7 @@ notifyProgress(message: string, id: string): string
 dismissNotice(id?: string): void
 ```
 
-同一流程复用固定 id（如执行、识别或设置更新），后续更新会替换原通知而不是堆叠；完成、失败或取消时用同一 id 发送终态，结束时再 `dismissNotice(id)`。不传 `type` 时按文案推断；错误默认常驻到用户关闭，成功默认约 2.5 秒，警告与信息默认约 4 秒。`duration` 可显式覆盖，进度通知默认不自动消失。应用最多同时显示 3 条通知。
+同一流程复用固定 id（`execution` 执行流程、`statistics` 识别与材料、`settings-update` 设置组件更新），后续更新会替换原通知而不是堆叠；完成、失败或取消时用同一 id 发送终态，结束时再 `dismissNotice(id)`。不传 `type` 时按文案推断；错误默认常驻到用户关闭，成功默认约 2.5 秒，警告与信息默认约 4 秒。`duration` 可显式覆盖，进度通知默认不自动消失。应用最多同时显示 3 条通知；`AppToaster` 为每条通知提供关闭按钮（无障碍名称「关闭通知」）。
 
 ---
 

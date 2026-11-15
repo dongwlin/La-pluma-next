@@ -143,7 +143,7 @@ La Pluma Next 是一个高密度的本地自动化控制台，不是营销页面
 **Key Characteristics:**
 - 原生语义优先：`Button`、`Input`、`Select`、`Checkbox`、`Switch`、`Card`、`Dialog`、`AlertDialog`、`Sheet` 使用 `shared/ui` 的 shadcn 生成物，`ConfirmAlertDialog`、`Loading` 等应用组件位于 `shared/components`；两者都使用真实语义元素，浏览器、jsdom、SSR 和嵌入式场景渲染一致。
 - 单强调色：系统蓝承担品牌、主操作、焦点和选中态；状态色只表达成功、警告、危险和信息。
-- 分层而不炫技：普通内容面保持平整，只有 chrome、弹层和可点击卡片使用玻璃、抬升或 hover 阴影。
+- 分层而不炫技：普通内容面保持平整，只有 chrome、弹层和可点击卡片使用抬升或 hover 阴影；玻璃由后续主题层提供。
 - 4px 节奏：布局间距使用 Tailwind 原生档位与组件类；圆角使用 `--radius` 派生档位。
 - 移动优先：断点从内容需要出发，不复制桌面布局，也不建立第二套导航状态。
 
