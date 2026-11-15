@@ -245,7 +245,7 @@
     padding: 0.625rem 1rem 0.75rem;
   }
 
-  .automation-monitor-skeleton-toolbar .app-skeleton {
+  .automation-monitor-skeleton-toolbar [data-slot='skeleton'] {
     flex: 0 0 2.75rem;
   }
 
@@ -289,12 +289,6 @@
     min-height: 0;
     max-height: inherit;
     flex-direction: column;
-  }
-
-  /* useSmoothCorners 把圆角写成内联 clip-path，会裁掉流程页脚上方的固定定位菜单；
-     菜单展开期间交回 overflow 圆角裁剪，关闭后恢复连续圆角。 */
-  .automation-sequence-surface:has(.automation-task-picker) {
-    clip-path: none !important;
   }
 
   .automation-sequence-surface > .automation-flow-header {
