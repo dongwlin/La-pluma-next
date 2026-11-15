@@ -20,7 +20,7 @@
 
 | 内容 | 唯一归属 | 说明 |
 | --- | --- | --- |
-| 页头、全局状态指示与工作区组合 | `pages/automation/AutomationTasks.tsx` | 只调用 `PageHeader`、`FloatingStatusIndicator` 与 `AutomationWorkspace` |
+| 页面壳与工作区组合 | `pages/automation/AutomationTasks.tsx` | 只渲染 `app-page`/`app-stack-section` 与 `AutomationWorkspace` |
 | 配置订阅、Run 订阅、选中项、撤销、连接测试、跨域失效、任务编辑 | `components/AutomationWorkspace.tsx` | 页面级领域容器；仍调用所属领域 hook，不直接调用 API/存储/轮询 |
 | 流程列表、页脚与摘要组合 | `components/AutomationTaskFlowPanel.tsx` | 接收只读 Run 投影、排序投影与配置回调；页脚仍是任务挑选菜单的点击区域 |
 | 定时编辑 | `components/AutomationScheduleCard.tsx` | 绑定 `model/automationSchedule.ts`；结果经 `onChange` 交给唯一配置 owner |
@@ -59,7 +59,7 @@
 ### 2. 组合与状态边界
 
 ```
-AutomationTasks（页头 + 全局指示）
+AutomationTasks（app-page > app-stack-section > AutomationWorkspace）
 └─ AutomationWorkspace（配置/执行/选中/撤销/连接/失效）
    ├─ AutomationTaskFlowPanel
    │  ├─ 任务流程列表（拖拽、启用、删除、撤销）
@@ -323,7 +323,7 @@ browser releases pointer capture”用例固定；DOM/CSS 未变化。性能复�
 ### 2. 组合与状态边界
 
 ```
-AutomationTasks（页头 + 全局指示）
+AutomationTasks（app-page > app-stack-section > AutomationWorkspace）
 └─ AutomationWorkspace（配置/执行/选中/撤销/连接/失效）
    ├─ AutomationTaskFlowPanel
    │  ├─ 任务流程列表（拖拽预览、拖拽公告）

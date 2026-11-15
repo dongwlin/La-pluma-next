@@ -15,7 +15,7 @@ La Pluma Next 是一个面向《明日方舟》自动化的本地 Web 控制台�
 
 ### 前端 UI 与响应式壳层
 
-前端使用 React 19、Tailwind CSS v4（`@tailwindcss/vite`；`@theme` 圆角映射 + 定向 `@utility` 间距映射，无 JS 配置）和 Framer Motion。`Layout` 与 `shared/components` 通用组件使用原生语义元素实现页面 chrome、导航栏、移动 tabbar 和模态交互；`styles/` 下的语义 token 与 `ios-theme.css` 统一 iOS 26 材质、La Pluma Next 品牌色和信息密度。
+前端使用 React 19、Tailwind CSS v4（`@tailwindcss/vite`；`@theme` 圆角映射 + 定向 `@utility` 间距映射，无 JS 配置）和 Framer Motion。`Layout` 与 `shared/components` 通用组件使用原生语义元素实现页面 chrome、导航栏、移动 tabbar 和模态交互；`styles/` 下的默认主题语义 token 与共享布局 token 统一品牌色、信息密度和水平留白，液态玻璃由后续主题层提供。
 
 URL 导航、路径归一、PWA 历史记录与 Activity 保活的约定统一见[前端架构与所有权](../frontend/README.md)。
 

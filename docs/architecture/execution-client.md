@@ -89,7 +89,7 @@ const result = await executionController.submitExecution('run_task', ({ idempote
 | `unknown` | 观察断线（保留最后已知 `isRunning`），或 `occupancy.state=unknown` | `执行状态未知` | 按最后已知值 |
 | `idle` | 其余情况 | 无 | 否 |
 
-`statusStore` 只保留阶段、身份、标签和进度说明，不复制 `AgentRun`；相同投影重复写入会被忽略。`FloatingStatusIndicator` 的显示优先级是连接健康 > 临时消息 > 运行投影 > 干员台词。连接监测器只在投影进入忙态时把探针间隔调到 2s，并且只写 `backendStatus`/`backendMessage`，不再从 `tasks/status.isRunning` 推断运行状态。
+`statusStore` 只保留阶段、身份、标签和进度说明，不复制 `AgentRun`；相同投影重复写入会被忽略。用户可见的执行结果与临时消息通过 `shared/notifications` 的 `notify` / `notifyProgress` 进入 sonner 通知器，与运行投影和连接健康互不覆盖。连接监测器只在投影进入忙态时把探针间隔调到 2s，并且只写 `backendStatus`/`backendMessage`，不再从 `tasks/status.isRunning` 推断运行状态。
 
 ## 3. 身份、幂等与旧响应
 
@@ -175,8 +175,7 @@ const result = await executionController.submitExecution('run_task', ({ idempote
 | `pages/automation/AutomationTasks.activity.test.tsx` | 流程结束时 Activity 隐藏再恢复，完成标记不丢失、不发送停止、不重新提交 |
 | `features/runtime-status/hooks/useRunStatusProjection.test.tsx` | 空闲/运行/等待继续/等待战斗结束后停止（仍算设备忙）/正在停止/外部占用/未知占用/断线保留最后活动 run/终态才回到空闲 |
 | `features/runtime-status/hooks/useBackendStatusMonitor.test.tsx` | 探针只写连接健康，不写运行状态；投影进入忙态后探针改按 2s 间隔 |
-| `features/runtime-status/components/FloatingStatusIndicator.test.tsx` | 连接健康 > 临时消息 > 运行投影（标签与颜色）> 干员台词；运行/等待为 info，占用/未知为 warning |
-| `features/runtime-status/store/statusStore.test.ts` | 运行字段只接受投影；忙态保留消息，离开忙态才恢复自动消失；相同投影不重复通知；连接健康与消息互不影响 |
+| `features/runtime-status/store/statusStore.test.ts` | 运行字段只接受投影；相同投影不重复通知；连接健康与运行投影互不影响 |
 | `pages/dashboard/Dashboard.test.tsx` | 日常入口单次异步 `run_daily_flow` 幂等提交（`scope: dashboard`）；在途重复点击不产生第二个提交；终态通知只宣告实际观察过的本页 run；其它域启动/停止不冒充本页执行但全局保持一致；外部占用与断线未知禁用启动入口 |
 
 ## 8. 当前限制
