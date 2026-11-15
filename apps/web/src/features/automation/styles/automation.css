@@ -281,13 +281,12 @@
   .automation-sequence-panel {
     position: sticky;
     top: 1rem;
-    max-height: calc(100vh - 2rem);
+    max-height: calc(var(--la-pluma-viewport-height, 100dvh) - 4.75rem - 2rem);
   }
 
   .automation-sequence-surface {
     display: flex;
     min-height: 0;
-    max-height: inherit;
     flex-direction: column;
   }
 

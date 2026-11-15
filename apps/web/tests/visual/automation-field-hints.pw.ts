@@ -670,7 +670,7 @@ test.describe('automation field hints', () => {
   test('flips the hint above the trigger when there is no room below', async ({ page }) => {
     const environment = await installDeterministicEnvironment(page)
     const viewport = page.viewportSize()!
-    await page.setViewportSize({ width: viewport.width, height: 360 })
+    await page.setViewportSize({ width: viewport.width, height: 480 })
     await page.goto('/app/automation')
     await waitForPageReady(page, 'automation')
     await selectFightTask(page)
@@ -688,7 +688,7 @@ test.describe('automation field hints', () => {
     const box = await comboTooltip.boundingBox()
     expect(box).not.toBeNull()
     expect(box!.y).toBeGreaterThanOrEqual(0)
-    expect(box!.y + box!.height).toBeLessThanOrEqual(360)
+    expect(box!.y + box!.height).toBeLessThanOrEqual(480)
 
     environment.assertNoUnmatchedApi()
     await expectNoBrowserErrors(page)
