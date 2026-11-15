@@ -438,6 +438,7 @@ describe('ScrcpyDeviceView automation availability', () => {
 
     const dialog = document.body.querySelector<HTMLElement>('[role="dialog"]')
     expect(dialog).not.toBeNull()
+    expect(dialog?.getAttribute('aria-modal')).toBe('true')
     expect(dialog?.getAttribute('aria-labelledby')).toBeTruthy()
     expect(document.getElementById(dialog!.getAttribute('aria-labelledby')!)?.textContent).toBe('模拟器沉浸预览')
     expect(dialog!.contains(document.activeElement)).toBe(true)

@@ -674,6 +674,7 @@ export default function ScrcpyDeviceView({
     <Dialog open={immersiveMode} onOpenChange={open => { if (!open) exitImmersive() }}>
       <DialogContent
         data-scrcpy-immersive-layer="true"
+        aria-modal="true"
         showCloseButton={false}
         finalFocus={previousFocusRef}
         className="fixed top-0 right-0 bottom-0 left-0 z-9999 flex h-dvh w-screen max-w-none translate-x-0 translate-y-0 flex-col items-center justify-center gap-2 rounded-none bg-black p-0 text-white outline-hidden landscape:flex-row sm:max-w-none"
