@@ -189,7 +189,7 @@ La Pluma Next 是一个高密度的本地自动化控制台，不是营销页面
 整体调色板是 Apple 系统色在冷灰纸面上的克制组合：一个系统蓝强调色，一组石墨中性色，以及只用于状态反馈的语义色。
 
 ### Primary
-- **System Blue** (`#007aff`；深色 `#0a84ff`)：当前导航项、主操作、链接、焦点环、选中控件和运行中状态。实心操作使用 `#0066cc`，按下使用 `#0055b3`，弱背景使用 `rgba(0, 122, 255, 0.12)`。
+- **System Blue** (`#007aff`；深色 `#0a84ff`)：当前导航项、主操作、链接、焦点环、选中控件和运行中状态。按钮主操作使用 shadcn `bg-primary`（即上述 System Blue，hover 为 `bg-primary/80`）；`.brand-action` 实心表面使用 `#0066cc`，按下 `#0055b3`，用于分段控件等应用自绘表面；弱背景使用 `rgba(0, 122, 255, 0.12)`。
 - **Blue Signal Rule**：蓝色只承担“当前 / 主要 / 可交互”的信号，不用于装饰性标题、图标底色或大面积背景。
 
 ### Secondary
@@ -308,7 +308,7 @@ La Pluma Next 是一个高密度的本地自动化控制台，不是营销页面
 - **Disabled / Loading:** disabled 使用 `pointer-events-none`、`opacity-50`，关闭点击与 hover；loading 由调用点用 `disabled` + `aria-busy` 表达，并以 `LoaderCircle` 和进行中文案替换内容。不要在调用处叠加 `h-*`、`px-*`、`py-*` 缩小标准控件。
 
 ### Inputs / Fields
-- **Style:** 32px 高（`h-8`）、`rounded-lg`（12px）的 shadcn `Input`；`bg-transparent`、边框与状态色使用 shadcn 语义 token。
+- **Style:** 32px 高（`h-8`）、`rounded-lg`（12px）的 shadcn `Input`；`bg-transparent`、边框与状态色使用 shadcn 语义 token，深色模式由生成物的 `dark:bg-input/30` 叠加。
 - **Focus:** `focus-visible:border-ring` 与 `focus-visible:ring-3 focus-visible:ring-ring/50`；不要用高饱和外发光。
 - **Error:** `aria-invalid` 触发 destructive 边框与 ring，错误文本使用 `form-error-text`；字段说明由 feature field helper 或 `FieldHint` 承担，原语没有 `hint` prop。
 - **Controls:** 二元启停使用 `Switch`（默认 32×18.4px 胶囊，`sm` 24×14px）；多选或参数组合使用 `Checkbox`（16×16px）；新增表单直接使用 `@/shared/ui` 的 `Input`、`Select`、`Checkbox`、`Switch`，字段行由 feature field helper 组合标签、错误与说明。`autoComplete="off"` 由消费点或 field helper 显式传入，生成原语没有该默认值。

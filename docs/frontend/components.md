@@ -311,7 +311,7 @@ import Icons from '@/shared/components/Icons'
 <Icons.TrendingUp />
 ```
 
-图标自带 `icon-well` 身份底座，只用于页面、概览和卡片的内容身份，不能包裹普通按钮图标。装饰图标加 `aria-hidden="true"`；状态与结果同时提供可读文字或 `aria-label`。
+业务身份图标（Play、Sword、Gift 等）自带 `icon-well` 身份底座，只用于页面、概览和卡片的内容身份，不能包裹普通按钮图标；`TrendingUp`、`Zap`、`Star`、`RefreshCw`、`Crosshair` 等概览/内联图标是裸 SVG。装饰图标加 `aria-hidden="true"`；状态与结果同时提供可读文字或 `aria-label`。
 
 ---
 
