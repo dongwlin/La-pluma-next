@@ -44,8 +44,6 @@ vi.mock('framer-motion', async () => {
 
 vi.mock('@/features/logs/api', () => mocks)
 
-vi.mock('@/features/runtime-status', () => ({ FloatingStatusIndicator: () => null }))
-
 let container: HTMLDivElement
 let root: Root
 let visibility: DocumentVisibilityState

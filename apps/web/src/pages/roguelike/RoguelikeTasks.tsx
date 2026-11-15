@@ -1,5 +1,4 @@
 import { PageHeader } from '@/shared/components'
-import { FloatingStatusIndicator } from '@/features/runtime-status'
 import { RoguelikeWorkspace } from '@/features/roguelike'
 
 export default function RoguelikeTasks() {
@@ -10,12 +9,6 @@ export default function RoguelikeTasks() {
           title="肉鸽模式"
           subtitle="集成战略与生息演算配置"
           mobileLayout="inline"
-          actions={(
-            <FloatingStatusIndicator
-              className="w-full overflow-hidden sm:w-auto"
-              textClassName="truncate whitespace-nowrap"
-            />
-          )}
         />
 
         <RoguelikeWorkspace />

@@ -1,5 +1,4 @@
 import { PageHeader } from '@/shared/components'
-import { FloatingStatusIndicator } from '@/features/runtime-status'
 import { LogsWorkspace } from '@/features/logs'
 import { DeviceMonitorLayout } from '@/features/device-mirror'
 
@@ -11,7 +10,6 @@ export default function LogViewer() {
           title="日志"
           subtitle="实时查看任务执行与历史记录"
           mobileLayout="inline"
-          actions={<FloatingStatusIndicator />}
         />
 
         <DeviceMonitorLayout>

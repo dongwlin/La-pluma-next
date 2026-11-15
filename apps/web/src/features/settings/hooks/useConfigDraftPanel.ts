@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { useStatusStore } from '@/features/runtime-status'
+import { notify } from '@/shared/notifications'
 import type { SettingsFeedback } from '../components/ConfigEditorCard'
 import type { ConfigSaveOutcome } from '../model/configDraftOwner'
 
@@ -25,7 +25,6 @@ export function useConfigDraftPanel<T extends Record<string, unknown>>({
   saving,
   save,
 }: ConfigDraftPanelOptions<T>) {
-  const setStatusMessage = useStatusStore(state => state.setMessage)
   const [feedback, setFeedback] = useState<SettingsFeedback | null>(null)
   const reportedLoadFailureRef = useRef<string | null>(null)
 
@@ -42,8 +41,8 @@ export function useConfigDraftPanel<T extends Record<string, unknown>>({
     // 读取失败同步为页内反馈；ref 保证同一失败只提示一次，不是渲染循环。
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setFeedback({ type: 'error', message })
-    setStatusMessage(message, 'error')
-  }, [label, loadError, setStatusMessage])
+    notify(message, 'error')
+  }, [label, loadError])
 
   useEffect(() => {
     if (!loaded || !reportedLoadFailureRef.current) return
@@ -55,12 +54,12 @@ export function useConfigDraftPanel<T extends Record<string, unknown>>({
   const saveWithFeedback = useCallback(async () => {
     if (!loaded) {
       setFeedback({ type: 'warning', message: blockedSaveMessage })
-      setStatusMessage(blockedSaveMessage, 'warning')
+      notify(blockedSaveMessage, 'warning')
       return
     }
     if (saving) return
     setFeedback(null)
-    setStatusMessage(savingMessage, 'info')
+    notify(savingMessage, 'info')
 
     const outcome = await save()
     if (outcome.status === 'ignored') return
@@ -69,19 +68,19 @@ export function useConfigDraftPanel<T extends Record<string, unknown>>({
       if (outcome.superseded) {
         const message = `此前${label}已保存，当前更改尚未保存`
         setFeedback({ type: 'warning', message })
-        setStatusMessage(message, 'warning')
+        notify(message, 'warning')
       } else {
         const message = `${label}保存成功`
         setFeedback({ type: 'success', message })
-        setStatusMessage(message, 'success')
+        notify(message, 'success')
       }
       return
     }
 
     const message = `${label}保存失败: ${outcome.message ?? '未知错误'}`
     setFeedback({ type: 'error', message })
-    setStatusMessage(message, 'error')
-  }, [blockedSaveMessage, label, loaded, save, saving, savingMessage, setStatusMessage])
+    notify(message, 'error')
+  }, [blockedSaveMessage, label, loaded, save, saving, savingMessage])
 
   return { feedback, setFeedback, saveBlockedReason, save: saveWithFeedback }
 }

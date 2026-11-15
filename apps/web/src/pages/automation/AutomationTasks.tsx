@@ -1,5 +1,4 @@
 import { PageHeader } from '@/shared/components'
-import { FloatingStatusIndicator } from '@/features/runtime-status'
 import { AutomationWorkspace } from '@/features/automation'
 
 export default function AutomationTasks() {
@@ -10,7 +9,6 @@ export default function AutomationTasks() {
           title="日常任务"
           subtitle="安排日常流程，一键执行或定时运行"
           mobileLayout="inline"
-          actions={<FloatingStatusIndicator />}
         />
 
         <AutomationWorkspace />

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useSyncExternalStore } from 'react'
+import type { Notify } from '@/shared/notifications'
 import {
   settingsAutoUpdateOwner,
   type AutoUpdateConfigOwner,
@@ -8,18 +9,13 @@ import {
 import { isValidUpdateTime } from '../model/configNormalization'
 import type { AutoUpdateConfig } from '../types'
 
-type SettingsNotify = (
-  message: string,
-  type?: 'success' | 'error' | 'warning' | 'info' | 'default',
-) => void
-
 export interface UseSettingsAutoUpdateResult extends AutoUpdateConfigState {
   readonly update: (patch: Partial<AutoUpdateConfig>) => void
   readonly save: () => Promise<AutoUpdateSaveOutcome>
 }
 
 export function useSettingsAutoUpdate(
-  notify: SettingsNotify,
+  notify: Notify,
   owner: AutoUpdateConfigOwner = settingsAutoUpdateOwner,
 ): UseSettingsAutoUpdateResult {
   const state = useSyncExternalStore(owner.subscribe, owner.getState, owner.getState)

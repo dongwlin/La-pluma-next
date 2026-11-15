@@ -22,7 +22,9 @@ const mocks = vi.hoisted(() => ({
   getActivity: vi.fn(),
   executeScheduleNow: vi.fn(),
   status: vi.fn(),
-  setMessage: vi.fn(),
+  notify: vi.fn(),
+  notifyProgress: vi.fn(),
+  dismissNotice: vi.fn(),
 }))
 
 const flow: TaskFlowItem[] = [
@@ -65,12 +67,16 @@ vi.mock('@/features/training', () => ({
   generateTrainingPlan: vi.fn(),
 }))
 vi.mock('@/features/runtime-status', () => ({
-  useStatusStore: (selector?: (state: { setMessage: typeof mocks.setMessage }) => unknown) => {
-    if (!selector) throw new Error('useStatusStore must be called with a selector')
-    return selector({ setMessage: mocks.setMessage })
-  },
-  FloatingStatusIndicator: () => null,
   useAutomationAvailability: () => ({ isAvailable: true, unavailableMessage: '' }),
+}))
+vi.mock('@/shared/notifications', () => ({
+  notify: mocks.notify,
+  notifyProgress: mocks.notifyProgress,
+  dismissNotice: mocks.dismissNotice,
+  detectNoticeType: () => 'default',
+  EXECUTION_NOTICE_ID: 'execution',
+  STATISTICS_NOTICE_ID: 'statistics',
+  SETTINGS_UPDATE_NOTICE_ID: 'settings-update',
 }))
 vi.mock('@/features/device-mirror', () => ({ DeviceMonitorPanel: () => null }))
 vi.mock('@/features/automation/components/NotificationSettings', () => ({ default: () => null }))
@@ -170,7 +176,9 @@ beforeEach(() => {
   // 活动读取走 Query：每个用例独立客户端，避免复用上一个用例的 mock 结果。
   queryClient = createQueryClient()
   mocks.getActivity.mockReset().mockResolvedValue({ success: false })
-  mocks.setMessage.mockReset()
+  mocks.notify.mockReset()
+  mocks.notifyProgress.mockReset()
+  mocks.dismissNotice.mockReset()
   mocks.executeScheduleNow.mockReset().mockResolvedValue(ok({
     accepted: true,
     runId: 'run-1',
