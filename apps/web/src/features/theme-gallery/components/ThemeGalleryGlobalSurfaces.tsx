@@ -63,7 +63,7 @@ export function ThemeGalleryGlobalSurfaces() {
   return (
     <>
       <Card>
-        <CardHeader>
+        <CardHeader className="border-b py-3.5">
           <CardTitle role="heading" aria-level={3}>状态与加载</CardTitle>
         </CardHeader>
         <CardContent className="grid gap-3.5 md:grid-cols-2">
@@ -79,7 +79,7 @@ export function ThemeGalleryGlobalSurfaces() {
       </Card>
 
       <Card>
-        <CardHeader>
+        <CardHeader className="border-b py-3.5">
           <CardTitle role="heading" aria-level={3}>整页骨架</CardTitle>
         </CardHeader>
         <CardContent>
@@ -90,7 +90,7 @@ export function ThemeGalleryGlobalSurfaces() {
       </Card>
 
       <Card>
-        <CardHeader>
+        <CardHeader className="border-b py-3.5">
           <CardTitle role="heading" aria-level={3}>领域字形</CardTitle>
         </CardHeader>
         <CardContent className="app-stack-card">
@@ -117,7 +117,7 @@ export function ThemeGalleryGlobalSurfaces() {
       <ThemeGalleryCards />
 
       <Card>
-        <CardHeader>
+        <CardHeader className="border-b py-3.5">
           <CardTitle role="heading" aria-level={3}>按钮变体</CardTitle>
         </CardHeader>
         <CardContent className="app-stack-card">
@@ -141,7 +141,7 @@ export function ThemeGalleryGlobalSurfaces() {
       </Card>
 
       <Card>
-        <CardHeader>
+        <CardHeader className="border-b py-3.5">
           <CardTitle role="heading" aria-level={3}>按钮状态与尺寸</CardTitle>
         </CardHeader>
         <CardContent className="app-stack-card">
@@ -174,7 +174,7 @@ export function ThemeGalleryGlobalSurfaces() {
 
       <div data-region="gallery-form-controls">
         <Card>
-          <CardHeader>
+          <CardHeader className="border-b py-3.5">
             <CardTitle role="heading" aria-level={3}>表单控件</CardTitle>
           </CardHeader>
           <CardContent className="grid gap-3.5 md:grid-cols-2">

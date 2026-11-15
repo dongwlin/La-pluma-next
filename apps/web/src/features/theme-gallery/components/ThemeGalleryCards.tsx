@@ -14,14 +14,14 @@ export function ThemeGalleryCards() {
   return (
     <div data-region="gallery-card-surfaces">
       <Card>
-        <CardHeader>
+        <CardHeader className="border-b py-3.5">
           <CardTitle role="heading" aria-level={3}>卡片与面板</CardTitle>
           <CardDescription>完整 Card 组合、无内边距面板表面与骨架占位。</CardDescription>
         </CardHeader>
-        <CardContent className="grid gap-3.5 lg:grid-cols-3">
+        <CardContent className="grid gap-3.5 md:grid-cols-2 xl:grid-cols-4">
           <Card>
-            <CardHeader>
-              <CardTitle>完整组合</CardTitle>
+            <CardHeader className="border-b py-3.5">
+              <CardTitle role="heading" aria-level={3}>完整组合</CardTitle>
               <CardDescription>标题、描述、操作、内容与页脚。</CardDescription>
               <CardAction>
                 <Button size="xs" variant="outline">操作</Button>
@@ -33,6 +33,19 @@ export function ThemeGalleryCards() {
             <CardFooter className="justify-between gap-2">
               <span className="text-xs text-muted-foreground">页脚说明</span>
               <Button size="xs">确认</Button>
+            </CardFooter>
+          </Card>
+
+          <Card size="sm">
+            <CardHeader className="border-b py-3.5">
+              <CardTitle role="heading" aria-level={3}>小尺寸</CardTitle>
+              <CardDescription>size=&quot;sm&quot; 使用更紧凑的间距。</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <p className="text-sm text-muted-foreground">适合信息密度更高的卡片。</p>
+            </CardContent>
+            <CardFooter>
+              <span className="text-xs text-muted-foreground">紧凑页脚</span>
             </CardFooter>
           </Card>
 

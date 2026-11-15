@@ -7,7 +7,7 @@ export function ThemeGalleryTooltips() {
   return (
     <div data-region="gallery-tooltips">
       <Card>
-        <CardHeader>
+        <CardHeader className="border-b py-3.5">
           <CardTitle role="heading" aria-level={3}>提示层</CardTitle>
         </CardHeader>
         <CardContent>

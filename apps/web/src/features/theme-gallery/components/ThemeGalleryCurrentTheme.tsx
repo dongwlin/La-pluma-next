@@ -18,7 +18,7 @@ export function ThemeGalleryCurrentTheme() {
 
   return (
     <Card>
-      <CardHeader>
+      <CardHeader className="border-b py-3.5">
         <CardTitle role="heading" aria-level={3}>当前主题</CardTitle>
       </CardHeader>
       <CardContent className="app-stack-card">
