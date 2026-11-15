@@ -244,6 +244,7 @@ export function useAutomationExecution({
 
       const runId = readSubmittedRunId(result.data)
       const submittedRun = runId ? readSubmittedRun(result.data, runId) : null
+      if (runId) observedActiveRunRef.current = runId
       if (submittedRun && isTerminalRunState(submittedRun.state)) announceTerminal(submittedRun)
       if (!runId) {
         // 旧服务端不会返回身份：此时无法观察或停止，不能伪造运行状态。
@@ -260,8 +261,10 @@ export function useAutomationExecution({
 
   const stop = useCallback(async () => {
     if (stopRequestRef.current) return
-    if (!controller.getState().trackedRunId) return
+    const trackedRunId = controller.getState().trackedRunId
+    if (!trackedRunId) return
 
+    observedActiveRunRef.current = trackedRunId
     stopRequestRef.current = true
     setStopRequestPending(true)
     notifyProgress('正在终止任务流程...', EXECUTION_NOTICE_ID)

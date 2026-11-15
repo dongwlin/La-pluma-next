@@ -332,6 +332,36 @@ describe('useCombatExecution queue submissions', () => {
     expect(notifications.notifyProgress).toHaveBeenCalledWith('正在连续执行作业队列', 'execution')
   })
 
+  it('warns instead of leaving an unobservable submission in progress', async () => {
+    controllerState.current = combatState(null)
+    apiMocks.executeCopilotQueue.mockResolvedValue({
+      success: true,
+      data: { accepted: true },
+    })
+    const controller = queueController(null)
+    await renderHarness(controller)
+
+    let submitted = true
+    await act(async () => {
+      submitted = await latest!.submitQueue({
+        queueId: 'copilot-queue',
+        name: '作业队列',
+        mode: 'continuous',
+        failurePolicy: 'continue',
+        entries: [{ clientId: 'queue-a', source: 'prts', copilotId: 101 }],
+        options: {},
+        taskName: '自动战斗作业',
+      })
+    })
+
+    expect(submitted).toBe(false)
+    expect(messages).toContainEqual({
+      message: '服务端未返回运行身份，无法确认本次执行状态',
+      type: 'warning',
+      options: { id: 'execution' },
+    })
+  })
+
   it('reads the waiting state from the queue run projection and continues it', async () => {
     const waiting = queueRun('waiting', {
       queueId: 'copilot-queue',

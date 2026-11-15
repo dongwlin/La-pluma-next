@@ -164,6 +164,7 @@ export function useRoguelikeExecution({
       const runId = readSubmittedRunId(result.data)
       if (runId) {
         runLabelsRef.current.set(runId, taskName)
+        observedActiveRunRef.current = runId
       } else {
         notify(`${taskName} 已提交`, 'info', { id: EXECUTION_NOTICE_ID })
       }
@@ -175,8 +176,10 @@ export function useRoguelikeExecution({
 
   const stop = useCallback(async (mode: StopMode = 'now') => {
     if (stopRequestRef.current) return
-    if (!controller.getState().trackedRunId) return
+    const trackedRunId = controller.getState().trackedRunId
+    if (!trackedRunId) return
 
+    observedActiveRunRef.current = trackedRunId
     stopRequestRef.current = mode
     setPendingStopMode(mode)
     if (mode === 'now') setWaitAccepted(false)

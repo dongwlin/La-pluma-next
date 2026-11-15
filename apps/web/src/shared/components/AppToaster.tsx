@@ -32,6 +32,7 @@ export function AppToaster() {
       closeButton
       className="max-[600px]:w-[calc(100vw-2rem)]!"
       toastOptions={{
+        closeButtonAriaLabel: '关闭通知',
         classNames: {
           toast: 'cn-toast left-0! right-0! mx-auto! w-max! max-w-[calc(100vw-2rem)]!',
         },

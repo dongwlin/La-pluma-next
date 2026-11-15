@@ -240,8 +240,10 @@ export function useCombatExecution({
 
   const stop = useCallback(async () => {
     if (stopRequestRef.current) return
-    if (!controller.getState().trackedRunId) return
+    const trackedRunId = controller.getState().trackedRunId
+    if (!trackedRunId) return
 
+    observedActiveRunRef.current = trackedRunId
     stopRequestRef.current = true
     setStopRequestPending(true)
     notifyProgress('正在终止自动战斗...', EXECUTION_NOTICE_ID)
@@ -342,8 +344,10 @@ export function useCombatExecution({
       }
 
       const runId = readSubmittedRunId(result.data)
-      if (runId) runLabelsRef.current.set(runId, taskName)
-      else {
+      if (runId) {
+        runLabelsRef.current.set(runId, taskName)
+        observedActiveRunRef.current = runId
+      } else {
         notify('服务端未返回运行身份，无法确认本次执行状态', 'warning', { id: EXECUTION_NOTICE_ID })
         return false
       }
@@ -384,8 +388,10 @@ export function useCombatExecution({
       }
 
       const runId = readSubmittedRunId(result.data)
-      if (runId) runLabelsRef.current.set(runId, request.taskName)
-      else {
+      if (runId) {
+        runLabelsRef.current.set(runId, request.taskName)
+        observedActiveRunRef.current = runId
+      } else {
         notify('服务端未返回运行身份，无法确认本次执行状态', 'warning', { id: EXECUTION_NOTICE_ID })
         return false
       }
@@ -427,8 +433,10 @@ export function useCombatExecution({
       }
 
       const runId = readSubmittedRunId(result.data)
-      if (runId) runLabelsRef.current.set(runId, request.taskName)
-      else {
+      if (runId) {
+        runLabelsRef.current.set(runId, request.taskName)
+        observedActiveRunRef.current = runId
+      } else {
         notify('服务端未返回运行身份，无法确认本次执行状态', 'warning', { id: EXECUTION_NOTICE_ID })
         return false
       }
@@ -446,6 +454,7 @@ export function useCombatExecution({
     const state = controller.getState()
     if (state.trackedScope !== COMBAT_EXECUTION_SCOPE || !state.trackedRunId) return
 
+    observedActiveRunRef.current = state.trackedRunId
     continuingRef.current = true
     setIsContinuing(true)
     notifyProgress('正在执行下一关...', EXECUTION_NOTICE_ID)
@@ -484,6 +493,7 @@ export function useCombatExecution({
     const state = controller.getState()
     if (state.trackedScope !== COMBAT_EXECUTION_SCOPE || !state.trackedRunId) return
 
+    observedActiveRunRef.current = state.trackedRunId
     continuingRef.current = true
     setIsContinuing(true)
     notifyProgress('正在执行下一项...', EXECUTION_NOTICE_ID)
@@ -522,6 +532,7 @@ export function useCombatExecution({
     const state = controller.getState()
     if (state.trackedScope !== COMBAT_EXECUTION_SCOPE || !state.trackedRunId) return
 
+    observedActiveRunRef.current = state.trackedRunId
     skippingRef.current = true
     setIsSkipping(true)
     notifyProgress('正在跳过当前项...', EXECUTION_NOTICE_ID)

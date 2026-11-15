@@ -36,6 +36,7 @@ export function notify(message: string, type?: NoticeType, options: NoticeOption
 }
 
 export function notifyProgress(message: string, id: string): string {
+  if (!message) return ''
   return String(toast.loading(message, { id, duration: Infinity }))
 }
 

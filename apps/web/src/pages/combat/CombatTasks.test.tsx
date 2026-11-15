@@ -1101,6 +1101,42 @@ describe('CombatTasks execution', () => {
     expect(mocks.notify).not.toHaveBeenCalledWith(expect.stringContaining('执行完成'), 'success', { id: 'execution' })
   })
 
+  it('replaces the execution progress when a submitted set finishes while hidden', async () => {
+    const submission = deferred<ApiResponse>()
+    mocks.executeCopilotSetPlan.mockReturnValueOnce(submission.promise)
+    useIdentity(null)
+    startController()
+    await flush()
+    await renderActivityMode('visible')
+    await previewSet()
+
+    await click(buttonByText('立即执行')!)
+    expect(mocks.notifyProgress).toHaveBeenCalledWith('正在连续执行作业集', 'execution')
+
+    await renderActivityMode('hidden')
+    const running = setRun('run-set-hidden', 'running', {
+      progress: setProgress([planEntry(0, 'running')]),
+    })
+    api.fetchSnapshot.mockResolvedValue(ok(runSnapshot({ activeRuns: [running] })))
+    api.fetchRun.mockResolvedValue(ok(running))
+    await act(async () => submission.resolve(ok({
+      runId: 'run-set-hidden',
+      state: 'accepted',
+      run: running,
+    })))
+    await flush()
+
+    const terminal = setRun('run-set-hidden', 'succeeded', {
+      result: setResult([planEntry(0, 'success')]),
+    })
+    api.fetchSnapshot.mockResolvedValue(ok(runSnapshot({ lastRun: terminal })))
+    api.fetchRun.mockResolvedValue(ok(terminal))
+    await refreshController()
+    await renderActivityMode('visible')
+
+    expect(mocks.notify).toHaveBeenCalledWith(expect.stringContaining('作业集执行完成'), 'success', { id: 'execution' })
+  })
+
   it('keeps the last running state when a snapshot fails and recovers on reconnect', async () => {
     useIdentity({ runId: 'run-set-8', operationId: 'run_copilot_set', scope: 'combat' })
     const running = setRun('run-set-8', 'running', {

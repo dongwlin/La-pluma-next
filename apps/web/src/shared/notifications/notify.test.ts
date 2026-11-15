@@ -91,7 +91,9 @@ describe('notify', () => {
 
   it('ignores empty messages', () => {
     expect(notify('')).toBe('')
+    expect(notifyProgress('', EXECUTION_NOTICE_ID)).toBe('')
     expect(toastMock.success).not.toHaveBeenCalled()
+    expect(toastMock.loading).not.toHaveBeenCalled()
     expect(toastMock).not.toHaveBeenCalled()
   })
 })

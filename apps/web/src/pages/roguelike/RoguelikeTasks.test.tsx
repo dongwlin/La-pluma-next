@@ -508,6 +508,47 @@ describe('RoguelikeTasks execution', () => {
     expect(buttonByText('立即终止')).toBeDefined()
   })
 
+  it('replaces the execution progress when a submitted run finishes while hidden', async () => {
+    const submission = deferred<ApiResponse>()
+    mocks.executePredefinedTask.mockReturnValueOnce(submission.promise)
+    useIdentity(null)
+    startController()
+    await flush()
+    const renderActivity = async (mode: 'visible' | 'hidden') => {
+      await act(async () => {
+        root.render(
+          <Activity mode={mode}>
+            <TestApp />
+          </Activity>,
+        )
+      })
+      await flush()
+    }
+    await renderActivity('visible')
+    await setTheme('Phantom')
+
+    await click(buttonByText('立即执行')!)
+    expect(mocks.notifyProgress).toHaveBeenCalledWith('正在执行命令...', 'execution')
+
+    await renderActivity('hidden')
+    const running = activeRun('run-rl-hidden', 'running')
+    api.fetchSnapshot.mockResolvedValue(ok(runSnapshot({ activeRuns: [running] })))
+    api.fetchRun.mockResolvedValue(ok(running))
+    await act(async () => submission.resolve(ok({
+      runId: 'run-rl-hidden',
+      run: running,
+    })))
+    await flush()
+
+    const terminal = activeRun('run-rl-hidden', 'succeeded')
+    api.fetchSnapshot.mockResolvedValue(ok(runSnapshot({ lastRun: terminal })))
+    api.fetchRun.mockResolvedValue(ok(terminal))
+    await refreshController()
+    await renderActivity('visible')
+
+    expect(mocks.notify).toHaveBeenCalledWith(expect.stringContaining('执行成功'), 'success', { id: 'execution' })
+  })
+
   it('builds the command from the active mode and advanced fields', async () => {
     await renderPage()
     await setTheme('Phantom')

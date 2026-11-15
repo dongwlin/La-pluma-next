@@ -113,6 +113,7 @@ export function useDashboardExecution({
         }
       }
 
+      observedActiveRunRef.current = runId
       const submittedRun = readSubmittedRun(result.data, runId)
       const notice = describeDashboardRunTerminal(submittedRun)
       if (notice) {

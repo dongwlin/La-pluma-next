@@ -83,6 +83,14 @@ vi.mock('@/features/automation/components/NotificationSettings', () => ({ defaul
 
 const ok = <T,>(data: T): ApiResponse<T> => ({ success: true, data })
 
+function deferred<T>() {
+  let resolve!: (value: T) => void
+  const promise = new Promise<T>(nextResolve => {
+    resolve = nextResolve
+  })
+  return { promise, resolve }
+}
+
 function dailyRun(runId: string, state: AgentRun['state'], overrides: Partial<AgentRun> = {}): AgentRun {
   return {
     runId,
@@ -237,4 +245,39 @@ it('keeps completed task marks after Activity hides a finishing run', async () =
   expect(container.querySelector('button[data-status-key="ready"]')?.textContent).toContain('立即执行')
   expect(api.stopRun).not.toHaveBeenCalled()
   expect(mocks.executeScheduleNow).toHaveBeenCalledOnce()
+})
+
+it('replaces the execution progress when a submitted run finishes while hidden', async () => {
+  const submission = deferred<ApiResponse>()
+  mocks.executeScheduleNow.mockReturnValueOnce(submission.promise)
+  const render = async (mode: 'visible' | 'hidden') => {
+    await act(async () => root.render(
+      <QueryClientProvider client={queryClient}>
+        <Activity mode={mode}><AutomationTasks /></Activity>
+      </QueryClientProvider>,
+    ))
+    await flush()
+  }
+
+  await render('visible')
+  await act(async () => container.querySelector<HTMLButtonElement>('button[data-status-key="ready"]')?.click())
+  await flush()
+
+  expect(mocks.notifyProgress).toHaveBeenCalledWith('开始执行任务流程...', 'execution')
+
+  await render('hidden')
+  await act(async () => submission.resolve(ok({
+    accepted: true,
+    runId: 'run-1',
+    run: dailyRun('run-1', 'running'),
+  })))
+  await flush()
+  api.fetchSnapshot.mockResolvedValue(ok(finishedSnapshot()))
+  await act(async () => {
+    await mocks.controller.current.refresh('poll')
+  })
+  await flush()
+  await render('visible')
+
+  expect(mocks.notify).toHaveBeenCalledWith('任务流程执行完成', 'success', { id: 'execution' })
 })
