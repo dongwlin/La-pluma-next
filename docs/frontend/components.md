@@ -6,7 +6,9 @@
 
 ## 概述
 
-为了减少重复代码、统一视觉风格、提升开发效率，项目维护一套通用 UI 组件。组件位于 `apps/web/src/shared/components/*.tsx`，通过 `apps/web/src/shared/components/index.ts` 统一导出，页面中统一从 `@/shared/components` 引入。shadcn CLI 生成的上游原语位于 `apps/web/src/shared/ui/`，随上游原样保留，不在本文件范围内。
+为了减少重复代码、统一视觉风格、提升开发效率，项目维护一套通用 UI 组件。应用层组件位于 `apps/web/src/shared/components/*.tsx`，通过 `apps/web/src/shared/components/index.ts` 统一导出，页面中统一从 `@/shared/components` 引入。shadcn CLI 生成的上游原语位于 `apps/web/src/shared/ui/`，随上游原样保留；本文件记录这些原语的组合用法（如 `Card`）与必须遵循的应用层约定。
+
+加载占位直接使用 `@/shared/ui/skeleton` 的 `Skeleton`，不要在应用层重写 shimmer 或另建骨架原语。
 
 新增或调整组件时，在本文件补充 API 与用法；颜色、字号、间距、圆角、交互状态等规则不要在组件文档里另写一份。
 
