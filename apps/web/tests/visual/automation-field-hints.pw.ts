@@ -670,6 +670,8 @@ test.describe('automation field hints', () => {
   test('flips the hint above the trigger when there is no room below', async ({ page }) => {
     const environment = await installDeterministicEnvironment(page)
     const viewport = page.viewportSize()!
+    // 360px 高时序列面板的 sticky max-height 会把任务列表压到不可点击；
+    // 480px 仍让触发器位于滚动区底部，可验证提示向上翻转。
     await page.setViewportSize({ width: viewport.width, height: 480 })
     await page.goto('/app/automation')
     await waitForPageReady(page, 'automation')
