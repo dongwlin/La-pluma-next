@@ -23,17 +23,18 @@ export const THEME_STORAGE_KEY = 'lpn-ui'
 export const LEGACY_THEME_STORAGE_KEY = 'ui-storage'
 
 export const THEME_MODES = ['light', 'dark', 'system'] as const
+export const PREFERS_DARK_MEDIA = '(prefers-color-scheme: dark)'
 const DEFAULT_MODE: ThemeMode = 'dark'
 
 export const DEFAULT_THEME_SETTINGS: UiThemeSettings = { themeId: DEFAULT_THEME_ID, mode: DEFAULT_MODE }
 
 const defaultTheme = getTheme(DEFAULT_THEME_ID) ?? THEMES[0]!
 
-export const KNOWN_THEME_IDS = THEMES.map(theme => theme.id)
+export const KNOWN_THEME_IDS: readonly string[] = Object.freeze(THEMES.map(theme => theme.id))
 
 /** 「主题 × 模式」的完整首帧色卡；启动脚本按同一份数据序列化，避免手抄 hex。 */
-export const BOOT_THEME_COLORS_BY_ID: Record<string, BootThemePalette> = Object.fromEntries(
-  THEMES.map(theme => [theme.id, theme.boot]),
+export const BOOT_THEME_COLORS_BY_ID: Readonly<Record<string, BootThemePalette>> = Object.freeze(
+  Object.fromEntries(THEMES.map(theme => [theme.id, theme.boot])),
 )
 
 /** 首帧静态默认色卡（默认主题）；「主题 × 模式」的完整色卡在 ThemeDefinition.boot。 */
@@ -95,15 +96,18 @@ export function resolveBootSettings(
 /** 把已解析的设置写入 DOM；`dark` 由 resolveDark 计算，主题色卡未知时回退默认主题。 */
 export function applyBootSettingsToDom(
   settings: UiThemeSettings,
-  colorsByTheme: Record<string, BootThemePalette>,
+  colorsByTheme: Readonly<Record<string, BootThemePalette>>,
   defaultThemeId: string,
   dark: boolean,
   doc: Document,
 ): void {
-  const themeId = Object.prototype.hasOwnProperty.call(colorsByTheme, settings.themeId)
+  const themeId = typeof settings.themeId === 'string'
+    && Object.prototype.hasOwnProperty.call(colorsByTheme, settings.themeId)
     ? settings.themeId
     : defaultThemeId
-  const boot = colorsByTheme[themeId] ?? colorsByTheme[defaultThemeId]!
+  const boot = colorsByTheme[themeId]
+    ?? colorsByTheme[defaultThemeId]
+    ?? Object.values(colorsByTheme)[0]!
   const colors = dark ? boot.dark : boot.light
   const root = doc.documentElement
 
@@ -132,11 +136,17 @@ export function readLegacyThemeMode(raw: string | null): ThemeMode | null {
   return resolveBootSettings(null, raw, KNOWN_THEME_IDS, THEME_MODES, DEFAULT_THEME_SETTINGS)?.mode ?? null
 }
 
+/** Provider 初始化的读取优先级：lpn-ui → legacy → 默认设置；首帧脚本复用同一解析函数。 */
+export function resolveInitialSettings(rawLpn: string | null, rawLegacy: string | null): UiThemeSettings {
+  return resolveBootSettings(rawLpn, rawLegacy, KNOWN_THEME_IDS, THEME_MODES, DEFAULT_THEME_SETTINGS)
+    ?? DEFAULT_THEME_SETTINGS
+}
+
 export function applyUiSettings(settings: UiThemeSettings, prefersDark?: boolean): void {
   if (typeof document === 'undefined') return
 
   const resolvedPrefersDark = prefersDark
-    ?? (typeof window !== 'undefined' && window.matchMedia?.('(prefers-color-scheme: dark)').matches === true)
+    ?? (typeof window !== 'undefined' && window.matchMedia?.(PREFERS_DARK_MEDIA).matches === true)
   const dark = resolveDark(settings.mode, resolvedPrefersDark)
   applyBootSettingsToDom(settings, BOOT_THEME_COLORS_BY_ID, DEFAULT_THEME_ID, dark, document)
 }
@@ -150,6 +160,7 @@ export function createBootScript(): string {
   const storageKey = JSON.stringify(THEME_STORAGE_KEY)
   const legacyKey = JSON.stringify(LEGACY_THEME_STORAGE_KEY)
   const defaultThemeId = JSON.stringify(DEFAULT_THEME_ID)
+  const darkMedia = JSON.stringify(PREFERS_DARK_MEDIA)
 
   return `(() => {
   const standalone = window.matchMedia?.('(display-mode: standalone)').matches
@@ -178,7 +189,7 @@ export function createBootScript(): string {
     modes,
     defaultSettings,
   ) || defaultSettings
-  const prefersDark = window.matchMedia?.('(prefers-color-scheme: dark)').matches === true
+  const prefersDark = window.matchMedia?.(${darkMedia}).matches === true
   applyBootSettingsToDom(
     settings,
     themeBootColors,
