@@ -697,14 +697,13 @@ test.describe('automation field hints', () => {
   test('keeps a tapped hint open until an outside touch', async ({ page }) => {
     test.skip(!isMobileProject(), 'touch input is only emulated on the mobile project')
 
-    const environment = await installDeterministicEnvironment(page)
+    const environment = await installDeterministicEnvironment(page, { nativeClock: true })
     await page.goto('/app/automation')
     await waitForPageReady(page, 'automation')
 
-    await page.locator('#automation-startup-visual-1-accountName').tap()
     const accountHint = page.getByRole('button', { name: '切换账号说明', exact: true })
     await accountHint.tap()
-    await page.waitForTimeout(500)
+    await page.waitForTimeout(600)
 
     const accountTooltip = page.getByRole('tooltip').filter({ hasText: ACCOUNT_HINT })
     await expect(accountTooltip).toBeVisible()
@@ -713,6 +712,7 @@ test.describe('automation field hints', () => {
     const describedBy = await accountHint.getAttribute('aria-describedby')
     expect(describedBy).not.toBeNull()
     await expect(page.locator(`#${describedBy}`)).toHaveAttribute('role', 'tooltip')
+    await expect(page.locator(`#${describedBy}`)).toHaveText(ACCOUNT_HINT)
 
     const viewport = page.viewportSize()!
     const box = await accountTooltip.boundingBox()
@@ -739,7 +739,7 @@ test.describe('automation field hints', () => {
   test('hands off between tapped hints when the mouse rests over another hint', async ({ page }) => {
     test.skip(!isMobileProject(), 'touch input is only emulated on the mobile project')
 
-    const environment = await installDeterministicEnvironment(page)
+    const environment = await installDeterministicEnvironment(page, { nativeClock: true })
     await page.goto('/app/automation')
     await waitForPageReady(page, 'automation')
 
@@ -752,18 +752,19 @@ test.describe('automation field hints', () => {
     await expect(page.getByRole('tooltip')).toBeHidden()
 
     await accountHint.tap()
-    await page.waitForTimeout(500)
+    await page.waitForTimeout(600)
     await expect(accountTooltip).toBeVisible()
     await expect(accountTooltip).toHaveAttribute('data-open', '')
 
     await launchHint.tap()
-    await page.waitForTimeout(500)
+    await page.waitForTimeout(600)
     await expect(accountTooltip).toBeHidden()
     await expect(launchTooltip).toBeVisible()
     await expect(launchTooltip).toHaveAttribute('data-open', '')
     const describedBy = await launchHint.getAttribute('aria-describedby')
     expect(describedBy).not.toBeNull()
     await expect(page.locator(`#${describedBy}`)).toHaveAttribute('role', 'tooltip')
+    await expect(page.locator(`#${describedBy}`)).toHaveText(LAUNCH_HINT)
 
     await page.touchscreen.tap(4, 4)
     await expect(launchTooltip).toBeHidden()

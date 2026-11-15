@@ -43,7 +43,7 @@ test.describe('field hint overlay behavior', () => {
 
   test('combat hint closes when moving into its covered control and lets clicks through', async ({ page }) => {
     const mobile = isMobileProject()
-    const environment = await installDeterministicEnvironment(page)
+    const environment = await installDeterministicEnvironment(page, { nativeClock: true })
     await page.goto('/app/combat')
     await waitForPageReady(page, 'combat')
 
@@ -58,10 +58,12 @@ test.describe('field hint overlay behavior', () => {
 
     if (mobile) await hint.tap()
     else await hint.hover()
-    await page.waitForTimeout(500)
+    await page.waitForTimeout(600)
     await expect(tooltip).toBeVisible()
     await expect(tooltip).toHaveAttribute('data-open', '')
-    await expect(hint).toHaveAttribute('aria-describedby', /.+/)
+    const describedBy = await hint.getAttribute('aria-describedby')
+    expect(describedBy).not.toBeNull()
+    await expect(page.locator(`#${describedBy}`)).toHaveText(COMBAT_FORMATION_HINT)
     const tooltipBox = await tooltip.boundingBox()
     expect(tooltipBox).not.toBeNull()
     await expectTooltipDoesNotCatchPoint(tooltip, {
@@ -93,7 +95,7 @@ test.describe('field hint overlay behavior', () => {
 
   test('roguelike hint closes when moving into its covered select and lets clicks through', async ({ page }) => {
     const mobile = isMobileProject()
-    const environment = await installDeterministicEnvironment(page)
+    const environment = await installDeterministicEnvironment(page, { nativeClock: true })
     await page.goto('/app/roguelike')
     await waitForPageReady(page, 'roguelike')
 
@@ -109,10 +111,12 @@ test.describe('field hint overlay behavior', () => {
 
     if (mobile) await hint.tap()
     else await hint.hover()
-    await page.waitForTimeout(500)
+    await page.waitForTimeout(600)
     await expect(tooltip).toBeVisible()
     await expect(tooltip).toHaveAttribute('data-open', '')
-    await expect(hint).toHaveAttribute('aria-describedby', /.+/)
+    const describedBy = await hint.getAttribute('aria-describedby')
+    expect(describedBy).not.toBeNull()
+    await expect(page.locator(`#${describedBy}`)).toHaveText(ROGUELIKE_DIFFICULTY_HINT)
     const tooltipBox = await tooltip.boundingBox()
     expect(tooltipBox).not.toBeNull()
     await expectTooltipDoesNotCatchPoint(tooltip, {
