@@ -24,6 +24,8 @@
     --glass-tabbar-fade-color: #ffffff;
     --glass-navbar-fade-color: #ffffff;
     --la-pluma-sidebar-width: 17rem;
+    --la-pluma-content-max: 112rem;
+    --la-pluma-page-gutter: 2rem;
     --glass-liquid-surface-lift: rgba(255, 255, 255, 0.04);
     --glass-edge-light: rgba(255, 255, 255, 0.48);
     --glass-edge-clear: rgba(255, 255, 255, 0);
@@ -42,6 +44,18 @@
       var(--glass-edge-light) 25%,
       var(--glass-edge-clear)
     );
+  }
+
+  @media (width <= 1023px) {
+    :root {
+      --la-pluma-page-gutter: 1.25rem;
+    }
+  }
+
+  @media (width <= 639px) {
+    :root {
+      --la-pluma-page-gutter: 0.875rem;
+    }
   }
 
   /* Safari's dynamic viewport is intentionally used in a normal browser so
@@ -150,16 +164,21 @@
     border-bottom: 1px solid var(--border);
   }
 
+  .la-pluma-app :is(.la-pluma-content, .la-pluma-navbar-inner) {
+    box-sizing: border-box;
+    width: 100%;
+    max-width: var(--la-pluma-content-max);
+    margin-inline: auto;
+    padding-right: max(var(--la-pluma-page-gutter), env(safe-area-inset-right, 0px));
+    padding-left: max(var(--la-pluma-page-gutter), env(safe-area-inset-left, 0px));
+  }
+
   .la-pluma-app .la-pluma-navbar-inner {
     position: relative;
     display: grid;
-    box-sizing: border-box;
-    width: 100%;
     min-height: 4.75rem;
     grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
     align-items: center;
-    padding-right: calc(0.875rem + env(safe-area-inset-right, 0px));
-    padding-left: calc(0.875rem + env(safe-area-inset-left, 0px));
   }
 
   .la-pluma-navbar-title {
@@ -301,8 +320,6 @@
 
     .la-pluma-app .la-pluma-navbar-inner {
       z-index: 2;
-      padding-right: 2rem;
-      padding-left: 1.25rem;
     }
 
     .la-pluma-app .la-pluma-page-body {
@@ -338,10 +355,7 @@
     }
 
     .la-pluma-app .la-pluma-content {
-      max-width: 112rem;
       padding-top: 1.25rem;
-      padding-right: 2rem;
-      padding-left: 1.25rem;
       padding-bottom: 0.75rem;
     }
 
@@ -970,8 +984,6 @@
 
     .la-pluma-app .la-pluma-navbar-inner {
       z-index: 1;
-      padding-right: max(1rem, env(safe-area-inset-right));
-      padding-left: max(1rem, env(safe-area-inset-left));
       pointer-events: none;
     }
 
@@ -1133,8 +1145,6 @@
       padding-top: calc(
         4.75rem + env(safe-area-inset-top, 0px) + 1.25rem
       );
-      padding-right: max(1.25rem, env(safe-area-inset-right));
-      padding-left: max(1.25rem, env(safe-area-inset-left));
       padding-bottom: calc(
         var(--la-pluma-tabbar-reserved-height) + 1.25rem
       );
@@ -1161,11 +1171,6 @@
   }
 
   @media (max-width: 639px) {
-    .la-pluma-app .la-pluma-navbar-inner {
-      padding-right: max(1.25rem, env(safe-area-inset-right));
-      padding-left: max(1.25rem, env(safe-area-inset-left));
-    }
-
     .la-pluma-scroll-host {
       scroll-padding-bottom: calc(
         var(--la-pluma-tabbar-reserved-height) + 0.875rem
@@ -1181,8 +1186,6 @@
       padding-top: calc(
         4.75rem + env(safe-area-inset-top, 0px) + 0.875rem
       );
-      padding-right: max(0.875rem, env(safe-area-inset-right));
-      padding-left: max(0.875rem, env(safe-area-inset-left));
       padding-bottom: calc(
         var(--la-pluma-tabbar-reserved-height) + 0.875rem
       );

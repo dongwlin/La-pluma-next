@@ -569,38 +569,13 @@
     box-shadow: inset 0 0 0 1px var(--border);
   }
 
-  .app-shell {
-    width: 100%;
-    max-width: 100rem;
-    margin-inline: auto;
-    padding-inline: 1.25rem;
-  }
-
-  @media (display-mode: standalone) {
-    .app-shell {
-      padding-right: max(1.25rem, env(safe-area-inset-right));
-      padding-left: max(1.25rem, env(safe-area-inset-left));
-    }
-  }
-
   @media (width <= 639px) {
-    .app-shell {
-      padding-inline: 0.875rem;
-    }
-
     .app-page {
       padding-block: 0.875rem;
     }
 
     .app-empty-state {
       padding: 0.875rem;
-    }
-
-    @media (display-mode: standalone) {
-      .app-shell {
-        padding-right: max(0.875rem, env(safe-area-inset-right));
-        padding-left: max(0.875rem, env(safe-area-inset-left));
-      }
     }
   }
 
