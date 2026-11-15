@@ -177,47 +177,36 @@
     position: relative;
     display: grid;
     min-height: 4.75rem;
-    grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+    grid-template-columns: minmax(0, 1fr) auto;
     align-items: center;
   }
 
   .la-pluma-navbar-title {
+    min-width: 0;
+    overflow: hidden;
     color: var(--foreground);
-    font-size: 1rem;
-    font-weight: 700;
+    font-size: 1.5rem;
+    font-weight: 600;
+    line-height: 1.35;
+    text-align: left;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 
-  .la-pluma-navbar-left,
   .la-pluma-navbar-actions {
     display: flex;
-    align-items: center;
     min-width: 0;
-  }
-
-  .la-pluma-navbar-actions {
+    align-items: center;
     gap: 0;
   }
 
-  .la-pluma-app .la-pluma-navbar-inner > :is(.la-pluma-navbar-left, .la-pluma-navbar-actions) {
-    display: flex;
-    min-width: 0;
-    align-items: center;
-  }
-
-  .la-pluma-app .la-pluma-navbar-inner > .la-pluma-navbar-left {
+  .la-pluma-app .la-pluma-navbar-inner > .la-pluma-navbar-title {
     grid-column: 1;
     justify-self: start;
   }
 
-  .la-pluma-app .la-pluma-navbar-inner > .la-pluma-navbar-title {
-    grid-column: 2;
-    min-width: 0;
-    justify-self: center;
-    text-align: center;
-  }
-
   .la-pluma-app .la-pluma-navbar-inner > .la-pluma-navbar-actions {
-    grid-column: 3;
+    grid-column: 2;
     justify-self: end;
   }
 
@@ -312,10 +301,6 @@
       z-index: auto;
       background: transparent;
       border-bottom: 0;
-    }
-
-    .la-pluma-app .la-pluma-navbar-inner > .la-pluma-navbar-title {
-      display: none;
     }
 
     .la-pluma-app .la-pluma-navbar-inner {
@@ -978,10 +963,6 @@
       pointer-events: none;
     }
 
-    .la-pluma-app .la-pluma-navbar-inner > .la-pluma-navbar-title {
-      display: none;
-    }
-
     .la-pluma-app .la-pluma-navbar-inner {
       z-index: 1;
       pointer-events: none;
@@ -989,12 +970,6 @@
 
     .la-pluma-app .la-pluma-theme-mobile {
       pointer-events: auto;
-    }
-
-    .la-pluma-app .la-pluma-navbar-left {
-      width: 2.75rem;
-      height: 2.75rem;
-      flex: 0 0 2.75rem;
     }
 
     .la-pluma-app .la-pluma-brand {

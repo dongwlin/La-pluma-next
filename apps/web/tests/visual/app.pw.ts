@@ -62,6 +62,64 @@ test.describe('app tabs', () => {
     await expectNoBrowserErrors(page)
   })
 
+  test('page title names the active tab and drives the document title', async ({ page }) => {
+    const environment = await installDeterministicEnvironment(page)
+
+    await page.goto('/app/dashboard')
+    await waitForPageReady(page, 'dashboard')
+
+    const title = page.locator('[data-region="page-title"]')
+    await expect(title).toBeVisible()
+    await expect(title).toHaveText('概览')
+    await expect(page.getByRole('heading', { level: 1 })).toHaveCount(1)
+    expect(await title.evaluate(element => getComputedStyle(element).fontSize)).toBe('24px')
+    await expect(page).toHaveTitle('概览 · La Pluma Next')
+
+    await page.goto('/app/automation')
+    await waitForPageReady(page, 'automation')
+
+    await expect(title).toBeVisible()
+    await expect(title).toHaveText('日常')
+    await expect(page).toHaveTitle('日常 · La Pluma Next')
+
+    environment.assertNoUnmatchedApi()
+    await expectNoBrowserErrors(page)
+  })
+
+  test('page title starts at the content leading edge', async ({ page }) => {
+    const environment = await installDeterministicEnvironment(page)
+
+    await page.goto('/app/dashboard')
+    await waitForPageReady(page, 'dashboard')
+
+    const edges = await page.evaluate(() => {
+      const title = document.querySelector<HTMLElement>('[data-region="page-title"]')
+      const content = document.querySelector<HTMLElement>('.la-pluma-content')
+      if (!title || !content) throw new Error('page title structure missing')
+      const contentLeft = content.getBoundingClientRect().left
+        + Number.parseFloat(getComputedStyle(content).paddingLeft)
+      return { contentLeft, titleLeft: title.getBoundingClientRect().left }
+    })
+
+    expect(Math.abs(edges.titleLeft - edges.contentLeft)).toBeLessThanOrEqual(1)
+
+    environment.assertNoUnmatchedApi()
+    await expectNoBrowserErrors(page)
+  })
+
+  test('theme gallery route uses its own page title', async ({ page }) => {
+    const environment = await installDeterministicEnvironment(page)
+
+    await page.goto('/dev/theme-gallery')
+    await waitForPageReady(page, 'gallery')
+
+    await expect(page.getByRole('heading', { level: 1 })).toHaveText('主题画廊')
+    await expect(page).toHaveTitle('主题画廊 · La Pluma Next')
+
+    environment.assertNoUnmatchedApi()
+    await expectNoBrowserErrors(page)
+  })
+
   test('navbar actions stay at the trailing edge', async ({ page }) => {
     const environment = await installDeterministicEnvironment(page)
 
