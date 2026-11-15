@@ -28,6 +28,8 @@ export function AppToaster() {
       position="bottom-center"
       offset={{ bottom }}
       mobileOffset={{ bottom }}
+      visibleToasts={3}
+      closeButton
       className="max-[600px]:w-[calc(100vw-2rem)]!"
       toastOptions={{
         classNames: {
