@@ -236,6 +236,32 @@ import { ConfirmAlertDialog, Loading } from '@/shared/components'
 
 ---
 
+### UndoToastCard / AppToaster
+
+**文件位置**：`apps/web/src/shared/components/UndoToastCard.tsx`、`apps/web/src/shared/components/AppToaster.tsx`
+
+**适用场景**：需要「已移除 + 撤销」语义的应用级提示。`AppToaster` 在应用根挂载一次，主题跟随 `useTheme` 的解析明暗与 `lpn-ui`；提示固定在底部居中，桌面停留 24px，窄屏抬高以避开 tab bar 与安全区。`UndoToastCard` 是提示内容，默认 8 秒后自动关闭，悬停或键盘聚焦时暂停，`pending` 时禁用撤销与关闭并显示恢复中。
+
+```tsx
+import { toast } from 'sonner'
+import { AppToaster, UndoToastCard } from '@/shared/components'
+
+// 应用根：<AppToaster />
+
+toast.custom(() => (
+  <UndoToastCard
+    message="已移除 阿米娅"
+    pending={false}
+    onUndo={handleUndo}
+    onDismiss={handleDismiss}
+  />
+), { id: 'undo-toast', duration: Infinity, dismissible: false })
+```
+
+使用 `toast.custom` 时让卡片自己管理 8 秒计时与暂停，因此传入 `duration: Infinity`；关闭按钮与撤销动作由卡片提供，因此传入 `dismissible: false`。同一提示复用稳定 id，避免重复堆叠。
+
+---
+
 ### PageSkeleton
 
 **文件位置**：`apps/web/src/shared/components/Loading.tsx`，与 `Loading` 同文件导出。
