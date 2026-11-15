@@ -1,5 +1,5 @@
 import { AlertCircle, LoaderCircle } from 'lucide-react'
-import { useEffect, useState, type ReactNode } from 'react'
+import { useEffect, useId, useRef, useState, type ReactNode } from 'react'
 import { Button } from '@/shared/ui/button'
 import {
   AlertDialog,
@@ -42,6 +42,8 @@ export function ConfirmAlertDialog({
   cancelText = '取消',
   variant = 'danger',
 }: ConfirmAlertDialogProps) {
+  const contentId = useId()
+  const cancelRef = useRef<HTMLButtonElement>(null)
   const [isPending, setIsPending] = useState(false)
   const [error, setError] = useState('')
 
@@ -53,21 +55,16 @@ export function ConfirmAlertDialog({
   useEffect(() => {
     if (!isOpen) return
     let closing = false
-    const handleOutsidePress = (event: MouseEvent) => {
-      if (isPending || closing || !(event.target instanceof Node)) return
-      const content = document.querySelector('[data-slot="alert-dialog-content"]')
-      if (!content || content.contains(event.target)) return
+    const handleOutsideClick = (event: MouseEvent) => {
+      if (isPending || closing || !(event.target instanceof Element)) return
+      if (event.target.closest('[data-slot="alert-dialog-content"]')?.id === contentId) return
       closing = true
       onClose()
     }
 
-    document.addEventListener('pointerdown', handleOutsidePress)
-    document.addEventListener('mousedown', handleOutsidePress)
-    return () => {
-      document.removeEventListener('pointerdown', handleOutsidePress)
-      document.removeEventListener('mousedown', handleOutsidePress)
-    }
-  }, [isOpen, isPending, onClose])
+    document.addEventListener('click', handleOutsideClick, true)
+    return () => document.removeEventListener('click', handleOutsideClick, true)
+  }, [contentId, isOpen, isPending, onClose])
 
   const handleClose = () => {
     if (!isPending) onClose()
@@ -99,7 +96,11 @@ export function ConfirmAlertDialog({
         onClose()
       }}
     >
-      <AlertDialogContent aria-modal="true">
+      <AlertDialogContent
+        id={contentId}
+        aria-modal="true"
+        initialFocus={() => cancelRef.current ?? true}
+      >
         <AlertDialogHeader>
           <AlertDialogTitle>{title}</AlertDialogTitle>
           {message && <AlertDialogDescription>{message}</AlertDialogDescription>}
@@ -111,7 +112,7 @@ export function ConfirmAlertDialog({
           </div>
         )}
         <AlertDialogFooter>
-          <Button variant="secondary" data-autofocus disabled={isPending} onClick={handleClose}>
+          <Button ref={cancelRef} variant="secondary" disabled={isPending} onClick={handleClose}>
             {cancelText}
           </Button>
           <AlertDialogAction

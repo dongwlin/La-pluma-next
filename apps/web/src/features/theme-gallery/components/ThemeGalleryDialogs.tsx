@@ -95,7 +95,7 @@ export function ThemeGalleryDialogs() {
                 setOrder(next)
               }}
             >
-              <SelectTrigger aria-label="画廊排序" className="w-36">
+              <SelectTrigger id="gallery-dialog-order" aria-label="画廊排序" className="w-36">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -108,7 +108,7 @@ export function ThemeGalleryDialogs() {
           <DialogFooter>
             <Button variant="secondary" onClick={() => setNestedAlertOpen(true)}>在对话框上打开确认框</Button>
             <Button variant="secondary" onClick={() => setNestedSheetOpen(true)}>在对话框上打开抽屉</Button>
-            <Button onClick={() => setStandardOpen(false)}>完成</Button>
+            <Button id="gallery-standard-done" onClick={() => setStandardOpen(false)}>完成</Button>
           </DialogFooter>
           <Sheet open={nestedSheetOpen} onOpenChange={setNestedSheetOpen}>
             <SheetContent id="gallery-nested-sheet" side="right" aria-modal="true">
@@ -187,8 +187,8 @@ export function ThemeGalleryDialogs() {
             <p className="text-muted-foreground">抽屉正文滚动，标题与页脚保持固定。</p>
           </div>
           <SheetFooter>
-            <Button variant="secondary" onClick={() => setSheetDialogOpen(true)}>在抽屉上打开对话框</Button>
-            <Button onClick={() => setRightSheetOpen(false)}>关闭抽屉</Button>
+            <Button id="gallery-sheet-open-dialog" variant="secondary" onClick={() => setSheetDialogOpen(true)}>在抽屉上打开对话框</Button>
+            <Button id="gallery-sheet-right-close" onClick={() => setRightSheetOpen(false)}>关闭抽屉</Button>
           </SheetFooter>
           <Dialog open={sheetDialogOpen} onOpenChange={setSheetDialogOpen}>
             <DialogContent id="gallery-sheet-nested-dialog" aria-modal="true">

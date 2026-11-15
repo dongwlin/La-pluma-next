@@ -124,12 +124,12 @@ describe('ConfirmAlertDialog', () => {
       onClose,
     })
 
-    document.body.dispatchEvent(new MouseEvent('pointerdown', { bubbles: true }))
+    document.body.dispatchEvent(new MouseEvent('click', { bubbles: true }))
     expect(onClose).toHaveBeenCalledOnce()
 
     onClose.mockClear()
     await clickButton('确认')
-    document.body.dispatchEvent(new MouseEvent('pointerdown', { bubbles: true }))
+    document.body.dispatchEvent(new MouseEvent('click', { bubbles: true }))
 
     expect(onClose).not.toHaveBeenCalled()
     await act(async () => resolveConfirm?.())

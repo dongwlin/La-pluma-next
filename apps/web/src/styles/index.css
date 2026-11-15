@@ -1722,6 +1722,28 @@
     z-index: 2000 !important;
   }
 
+  /*
+   * Base UI 只在父 Popup 上标记 data-nested-dialog-open 和 aria-hidden，
+   * 父 Popup 仍覆盖子层 InternalBackdrop 的命中区域。父层必须让出指针，
+   * 否则点击父层控件会同时关闭父子两层。
+   */
+  [data-slot="dialog-content"][data-nested-dialog-open],
+  [data-slot="sheet-content"][data-nested-dialog-open],
+  [data-slot="alert-dialog-content"][data-nested-dialog-open] {
+    pointer-events: none !important;
+  }
+
+  /*
+   * Base UI 的 InternalBackdrop 没有 z-index，会被父层 z-50 Popup/遮罩盖住，
+   * 导致子层的 outside press 收不到点击。把弹层 portal 内的内部遮罩提到与
+   * Popup 同层，靠 DOM 顺序保持在子 Popup 之下、父层之上。
+   */
+  [data-base-ui-portal]:has(> [data-slot="dialog-content"]) > [role="presentation"][data-base-ui-inert],
+  [data-base-ui-portal]:has(> [data-slot="sheet-content"]) > [role="presentation"][data-base-ui-inert],
+  [data-base-ui-portal]:has(> [data-slot="alert-dialog-content"]) > [role="presentation"][data-base-ui-inert] {
+    z-index: 50 !important;
+  }
+
 }
 
 @layer page {
