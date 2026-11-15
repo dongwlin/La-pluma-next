@@ -151,7 +151,7 @@ export function DashboardSkeleton() {
             {[1, 2, 3, 4].map((item, index) => (
               <Card
                 key={item}
-                className="dashboard-device-card-shell dashboard-device-card dashboard-device-skeleton gap-0 space-y-3"
+                className="dashboard-device-card-shell dashboard-device-card dashboard-device-skeleton gap-0 space-y-3 p-0!"
               >
                 <div className="flex items-center gap-2.5">
                   <Skeleton className="h-8 w-8 rounded-lg" />
