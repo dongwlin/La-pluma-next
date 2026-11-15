@@ -671,11 +671,6 @@
       max-width: 100%;
     }
 
-    .la-pluma-app .dashboard-page .dashboard-status-indicator {
-      max-width: 100%;
-      overflow: hidden;
-    }
-
     .la-pluma-app .dashboard-page .dashboard-flow-layout {
       margin-top: 0;
       margin-bottom: 0;

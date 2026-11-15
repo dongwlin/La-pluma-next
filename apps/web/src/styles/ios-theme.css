@@ -1228,28 +1228,6 @@
       justify-content: flex-end;
     }
 
-    .la-pluma-app .app-page-header.is-mobile-inline .floating-status-anchor,
-    .la-pluma-app .app-page-header.is-mobile-inline .floating-status-indicator {
-      /* 移动端状态指示器必须收在页头操作区内，压过 100vw 的 max-w 工具类。 */
-      width: fit-content !important;
-      min-width: 0 !important;
-      max-width: 100% !important;
-    }
-
-    .la-pluma-app .app-page-header.is-mobile-inline .floating-status-anchor {
-      margin-left: 0 !important;
-    }
-
-    .la-pluma-app .app-page-header.is-mobile-inline .floating-status-indicator {
-      overflow: hidden;
-    }
-
-    .la-pluma-app .app-page-header.is-mobile-inline .floating-status-text {
-      overflow: hidden;
-      text-overflow: ellipsis;
-      white-space: nowrap;
-    }
-
     .la-pluma-app .app-page-title {
       font-size: 1.375rem;
     }
