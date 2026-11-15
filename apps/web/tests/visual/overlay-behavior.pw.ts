@@ -502,7 +502,6 @@ test.describe('feature overlay behavior', () => {
   })
 
   test('replaces the undo toast and cleans it up on close', async ({ page }) => {
-    test.skip(test.info().project.name !== 'desktop', 'toast replacement is captured on desktop Chromium')
     await page.addInitScript(themeSeedScript('dark'))
     const environment = await installDeterministicEnvironment(page)
     await installTrainingQueueRoutes(page)
@@ -514,6 +513,15 @@ test.describe('feature overlay behavior', () => {
     await page.getByRole('button', { name: '移除艾雅法拉', exact: true }).click()
     await expect(toast).toHaveCount(1)
     await expect(toast).toContainText('已移除 艾雅法拉')
+
+    const card = toast.locator('[data-title] > div')
+    const [toastBox, cardBox] = await Promise.all([toast.boundingBox(), card.boundingBox()])
+    const viewport = page.viewportSize()
+    expect(viewport).not.toBeNull()
+    expect(cardBox).not.toBeNull()
+    expect(cardBox!.width).toBeLessThan(viewport!.width - 80)
+    expect(Math.abs(cardBox!.x + cardBox!.width / 2 - viewport!.width / 2)).toBeLessThanOrEqual(1)
+    expect(Math.abs(toastBox!.width - cardBox!.width)).toBeLessThanOrEqual(1)
 
     await page.getByRole('button', { name: '移除塞雷娅', exact: true }).click()
     await expect(toast).toHaveCount(1)

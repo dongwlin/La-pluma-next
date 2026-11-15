@@ -28,9 +28,10 @@ export function AppToaster() {
       position="bottom-center"
       offset={{ bottom }}
       mobileOffset={{ bottom }}
+      className="max-[600px]:w-[calc(100vw-2rem)]!"
       toastOptions={{
         classNames: {
-          toast: 'cn-toast',
+          toast: 'cn-toast left-0! right-0! mx-auto! w-max! max-w-[calc(100vw-2rem)]!',
         },
       }}
       icons={{

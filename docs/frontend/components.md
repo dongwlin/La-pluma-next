@@ -240,7 +240,7 @@ import { ConfirmAlertDialog, Loading } from '@/shared/components'
 
 **文件位置**：`apps/web/src/shared/components/UndoToastCard.tsx`、`apps/web/src/shared/components/AppToaster.tsx`
 
-**适用场景**：需要「已移除 + 撤销」语义的应用级提示。`AppToaster` 在应用根挂载一次，主题跟随 `useTheme` 的解析明暗与 `lpn-ui`；提示固定在底部居中，桌面停留 24px，窄屏抬高以避开 tab bar 与安全区。`UndoToastCard` 是提示内容，默认 8 秒后自动关闭，悬停或键盘聚焦时暂停，`pending` 时禁用撤销与关闭并显示恢复中。
+**适用场景**：需要「已移除 + 撤销」语义的应用级提示。`AppToaster` 在应用根挂载一次，主题跟随 `useTheme` 的解析明暗与 `lpn-ui`；提示固定在底部居中，桌面停留 24px，窄屏抬高以避开 tab bar 与安全区。`UndoToastCard` 是提示内容，默认 8 秒后自动关闭，悬停或键盘聚焦时暂停，`pending` 时禁用撤销与关闭并显示恢复中；宽度按内容收缩并居中，窄屏上限为 `calc(100vw - 2rem)`，播报由 sonner 外层 live region 承担。
 
 ```tsx
 import { toast } from 'sonner'
