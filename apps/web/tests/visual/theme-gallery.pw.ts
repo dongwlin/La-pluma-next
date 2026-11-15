@@ -326,7 +326,7 @@ for (const theme of THEMES) {
       await expect(group).toBeVisible()
 
       await page.getByRole('button', { name: '显示可撤销提示', exact: true }).click()
-      const toast = page.locator('[data-sonner-toast] [role="status"]')
+      const toast = page.locator('[data-sonner-toast]')
       await expect(toast).toBeVisible()
       await expect(toast).toContainText('已移除 阿米娅')
 
@@ -352,7 +352,7 @@ for (const theme of THEMES) {
       await expect(group).toBeVisible()
 
       await page.getByRole('button', { name: '显示恢复中提示', exact: true }).click()
-      const toast = page.locator('[data-sonner-toast] [role="status"]')
+      const toast = page.locator('[data-sonner-toast]')
       await expect(toast).toBeVisible()
       await expect(toast).toContainText('恢复中')
 

@@ -56,12 +56,10 @@ export function UndoToastCard({
   return (
     <div
       ref={rootRef}
-      role="status"
-      aria-live="polite"
-      className="flex w-full items-center gap-3 rounded-lg bg-popover p-3 text-sm text-popover-foreground shadow-lg ring-1 ring-foreground/10"
+      className="mx-auto flex w-max max-w-[calc(100vw-2rem)] items-center gap-3 rounded-lg bg-popover p-3 text-sm text-popover-foreground shadow-lg ring-1 ring-foreground/10"
     >
       <Check className="size-4 shrink-0 text-primary" aria-hidden="true" />
-      <span className="min-w-0 flex-1">{message}</span>
+      <span className="min-w-0 flex-1 break-words">{message}</span>
       <Button
         variant="ghost"
         onClick={onUndo}

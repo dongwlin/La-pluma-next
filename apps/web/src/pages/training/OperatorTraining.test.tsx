@@ -271,7 +271,7 @@ const planPanel = () => {
 
 const planPanelText = () => planPanel().textContent ?? ''
 
-const undoToast = () => document.querySelector<HTMLElement>('[data-sonner-toast] [role="status"][aria-live="polite"]')
+const undoToast = () => document.querySelector<HTMLElement>('[data-sonner-toast]')
 
 const undoToastClose = () => document.querySelector('[data-sonner-toast] [aria-label="关闭移除提示"]')
 

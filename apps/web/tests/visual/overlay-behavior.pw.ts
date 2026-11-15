@@ -267,6 +267,25 @@ test.describe('feature overlay behavior', () => {
     await page.goto('/app/statistics')
     await waitForPageReady(page, 'statistics')
 
+    if (test.info().project.name === 'mobile') {
+      const triggers = page.locator('button[data-filter-menu]')
+      await triggers.first().scrollIntoViewIfNeeded()
+      const boxes = await triggers.evaluateAll(nodes => nodes.map(node => {
+        const rect = node.getBoundingClientRect()
+        return { x: rect.x, y: Math.round(rect.y), width: rect.width }
+      }))
+      expect(boxes).toHaveLength(6)
+      const rows = [...new Set(boxes.map(box => box.y))]
+      expect(rows).toHaveLength(2)
+      for (const row of rows) {
+        expect(boxes.filter(box => box.y === row)).toHaveLength(3)
+      }
+      for (const box of boxes) {
+        expect(box.width).toBeGreaterThan(70)
+        expect(box.width).toBeLessThan(150)
+      }
+    }
+
     const ownership = page.getByRole('button', { name: '拥有状态', exact: true })
     await ownership.scrollIntoViewIfNeeded()
     await ownership.click()
@@ -276,9 +295,10 @@ test.describe('feature overlay behavior', () => {
     const options = menu.getByRole('menuitemradio')
     await expect(options).toHaveCount(3)
     await expect(options.nth(0)).toHaveAttribute('aria-checked', 'true')
-
-    await page.keyboard.press('ArrowDown')
     await expect(options.nth(0)).toBeFocused()
+    const itemHeights = await options.evaluateAll(nodes => nodes.map(node => node.getBoundingClientRect().height))
+    for (const height of itemHeights) expect(height).toBeGreaterThanOrEqual(44)
+
     await page.keyboard.press('ArrowDown')
     await expect(options.nth(1)).toBeFocused()
     await page.keyboard.press('End')
@@ -306,7 +326,17 @@ test.describe('feature overlay behavior', () => {
     await expect(rarity).toHaveText(/6星/)
     await expect(rarity).toBeFocused()
 
+    await ownership.click()
+    await expect(menu).toBeVisible()
+    await page.getByRole('tab', { name: /仓库识别/ }).focus()
+    await expect(menu).toBeHidden()
+
     if (test.info().project.name === 'mobile') {
+      const reset = page.getByRole('button', { name: '重置', exact: true })
+      await reset.scrollIntoViewIfNeeded()
+      const [resetBox, rarityBox] = await Promise.all([reset.boundingBox(), rarity.boundingBox()])
+      expect(Math.abs((resetBox?.width ?? 0) - (rarityBox?.width ?? 0))).toBeLessThanOrEqual(1)
+
       const sort = page.getByRole('button', { name: '排序', exact: true })
       await sort.scrollIntoViewIfNeeded()
       await sort.click()
@@ -317,6 +347,38 @@ test.describe('feature overlay behavior', () => {
       const box = await content.boundingBox()
       expect(Math.round(box?.width ?? 0)).toBe(128)
     }
+
+    environment.assertNoUnmatchedApi()
+    await expectNoBrowserErrors(page)
+  })
+
+  test('short viewport keeps the filter menu inside the viewport and scrollable', async ({ page }) => {
+    test.skip(test.info().project.name !== 'mobile', 'mobile short-viewport containment')
+    await page.setViewportSize({ width: 390, height: 300 })
+    const environment = await installDeterministicEnvironment(page)
+    await page.goto('/app/statistics')
+    await waitForPageReady(page, 'statistics')
+
+    const rarity = page.locator('button[data-filter-menu="rarity"]')
+    await rarity.scrollIntoViewIfNeeded()
+    await rarity.click()
+
+    const content = page.locator('[data-slot="dropdown-menu-content"]')
+    await expect(content).toBeVisible()
+    const box = await content.boundingBox()
+    expect(box).not.toBeNull()
+    expect(box!.y).toBeGreaterThanOrEqual(0)
+    expect(box!.y + box!.height).toBeLessThanOrEqual(300.5)
+
+    const scrolling = await content.evaluate(element => ({
+      overflowY: getComputedStyle(element).overflowY,
+      scrollHeight: element.scrollHeight,
+      clientHeight: element.clientHeight,
+    }))
+    expect(scrolling.overflowY).toBe('auto')
+    expect(scrolling.scrollHeight).toBeGreaterThan(scrolling.clientHeight)
+    await content.evaluate(element => { element.scrollTop = element.scrollHeight })
+    await expect(page.getByRole('menuitemradio', { name: '1星', exact: true })).toBeVisible()
 
     environment.assertNoUnmatchedApi()
     await expectNoBrowserErrors(page)
@@ -407,7 +469,7 @@ test.describe('feature overlay behavior', () => {
     await page.getByRole('button', { name: '移除艾雅法拉', exact: true }).click()
     await page.clock.runFor(10)
 
-    const toast = page.locator('[data-sonner-toast] [role="status"]')
+    const toast = page.locator('[data-sonner-toast]')
     await expect(toast).toBeVisible()
     await expect(toast).toContainText('已移除 艾雅法拉')
 
@@ -434,6 +496,32 @@ test.describe('feature overlay behavior', () => {
     queue.releaseUndo()
     await page.clock.runFor(250)
     await expect(toast).toBeHidden()
+
+    environment.assertNoUnmatchedApi()
+    await expectNoBrowserErrors(page)
+  })
+
+  test('replaces the undo toast and cleans it up on close', async ({ page }) => {
+    test.skip(test.info().project.name !== 'desktop', 'toast replacement is captured on desktop Chromium')
+    await page.addInitScript(themeSeedScript('dark'))
+    const environment = await installDeterministicEnvironment(page)
+    await installTrainingQueueRoutes(page)
+
+    await page.goto('/app/training')
+    await waitForPageReady(page, 'training')
+
+    const toast = page.locator('[data-sonner-toast]')
+    await page.getByRole('button', { name: '移除艾雅法拉', exact: true }).click()
+    await expect(toast).toHaveCount(1)
+    await expect(toast).toContainText('已移除 艾雅法拉')
+
+    await page.getByRole('button', { name: '移除塞雷娅', exact: true }).click()
+    await expect(toast).toHaveCount(1)
+    await expect(toast).toContainText('已移除 塞雷娅')
+    await expect(toast).not.toContainText('艾雅法拉')
+
+    await toast.getByRole('button', { name: '关闭移除提示', exact: true }).click()
+    await expect(toast).toHaveCount(0)
 
     environment.assertNoUnmatchedApi()
     await expectNoBrowserErrors(page)

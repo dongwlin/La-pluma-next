@@ -66,9 +66,9 @@ DataStatistics（页面壳：页头、全局状态指示）
 
 `OperatorFilterMenu` 以 shadcn `DropdownMenu` 承接原筛选规则：
 
-- 打开状态与当前值由面板持有，组件只接收 `open`/`value`/`options`；单开由面板共享的 `openMenu` 保证。
-- 菜单由 Base UI portal 与 positioner 负责视口碰撞与翻转；手机端行尾菜单使用 `mobileAlign="end"` 对齐触发器右缘，`menuWidth` 保持 112/128px。
-- 键盘打开或进入菜单后，`ArrowUp`/`ArrowDown` 首尾环绕、`Home`/`End` 跳转；`Escape` 关闭并把焦点还给触发器；选择后关闭并归还焦点；外部点击关闭。
+- 打开状态与当前值由面板持有，组件只接收 `open`/`value`/`options`；单开由面板共享的 `openMenu` 保证，打开时聚焦当前已选项（不存在则第一项）。
+- 菜单由 Base UI portal 与 positioner 负责视口碰撞与翻转；手机端行尾菜单使用 `mobileAlign="end"` 对齐触发器右缘，`menuWidth` 保持 112/128px，菜单项保持 44px 最小触达。
+- 键盘打开或进入菜单后，`ArrowUp`/`ArrowDown` 首尾环绕、`Home`/`End` 跳转；`Escape` 关闭并把焦点还给触发器；选择后关闭并归还焦点；外部点击或焦点移出菜单关闭。
 - 触发器由 Base UI 提供 `aria-haspopup`、`aria-expanded`、`aria-controls`，菜单使用 `role="menu"` 与 `role="menuitemradio"` 的 `aria-checked`。
 
 ### 4. 纯模型

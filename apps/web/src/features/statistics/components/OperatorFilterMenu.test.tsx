@@ -75,16 +75,20 @@ function Harness({ initialValue = 'all', mobileAlign, menuWidth, onSelect }: Har
 let container: HTMLDivElement
 let root: Root
 
+const flushTimers = async () => {
+  await act(async () => { await new Promise(resolve => setTimeout(resolve, 0)) })
+}
+
 const click = async (element: HTMLElement) => {
   await act(async () => element.dispatchEvent(new MouseEvent('click', { bubbles: true })))
-  await act(async () => { await Promise.resolve() })
+  await flushTimers()
 }
 
 const press = async (target: EventTarget, key: string) => {
   await act(async () => {
     target.dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true }))
   })
-  await act(async () => { await Promise.resolve() })
+  await flushTimers()
 }
 
 const render = async (props: HarnessProps = {}) => {
@@ -126,7 +130,7 @@ describe('operator filter dropdown menu', () => {
     expect(trigger().getAttribute('aria-expanded')).toBe('true')
     expect(surface.getAttribute('aria-label')).toBe('已拥有筛选')
     expect(menuItems().map(item => item.getAttribute('aria-checked'))).toEqual(['false', 'true', 'false'])
-    expect(menuItems().some(item => item === document.activeElement)).toBe(true)
+    expect(document.activeElement).toBe(menuItems()[1])
   })
 
   it('applies the selection, closes and restores trigger focus', async () => {
@@ -158,12 +162,15 @@ describe('operator filter dropdown menu', () => {
   it('cycles focus with arrows, Home and End', async () => {
     await render({ initialValue: 'owned' })
     await click(trigger())
-    expect(document.activeElement).toBe(menuItems()[0])
-
-    await press(menu()!, 'ArrowDown')
     expect(document.activeElement).toBe(menuItems()[1])
 
     await press(menu()!, 'ArrowDown')
+    expect(document.activeElement).toBe(menuItems()[2])
+
+    await press(menu()!, 'ArrowDown')
+    expect(document.activeElement).toBe(menuItems()[0])
+
+    await press(menu()!, 'ArrowUp')
     expect(document.activeElement).toBe(menuItems()[2])
 
     await press(menu()!, 'Home')
@@ -172,11 +179,8 @@ describe('operator filter dropdown menu', () => {
     await press(menu()!, 'End')
     expect(document.activeElement).toBe(menuItems()[2])
 
-    await press(menu()!, 'ArrowDown')
-    expect(document.activeElement).toBe(menuItems()[0])
-
     await press(menu()!, 'ArrowUp')
-    expect(document.activeElement).toBe(menuItems()[2])
+    expect(document.activeElement).toBe(menuItems()[1])
   })
 
   it('opens from the trigger with arrow keys and keeps aria wiring', async () => {
@@ -202,6 +206,24 @@ describe('operator filter dropdown menu', () => {
 
     expect(menu()).toBeNull()
     expect(trigger().getAttribute('aria-expanded')).toBe('false')
+  })
+
+  it('closes when focus moves outside the menu', async () => {
+    const outside = document.createElement('button')
+    outside.textContent = 'outside'
+    document.body.appendChild(outside)
+
+    await render()
+    await click(trigger())
+    expect(menu()).not.toBeNull()
+
+    await act(async () => outside.focus())
+    await act(async () => { await Promise.resolve() })
+    await act(async () => { await Promise.resolve() })
+
+    expect(menu()).toBeNull()
+    expect(document.activeElement).toBe(outside)
+    outside.remove()
   })
 
   it('keeps only one menu open at a time', async () => {

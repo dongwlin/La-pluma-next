@@ -13,7 +13,7 @@ let root: Root
 let toasterContainer: HTMLDivElement
 let toasterRoot: Root
 
-const toast = () => document.querySelector<HTMLElement>('[data-sonner-toast] [role="status"]')
+const toast = () => document.querySelector<HTMLElement>('[data-sonner-toast]')
 
 const renderToast = async (props: Partial<ComponentProps<typeof TrainingUndoToast>> = {}) => {
   await act(async () => root.render(
@@ -65,8 +65,7 @@ describe('training undo toast', () => {
     const element = toast()
     expect(element).not.toBeNull()
     expect(container.contains(element)).toBe(false)
-    expect(element?.getAttribute('role')).toBe('status')
-    expect(element?.getAttribute('aria-live')).toBe('polite')
+    expect(element?.closest('section[aria-live="polite"]')).not.toBeNull()
     expect(element?.textContent).toContain('已移除 阿米娅')
     expect(element?.querySelector('button[aria-label="关闭移除提示"]')).not.toBeNull()
 
