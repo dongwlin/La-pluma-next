@@ -249,7 +249,7 @@ browser releases pointer capture”用例固定；DOM/CSS 未变化。性能复�
 | 参数编辑 | `updateTaskFlowParams` 只替换目标任务；`clientType` 变化时同步启动/关闭游戏步骤，与迁移前一致 |
 | 关卡分组 | `splitStagesForEditing` 负责 置顶/智能养成/普通/空白 分类，`orderStagesForEditing` 按 置顶 → 智能养成 → 普通 → 空白输入行拼接；任务编辑面板的智能养成增删复用同一分类。组内保持原顺序，每个条目只归类一次，长度与多重集合不变 |
 | 执行前校验 | `findTaskFlowValidationFailure` 先检查启用中的自定义换班（`taskType === 'Infrast'`、`mode === 10000`、`filename` 为空），再检查启用中的 `fight` 掉落目标；返回第一个无效任务 id 与提示 |
-| 提示文案 | 两条校验文案由模型返回，工作区负责写入全局状态消息并选中该任务 |
+| 提示文案 | 两条校验文案由模型返回，工作区负责发送全局通知并选中该任务 |
 
 同时带 `pinned` 与 `smart` 的异常关卡形状按置顶归类一次；旧页面会把它复制到两个分组。正常编辑路径不会产生该形状。
 

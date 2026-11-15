@@ -153,7 +153,7 @@ const result = await executionController.submitExecution('run_task', ({ idempote
   - 仓库/干员识别通过 `beginExecutionIntent('run_task', { scope: 'statistics' })` 生成幂等键，以 `waitForCompletion=true` 提交；命令确认成功后才轮询解析端点等待 MAA 日志可解析。
   - 命令超时或本地取消只结束本地等待，不调用停止；继续时复用同一幂等键确认已有 Run，已接受 Run 只读取终态，绝不产生第二个设备命令。Run 终态等待或解析超时后只继续等待/解析，不再提交 `run-task`。
   - 识别成功由 `features/statistics/model/commandOwner.ts` 发布作用域失效；材料刷新是脚本入口，不产生 Run。命令状态归域内所有者，页面不再内联 `executeCommand`、固定延迟或读 queue 决定提示。详见[统计识别命令与失效联动](../frontend/domains/statistics.md#识别命令)。
-- 肉鸽、作业、自动化、Dashboard 与统计识别的运行身份都来自同一控制器；Dashboard 启动的 run 带有 `scope: 'dashboard'`，统计识别带有 `scope: 'statistics'`，其它页面不会把它们显示成自己的执行，但全局投影、浮动指示器和 Dashboard 会看到同一个活动 run。
+- 肉鸽、作业、自动化、Dashboard 与统计识别的运行身份都来自同一控制器；Dashboard 启动的 run 带有 `scope: 'dashboard'`，统计识别带有 `scope: 'statistics'`，其它页面不会把它们显示成自己的执行，但全局运行投影和 Dashboard 会看到同一个活动 run。
 
 ## 7. 回归清单
 

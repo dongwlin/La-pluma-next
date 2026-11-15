@@ -277,7 +277,7 @@ La Pluma Next 是一个高密度的本地自动化控制台，不是营销页面
 ### Named Rules
 **The Flat-By-Default Rule.** 普通卡片、列表和页面区块在静止状态保持平整。阴影只用于表达层级、可点击性或状态，不要给静态内容卡片加投影闪动或位移。
 
-**The Liquid Glass Theme.** 液态玻璃是后续主题层的能力，不属于默认 chrome。只有该主题下的 chrome、Dialog/Sheet、主题菜单、PWA 提示和明确的浮层可以使用 `backdrop-filter` 与深阴影；普通卡片始终不透明，避免整页都是玻璃导致可读性下降。
+**The Liquid Glass Theme.** 液态玻璃是后续主题层的能力，不属于默认 chrome。shell chrome 的玻璃材质由后续主题提供；现有分段控件与召唤层（Dialog/Sheet、主题菜单、PWA 提示等）的材质保持不变。普通卡片始终不透明，避免整页都是玻璃导致可读性下降。
 
 **The Single Beam Rule.** `status-border-beam` 仅用于启动、连接或执行中的局部状态反馈，并通过 `is-active` 控制；完成、空闲和静态卡片不得常驻光效，也不要叠加第二条可见边框。
 
@@ -344,7 +344,7 @@ La Pluma Next 是一个高密度的本地自动化控制台，不是营销页面
 | 局部内容正在读取 | `Loading` |
 | 列表、流程或卡片无数据 | `EmptyState`，按容器选择 `compact` |
 | 区域读取失败 | 在原区域显示可恢复的错误与重试操作；不要改成空状态 |
-| 全局结果与错误 | `notify`（sonner `AppToaster`）；错误常驻到关闭，其他类型按默认时长收起，最多同时显示 3 条。同一流程使用固定 id 复用通知，进度用 `notifyProgress`，结束或取消用 `dismissNotice` |
+| 全局结果与错误 | `notify`（sonner `AppToaster`）；错误常驻到关闭，其他类型按默认时长收起，最多同时显示 3 条。同一流程使用固定 id 复用通知（`execution`、`statistics`、`settings-update`、`settings-update-channel`、`settings-auto-update`、`settings-config:connection`、`settings-config:instance`、`settings-config:resource-source`、`combat-preview`、`combat-queue-preview`、`combat-paradox-search`），进度用 `notifyProgress`；有终态文案时用同一 id 替换，没有终态文案时才 `dismissNotice` |
 | 删除、清空等不可逆操作 | 使用 `AlertDialog` 或应用层 `ConfirmAlertDialog`；新代码不得使用 `window.confirm` |
 
 日志控制台、养成筛选空结果等固定高度或高密度区域可保留专用状态样式。局部表单成功提示、日志提示等需要紧邻操作区或可手动关闭时，也可保留在面板内。全局通知统一走 `shared/notifications` 的 `notify`、`notifyProgress` 与 `dismissNotice`，由应用根挂载的 sonner `AppToaster` 渲染；撤销提示使用 `UndoToastCard`，不要让页面自建第二套 toast。
