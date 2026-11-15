@@ -2234,6 +2234,125 @@ describe('CombatTasks execution', () => {
     expect(container.textContent).toContain('TEST-ONLY')
   })
 
+  it('replaces the loaded preview notice when it is added to the queue', async () => {
+    mocks.getCopilotInfo.mockResolvedValueOnce({
+      success: true,
+      data: {
+        status_code: 200,
+        stage: 'TEST-1',
+        stageId: 'test_1',
+        data: { content: JSON.stringify({ stage_name: 'test_1', doc: { title: '队列预览作业' } }) },
+      },
+    })
+    await renderComponent()
+    await setInputValue(container.querySelector<HTMLInputElement>('input[name="maa-copilot-uri"]')!, 'prts://1234')
+    await click(buttonByText('预览')!)
+    await flush()
+
+    await click(buttonByText('加入队列')!)
+
+    expect(mocks.notify).toHaveBeenCalledWith('已加入 1 个作业到队列', 'success', {
+      id: 'combat-preview',
+    })
+    expect(mocks.notify).not.toHaveBeenCalledWith('已加入 1 个作业到队列', 'success')
+  })
+
+  it('reports restored set progress under the preview notice when the set preview is ready', async () => {
+    mockSetPlan()
+    await renderComponent()
+    await setInputValue(container.querySelector<HTMLInputElement>('input[name="maa-copilot-uri"]')!, 'prts://s48990')
+
+    await click(buttonByText('立即执行')!)
+
+    expect(mocks.notifyProgress).toHaveBeenCalledWith('正在获取作业信息...', 'combat-preview')
+    expect(mocks.notify).toHaveBeenCalledWith(
+      '已恢复作业集进度，请确认待执行关卡后再次执行',
+      undefined,
+      { id: 'combat-preview' },
+    )
+  })
+
+  it('does not report restored set progress when the set preview fails', async () => {
+    await renderComponent()
+    await setInputValue(container.querySelector<HTMLInputElement>('input[name="maa-copilot-uri"]')!, 'prts://s48990')
+    mocks.getCopilotSetPlan.mockRejectedValueOnce(new Error('plan unavailable'))
+    mocks.getCopilotSet.mockRejectedValueOnce(new Error('set unavailable'))
+
+    await click(buttonByText('立即执行')!)
+
+    expect(mocks.notify.mock.calls
+      .filter(([message]) => String(message).includes('已恢复作业集进度'))).toHaveLength(0)
+    expect(mocks.notify).toHaveBeenCalledWith('网络错误: set unavailable', undefined, {
+      id: 'combat-preview',
+    })
+  })
+
+  it('replaces the queue preview notice when a searched job is added', async () => {
+    await renderComponent()
+    await openDiscovery()
+    mocks.searchCopilot.mockResolvedValueOnce(ok({
+      copilots: [{ id: 1, uri: 'prts://1234', title: '队列预览作业' }],
+    }))
+    await submitDiscoverySearch('1-7')
+    mocks.getCopilotInfo.mockResolvedValueOnce({
+      success: true,
+      data: {
+        status_code: 200,
+        stage: 'TEST-1',
+        stageId: 'test_1',
+        data: { content: JSON.stringify({ stage_name: 'test_1', doc: { title: '队列预览作业' } }) },
+      },
+    })
+
+    await click(buttonByAriaLabel('加入队列: 队列预览作业')!)
+
+    expect(mocks.notifyProgress).toHaveBeenCalledWith('正在获取作业信息...', 'combat-queue-preview')
+    expect(mocks.notify).toHaveBeenCalledWith('已加入 1 个作业到队列', 'success', {
+      id: 'combat-queue-preview',
+    })
+    expect(mocks.notify).not.toHaveBeenCalledWith('已加入 1 个作业到队列', 'success')
+    expect(mocks.dismissNotice).not.toHaveBeenCalledWith('combat-queue-preview')
+  })
+
+  it('replaces the queue preview notice when a searched job fails', async () => {
+    await renderComponent()
+    await openDiscovery()
+    mocks.searchCopilot.mockResolvedValueOnce(ok({
+      copilots: [{ id: 1, uri: 'prts://1235', title: '失败预览作业' }],
+    }))
+    await submitDiscoverySearch('1-7')
+    mocks.getCopilotInfo.mockRejectedValueOnce(new Error('queue unavailable'))
+
+    await click(buttonByAriaLabel('加入队列: 失败预览作业')!)
+
+    expect(mocks.notify).toHaveBeenCalledWith('网络错误: queue unavailable', 'error', {
+      id: 'combat-queue-preview',
+    })
+    expect(mocks.notify).not.toHaveBeenCalledWith('网络错误: queue unavailable', 'error')
+    expect(mocks.dismissNotice).not.toHaveBeenCalledWith('combat-queue-preview')
+  })
+
+  it('dismisses the queue preview notice when the add request is cancelled', async () => {
+    await renderComponent()
+    await openDiscovery()
+    mocks.searchCopilot.mockResolvedValueOnce(ok({
+      copilots: [{ id: 1, uri: 'prts://s1236', title: '取消预览作业' }],
+    }))
+    await submitDiscoverySearch('1-7')
+    const plan = deferred<ApiResponse>()
+    mocks.getCopilotSetPlan.mockReturnValueOnce(plan.promise)
+
+    await click(buttonByAriaLabel('加入队列: 取消预览作业')!)
+    await renderActivityMode('hidden')
+    await act(async () => plan.resolve(ok({ setId: '1236', name: '作业集', items: [], entries: [] })))
+    await settleQueries()
+
+    expect(mocks.dismissNotice).toHaveBeenCalledWith('combat-queue-preview')
+    expect(mocks.notify).not.toHaveBeenCalledWith(expect.anything(), undefined, {
+      id: 'combat-queue-preview',
+    })
+  })
+
   it('shows recommendations without changing the current job input', async () => {
     await renderComponent()
     const input = container.querySelector<HTMLInputElement>('input[name="maa-copilot-uri"]')!

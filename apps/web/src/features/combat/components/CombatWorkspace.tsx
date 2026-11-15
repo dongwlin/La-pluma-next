@@ -484,8 +484,12 @@ export default function CombatWorkspace() {
     if (task.id === 'copilot' && !preview) {
       const firstArg = splitCopilotInputToArgs(inputValue)[0] || ''
       if (parseCopilotUri(firstArg)?.isSet) {
-        await requestCopilotPreview(inputValue)
-        notify('已恢复作业集进度，请确认待执行关卡后再次执行')
+        const outcome = await requestCopilotPreview(inputValue)
+        if (outcome.status === 'ready') {
+          notify('已恢复作业集进度，请确认待执行关卡后再次执行', undefined, {
+            id: COMBAT_PREVIEW_NOTICE_ID,
+          })
+        }
         return
       }
     }
@@ -665,7 +669,8 @@ export default function CombatWorkspace() {
     }
   }
 
-  const reportQueueAdd = (preview: CopilotSetInfo) => {
+  const reportQueueAdd = (preview: CopilotSetInfo, noticeId?: string) => {
+    const noticeOptions = noticeId === undefined ? {} : { id: noticeId }
     if (preview.type === 'set') {
       const raid = normalizeRaidValue(advancedParams.copilot?.raid)
       const existingEntries = queue.entries.filter(entry => entry.setId === preview.id)
@@ -679,7 +684,7 @@ export default function CombatWorkspace() {
           copilotSetSelections[preview.id],
         )
       syncQueueSet(preview.id, buildCopilotQueueEntries(preview), checkedIndexes)
-      notify(`已同步作业集 ${preview.copilots?.length ?? 0} 个作业到队列`, 'success')
+      notify(`已同步作业集 ${preview.copilots?.length ?? 0} 个作业到队列`, 'success', noticeOptions)
       return
     }
     const wasFull = queue.entries.length >= COPILOT_QUEUE_LIMIT
@@ -691,22 +696,25 @@ export default function CombatWorkspace() {
           ? COPILOT_QUEUE_FULL_MESSAGE
           : '这些作业已在队列中',
       added ? 'success' : 'warning',
+      noticeOptions,
     )
   }
 
-  const reportQueueAddFailure = (outcome: CopilotPreviewOutcome) => {
+  const reportQueueAddFailure = (outcome: CopilotPreviewOutcome, noticeId?: string) => {
     if (outcome.status === 'cancelled') return
+    const noticeOptions = noticeId === undefined ? {} : { id: noticeId }
     if (outcome.status === 'failed') {
       notify(
         outcome.kind === 'transport' || outcome.kind === 'unknown'
           ? `网络错误: ${outcome.message}`
           : outcome.message,
         'error',
+        noticeOptions,
       )
       return
     }
     if (outcome.status === 'invalid' || outcome.status === 'empty') {
-      notify(outcome.message)
+      notify(outcome.message, undefined, noticeOptions)
     }
   }
 
@@ -718,14 +726,16 @@ export default function CombatWorkspace() {
       return
     }
     if (previewMatchesInput(preview, inputValue)) {
-      reportQueueAdd(preview)
+      reportQueueAdd(preview, COMBAT_PREVIEW_NOTICE_ID)
       return
     }
 
     setIsAddingToQueue(true)
     try {
       const outcome = await requestCopilotPreview(inputValue)
-      if (outcome.status === 'ready') reportQueueAdd(outcome.preview)
+      if (outcome.status === 'ready') {
+        reportQueueAdd(outcome.preview, COMBAT_PREVIEW_NOTICE_ID)
+      }
     } finally {
       setIsAddingToQueue(false)
     }
@@ -740,12 +750,19 @@ export default function CombatWorkspace() {
     try {
       const { preview: loaded, outcome } = await resolveQueuePreview(uri, 'auto')
       if (loaded) {
-        reportQueueAdd(loaded)
+        reportQueueAdd(loaded, COMBAT_QUEUE_PREVIEW_NOTICE_ID)
         return
       }
-      if (outcome) reportQueueAddFailure(outcome)
-    } finally {
+      if (outcome?.status === 'cancelled') {
+        dismissNotice(COMBAT_QUEUE_PREVIEW_NOTICE_ID)
+        return
+      }
+      if (outcome) {
+        reportQueueAddFailure(outcome, COMBAT_QUEUE_PREVIEW_NOTICE_ID)
+        return
+      }
       dismissNotice(COMBAT_QUEUE_PREVIEW_NOTICE_ID)
+    } finally {
       setIsAddingToQueue(false)
       setAddingQueueUri(null)
     }
