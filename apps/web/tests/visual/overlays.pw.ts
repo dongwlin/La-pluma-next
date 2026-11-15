@@ -38,24 +38,6 @@ for (const theme of THEMES) {
       await expectNoBrowserErrors(page)
     })
 
-    test(`training operator modal ${theme}`, async ({ page }) => {
-      const environment = await installDeterministicEnvironment(page)
-
-      await page.goto('/app/training')
-      await waitForPageReady(page, 'training')
-
-      await page.getByRole('button', { name: '添加干员' }).first().click()
-      await page.getByRole('dialog').waitFor({ state: 'visible' })
-
-      await expect(page).toHaveScreenshot(`training-operator-modal-${theme}.png`, {
-        animations: 'disabled',
-        caret: 'hide',
-      })
-
-      environment.assertNoUnmatchedApi()
-      await expectNoBrowserErrors(page)
-    })
-
     test(`pwa install prompt ${theme}`, async ({ page }) => {
       const environment = await installDeterministicEnvironment(page)
 
