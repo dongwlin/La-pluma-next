@@ -64,7 +64,7 @@ export default function OperatorFilterMenu({
   const isPhone = useSyncExternalStore(subscribePhone, getPhoneSnapshot, () => false)
 
   return (
-    <DropdownMenu open={open} onOpenChange={onOpenChange} modal={false}>
+    <DropdownMenu open={open} onOpenChange={onOpenChange} modal={false} orientation="vertical" loopFocus={false}>
       <DropdownMenuTrigger
         data-filter-menu={menuKey}
         className={filterButtonClass(isActive)}
@@ -81,6 +81,24 @@ export default function OperatorFilterMenu({
         aria-label={`${label}筛选`}
         className="max-h-80 min-w-0 overflow-y-auto overscroll-contain"
         style={{ width: menuWidth, maxWidth: 'calc(100vw - 2rem)' }}
+        onKeyDownCapture={(event) => {
+          // Base UI 的 radio menu 在首尾不会稳定循环；保留筛选菜单原有的环绕行为。
+          if (event.key !== 'ArrowDown' && event.key !== 'ArrowUp') return
+          const items = Array.from(
+            event.currentTarget.querySelectorAll<HTMLElement>('[role="menuitemradio"]'),
+          )
+          if (items.length === 0) return
+          const index = items.indexOf(document.activeElement as HTMLElement)
+          if (event.key === 'ArrowDown' && index === items.length - 1) {
+            event.preventDefault()
+            event.stopPropagation()
+            items[0]?.focus()
+          } else if (event.key === 'ArrowUp' && index === 0) {
+            event.preventDefault()
+            event.stopPropagation()
+            items[items.length - 1]?.focus()
+          }
+        }}
       >
         <DropdownMenuRadioGroup
           value={value}

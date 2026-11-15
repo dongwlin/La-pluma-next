@@ -172,8 +172,11 @@ describe('operator filter dropdown menu', () => {
     await press(menu()!, 'End')
     expect(document.activeElement).toBe(menuItems()[2])
 
+    await press(menu()!, 'ArrowDown')
+    expect(document.activeElement).toBe(menuItems()[0])
+
     await press(menu()!, 'ArrowUp')
-    expect(document.activeElement).toBe(menuItems()[1])
+    expect(document.activeElement).toBe(menuItems()[2])
   })
 
   it('opens from the trigger with arrow keys and keeps aria wiring', async () => {
