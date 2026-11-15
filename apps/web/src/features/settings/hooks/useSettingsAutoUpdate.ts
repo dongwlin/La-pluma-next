@@ -1,5 +1,10 @@
 import { useCallback, useEffect, useRef, useSyncExternalStore } from 'react'
-import type { Notify } from '@/shared/notifications'
+import {
+  dismissNotice,
+  notifyProgress,
+  SETTINGS_AUTO_UPDATE_NOTICE_ID,
+  type Notify,
+} from '@/shared/notifications'
 import {
   settingsAutoUpdateOwner,
   type AutoUpdateConfigOwner,
@@ -41,12 +46,14 @@ export function useSettingsAutoUpdate(
 
     // 时间无效时 owner 直接返回错误反馈，迁移前也不会先显示“正在保存”。
     if (!current.draft.enabled || isValidUpdateTime(current.draft.time)) {
-      notify('正在保存自动更新设置...', 'info')
+      notifyProgress('正在保存自动更新设置...', SETTINGS_AUTO_UPDATE_NOTICE_ID)
     }
 
     const outcome = await owner.save()
     if (outcome.feedback) {
-      notify(outcome.feedback.message, outcome.feedback.type)
+      notify(outcome.feedback.message, outcome.feedback.type, { id: SETTINGS_AUTO_UPDATE_NOTICE_ID })
+    } else {
+      dismissNotice(SETTINGS_AUTO_UPDATE_NOTICE_ID)
     }
     return outcome
   }, [notify, owner])

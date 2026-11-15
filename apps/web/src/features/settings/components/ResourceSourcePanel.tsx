@@ -1,6 +1,6 @@
 import { Switch } from '@/shared/ui/switch'
 import { ConfigFieldCheckbox, ConfigFieldInput, ConfigFieldSelect } from './ConfigFieldControls'
-import { notify } from '@/shared/notifications'
+import { notify, SETTINGS_CONFIG_RESOURCE_SOURCE_NOTICE_ID } from '@/shared/notifications'
 import { useConfigDraftPanel } from '../hooks/useConfigDraftPanel'
 import { useSettingsResourceSource } from '../hooks/useSettingsResourceSource'
 import { CONFIG_SECTION_VIEWS } from './configSectionViews'
@@ -74,6 +74,7 @@ export default function ResourceSourcePanel({ isActive }: ResourceSourcePanelPro
     save: saveResourceSource,
   } = useConfigDraftPanel({
     label: '资源源配置',
+    noticeId: SETTINGS_CONFIG_RESOURCE_SOURCE_NOTICE_ID,
     savingMessage: '正在保存资源源配置...',
     loadError,
     loaded,

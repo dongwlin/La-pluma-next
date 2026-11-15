@@ -4,7 +4,14 @@ import { getErrorMessage } from '@/shared/api'
 import { LoaderCircle } from 'lucide-react'
 import { Button } from '@/shared/ui/button'
 import { ConfirmAlertDialog } from '@/shared/components'
-import { notify } from '@/shared/notifications'
+import {
+  COMBAT_PARADOX_SEARCH_NOTICE_ID,
+  COMBAT_PREVIEW_NOTICE_ID,
+  COMBAT_QUEUE_PREVIEW_NOTICE_ID,
+  dismissNotice,
+  notify,
+  notifyProgress,
+} from '@/shared/notifications'
 import { useAutomationAvailability } from '@/features/runtime-status'
 import { DeviceMonitorPanel } from '@/features/device-mirror'
 import { isTerminalRunState } from '@/features/task-execution'
@@ -576,14 +583,19 @@ export default function CombatWorkspace() {
       setPendingPreviewTarget(pendingTarget)
       setCopilotDetail({ type: 'preview' })
     }
-    notify('正在获取作业信息...')
+    notifyProgress('正在获取作业信息...', COMBAT_PREVIEW_NOTICE_ID)
     try {
       const outcome = await loadCopilotPreview({
         input: rawValue ?? (taskInputs['copilot'] || ''),
         mode: panelStores.copilotPreviewMode.get(),
         raid,
       })
-      if (outcome.status === 'cancelled') return outcome
+      if (outcome.status === 'cancelled') {
+        if (pendingPreviewRequestRef.current === requestId) {
+          dismissNotice(COMBAT_PREVIEW_NOTICE_ID)
+        }
+        return outcome
+      }
 
       if (outcome.status === 'ready') {
         if (outcome.preview.type === 'set') {
@@ -592,7 +604,7 @@ export default function CombatWorkspace() {
           const selected = syncQueueSet(setId, buildCopilotQueueEntries(outcome.preview), indexes)
           saveSelectedCopilotIndexes(selected, setId)
         }
-        notify(outcome.message)
+        notify(outcome.message, undefined, { id: COMBAT_PREVIEW_NOTICE_ID })
         return outcome
       }
 
@@ -601,11 +613,13 @@ export default function CombatWorkspace() {
           outcome.kind === 'transport' || outcome.kind === 'unknown'
             ? `网络错误: ${outcome.message}`
             : outcome.message,
+          undefined,
+          { id: COMBAT_PREVIEW_NOTICE_ID },
         )
         return outcome
       }
 
-      notify(outcome.message)
+      notify(outcome.message, undefined, { id: COMBAT_PREVIEW_NOTICE_ID })
       return outcome
     } finally {
       if (pendingPreviewRequestRef.current === requestId) setPendingPreviewTarget(null)
@@ -722,7 +736,7 @@ export default function CombatWorkspace() {
 
     setIsAddingToQueue(true)
     setAddingQueueUri(uri)
-    notify('正在获取作业信息...')
+    notifyProgress('正在获取作业信息...', COMBAT_QUEUE_PREVIEW_NOTICE_ID)
     try {
       const { preview: loaded, outcome } = await resolveQueuePreview(uri, 'auto')
       if (loaded) {
@@ -731,6 +745,7 @@ export default function CombatWorkspace() {
       }
       if (outcome) reportQueueAddFailure(outcome)
     } finally {
+      dismissNotice(COMBAT_QUEUE_PREVIEW_NOTICE_ID)
       setIsAddingToQueue(false)
       setAddingQueueUri(null)
     }
@@ -824,26 +839,31 @@ export default function CombatWorkspace() {
       return
     }
 
-    notify('正在搜索作业...')
+    notifyProgress('正在搜索作业...', COMBAT_PARADOX_SEARCH_NOTICE_ID)
     const outcome = await searchParadoxJobs(operatorName)
-    if (outcome.status === 'cancelled') return
+    if (outcome.status === 'cancelled') {
+      dismissNotice(COMBAT_PARADOX_SEARCH_NOTICE_ID)
+      return
+    }
 
     if (outcome.status === 'failed') {
       notify(
         outcome.kind === 'transport' || outcome.kind === 'unknown'
           ? `搜索失败: ${outcome.message}`
           : outcome.message,
+        undefined,
+        { id: COMBAT_PARADOX_SEARCH_NOTICE_ID },
       )
       return
     }
 
     const { result } = outcome
     if (!result.copilots.length) {
-      notify('未找到作业')
+      notify('未找到作业', undefined, { id: COMBAT_PARADOX_SEARCH_NOTICE_ID })
       return
     }
 
-    notify(`找到 ${result.copilots.length} 个作业`)
+    notify(`找到 ${result.copilots.length} 个作业`, undefined, { id: COMBAT_PARADOX_SEARCH_NOTICE_ID })
     const recommendedUri = result.recommended?.uri
     if (recommendedUri) {
       updateCombatConfig(current => ({

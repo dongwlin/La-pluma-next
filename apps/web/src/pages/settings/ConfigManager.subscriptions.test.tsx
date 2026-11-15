@@ -154,6 +154,11 @@ vi.mock('@/shared/notifications', () => ({
   EXECUTION_NOTICE_ID: 'execution',
   STATISTICS_NOTICE_ID: 'statistics',
   SETTINGS_UPDATE_NOTICE_ID: 'settings-update',
+  SETTINGS_UPDATE_CHANNEL_NOTICE_ID: 'settings-update-channel',
+  SETTINGS_AUTO_UPDATE_NOTICE_ID: 'settings-auto-update',
+  SETTINGS_CONFIG_CONNECTION_NOTICE_ID: 'settings-config:connection',
+  SETTINGS_CONFIG_INSTANCE_NOTICE_ID: 'settings-config:instance',
+  SETTINGS_CONFIG_RESOURCE_SOURCE_NOTICE_ID: 'settings-config:resource-source',
 }))
 
 let container: HTMLDivElement

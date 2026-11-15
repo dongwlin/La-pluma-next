@@ -397,7 +397,10 @@ describe('ConfigManager layout surfaces', () => {
 
     const inlineError = container.querySelector('[role="alert"]')
     expect(inlineError?.textContent).toContain('连接配置保存失败: 磁盘只读')
-    expect(mocks.notify).toHaveBeenCalledWith('连接配置保存失败: 磁盘只读', 'error')
+    expect(mocks.notifyProgress).toHaveBeenCalledWith('正在保存配置...', 'settings-config:connection')
+    expect(mocks.notify).toHaveBeenCalledWith('连接配置保存失败: 磁盘只读', 'error', {
+      id: 'settings-config:connection',
+    })
   })
 
   it('keeps an auto-update draft editable when persistence fails', async () => {
@@ -430,7 +433,9 @@ describe('ConfigManager layout surfaces', () => {
     expect(timeInput?.value).toBe('06:15')
     expect(saveButton?.disabled).toBe(false)
     expect(container.querySelector('[role="alert"]')?.textContent).toContain('自动更新设置保存失败: 配置目录不可写')
-    expect(mocks.notify).toHaveBeenCalledWith('自动更新设置保存失败: 配置目录不可写', 'error')
+    expect(mocks.notify).toHaveBeenCalledWith('自动更新设置保存失败: 配置目录不可写', 'error', {
+      id: 'settings-auto-update',
+    })
   })
 
   it('keeps the connection form read-only until a slow first response is adopted', async () => {
@@ -579,7 +584,10 @@ describe('ConfigManager layout surfaces', () => {
     await settle()
 
     expect(mocks.saveUpdateChannel).toHaveBeenCalledWith('cli', 'beta')
-    expect(mocks.notify).toHaveBeenCalledWith('更新渠道已保存')
+    expect(mocks.notifyProgress).toHaveBeenCalledWith('正在保存更新渠道...', 'settings-update-channel')
+    expect(mocks.notify).toHaveBeenCalledWith('更新渠道已保存', 'success', {
+      id: 'settings-update-channel',
+    })
     expect(mocks.getVersion).toHaveBeenCalledTimes(2)
   })
 
@@ -697,7 +705,10 @@ describe('ConfigManager layout surfaces', () => {
     await settle()
 
     expect(mocks.setupAutoUpdate).toHaveBeenCalledOnce()
-    expect(mocks.notify).toHaveBeenCalledWith('自动更新已启用，每天 05:30 执行', 'success')
+    expect(mocks.notifyProgress).toHaveBeenCalledWith('正在保存自动更新设置...', 'settings-auto-update')
+    expect(mocks.notify).toHaveBeenCalledWith('自动更新已启用，每天 05:30 执行', 'success', {
+      id: 'settings-auto-update',
+    })
 
     await renderMode('visible')
     await settle()
@@ -756,7 +767,9 @@ describe('ConfigManager layout surfaces', () => {
 
     expect(container.querySelector('[role="alert"]')?.textContent).toContain('自动更新设置应用失败: 无法创建定时任务')
     expect(saveButton?.disabled).toBe(false)
-    expect(mocks.notify).toHaveBeenCalledWith('自动更新设置应用失败: 无法创建定时任务', 'error')
+    expect(mocks.notify).toHaveBeenCalledWith('自动更新设置应用失败: 无法创建定时任务', 'error', {
+      id: 'settings-auto-update',
+    })
   })
 
   it('hides the repository address and branch and keeps instance options editable', async () => {
@@ -897,7 +910,9 @@ describe('ConfigManager layout surfaces', () => {
       .find(input => input.value === '127.0.0.1:6666')).toBeDefined()
     expect(container.textContent).toContain('当前更改尚未保存')
     expect(buttonByText('保存')?.disabled).toBe(false)
-    expect(mocks.notify).toHaveBeenCalledWith('此前连接配置已保存，当前更改尚未保存', 'warning')
+    expect(mocks.notify).toHaveBeenCalledWith('此前连接配置已保存，当前更改尚未保存', 'warning', {
+      id: 'settings-config:connection',
+    })
   })
 
   it('resets the connection draft without saving until an explicit save', async () => {

@@ -3,7 +3,7 @@
 
 import { Switch } from '@/shared/ui/switch'
 import { ConfigFieldSelect } from './ConfigFieldControls'
-import { notify } from '@/shared/notifications'
+import { notify, SETTINGS_CONFIG_INSTANCE_NOTICE_ID } from '@/shared/notifications'
 import { useConfigDraftPanel } from '../hooks/useConfigDraftPanel'
 import { useSettingsInstanceOptions } from '../hooks/useSettingsInstanceOptions'
 import { CONFIG_SECTION_VIEWS } from './configSectionViews'
@@ -48,6 +48,7 @@ export default function InstanceOptionsPanel({ isActive }: InstanceOptionsPanelP
     save: saveInstanceOptions,
   } = useConfigDraftPanel({
     label: '实例选项',
+    noticeId: SETTINGS_CONFIG_INSTANCE_NOTICE_ID,
     savingMessage: '正在保存实例选项...',
     loadError,
     loaded,

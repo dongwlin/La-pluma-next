@@ -4,7 +4,7 @@
 import { useCallback } from 'react'
 import { Switch } from '@/shared/ui/switch'
 import { ConfigFieldInput, ConfigFieldSelect } from './ConfigFieldControls'
-import { notify } from '@/shared/notifications'
+import { notify, SETTINGS_CONFIG_CONNECTION_NOTICE_ID } from '@/shared/notifications'
 import { useConfigDraftPanel } from '../hooks/useConfigDraftPanel'
 import { useSettingsConnectionConfig } from '../hooks/useSettingsConnectionConfig'
 import { useClearConnectionTestFeedback } from '../hooks/useSettingsDeviceConnection'
@@ -52,6 +52,7 @@ export default function ConnectionConfigPanel({ isActive }: ConnectionConfigPane
     save: saveConnectionConfig,
   } = useConfigDraftPanel({
     label: '连接配置',
+    noticeId: SETTINGS_CONFIG_CONNECTION_NOTICE_ID,
     savingMessage: '正在保存配置...',
     loadError: connectionLoadError,
     loaded: connectionLoaded,

@@ -143,6 +143,9 @@ vi.mock('@/shared/notifications', () => ({
   EXECUTION_NOTICE_ID: 'execution',
   STATISTICS_NOTICE_ID: 'statistics',
   SETTINGS_UPDATE_NOTICE_ID: 'settings-update',
+  COMBAT_PREVIEW_NOTICE_ID: 'combat-preview',
+  COMBAT_QUEUE_PREVIEW_NOTICE_ID: 'combat-queue-preview',
+  COMBAT_PARADOX_SEARCH_NOTICE_ID: 'combat-paradox-search',
 }))
 
 vi.mock('@/features/logs/api', () => ({
@@ -2058,6 +2061,27 @@ describe('CombatTasks execution', () => {
     expect(paradoxInput.value).toBe('能天使')
   })
 
+  it('reports paradox search progress and result under one id', async () => {
+    mocks.searchParadoxCopilot.mockResolvedValueOnce(ok({
+      copilots: [{ id: 1, uri: 'prts://1', title: '悖论作业' }],
+    }))
+    await renderComponent()
+
+    const paradoxModeButton = Array.from(container.querySelectorAll<HTMLButtonElement>('button[aria-pressed]'))
+      .find(button => button.textContent?.includes('悖论模拟'))
+    expect(paradoxModeButton).toBeDefined()
+    await click(paradoxModeButton!)
+
+    const paradoxInput = container.querySelector<HTMLInputElement>('input[name="maa-paradox-operator"]')!
+    await setInputValue(paradoxInput, '能天使')
+    await click(buttonByText('搜索')!)
+
+    expect(mocks.notifyProgress).toHaveBeenCalledWith('正在搜索作业...', 'combat-paradox-search')
+    expect(mocks.notify).toHaveBeenCalledWith('找到 1 个作业', undefined, {
+      id: 'combat-paradox-search',
+    })
+  })
+
   it('ignores an older search response after the keyword changes', async () => {
     const olderSearch = deferred<any>()
     const newerSearch = deferred<any>()
@@ -2203,7 +2227,10 @@ describe('CombatTasks execution', () => {
     await click(buttonByText('预览')!)
     await flush()
 
-    expect(mocks.notify).toHaveBeenCalledWith('网络错误: set unavailable')
+    expect(mocks.notifyProgress).toHaveBeenCalledWith('正在获取作业信息...', 'combat-preview')
+    expect(mocks.notify).toHaveBeenCalledWith('网络错误: set unavailable', undefined, {
+      id: 'combat-preview',
+    })
     expect(container.textContent).toContain('TEST-ONLY')
   })
 

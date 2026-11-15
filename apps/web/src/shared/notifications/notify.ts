@@ -4,6 +4,14 @@ import { detectNoticeType, type NoticeType } from './noticeType'
 export const EXECUTION_NOTICE_ID = 'execution'
 export const STATISTICS_NOTICE_ID = 'statistics'
 export const SETTINGS_UPDATE_NOTICE_ID = 'settings-update'
+export const SETTINGS_UPDATE_CHANNEL_NOTICE_ID = 'settings-update-channel'
+export const SETTINGS_AUTO_UPDATE_NOTICE_ID = 'settings-auto-update'
+export const SETTINGS_CONFIG_CONNECTION_NOTICE_ID = 'settings-config:connection'
+export const SETTINGS_CONFIG_INSTANCE_NOTICE_ID = 'settings-config:instance'
+export const SETTINGS_CONFIG_RESOURCE_SOURCE_NOTICE_ID = 'settings-config:resource-source'
+export const COMBAT_PREVIEW_NOTICE_ID = 'combat-preview'
+export const COMBAT_QUEUE_PREVIEW_NOTICE_ID = 'combat-queue-preview'
+export const COMBAT_PARADOX_SEARCH_NOTICE_ID = 'combat-paradox-search'
 
 export interface NoticeOptions {
   id?: string

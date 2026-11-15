@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { notify } from '@/shared/notifications'
+import { dismissNotice, notify, notifyProgress } from '@/shared/notifications'
 import type { SettingsFeedback } from '../components/ConfigEditorCard'
 import type { ConfigSaveOutcome } from '../model/configDraftOwner'
 
 export interface ConfigDraftPanelOptions<T extends Record<string, unknown>> {
   /** 页面可见名称，用于读取失败、保存成功与保存失败提示。 */
   readonly label: string
+  readonly noticeId: string
   readonly savingMessage: string
   readonly loadError: string | null
   readonly loaded: boolean
@@ -19,6 +20,7 @@ export interface ConfigDraftPanelOptions<T extends Record<string, unknown>> {
  */
 export function useConfigDraftPanel<T extends Record<string, unknown>>({
   label,
+  noticeId,
   savingMessage,
   loadError,
   loaded,
@@ -54,33 +56,44 @@ export function useConfigDraftPanel<T extends Record<string, unknown>>({
   const saveWithFeedback = useCallback(async () => {
     if (!loaded) {
       setFeedback({ type: 'warning', message: blockedSaveMessage })
-      notify(blockedSaveMessage, 'warning')
+      notify(blockedSaveMessage, 'warning', { id: noticeId })
       return
     }
     if (saving) return
     setFeedback(null)
-    notify(savingMessage, 'info')
+    notifyProgress(savingMessage, noticeId)
 
-    const outcome = await save()
-    if (outcome.status === 'ignored') return
+    let outcome: ConfigSaveOutcome<T>
+    try {
+      outcome = await save()
+    } catch (error) {
+      const message = `${label}保存失败: ${error instanceof Error ? error.message : '未知错误'}`
+      setFeedback({ type: 'error', message })
+      notify(message, 'error', { id: noticeId })
+      return
+    }
+    if (outcome.status === 'ignored') {
+      dismissNotice(noticeId)
+      return
+    }
 
     if (outcome.status === 'saved') {
       if (outcome.superseded) {
         const message = `此前${label}已保存，当前更改尚未保存`
         setFeedback({ type: 'warning', message })
-        notify(message, 'warning')
+        notify(message, 'warning', { id: noticeId })
       } else {
         const message = `${label}保存成功`
         setFeedback({ type: 'success', message })
-        notify(message, 'success')
+        notify(message, 'success', { id: noticeId })
       }
       return
     }
 
     const message = `${label}保存失败: ${outcome.message ?? '未知错误'}`
     setFeedback({ type: 'error', message })
-    notify(message, 'error')
-  }, [blockedSaveMessage, label, loaded, save, saving, savingMessage])
+    notify(message, 'error', { id: noticeId })
+  }, [blockedSaveMessage, label, loaded, noticeId, save, saving, savingMessage])
 
   return { feedback, setFeedback, saveBlockedReason, save: saveWithFeedback }
 }
