@@ -163,7 +163,12 @@ test.describe('dialog overlay behavior', () => {
     await expect(alert).toBeVisible()
     await expect(dialog).toBeVisible()
     const parentControl = dialog.locator('#gallery-standard-done')
-    await expectParentLayerInert(dialog, parentControl)
+    const controlPoint = await expectParentLayerInert(dialog, parentControl)
+    if (test.info().project.name !== 'mobile') {
+      await page.mouse.click(controlPoint.x, controlPoint.y)
+      await expect(alert).toBeVisible()
+      await expect(dialog).toBeVisible()
+    }
 
     await page.mouse.click(8, 400)
     await expect(alert).toBeVisible()
