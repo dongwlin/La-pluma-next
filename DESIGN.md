@@ -153,7 +153,7 @@ La Pluma Next 是一个高密度的本地自动化控制台，不是营销页面
 - `apps/web/src/styles/ios-theme.css`：保留结构几何与布局 token（`--la-pluma-*`）、主题层材质 token（`--glass-*`）与对应样式；默认基线不依赖玻璃材质，液态玻璃由后续主题提供。
 - `apps/web/src/shared/components`：`ConfirmAlertDialog`、`EmptyState`、`Loading` 等应用级通用组件；`Button`、`Input`、`Select`、`Checkbox`、`Switch`、`Card`、`Dialog`、`AlertDialog`、`Sheet` 等 shadcn 生成物位于 `apps/web/src/shared/ui`（sidebar 也在该目录）。
 
-本文件描述规则；token 的具体数值以 `apps/web/src/styles/index.css` 为准，调整 token 时同步更新本文件的表格与说明。
+本文件描述规则；语义 token 的具体数值以 `apps/web/src/styles/index.css` 为准，布局与结构几何 token 以 `apps/web/src/styles/ios-theme.css` 为准。调整 token 时同步更新本文件的表格与说明。
 
 ## 层序与 token 单源
 
