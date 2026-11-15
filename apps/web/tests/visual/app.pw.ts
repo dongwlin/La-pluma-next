@@ -162,6 +162,18 @@ test.describe('app tabs', () => {
     await expectNoBrowserErrors(page)
   })
 
+  test('pages no longer render their own page header', async ({ page }) => {
+    const environment = await installDeterministicEnvironment(page)
+
+    await page.goto('/app/dashboard')
+    await waitForPageReady(page, 'dashboard')
+
+    await expect(page.locator('.app-page-header, .app-page-title')).toHaveCount(0)
+
+    environment.assertNoUnmatchedApi()
+    await expectNoBrowserErrors(page)
+  })
+
   test('navbar actions stay at the trailing edge', async ({ page }) => {
     const environment = await installDeterministicEnvironment(page)
 

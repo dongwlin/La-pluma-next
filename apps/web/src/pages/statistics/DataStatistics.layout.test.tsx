@@ -279,7 +279,7 @@ describe('DataStatistics layout surfaces', () => {
     await renderPage()
     await flush()
 
-    expect(container.querySelector('h1')?.textContent).toBe('数据')
+    expect(container.querySelector('h1')).toBeNull()
 
     const tabs = Array.from(container.querySelectorAll<HTMLButtonElement>('[role="tab"]'))
     expect(tabs).toHaveLength(3)

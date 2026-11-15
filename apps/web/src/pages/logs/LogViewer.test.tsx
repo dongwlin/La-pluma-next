@@ -176,7 +176,7 @@ describe('LogViewer recovery and controls', () => {
 
     await renderComponent()
 
-    expect(container.querySelector('h1')?.textContent).toBe('日志')
+    expect(container.querySelector('h1')).toBeNull()
     const error = container.querySelector<HTMLElement>('[role="alert"]')
     expect(error?.textContent).toContain('实时日志暂不可用')
     expect(container.textContent).not.toContain('暂无实时日志，等待任务执行')
