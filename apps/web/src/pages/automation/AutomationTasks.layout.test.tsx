@@ -739,6 +739,7 @@ describe('AutomationTasks layout surfaces', () => {
       .toContain('默认行为')
   })
 
+  // 整页 jsdom 用例在 4 worker 并行下争用 CPU，默认 5s 会被调度抖动击穿。
   it('moves every recruit helper into a label tooltip and keeps the card behaviours', async () => {
     mocks.loadUserConfig.mockResolvedValue({ success: true, data: { taskFlow: taskFlowFixture } })
     await renderPage()
@@ -839,7 +840,7 @@ describe('AutomationTasks layout surfaces', () => {
     await act(async () => increasePermitReserve?.click())
     await flush()
     expect(savedRecruitParams().level3_recruitment_permit_reserve).toBe('1')
-  })
+  }, 20_000)
 
   it('moves the startup helper texts into focusable tooltips', async () => {
     mocks.loadUserConfig.mockResolvedValue({ success: true, data: { taskFlow: taskFlowFixture } })
