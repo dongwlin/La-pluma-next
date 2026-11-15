@@ -210,7 +210,7 @@
     justify-self: end;
   }
 
-  .la-pluma-app :is(.la-pluma-brand, .la-pluma-tabbar-link, .la-pluma-tabbar-more) {
+  .la-pluma-app :is(.la-pluma-tabbar-link, .la-pluma-tabbar-more) {
     appearance: none;
     margin: 0;
     border: 0;
@@ -219,24 +219,6 @@
     font: inherit;
     cursor: pointer;
     -webkit-tap-highlight-color: transparent;
-  }
-
-  .la-pluma-brand {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.625rem;
-    min-height: 2.75rem;
-    padding: 0 0.25rem;
-    font-size: 1rem;
-    font-weight: 700;
-    letter-spacing: 0;
-    color: var(--foreground);
-  }
-
-  .la-pluma-brand-mark {
-    width: 1.875rem;
-    height: 1.875rem;
-    object-fit: contain;
   }
 
   .la-pluma-theme-desktop {
@@ -473,6 +455,33 @@
 
   .la-pluma-sidebar::-webkit-scrollbar {
     display: none;
+  }
+
+  .la-pluma-sidebar-brand {
+    display: flex;
+    min-width: 0;
+    min-height: 2.75rem;
+    align-items: center;
+    gap: 0.625rem;
+    padding: 0 0.5rem;
+    color: var(--foreground);
+    font-size: 1rem;
+    font-weight: 700;
+    -webkit-user-select: none; /* stylelint-disable-line property-no-vendor-prefix -- Safari 仍需前缀覆盖拖选 */
+    user-select: none;
+  }
+
+  .la-pluma-sidebar-brand-mark {
+    width: 1.875rem;
+    height: 1.875rem;
+    flex: 0 0 1.875rem;
+    object-fit: contain;
+  }
+
+  .la-pluma-sidebar-brand span {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 
   .la-pluma-sidebar-identity {
@@ -972,31 +981,6 @@
       pointer-events: auto;
     }
 
-    .la-pluma-app .la-pluma-brand {
-      box-sizing: border-box;
-      width: 2.75rem;
-      height: 2.75rem;
-      min-height: 2.75rem;
-      align-items: center;
-      justify-content: center;
-      padding: 0.25rem;
-      border: 1px solid var(--border);
-      border-radius: 999px;
-      background: var(--card);
-      overflow: hidden;
-      pointer-events: auto;
-    }
-
-    .la-pluma-app .la-pluma-brand span {
-      display: none;
-    }
-
-    .la-pluma-app .la-pluma-brand-mark {
-      width: 100%;
-      height: 100%;
-      border-radius: 50%;
-    }
-
     .la-pluma-app .la-pluma-navbar-actions {
       gap: 0.75rem;
     }
@@ -1166,10 +1150,6 @@
       );
     }
 
-    .la-pluma-app .la-pluma-brand span {
-      display: none;
-    }
-
     .la-pluma-app .app-page-header {
       align-items: flex-start;
       flex-direction: column;
@@ -1226,7 +1206,6 @@
     .la-pluma-app .app-liquid-tab-pill,
     .la-pluma-app .la-pluma-tabbar-pill,
     .la-pluma-app .la-pluma-tabbar-more,
-    .la-pluma-app .la-pluma-brand,
     .la-pluma-app .la-pluma-theme-desktop,
     .la-pluma-app .la-pluma-theme-trigger,
     .la-pluma-app .la-pluma-github-link,

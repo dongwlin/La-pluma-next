@@ -107,6 +107,48 @@ test.describe('app tabs', () => {
     await expectNoBrowserErrors(page)
   })
 
+  test('desktop brand lives in the sidebar instead of the navbar', async ({ page }) => {
+    test.skip(test.info().project.name !== 'desktop', 'the sidebar is desktop-only')
+
+    const environment = await installDeterministicEnvironment(page)
+
+    await page.goto('/app/dashboard')
+    await waitForPageReady(page, 'dashboard')
+
+    const brand = page.locator('[data-region="sidebar-brand"]')
+    await expect(brand).toBeVisible()
+    await expect(brand).toContainText('La Pluma Next')
+    await expect(brand.locator('button, a')).toHaveCount(0)
+    await expect(brand.locator('img')).toHaveAttribute('alt', '')
+    await expect(brand.locator('img')).toHaveJSProperty('draggable', false)
+    expect(await brand.evaluate(element => getComputedStyle(element).userSelect)).toBe('none')
+
+    const navbar = page.locator('[data-region="navbar"]')
+    await expect(navbar).not.toContainText('La Pluma Next')
+    await expect(navbar.locator('img')).toHaveCount(0)
+
+    environment.assertNoUnmatchedApi()
+    await expectNoBrowserErrors(page)
+  })
+
+  test('mobile hides the sidebar brand and still shows the page title', async ({ page }) => {
+    test.skip(test.info().project.name !== 'mobile', 'the sidebar is desktop-only')
+
+    const environment = await installDeterministicEnvironment(page)
+
+    await page.goto('/app/dashboard')
+    await waitForPageReady(page, 'dashboard')
+
+    await expect(page.locator('[data-region="sidebar"]')).toBeHidden()
+    await expect(page.locator('[data-region="sidebar-brand"]')).toBeHidden()
+    await expect(page.locator('[data-region="page-title"]')).toBeVisible()
+    await expect(page.locator('[data-region="page-title"]')).toHaveText('概览')
+    await expect(page.locator('[data-region="navbar"]')).not.toContainText('La Pluma Next')
+
+    environment.assertNoUnmatchedApi()
+    await expectNoBrowserErrors(page)
+  })
+
   test('theme gallery route uses its own page title', async ({ page }) => {
     const environment = await installDeterministicEnvironment(page)
 
