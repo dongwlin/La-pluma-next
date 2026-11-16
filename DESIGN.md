@@ -259,8 +259,26 @@ La Pluma Next 是一个高密度的本地自动化控制台，不是营销页面
 - 主题由 `useUIStore` 的 `light`、`dark`、`system` 管理，并同步到文档根节点和 `.la-pluma-app`。组件或页面不要直接操作 `.dark`，也不要创建局部主题开关。
 - `apps/web/index.html` 使用 `viewport-fit=cover`。`Layout` 通过统一 token 管理 navbar、移动 tabbar 和对应安全区高度；自定义 fixed/sticky 层只有在不属于这些 chrome 时才使用 `env(safe-area-inset-*)`，内容区不要重复叠加顶部或底部 inset。
 - 页面边缘留白统一由 `Layout` 的 `.la-pluma-content` 提供，内部 `.app-page` 不重复增加上下内边距。桌面底部使用 `0.75rem`（12px）；移动端由外层预留底部导航、安全区和页面间距。
-- 新页面按 mobile-first 编写：`sm` (640px) 用于显示次级信息或恢复横向工具栏，`md` (768px) 用于中等宽度布局，`lg` (1024px) 与 `xl` (1280px) 才扩展为双栏或多栏。不要新增 `899px`、`1023px` 这类页面级断点；日常页三栏等既有组件可保留自身的专用断点。
+- 新页面按 mobile-first 编写：`sm` 用于显示次级信息或恢复横向工具栏，`md` 用于中等宽度布局，`lg` 与 `xl` 才扩展为双栏或多栏。所有视口断点必须来自下方 Breakpoints 表，不要新增未登记阈值；日常页三栏等既有组件使用表中已登记的专用断点。
 - 页面滚动条当前全局隐藏，避免切换页面或列表时因系统滚动条出现导致布局左右跳动。文本和控件要在移动端自然换行，不允许为了保留桌面布局而裁剪有效内容。
+
+#### Breakpoints
+
+| 名称 | 阈值 | 用途 |
+| --- | --- | --- |
+| `sm` | 640px | 手机/平板分界；显示次级信息或恢复横向工具栏（Tailwind 默认） |
+| `md` | 768px | 平板中等宽度布局（Tailwind 默认） |
+| `workbench` | 900px | 自动化双列工作台；CSS 与 TSX 共用同一阈值 |
+| `lg` | 1024px | 桌面壳层：显示侧栏、隐藏移动 tabbar（Tailwind 默认） |
+| `flow-card` | 1200px | 自动化流程卡头部转为纵向密度 |
+| `xl` | 1280px | 宽屏内容网格：概览双栏与汇总网格、养成分栏（Tailwind 默认） |
+| `wide` | 1360px | 三列工作台：自动化/作业/肉鸽/设备画面 |
+
+- 同一阈值只用成对区间表达：`width < Npx` 与 `width >= Npx`。禁止用 `max-width: N` 与 `min-width: N` 成对表达同一阈值，也不使用 `max-width: 1279px` 这类补偿值。
+- CSS 使用区间语法，跨区间写 `(768px <= width < 1280px)`；JS `matchMedia` 用 `apps/web/src/shared/lib/breakpoints.ts` 的 `BREAKPOINTS` 生成同样的区间查询，Tailwind 具名断点由 `@theme` 的 `--breakpoint-*` 提供。
+- `@container` 查询由容器内容驱动，不属于视口断点，不受此表约束。
+- 新增专用断点必须先在此表登记用途与内容依据，优先评估容器查询；未登记的 `min-[Npx]` / `max-[Npx]` arbitrary 断点不允许出现。
+- 壳层断点（内容留白、navbar、tabbar 的切换）由 `styles/layout.css` 拥有，页面与领域样式不重复定义。
 
 ## Elevation & Depth
 
@@ -373,5 +391,5 @@ La Pluma Next 是一个高密度的本地自动化控制台，不是营销页面
 - **Don't** 在页面里重建导航壳层、主题开关、modal 基础样式或第二套组件 DOM。
 - **Don't** 给普通按钮增加亮色渐变、强光晕或重投影；hover 只做主题色压暗或弱背景。
 - **Don't** 把静态内容卡片做成层层嵌套，或为了填满留白硬塞第二张卡；独立工作区、弹窗、空状态和设备预览属于合理例外。
-- **Don't** 使用 `window.confirm`、`8px`–`10px` 的中文正文，或 `899px`、`1023px` 这类页面级断点。
+- **Don't** 使用 `window.confirm`、`8px`–`10px` 的中文正文，或 Breakpoints 表之外的页面级断点与 `min-[Npx]` / `max-[Npx]` arbitrary 断点。
 - **Don't** 让 `status-border-beam` 在完成、空闲或静态卡片上常驻，也不要叠加第二条可见边框。
