@@ -222,6 +222,37 @@ import { Switch } from '@/shared/ui/switch'
 
 ---
 
+### DropdownMenu / Popover - 浮层菜单与富内容弹层
+
+**文件位置**：`apps/web/src/shared/ui/dropdown-menu.tsx`、`apps/web/src/shared/ui/popover.tsx`（shadcn 生成物）
+
+**适用场景**：`DropdownMenu` 用于动作列表与选项菜单（`role="menu"`）；`Popover` 用于带搜索框、说明或表单的富内容浮层（`role="dialog"`）。不要为这两类浮层手写 `fixed`/`absolute` 定位、外部点击或 Escape 监听。
+
+```tsx
+import { Popover, PopoverContent, PopoverTrigger } from '@/shared/ui/popover'
+
+<Popover>
+  <PopoverTrigger render={<Button variant="secondary" />}>关卡</PopoverTrigger>
+  <PopoverContent
+    side="bottom"
+    align="start"
+    sideOffset={8}
+    collisionPadding={12}
+    aria-label="选择关卡"
+  >
+    浮层内容
+  </PopoverContent>
+</Popover>
+```
+
+`Popover` 的 Root 默认非模态；`DropdownMenu` 的 Root 默认 `modal=true`，需要保留页面滚动与外部交互时显式传 `modal={false}`。Popup 经 Base UI portal 挂到 `document.body`，层序使用 `--layout-z-portal`，不要为浮层另写 `position: fixed` 或高位 z-index。
+
+`side`、`align`、`sideOffset` 与 `collisionPadding` 交给 Base UI 做翻转与视口夹取；菜单内容宽度默认跟随触发器（`--anchor-width`），需要限制高度时使用 `max-h-[min(<上限>,var(--available-height))]`。触发器的 `aria-haspopup`、`aria-expanded`、`aria-controls`、Escape 回焦与方向键导航由原语提供。非模态菜单若要保留某个点击区域，在 `onOpenChange` 中对该次 outside-press 调用 `eventDetails.cancel()`，不要再注册 document 监听。
+
+`PopoverContent` 默认带 `role="dialog"`，应传 `aria-label` 或组合 `PopoverTitle`/`PopoverDescription`；`DropdownMenuContent` 默认带 `role="menu"`，选项使用 `DropdownMenuItem`、`DropdownMenuRadioItem` 等。本仓库为生成物增加了 `collisionPadding` 透传（`PopoverContent`、`DropdownMenuContent`），其余内容保持上游原样。
+
+---
+
 ### FieldHint - 标签说明提示
 
 **文件位置**：`apps/web/src/shared/components/FieldHint.tsx`

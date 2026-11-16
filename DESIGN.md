@@ -188,7 +188,7 @@ La Pluma Next 是一个高密度的本地自动化控制台，不是营销页面
 
 `.la-pluma-page` 以 `isolation: isolate` 自成 stacking context，页面内 navbar/tabbar 的 z-index 只在该上下文内比较；Base UI 弹层经 portal 挂在 `document.body` 根并使用 portal token，因此总是高于页面内 chrome。应用代码使用 Tailwind v4 变量简写 `z-(--layout-z-*)`；`shared/ui` 生成物中的 `z-50` 即 portal 层字面量，不由应用层再覆盖。
 
-页面内的局部层仍可保留小数值（如 `z-index: 0/1/2`）。automation 任务选择器（20）与 combat 关卡面板（30）是尚未迁移的页面局部层，迁移时改用上表 token；2000、9999 之类的高位特例不再使用。
+页面内的局部层仍可保留小数值（如 `z-index: 0/1/2`）。automation 任务选择器是非模态 DropdownMenu，combat 关卡面板是非模态 Popover；两者都随 Base UI portal 挂在 `document.body`，层序使用 `--layout-z-portal`，不设页面局部高位。非模态表示不锁页面滚动、不遮断页脚之外的交互，Escape、外部点击与焦点归还仍由原语管理；任务选择器仅在页脚区域内取消 outside-press 关闭。2000、9999 之类的高位特例不再使用。
 
 ## 档位即规范（Tailwind 原生尺度）
 
