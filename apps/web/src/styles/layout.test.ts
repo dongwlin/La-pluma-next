@@ -181,11 +181,11 @@ describe('layout style layer', () => {
   it('rejects duplicate declarations instead of masking them with a later context', () => {
     const navbar = groupCustomProperties([
       ...customPropertyDeclarations(
-        ':root { --fixture-navbar-height: 4.76rem; }',
+        ':root { --fixture-navbar-height: 4rem; }',
         'fixture.css',
       ),
       ...customPropertyDeclarations(
-        '@media (width < 640px) { :root { --fixture-navbar-height: 4.75rem; } }',
+        '@media (width < 640px) { :root { --fixture-navbar-height: 3rem; } }',
         'fixture.css',
       ),
     ])
