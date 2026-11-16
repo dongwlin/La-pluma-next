@@ -510,7 +510,7 @@ export default function AutomationWorkspace() {
                     ))
                     // 公招的「3 星保留招聘许可」标签连同图标超过 5rem 标签列，只有该卡片需要加宽列。
                     const usesWideFieldLabels = task.commandId === 'recruit'
-  
+
                     return (
                     <div
                       key={task.id}
@@ -533,7 +533,7 @@ export default function AutomationWorkspace() {
                           />
                         </div>
                       </div>
-  
+
                       {task.paramFields && task.paramFields.length > 0 && (
                         <div className={`automation-param-fields${usesGroupedParameterRows ? ' is-grouped' : ''}${usesWideFieldLabels ? ' has-wide-field-labels' : ''}`}>
                           {task.paramFields.map((field) => {
@@ -805,7 +805,7 @@ export default function AutomationWorkspace() {
                           })}
                         </div>
                       )}
-  
+
                       {task.commandId === 'fight' && (
                         <details className="group mt-3 rounded-lg border border-border bg-muted px-3 py-2">
                           <summary className="flex min-h-11 cursor-pointer list-none items-center justify-between gap-3.5 text-sm font-medium text-gray-700 marker:hidden dark:text-gray-200 [&::-webkit-details-marker]:hidden">
@@ -815,7 +815,7 @@ export default function AutomationWorkspace() {
                             </span>
                             <ChevronDown size={15} strokeWidth={2} className="transition-transform group-open:rotate-180" />
                           </summary>
-  
+
                           <div className="mt-3 space-y-3 border-t border-border pt-3">
                             <div className="flex items-center gap-2">
                               <span className="flex w-24 shrink-0 items-center gap-1">
@@ -839,7 +839,7 @@ export default function AutomationWorkspace() {
                                 onValueChange={(value) => updateTaskParam(index, 'clientType', value)}
                               />
                             </div>
-  
+
                             <div className="flex items-center gap-1">
                               <label className="flex min-h-11 cursor-pointer items-center gap-2 text-sm text-gray-700 dark:text-gray-300">
                                 <Checkbox
@@ -851,7 +851,7 @@ export default function AutomationWorkspace() {
                               </label>
                               <FieldHint id={`${task.id}-dr-grandet-hint`} label="葛朗台碎石模式" hint="使用源石前等待自然恢复 1 点理智，尽量减少碎石浪费。" />
                             </div>
-  
+
                             <section className="space-y-2 border-t border-border pt-3">
                               <label className="flex min-h-11 cursor-pointer items-center gap-2 text-sm text-gray-700 dark:text-gray-300">
                                 <Checkbox
@@ -877,7 +877,7 @@ export default function AutomationWorkspace() {
                                 </div>
                               )}
                             </section>
-  
+
                             <section className="space-y-2 border-t border-border pt-3">
                               <label className="flex min-h-11 cursor-pointer items-center gap-2 text-sm text-gray-700 dark:text-gray-300">
                                 <Checkbox
@@ -906,7 +906,7 @@ export default function AutomationWorkspace() {
                           </div>
                         </details>
                       )}
-  
+
                       {task.commandId === 'infrast' && (
                         <details className="group mt-3 rounded-lg border border-border bg-muted px-3 py-2">
                           <summary className="flex min-h-11 cursor-pointer list-none items-center justify-between gap-3.5 text-sm font-medium text-gray-700 marker:hidden dark:text-gray-200 [&::-webkit-details-marker]:hidden">
@@ -916,7 +916,7 @@ export default function AutomationWorkspace() {
                             </span>
                             <ChevronDown size={15} strokeWidth={2} className="transition-transform group-open:rotate-180" />
                           </summary>
-  
+
                           <div className="mt-3 space-y-3 border-t border-border pt-3">
                             {Array.isArray(task.params.facility) && task.params.facility.includes('Dorm') && (
                               <section className="space-y-2">
@@ -939,7 +939,7 @@ export default function AutomationWorkspace() {
                                 </label>
                               </section>
                             )}
-  
+
                             {Array.isArray(task.params.facility) && task.params.facility.includes('Reception') && (
                               <section className="space-y-2 border-t border-border pt-3">
                                 <h4 className="text-xs font-semibold text-gray-500 dark:text-gray-400">会客室</h4>
@@ -969,7 +969,7 @@ export default function AutomationWorkspace() {
                                 </label>
                               </section>
                             )}
-  
+
                             {Array.isArray(task.params.facility) && task.params.facility.includes('Training') && (
                               <section className="space-y-2 border-t border-border pt-3">
                                 <h4 className="text-xs font-semibold text-gray-500 dark:text-gray-400">训练室</h4>
@@ -986,7 +986,7 @@ export default function AutomationWorkspace() {
                           </div>
                         </details>
                       )}
-  
+
                       {task.commandId === 'recruit' && (
                         <details className="group mt-3 rounded-lg border border-border bg-muted px-3 py-2">
                           <summary className="flex min-h-11 cursor-pointer list-none items-center justify-between gap-3.5 text-sm font-medium text-gray-700 marker:hidden dark:text-gray-200 [&::-webkit-details-marker]:hidden">
@@ -996,7 +996,7 @@ export default function AutomationWorkspace() {
                             </span>
                             <ChevronDown size={15} strokeWidth={2} className="transition-transform group-open:rotate-180" />
                           </summary>
-  
+
                           <div className="mt-3 space-y-3 border-t border-border pt-3">
                             <div className="flex items-center gap-2">
                               <span className="flex w-32 shrink-0 items-center gap-1">
@@ -1020,7 +1020,7 @@ export default function AutomationWorkspace() {
                                 onValueChange={(value) => updateTaskParam(index, 'extra_tags_mode', Number(value))}
                               />
                             </div>
-  
+
                             <div className="flex items-center gap-2">
                               <span className="flex w-32 shrink-0 items-center gap-1">
                                 <label htmlFor={`${task.id}-first-tags`} className="whitespace-nowrap text-sm text-gray-600 dark:text-gray-400">三星首选:</label>
@@ -1041,7 +1041,7 @@ export default function AutomationWorkspace() {
                                 className="min-w-0 flex-1"
                               />
                             </div>
-  
+
                             <fieldset>
                               <legend className="mb-2 block text-sm text-gray-600 dark:text-gray-400">
                                 <span className="inline-flex items-center gap-1">
@@ -1086,7 +1086,7 @@ export default function AutomationWorkspace() {
                           </div>
                         </details>
                       )}
-  
+
                       {task.commandId === 'startup' && (
                         <div className="mt-4 pt-4 border-t border-gray-200 dark:border-white/10">
                           <Button
@@ -1111,7 +1111,7 @@ export default function AutomationWorkspace() {
                                 </>
                               )}
                           </Button>
-  
+
                           <AnimatePresence initial={false}>
                             {connectionFeedback && (
                               <motion.div
