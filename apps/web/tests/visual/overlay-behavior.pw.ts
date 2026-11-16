@@ -350,8 +350,13 @@ test.describe('feature overlay behavior', () => {
       const positioner = content.locator('..')
       await expect(positioner).toHaveAttribute('data-align', 'end')
       await page.waitForTimeout(200)
-      const box = await content.boundingBox()
+      const [sortBox, box] = await Promise.all([sort.boundingBox(), content.boundingBox()])
+      expect(sortBox).not.toBeNull()
+      expect(box).not.toBeNull()
       expect(Math.round(box?.width ?? 0)).toBe(128)
+      expect(Math.abs((box!.x + box!.width) - (sortBox!.x + sortBox!.width))).toBeLessThanOrEqual(1)
+      expect(box!.x).toBeGreaterThanOrEqual(0)
+      expect(box!.x + box!.width).toBeLessThanOrEqual(page.viewportSize()!.width)
     }
 
     environment.assertNoUnmatchedApi()
