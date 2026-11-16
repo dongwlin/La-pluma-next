@@ -11,6 +11,17 @@ import {
 // roguelike-settings）与浏览器像素断言兜底，控制全量基线的维护面。
 const REPRESENTATIVE_TABS = ['dashboard', 'automation'] as const
 
+const PAGE_SHELL_CONTRACT = [
+  { tab: 'dashboard', layout: null, surface: null, monitor: 0, toolbar: 0 },
+  { tab: 'automation', layout: 'workspace', surface: 'borderless', monitor: 1, toolbar: 0 },
+  { tab: 'combat', layout: 'workspace', surface: 'borderless', monitor: 1, toolbar: 0 },
+  { tab: 'roguelike', layout: 'workspace', surface: 'borderless', monitor: 1, toolbar: 0 },
+  { tab: 'training', layout: 'workspace', surface: null, monitor: 1, toolbar: 0 },
+  { tab: 'logs', layout: 'workspace', surface: 'borderless', monitor: 1, toolbar: 1 },
+  { tab: 'statistics', layout: 'workspace', surface: 'borderless', monitor: 1, toolbar: 1 },
+  { tab: 'config', layout: 'workspace', surface: 'borderless', monitor: 0, toolbar: 0 },
+] as const
+
 test.describe('app tabs', () => {
   test.beforeEach(async ({ page }) => {
     recordBrowserErrors(page)
@@ -39,6 +50,38 @@ test.describe('app tabs', () => {
       await expectNoBrowserErrors(page)
     })
   }
+
+  test('page shell anchors define stable regions for every workspace', async ({ page }) => {
+    test.skip(test.info().project.name !== 'desktop', 'the region contract is checked on desktop')
+
+    const environment = await installDeterministicEnvironment(page)
+
+    for (const contract of PAGE_SHELL_CONTRACT) {
+      await page.goto(`/app/${contract.tab}`)
+      await waitForPageReady(page, contract.tab)
+
+      if (contract.tab === 'statistics') {
+        await page.getByRole('tab', { name: /掉落记录/ }).click()
+        await expect(page.getByText('总理智消耗')).toBeVisible()
+      }
+
+      const pageRegion = page.locator('[data-region="page"]')
+      await expect(pageRegion).toHaveCount(1)
+      await expect(pageRegion).toHaveAttribute('data-page-kind', contract.tab)
+
+      for (const anchor of ['page-header', 'page-title', 'scroll', 'page-content']) {
+        await expect(page.locator(`[data-region="${anchor}"]`)).toHaveCount(1)
+      }
+
+      expect(await pageRegion.getAttribute('data-page-layout')).toBe(contract.layout)
+      expect(await pageRegion.getAttribute('data-page-surface')).toBe(contract.surface)
+      await expect(page.locator('[data-region="monitor"]')).toHaveCount(contract.monitor)
+      await expect(page.locator('[data-region="toolbar"]')).toHaveCount(contract.toolbar)
+    }
+
+    environment.assertNoUnmatchedApi()
+    await expectNoBrowserErrors(page)
+  })
 
   test('dashboard device cards keep their responsive padding', async ({ page }) => {
     const environment = await installDeterministicEnvironment(page)
@@ -95,7 +138,7 @@ test.describe('app tabs', () => {
 
     const edges = await page.evaluate(() => {
       const title = document.querySelector<HTMLElement>('[data-region="page-title"]')
-      const content = document.querySelector<HTMLElement>('.la-pluma-content')
+      const content = document.querySelector<HTMLElement>('[data-region="page-content"]')
       if (!title || !content) throw new Error('page title structure missing')
       const contentLeft = content.getBoundingClientRect().left
         + Number.parseFloat(getComputedStyle(content).paddingLeft)
@@ -158,6 +201,7 @@ test.describe('app tabs', () => {
 
     await expect(page.getByRole('heading', { level: 1 })).toHaveText('主题画廊')
     await expect(page).toHaveTitle('主题画廊 · La Pluma Next')
+    await expect(page.locator('[data-region="page"]')).toHaveAttribute('data-page-kind', 'gallery')
 
     environment.assertNoUnmatchedApi()
     await expectNoBrowserErrors(page)

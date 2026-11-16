@@ -12,7 +12,7 @@ interface LayoutProps {
 }
 
 function getScrollHost() {
-  return document.querySelector<HTMLElement>('.la-pluma-scroll-host')
+  return document.querySelector<HTMLElement>('[data-region="scroll"]')
 }
 
 function getScrollTop() {
@@ -142,13 +142,13 @@ export default function Layout({ activeTab, children }: LayoutProps) {
   }, [pageTitle])
 
   return (
-    <div className="view view-main la-pluma-view">
-      <div className="page no-swipeback la-pluma-page" data-name="la-pluma">
+    <div className="view la-pluma-view">
+      <div className="page la-pluma-page">
         <div className="la-pluma-page-body">
           <AppNavbar pageTitle={pageTitle} />
           <AppSidebar activeTab={activeTab} onNavigate={navigateToTab} />
-          <main className="la-pluma-scroll-host">
-            <div className="la-pluma-content">
+          <main className="la-pluma-scroll-host" data-region="scroll">
+            <div className="la-pluma-content" data-region="page-content">
               {children}
             </div>
           </main>

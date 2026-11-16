@@ -46,7 +46,7 @@ function mediaQueryList(query: string, matches = false): MediaQueryList {
 }
 
 function getScrollHost() {
-  return container.querySelector<HTMLElement>('main')!
+  return container.querySelector<HTMLElement>('[data-region="scroll"]')!
 }
 
 function installScrollModel() {
