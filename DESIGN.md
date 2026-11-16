@@ -276,10 +276,10 @@ La Pluma Next 是一个高密度的本地自动化控制台，不是营销页面
 
 - **应用壳**：普通浏览器使用 `100dvh`，跟随地址栏收放；`display-mode: standalone`、`display-mode: fullscreen` 与 `html.la-pluma-standalone` 使用 `100lvh`，让固定导航贴住物理屏幕边缘。`--layout-viewport-height` 是壳层视口高度的唯一来源，启动壳的 `--boot-viewport-height` 保持同样的分支。
 - **能力兜底**：不支持 `dvh` 时回退到 `100vh`，不支持 `lvh` 时同样回退到 `100vh`；`dvh` 兜底位于 standalone 的 `lvh` 覆盖之前，`lvh` 兜底保留在最后，顺序保证缺少对应能力时仍落到 `vh`。
-- **弹层**：Dialog 使用 `--layout-dialog-max-height`（`calc(100dvh - 2rem)`），移动 Sheet 使用 `--layout-sheet-max-height`（`85dvh`）；两者都带 `vh` 兜底，弹层不手写裸 `dvh` 高度。
-- **局部例外**：`ios-theme.css` 的 more-sheet 使用 `min(28rem, 78dvh)` 并前置 `78vh` 兜底；`ScrcpyDeviceView` 的沉浸层在迁移期保留 `h-dvh w-screen`，由设备画面批次处理。两者都登记在静态契约 allowlist 中，不扩散到其他页面或弹层。
+- **弹层**：需要限制高度的 Dialog 使用 `--layout-dialog-max-height`（`calc(100dvh - 2rem)`），移动 Sheet 使用 `--layout-sheet-max-height`（`85dvh`）；该 token 只服务于确有高度上限的弹层，不是所有 Dialog 的默认约束。两者都带 `vh` 兜底，弹层不手写裸 `dvh` 高度。
+- **局部例外**：`ios-theme.css` 的 more-sheet 使用 `min(28rem, 78dvh)` 并前置 `78vh` 兜底；`ScrcpyDeviceView` 沉浸层是已登记的局部例外，使用 `h-dvh w-screen`，按设备画面自身的全屏契约处理，不使用壳层 token。两者都登记在静态契约 allowlist 中，不扩散到其他页面或弹层。
 - **页内固定块**：日志控制台这类随页面滚动的固定高度内容使用 `svh`，并前置 `vh` 兜底，不随地址栏伸缩改变高度；只有壳层和弹层消费 `dvh`/`lvh`。
-- **软键盘**：viewport meta 声明 `interactive-widget=resizes-content`，这是 Chromium 支持的软键盘策略声明；Safari/iOS、Chrome on iOS/iPadOS 与 Firefox 会忽略该键，仓库也尚未在真机验证软键盘行为，因此不能视为跨平台修复。改动时保留 `width=device-width`、`initial-scale=1.0` 与 `viewport-fit=cover`。
+- **软键盘**：viewport meta 声明 `interactive-widget=resizes-content`，它是面向移动端软键盘的视口声明；支持范围随渲染引擎与版本变化，桌面 Chrome/Edge/Firefox 不支持该声明，Safari/iOS 与 Firefox for Android 仅部分较新版本支持。仓库未在真机验证软键盘行为，不能视为跨平台生效。改动时保留 `width=device-width`、`initial-scale=1.0` 与 `viewport-fit=cover`。
 
 #### Breakpoints
 
