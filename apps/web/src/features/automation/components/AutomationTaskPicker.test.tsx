@@ -168,5 +168,11 @@ describe('AutomationTaskPicker', () => {
     expect(menu()).toBeNull()
     expect(trigger().disabled).toBe(true)
     expect(trigger().getAttribute('aria-expanded')).toBe('false')
+
+    await act(async () => root.render(<Host />))
+    await flushTimers()
+
+    expect(menu()).toBeNull()
+    expect(trigger().getAttribute('aria-expanded')).toBe('false')
   })
 })

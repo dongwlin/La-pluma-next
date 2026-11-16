@@ -25,6 +25,8 @@ export default function AutomationTaskPicker({
   regionRef,
 }: AutomationTaskPickerProps) {
   const [open, setOpen] = useState(false)
+
+  if (disabled && open) setOpen(false)
   const isOpen = open && !disabled
 
   const handleOpenChange = (
