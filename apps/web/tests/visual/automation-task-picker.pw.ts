@@ -4,6 +4,8 @@ import { apiFixtures, ok, type ApiFixture } from './fixtures'
 import {
   THEMES,
   installDeterministicEnvironment,
+  readMotionDurations,
+  removeMotionFreeze,
   themeSeedScript,
   waitForPageReady,
 } from './harness'
@@ -268,3 +270,26 @@ for (const theme of THEMES) {
     })
   })
 }
+
+test.describe('task picker reduced motion', () => {
+  test('disables the portal menu animation', async ({ page }) => {
+    recordBrowserErrors(page)
+    await page.emulateMedia({ reducedMotion: 'reduce' })
+    const environment = await installDeterministicEnvironment(page, { fixtures: shortFlowFixtures })
+
+    await page.goto('/app/automation')
+    await waitForPageReady(page, 'automation')
+    await removeMotionFreeze(page)
+
+    await page.getByRole('button', { name: /添加任务/ }).click()
+    const menu = page.getByRole('menu', { name: '可添加任务' })
+    await expect(menu).toBeVisible()
+
+    const motion = await readMotionDurations(menu)
+    expect(motion.animation.every(duration => duration <= 0.000011)).toBe(true)
+    expect(motion.transition.every(duration => duration <= 0.000011)).toBe(true)
+
+    environment.assertNoUnmatchedApi()
+    await expectNoBrowserErrors(page)
+  })
+})

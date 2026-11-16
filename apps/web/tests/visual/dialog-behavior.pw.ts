@@ -1,7 +1,12 @@
 import { expect, test, type Locator, type Page } from '@playwright/test'
 import { expectNoBrowserErrors, recordBrowserErrors } from './browser-errors'
 import { apiFixtures, ok } from './fixtures'
-import { installDeterministicEnvironment, waitForPageReady } from './harness'
+import {
+  installDeterministicEnvironment,
+  readMotionDurations,
+  removeMotionFreeze,
+  waitForPageReady,
+} from './harness'
 
 const combatDiscoveryFixtures = [
   { path: '/agent/copilot/stages', payload: ok([]) },
@@ -461,6 +466,29 @@ test.describe('dialog overlay behavior', () => {
     await page.keyboard.press('Escape')
     await expect(discovery).toBeHidden()
     await expect(discoveryTrigger).toBeFocused()
+
+    environment.assertNoUnmatchedApi()
+    await expectNoBrowserErrors(page)
+  })
+
+  test('disables the stage popover animation when reduced motion is requested', async ({ page }) => {
+    await page.emulateMedia({ reducedMotion: 'reduce' })
+    const environment = await installDeterministicEnvironment(page, {
+      fixtures: combatDiscoveryWithStagesFixtures,
+    })
+    await page.goto('/app/combat')
+    await waitForPageReady(page, 'combat')
+    await removeMotionFreeze(page)
+
+    await page.getByRole('button', { name: '发现', exact: true }).click()
+    await page.getByRole('button', { name: '关卡筛选', exact: true }).click()
+
+    const stagePanel = page.getByRole('dialog', { name: '选择关卡' })
+    await expect(stagePanel).toBeVisible()
+
+    const motion = await readMotionDurations(stagePanel)
+    expect(motion.animation.every(duration => duration <= 0.000011)).toBe(true)
+    expect(motion.transition.every(duration => duration <= 0.000011)).toBe(true)
 
     environment.assertNoUnmatchedApi()
     await expectNoBrowserErrors(page)
