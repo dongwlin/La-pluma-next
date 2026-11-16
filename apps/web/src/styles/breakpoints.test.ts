@@ -15,10 +15,12 @@ const IGNORED_DIRECTORIES = new Set(['node_modules', 'dist', 'coverage'])
 const TEST_FILE_SUFFIXES = ['.test.ts', '.test.tsx']
 
 const MEDIA_AT_RULE_RE = /@media\b\s*([^{]+)\{/gi
-const CSS_COMMENT_RE = /\/\*[\s\S]*?\*\//g
-const THEME_BREAKPOINT_RE = /--breakpoint-([A-Za-z0-9-]+)\s*:/g
+const THEME_BREAKPOINT_RE = /--breakpoint-([A-Za-z0-9-]+)\s*:\s*([^;{}]+)/g
+const CSS_VARIANT_DIRECTIVE_RE = /@(?:variant|apply)\s+([^;{}]+)/gi
+const UNAPPROVED_CSS_VARIANT_RE = /(?:^|[\s:])((?:max-|min-)?\d+xl)(?=:|\s|$)/gi
 const UNAPPROVED_NAMED_BREAKPOINT_RE = /(?:^|[\s"'`:])((?:max-|min-)?\d+xl):/gi
-const APPROVED_THEME_BREAKPOINTS = new Set(['workbench'])
+const THEME_BREAKPOINT_FILE = 'styles/index.css'
+const THEME_BREAKPOINT_NAME = 'workbench'
 const LEGACY_WIDTH_FEATURE_RE = /\b(?:min|max)-width\s*:/
 const WIDTH_FEATURE_RE = /\bwidth\b/
 const PX_VALUE_RE = /(\d+(?:\.\d+)?)px/g
@@ -81,6 +83,16 @@ type ExportTable = Map<string, Declaration | 'ambiguous'>
 interface QueryResolution {
   query: string | null
   reason: string | null
+}
+
+interface ThemeBreakpointDefinition {
+  name: string
+  value: string
+}
+
+interface CssSourceFile {
+  file: string
+  source: string
 }
 
 type FunctionNode =
@@ -158,7 +170,52 @@ function auditMediaQuery(query: string): MediaQueryProblem[] {
 }
 
 function stripCssComments(source: string): string {
-  return source.replace(CSS_COMMENT_RE, '')
+  let stripped = ''
+  let index = 0
+  let quote: "'" | '"' | null = null
+
+  while (index < source.length) {
+    const character = source[index]
+    if (character === undefined) break
+
+    if (quote) {
+      stripped += character
+      if (character === '\\') {
+        const escaped = source[index + 1]
+        if (escaped !== undefined) {
+          stripped += escaped
+          index += 2
+          continue
+        }
+      }
+      if (character === quote) quote = null
+      index += 1
+      continue
+    }
+
+    if (character === '"' || character === "'") {
+      quote = character
+      stripped += character
+      index += 1
+      continue
+    }
+
+    if (character === '/' && source[index + 1] === '*') {
+      const end = source.indexOf('*/', index + 2)
+      stripped += ' '
+      if (end === -1) {
+        stripped += source.slice(index + 2)
+        break
+      }
+      index = end + 2
+      continue
+    }
+
+    stripped += character
+    index += 1
+  }
+
+  return stripped
 }
 
 function mediaConditionsOf(source: string): string[] {
@@ -175,8 +232,44 @@ function unapprovedNamedBreakpointsOf(source: string): string[] {
   return [...source.matchAll(UNAPPROVED_NAMED_BREAKPOINT_RE)].map(match => match[1] ?? '')
 }
 
-function themeBreakpointNamesOf(source: string): string[] {
-  return [...stripCssComments(source).matchAll(THEME_BREAKPOINT_RE)].map(match => match[1] ?? '')
+function unapprovedCssVariantsOf(source: string): string[] {
+  return [...stripCssComments(source).matchAll(CSS_VARIANT_DIRECTIVE_RE)].flatMap(match => (
+    [...(match[1] ?? '').matchAll(UNAPPROVED_CSS_VARIANT_RE)].map(token => token[1] ?? '')
+  ))
+}
+
+function themeBreakpointDefinitionsOf(source: string): ThemeBreakpointDefinition[] {
+  return [...stripCssComments(source).matchAll(THEME_BREAKPOINT_RE)].map(match => ({
+    name: match[1] ?? '',
+    value: (match[2] ?? '').trim(),
+  }))
+}
+
+function themeBreakpointProblemsOf(files: CssSourceFile[]): string[] {
+  const problems: string[] = []
+  const counts = new Map<string, number>()
+
+  for (const { file, source } of files) {
+    for (const { name, value } of themeBreakpointDefinitionsOf(source)) {
+      counts.set(name, (counts.get(name) ?? 0) + 1)
+      if (file !== THEME_BREAKPOINT_FILE) {
+        problems.push(`${file}: --breakpoint-${name} outside ${THEME_BREAKPOINT_FILE}`)
+      }
+      if (name !== THEME_BREAKPOINT_NAME) {
+        problems.push(`${file}: unregistered --breakpoint-${name}`)
+        continue
+      }
+      if (value !== `${BREAKPOINTS.workbench}px`) {
+        problems.push(`${file}: --breakpoint-workbench is ${value}, expected ${BREAKPOINTS.workbench}px`)
+      }
+    }
+  }
+
+  for (const [name, count] of counts) {
+    if (count > 1) problems.push(`duplicate --breakpoint-${name}`)
+  }
+
+  return problems
 }
 
 function hasExportModifier(node: ts.Node): boolean {
@@ -668,6 +761,21 @@ describe('responsive breakpoint policy', () => {
 
     const commentWithBrace = mediaConditionsOf('@media (width < 641px) /* { */ { .a { color: red } }')
     expect(commentWithBrace).toEqual(['(width < 641px)'])
+
+    const commentedSelector = mediaConditionsOf('@media/**/screen and (width < 641px){.a{color:red}}')
+    expect(commentedSelector).toEqual(['screen and (width < 641px)'])
+    expect(auditMediaQuery(commentedSelector[0] ?? '')).toContain('unapproved-threshold')
+
+    const quotedCommentMarkers = mediaConditionsOf(
+      'content:"/*"; @media (width < 641px){.a{color:red}}; content:"*/"',
+    )
+    expect(quotedCommentMarkers).toEqual(['(width < 641px)'])
+
+    const unclosedComment = mediaConditionsOf('/* unclosed\n@media (width < 641px){.a{color:red}}')
+    expect(unclosedComment).toEqual(['(width < 641px)'])
+
+    const unclosedString = mediaConditionsOf('content:"unclosed @media (width < 641px){.a{color:red}}')
+    expect(unclosedString).toEqual(['(width < 641px)'])
   })
 
   it('rejects unregistered named Tailwind breakpoints and theme definitions', () => {
@@ -681,10 +789,55 @@ describe('responsive breakpoint policy', () => {
       'xl:grid-cols-4 workbench:flex md:text-2xl font-bold sm:text-2xl text-2xl/7',
     )).toEqual([])
 
-    expect(themeBreakpointNamesOf('@theme { --breakpoint-2xl: 1536px }')).toEqual(['2xl'])
-    expect(themeBreakpointNamesOf('@theme { --breakpoint-workbench: 900px }')).toEqual(['workbench'])
-    expect(themeBreakpointNamesOf('@theme { --breakpoint-2xl: 1536px; --breakpoint-workbench: 900px }'))
-      .toEqual(['2xl', 'workbench'])
+    expect(themeBreakpointDefinitionsOf('@theme { --breakpoint-2xl: 1536px }'))
+      .toEqual([{ name: '2xl', value: '1536px' }])
+    expect(themeBreakpointDefinitionsOf('@theme { --breakpoint-workbench: 900px }'))
+      .toEqual([{ name: 'workbench', value: '900px' }])
+    expect(themeBreakpointDefinitionsOf('@theme { --breakpoint-2xl: 1536px; --breakpoint-workbench: 900px }'))
+      .toEqual([{ name: '2xl', value: '1536px' }, { name: 'workbench', value: '900px' }])
+
+    expect(themeBreakpointProblemsOf([
+      { file: THEME_BREAKPOINT_FILE, source: '@theme { --breakpoint-workbench: 801px }' },
+    ])).not.toEqual([])
+    expect(themeBreakpointProblemsOf([
+      { file: THEME_BREAKPOINT_FILE, source: '@theme { --breakpoint-2xl: 1536px }' },
+    ])).not.toEqual([])
+    expect(themeBreakpointProblemsOf([
+      { file: 'styles/other.css', source: '@theme { --breakpoint-workbench: 900px }' },
+    ])).not.toEqual([])
+    expect(themeBreakpointProblemsOf([
+      {
+        file: THEME_BREAKPOINT_FILE,
+        source: '@theme { --breakpoint-workbench: 900px; --breakpoint-workbench: 900px }',
+      },
+    ])).not.toEqual([])
+    expect(themeBreakpointProblemsOf([
+      { file: THEME_BREAKPOINT_FILE, source: '@theme { --breakpoint-workbench: 900px }' },
+    ])).toEqual([])
+  })
+
+  it('rejects unapproved breakpoint variants in CSS directives', () => {
+    const variantDirective = (variant: string) => `.a { @variant ${variant} { display: flex; } }`
+    const applyDirective = (utilities: string) => `.a { @apply ${utilities}; }`
+    const namedVariant = (variant: string, utility: string) => `${variant}:${utility}`
+    const stackedVariant = (variants: string[], utility: string) => `${variants.join(':')}:${utility}`
+
+    expect(unapprovedCssVariantsOf(variantDirective('2xl'))).toEqual(['2xl'])
+    expect(unapprovedCssVariantsOf(applyDirective(namedVariant('2xl', 'flex')))).toEqual(['2xl'])
+    expect(unapprovedCssVariantsOf(applyDirective(stackedVariant(['hover', '2xl'], 'flex'))))
+      .toEqual(['2xl'])
+    expect(unapprovedCssVariantsOf(applyDirective([
+      namedVariant('max-2xl', 'flex'),
+      namedVariant('min-2xl', 'flex'),
+    ].join(' ')))).toEqual(['max-2xl', 'min-2xl'])
+    expect(unapprovedCssVariantsOf(applyDirective('text-2xl font-bold'))).toEqual([])
+
+    const variants = collectFiles(SRC_ROOT, CSS_EXTENSIONS).flatMap(file => (
+      unapprovedCssVariantsOf(readFileSync(file, 'utf8')).map(variant => (
+        `${location(file)}: ${variant}`
+      ))
+    ))
+    expect(variants).toEqual([])
   })
 
   it('does not use unapproved named Tailwind breakpoint variants', () => {
@@ -694,12 +847,23 @@ describe('responsive breakpoint policy', () => {
         `${location(file)}: ${variant}`
       )))
     expect(variants).toEqual([])
+  })
 
-    const themeBreakpoints = new Set(themeBreakpointNamesOf(
-      readFileSync(join(SRC_ROOT, 'styles', 'index.css'), 'utf8'),
+  it('keeps named breakpoint definitions on the approved file, name and value', () => {
+    const cssFiles = collectFiles(SRC_ROOT, CSS_EXTENSIONS).map(file => ({
+      file: location(file),
+      source: readFileSync(file, 'utf8'),
+    }))
+    const definitions = cssFiles.flatMap(({ file, source }) => (
+      themeBreakpointDefinitionsOf(source).map(definition => ({ file, ...definition }))
     ))
-    expect([...themeBreakpoints].filter(name => !APPROVED_THEME_BREAKPOINTS.has(name))).toEqual([])
-    expect(themeBreakpoints.has('workbench')).toBe(true)
+
+    expect(definitions).toEqual([{
+      file: THEME_BREAKPOINT_FILE,
+      name: THEME_BREAKPOINT_NAME,
+      value: `${BREAKPOINTS.workbench}px`,
+    }])
+    expect(themeBreakpointProblemsOf(cssFiles)).toEqual([])
   })
 
   it('audits every production matchMedia call', () => {
