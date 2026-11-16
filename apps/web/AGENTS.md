@@ -38,6 +38,7 @@
 - 避免不必要的辅助标签与说明。让布局本身发挥解释作用。
 - 全局语义 token 与层序归 `src/styles/`；`index.css`、`layout.css`、`ios-theme.css` 不接收页面选择器。领域样式置于 `features/<domain>/styles/`，由域入口导入并收进 `@layer page`。
 - 保持 `theme, base, components, page, utilities` 层序，使用现有语义 token 和 Tailwind v4 canonical 类名；动态状态使用完整类名映射，不拼接 Tailwind 类名。
+- 层序 token 只从 `--layout-z-*` 取；不在组件中新增裸 z-index 层（局部 0/1/2 等仍可）。
 - Dialog、Sheet、筛选菜单和 PWA 提示等 portal 位于 `document.body`，不受应用根作用域包裹；样式改动同时核对弹层、深浅主题和响应式断点。
 - 视口高度契约：应用壳与启动壳只通过 `--layout-viewport-height` / `--boot-viewport-height` 的 dvh → lvh → vh 分支取高；需要限制高度的 Dialog 与移动 Sheet 复用 `--layout-dialog-max-height` / `--layout-sheet-max-height`；页内固定高度块用 `svh`。生产代码不新增裸视口高度；静态 allowlist 按文件登记，除 `ios-theme.css` more-sheet 与 `ScrcpyDeviceView` 沉浸层两个局部例外外，还包含 token owner 与既有 fallback（`index.html`、`layout.css`、`index.css`、`automation.css`、`logs.css`）以及 shadcn 生成文件（`sidebar.tsx`）；新增使用裸视口单位的文件必须登记。
 - 视口断点只使用 DESIGN 批准集合（`sm`/`md`/`workbench`/`lg`/`flow-card`/`xl`/`wide`），成对边界写 `width < Npx` / `width >= Npx`；JS 媒体查询由 `@/shared/lib/breakpoints` 的 `BREAKPOINTS` 生成，不新增 arbitrary `min-[...]`/`max-[...]` 断点。

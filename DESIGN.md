@@ -171,6 +171,25 @@ La Pluma Next 是一个高密度的本地自动化控制台，不是营销页面
 - **token 单源**：语义 token（颜色、圆角、间距、字号、控件高度等）只在 `index.css` 的 `:root` / `html.dark, #app-root.dark` / 媒体查询中定义一次；结构布局 token（`--layout-*`）只由 `layout.css` 定义。浅色、深色、`prefers-contrast`、`prefers-reduced-transparency` 的最终生效值都写在这里；`ios-theme.css` 不再出现同名重定义。
 - **深色切换**：主题仍同时给 `html` 与 `#app-root` 加 `.dark`；`html.dark` 与 `#app-root.dark` 都保留为有效选择器。
 
+### 层序（z-index scale）
+
+`layout.css` 的 `:root` 定义八个有限层序 token；组件与页面只引用 token，不新增裸 z-index 层：
+
+| token | 值 | 用途 |
+| --- | --- | --- |
+| `--layout-z-content` | 0 | 页面内容基础层 |
+| `--layout-z-sticky` | 10 | 页面内 sticky 元素 |
+| `--layout-z-chrome` | 20 | 应用壳 navbar 与顶栏区域内元素 |
+| `--layout-z-tabbar` | 30 | 移动端浮动 tabbar |
+| `--layout-z-raised` | 40 | 高于 chrome 的应用自绘浮层，如 skip link 与 PWA 提示 |
+| `--layout-z-portal` | 50 | Base UI portal 弹层：select、tooltip、dropdown、dialog、sheet 与应用抽屉 |
+| `--layout-z-toast` | 60 | sonner toast |
+| `--layout-z-immersive` | 70 | 设备沉浸预览 |
+
+`.la-pluma-page` 以 `isolation: isolate` 自成 stacking context，页面内 navbar/tabbar 的 z-index 只在该上下文内比较；Base UI 弹层经 portal 挂在 `document.body` 根并使用 portal token，因此总是高于页面内 chrome。应用代码使用 Tailwind v4 变量简写 `z-(--layout-z-*)`；`shared/ui` 生成物中的 `z-50` 即 portal 层字面量，不由应用层再覆盖。
+
+页面内的局部层仍可保留小数值（如 `z-index: 0/1/2`）。automation 任务选择器（20）与 combat 关卡面板（30）是尚未迁移的页面局部层，迁移时改用上表 token；2000、9999 之类的高位特例不再使用。
+
 ## 档位即规范（Tailwind 原生尺度）
 
 应用直接使用 Tailwind v4 原生档位，不做压缩映射或定向重映射。

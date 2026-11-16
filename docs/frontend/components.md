@@ -300,6 +300,7 @@ import { ConfirmAlertDialog, Loading } from '@/shared/components'
 - `Sheet` 用于作业详情抽屉：桌面 `side="right"`、移动 `side="bottom"`；需要保留页面可交互时使用 Root 的 `modal={false}` 并自行处理外部点击关闭。
 - `AlertDialog` 用于必须显式确认的操作；`role="alertdialog"` 由原语提供。
 - 嵌套弹层按 React 父子关系组合（如发现弹窗内的筛选弹窗、详情抽屉上的重置确认框），Base UI 依此管理 Escape 层级、焦点归还与滚动锁。
+- 弹层经 Base UI portal 挂到 `document.body`，层序使用 `--layout-z-portal`；应用自绘浮层按 [设计规范](../../DESIGN.md) 的 z-index scale 取 token，不在组件里补高位 z-index。
 
 `DashboardSkeleton` 是控制台域专用骨架，位于 `features/dashboard/components/DashboardSkeleton.tsx`，不属于 `shared/components` 的公共导出。
 
