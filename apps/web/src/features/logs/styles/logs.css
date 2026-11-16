@@ -93,7 +93,7 @@
   }
 
   .log-console {
-    height: clamp(20rem, 55dvh, 28rem);
+    height: clamp(20rem, 55svh, 28rem);
     overflow-y: auto;
     border-radius: var(--radius-lg);
     background: var(--muted);
