@@ -243,7 +243,7 @@ La Pluma Next 是一个高密度的本地自动化控制台，不是营销页面
 布局模型是“固定工作台 + 弹性内容区”。横向宽度与留白只由布局 token 控制，`.la-pluma-content` 与 `.la-pluma-navbar-inner` 共用同一份最大宽度、居中与左右 padding；页面内部不再嵌套同用途的 `max-w-*` 或水平 padding。
 
 - 内容最大宽度 `112rem`（`--layout-content-max`），两侧对称居中。
-- 页面左右留白由 `--layout-page-gutter` 提供：桌面（`1024px` 及以上）`32px`，平板（`640–1023px`）`20px`，移动（`639px` 及以下）`14px`。安全区取 `max(gutter, env(safe-area-inset-*))`，不叠加第二份 inset。
+- 页面左右留白由 `--layout-page-gutter` 提供：桌面（`1024px` 及以上）`32px`；平板（`640px` 及以上且小于 `1024px`）`20px`；移动（小于 `640px`）`14px`。安全区取 `max(gutter, env(safe-area-inset-*))`，不叠加第二份 inset。
 - 基础节奏为 4px。页面外层用 `app-page`，区块之间用 `app-stack-section` / `app-grid-section`，卡片内部用 `app-stack-card` / `app-grid-card`。
 - 卡片内边距 `16px`；卡片内部紧密间距 `14px`（`gap-3.5`）；区块间距 `18px`（`gap-4.5`）；页面外层 `20px`，移动端 `14px`。不要用大量 `space-y-6`、`gap-6`、`p-6` 手写版式基准。
 - 常规信息卡片使用 `repeat(2, minmax(0, 1fr))`；主次栏建议保持约 `1.1–1.75 : 0.9–1`，工具/筛选窄栏最小约 `16rem`。每一列都要有 `minmax(0, ...)` 或 `min-w-0`，避免长文本横向溢出。
@@ -275,10 +275,10 @@ La Pluma Next 是一个高密度的本地自动化控制台，不是营销页面
 | `wide` | 1360px | 三列工作台：自动化/作业/肉鸽/设备画面 |
 
 - 同一阈值只用成对区间表达：`width < Npx` 与 `width >= Npx`。禁止用 `max-width: N` 与 `min-width: N` 成对表达同一阈值，也不使用 `max-width: 1279px` 这类补偿值。
-- CSS 使用区间语法，跨区间写 `(768px <= width < 1280px)`；JS `matchMedia` 用 `apps/web/src/shared/lib/breakpoints.ts` 的 `BREAKPOINTS` 生成同样的区间查询，Tailwind 具名断点由 `@theme` 的 `--breakpoint-*` 提供。
+- CSS 使用区间语法，跨区间写 `(768px <= width < 1280px)`；JS `matchMedia` 用 `apps/web/src/shared/lib/breakpoints.ts` 的 `BREAKPOINTS` 生成同样的区间查询。TSX 中只有 `workbench` 有 Tailwind 具名变体（由 `@theme` 的 `--breakpoint-workbench` 提供），`flow-card` 与 `wide` 目前仅用于 CSS 媒体查询。
 - `@container` 查询由容器内容驱动，不属于视口断点，不受此表约束。
 - 新增专用断点必须先在此表登记用途与内容依据，优先评估容器查询；未登记的 `min-[Npx]` / `max-[Npx]` arbitrary 断点不允许出现。
-- 壳层断点（内容留白、navbar、tabbar 的切换）由 `styles/layout.css` 拥有，页面与领域样式不重复定义。
+- 壳层结构几何断点（内容留白、navbar、tabbar 的切换）由 `styles/layout.css` 拥有；其他全局样式只能复用批准阈值，不得新增壳层阈值。
 
 ## Elevation & Depth
 

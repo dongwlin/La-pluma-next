@@ -268,7 +268,7 @@ describe('CombatCopilotDetailLayer', () => {
     expect(writeText).toHaveBeenCalledWith('prts://101')
   })
 
-  it('opens a modal bottom sheet with the modal focus contract below 40rem', async () => {
+  it('opens a modal bottom sheet with the modal focus contract below 640px', async () => {
     setViewport(true)
     trigger.focus()
     await renderLayer(richTarget)
