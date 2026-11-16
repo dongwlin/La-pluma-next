@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, type ReactNode } from 'react'
-import { useLocation, useNavigate } from 'react-router'
+import { useLocation, useNavigate, useNavigationType } from 'react-router'
 import { appTabRoute, type AppTab } from '@/shared/navigation'
 import { resolvePageTitle } from '../router/pageTitle'
 import AppNavbar from './AppNavbar'
@@ -30,11 +30,13 @@ function setScrollTop(top: number) {
 
 export default function Layout({ activeTab, children }: LayoutProps) {
   const navigate = useNavigate()
+  const navigationType = useNavigationType()
   const { pathname } = useLocation()
   const pageTitle = resolvePageTitle(pathname, activeTab)
   const mainRef = useRef<HTMLElement>(null)
   const announcementRef = useRef<HTMLDivElement>(null)
   const previousPathname = useRef(pathname)
+  const dialogNavigationTargetRef = useRef<string | null>(null)
   const scrollPositions = useRef(new Map<AppTab, number>())
   const activeTabRef = useRef<AppTab>(activeTab)
   const restoreFrame = useRef<number | null>(null)
@@ -136,8 +138,14 @@ export default function Layout({ activeTab, children }: LayoutProps) {
 
   const navigateToTab = useCallback((tab: AppTab) => {
     if (tab === activeTab) return
+    const target = appTabRoute(tab)
+    const focused = document.activeElement
+    dialogNavigationTargetRef.current = focused instanceof Element
+      && focused.closest('[role="dialog"], [role="alertdialog"]')
+      ? target
+      : null
     scrollPositions.current.set(activeTab, getScrollTop())
-    navigate(appTabRoute(tab))
+    navigate(target)
   }, [activeTab, navigate])
 
   useEffect(() => {
@@ -147,12 +155,19 @@ export default function Layout({ activeTab, children }: LayoutProps) {
   useEffect(() => {
     if (previousPathname.current === pathname) return
     previousPathname.current = pathname
+
+    const startedFromDialog = dialogNavigationTargetRef.current === pathname
+    dialogNavigationTargetRef.current = null
+
+    if (navigationType === 'REPLACE') return
+
     if (announcementRef.current) announcementRef.current.textContent = `已切换到${pageTitle}`
+    if (startedFromDialog) return
 
     const focused = document.activeElement
     if (focused instanceof Element && focused.closest('[role="dialog"], [role="alertdialog"]')) return
     mainRef.current?.focus({ preventScroll: true })
-  }, [pathname, pageTitle])
+  }, [navigationType, pathname, pageTitle])
 
   return (
     <div className="view la-pluma-view">

@@ -181,6 +181,55 @@ test.describe('app tabs', () => {
     await expectNoBrowserErrors(page)
   })
 
+  test('initial route normalization skips route focus and announcements', async ({ page }) => {
+    const environment = await installDeterministicEnvironment(page)
+    const navButton = test.info().project.name === 'desktop'
+      ? page.locator('nav[aria-label="工作台"] button[data-app-tab="automation"]')
+      : page.locator('footer[data-region="tabbar"] button[data-app-tab="automation"]')
+
+    for (const entry of ['/', '/app', '/app/', '/app/unknown']) {
+      await page.goto(entry)
+      await waitForPageReady(page, 'dashboard')
+
+      await expect(page).toHaveURL(/\/app\/dashboard$/)
+      await expect(page.locator('#main-content')).not.toBeFocused()
+      await expect(page.locator('#page-announcement')).toHaveText('')
+
+      await navButton.click()
+
+      await expect(page).toHaveURL(/\/app\/automation$/)
+      await expect(page.locator('#main-content')).toBeFocused()
+      await expect(page.locator('#page-announcement')).toHaveText('已切换到日常')
+    }
+
+    environment.assertNoUnmatchedApi()
+    await expectNoBrowserErrors(page)
+  })
+
+  test('more sheet returns focus to the trigger after choosing a workspace', async ({ page }) => {
+    test.skip(test.info().project.name === 'desktop', 'the overflow sheet is available below the desktop breakpoint')
+
+    const environment = await installDeterministicEnvironment(page)
+
+    await page.goto('/app/dashboard')
+    await waitForPageReady(page, 'dashboard')
+
+    const moreTrigger = page.getByRole('button', { name: '更多页面', exact: true })
+    await moreTrigger.click()
+
+    const sheet = page.getByRole('dialog')
+    await expect(sheet).toBeVisible()
+    await sheet.getByRole('button', { name: '肉鸽', exact: true }).click()
+
+    await expect(page).toHaveURL(/\/app\/roguelike$/)
+    await expect(sheet).toBeHidden()
+    await expect(moreTrigger).toBeFocused()
+    await expect(page.locator('#page-announcement')).toHaveText('已切换到肉鸽')
+
+    environment.assertNoUnmatchedApi()
+    await expectNoBrowserErrors(page)
+  })
+
   test('page title starts at the content leading edge', async ({ page }) => {
     const environment = await installDeterministicEnvironment(page)
 
@@ -264,7 +313,8 @@ test.describe('app tabs', () => {
     await page.goto('/app/dashboard')
     await waitForPageReady(page, 'dashboard')
 
-    await expect(page.locator('.app-page-header, .app-page-title')).toHaveCount(0)
+    await expect(page.locator('[data-region="page"] h1')).toHaveCount(0)
+    await expect(page.locator('[data-region="page-header"] [data-region="page-title"]')).toHaveCount(1)
 
     environment.assertNoUnmatchedApi()
     await expectNoBrowserErrors(page)

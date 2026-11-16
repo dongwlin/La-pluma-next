@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { act, useLayoutEffect, useRef } from 'react'
+import { act, useEffect, useLayoutEffect, useRef } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import { BrowserRouter, useNavigate } from 'react-router'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -123,6 +123,25 @@ function LayoutHarness() {
       <button type="button" onClick={() => navigate(appTabRoute('automation'))}>programmatic-automation</button>
       <AsyncNavigator />
       <ViewportClamp activeTab={activeTab} />
+    </Layout>
+  )
+}
+
+function ReplaceWithDashboard() {
+  const navigate = useNavigate()
+  useEffect(() => {
+    navigate(appTabRoute('dashboard'), { replace: true })
+  }, [navigate])
+  return null
+}
+
+function NormalizingLayoutHarness() {
+  const activeTab = useActiveAppTab()
+
+  return (
+    <Layout activeTab={activeTab}>
+      <output data-testid="active-tab">{activeTab}</output>
+      <ReplaceWithDashboard />
     </Layout>
   )
 }
@@ -447,10 +466,10 @@ describe('top-level application navigation', () => {
     expect(document.title).toBe('日常 · La Pluma Next')
   })
 
-  it('keeps focus inside an open dialog when navigation starts from it', async () => {
+  it.each(['dialog', 'alertdialog'])('keeps focus inside an open %s when navigation starts from it', async (role) => {
     await renderLayout()
     const dialog = document.createElement('div')
-    dialog.setAttribute('role', 'dialog')
+    dialog.setAttribute('role', role)
     const dialogAction = document.createElement('button')
     dialogAction.type = 'button'
     dialogAction.textContent = 'dialog-action'
@@ -461,6 +480,27 @@ describe('top-level application navigation', () => {
     await act(async () => desktopLink('automation').click())
 
     expect(document.activeElement).toBe(dialogAction)
+    expect(container.querySelector('#page-announcement')?.textContent).toBe('已切换到日常')
+  })
+
+  it('ignores startup URL normalization for focus and announcements', async () => {
+    window.history.replaceState({}, '', '/app/')
+    await act(async () => root.render(
+      <BrowserRouter>
+        <NormalizingLayoutHarness />
+      </BrowserRouter>,
+    ))
+    installScrollModel()
+    await act(async () => new Promise(resolve => { window.setTimeout(resolve, 0) }))
+
+    const main = container.querySelector<HTMLElement>('#main-content')!
+    expect(window.location.pathname).toBe('/app/dashboard')
+    expect(document.activeElement).not.toBe(main)
+    expect(container.querySelector('#page-announcement')?.textContent).toBe('')
+
+    await act(async () => desktopLink('automation').click())
+
+    expect(document.activeElement).toBe(main)
     expect(container.querySelector('#page-announcement')?.textContent).toBe('已切换到日常')
   })
 
@@ -588,11 +628,12 @@ describe('top-level application navigation', () => {
     const overflowLink = moreSheet()?.querySelector<HTMLButtonElement>('button[data-app-tab="roguelike"]')
     expect(overflowLink).toBeTruthy()
 
+    await act(async () => overflowLink?.focus())
     await act(async () => overflowLink?.click())
 
     expect(activeTabLabel()).toBe('roguelike')
     await act(async () => new Promise(resolve => { window.setTimeout(resolve, 0) }))
     expect(moreSheet()).toBeNull()
-    expect(document.activeElement).toBe(container.querySelector('#main-content'))
+    expect(document.activeElement).toBe(trigger)
   })
 })
