@@ -9,6 +9,35 @@ const STYLES_ROOT = fileURLToPath(new URL('.', import.meta.url))
 const LAYOUT_TOKEN_DEFINITION_RE = /(--layout-[\w-]+)\s*:/g
 const LAYOUT_TOKEN_REFERENCE_RE = /var\(\s*(--layout-[\w-]+)/g
 const LEGACY_TOKEN_RE = new RegExp(`${'--la'}-${'pluma'}-` + '[\\w-]+', 'g')
+const BOOT_STYLE_RE = /<style id="la-pluma-boot-style">([\s\S]*?)<\/style>/
+const CUSTOM_PROPERTY_RE = /(--[\w-]+)\s*:\s*([^;]+);/g
+const VAR_REFERENCE_RE = /var\(\s*(--[\w-]+)\s*\)/g
+
+function customProperties(source: string): Map<string, string> {
+  return new Map(
+    [...source.matchAll(CUSTOM_PROPERTY_RE)].flatMap(match => (
+      match[1] && match[2]
+        ? [[match[1], match[2].replace(/\s+/g, ' ').trim()] as const]
+        : []
+    )),
+  )
+}
+
+function resolveToken(
+  name: string,
+  properties: Map<string, string>,
+  depth = 0,
+): string {
+  if (depth > 16) throw new Error(`token reference depth exceeded: ${name}`)
+
+  const value = properties.get(name)
+  if (value === undefined) throw new Error(`missing token declaration: ${name}`)
+
+  return value.replace(
+    VAR_REFERENCE_RE,
+    (_match, reference: string) => resolveToken(reference, properties, depth + 1),
+  ).replace(/\s+/g, ' ').trim()
+}
 
 const TEXT_EXTENSIONS = new Set(['.css', '.html', '.js', '.json', '.md', '.mjs', '.ts', '.tsx'])
 const IGNORED_DIRECTORIES = new Set([
@@ -76,5 +105,35 @@ describe('layout style layer', () => {
     ))
 
     expect(imports).toEqual(['index.css', 'layout.css', 'ios-theme.css'])
+  })
+
+  it('keeps the boot shell geometry in sync with layout tokens', () => {
+    const layoutTokens = customProperties(readFileSync(join(STYLES_ROOT, 'layout.css'), 'utf8'))
+    const html = readFileSync(join(REPO_ROOT, 'apps', 'web', 'index.html'), 'utf8')
+    const bootStyle = BOOT_STYLE_RE.exec(html)?.[1]
+    if (!bootStyle) throw new Error('index.html 缺少启动壳样式块')
+    const bootTokens = customProperties(bootStyle)
+
+    const checks = [
+      {
+        label: '启动壳 navbar 高度',
+        bootToken: '--boot-navbar-height',
+        layoutToken: '--layout-navbar-height',
+      },
+      {
+        label: '启动壳底部留白',
+        bootToken: '--boot-bottom-clearance',
+        layoutToken: '--layout-tabbar-bottom-clearance',
+      },
+    ]
+
+    const mismatches = checks.flatMap(({ label, bootToken, layoutToken }) => {
+      const bootValue = resolveToken(bootToken, bootTokens)
+      const layoutValue = resolveToken(layoutToken, layoutTokens)
+      if (bootValue === layoutValue) return []
+      return [`${label}: index.html 的 ${bootToken} 为 ${bootValue}，layout.css 的 ${layoutToken} 为 ${layoutValue}`]
+    })
+
+    expect(mismatches).toEqual([])
   })
 })
