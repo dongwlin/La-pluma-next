@@ -32,17 +32,36 @@ type MediaQueryProblem =
   | 'unapproved-threshold'
   | 'non-breakpoint-interpolation'
 
-interface ConstantDeclaration {
-  sourceFile: ts.SourceFile
-  initializer: ts.Expression
+type DeclarationKind = 'const' | 'let' | 'var' | 'parameter' | 'binding' | 'import'
+
+interface Scope {
+  parent: Scope | null
+  declarations: Map<string, Declaration[]>
+}
+
+interface Declaration {
+  kind: DeclarationKind
+  scope: Scope
+  initializer?: ts.Expression
+  importedName?: string
+}
+
+interface MatchMediaCall {
+  node: ts.CallExpression
+  scope: Scope
+  recognizedCallee: boolean
+}
+
+interface ExportBucket {
+  declarations: Declaration[]
+  ambiguous: boolean
 }
 
 interface ScriptAnalysis {
   file: string
   sourceFile: ts.SourceFile
-  local: Map<string, ConstantDeclaration>
-  exported: Map<string, ConstantDeclaration>
-  calls: ts.CallExpression[]
+  exported: Map<string, ExportBucket>
+  calls: MatchMediaCall[]
 }
 
 interface ResolvedCall {
@@ -53,16 +72,21 @@ interface ResolvedCall {
   reason: string | null
 }
 
-interface ResolveScope {
-  sourceFile: ts.SourceFile
-  exported: Map<string, ConstantDeclaration>
-  localByFile: Map<ts.SourceFile, Map<string, ConstantDeclaration>>
-}
+type ExportTable = Map<string, Declaration | 'ambiguous'>
 
 interface QueryResolution {
   query: string | null
   reason: string | null
 }
+
+type FunctionNode =
+  | ts.FunctionDeclaration
+  | ts.FunctionExpression
+  | ts.ArrowFunction
+  | ts.MethodDeclaration
+  | ts.ConstructorDeclaration
+  | ts.GetAccessorDeclaration
+  | ts.SetAccessorDeclaration
 
 function collectFiles(dir: string, extensions: Set<string>): string[] {
   return readdirSync(dir).flatMap(entry => {
@@ -141,41 +165,233 @@ function hasExportModifier(node: ts.Node): boolean {
     && (ts.getModifiers(node)?.some(modifier => modifier.kind === ts.SyntaxKind.ExportKeyword) ?? false)
 }
 
-function collectConstants(sourceFile: ts.SourceFile) {
-  const local = new Map<string, ConstantDeclaration>()
-  const exported = new Map<string, ConstantDeclaration>()
+function createScope(parent: Scope | null): Scope {
+  return { parent, declarations: new Map() }
+}
 
-  const visit = (node: ts.Node) => {
-    if (ts.isVariableDeclaration(node) && ts.isIdentifier(node.name) && node.initializer) {
-      const declaration: ConstantDeclaration = { sourceFile, initializer: node.initializer }
-      local.set(node.name.text, declaration)
-      const statement = node.parent.parent
-      if (ts.isVariableStatement(statement) && hasExportModifier(statement)) {
-        exported.set(node.name.text, declaration)
+function registerDeclaration(scope: Scope, name: string, declaration: Declaration): void {
+  const existing = scope.declarations.get(name)
+  if (existing) {
+    existing.push(declaration)
+    return
+  }
+  scope.declarations.set(name, [declaration])
+}
+
+function bindingNames(name: ts.BindingName): string[] {
+  if (ts.isIdentifier(name)) return [name.text]
+  return name.elements.flatMap(element => (
+    ts.isBindingElement(element) ? bindingNames(element.name) : []
+  ))
+}
+
+function declarationKindOf(list: ts.VariableDeclarationList): DeclarationKind {
+  const isConst = (list.flags & ts.NodeFlags.Const) !== 0 && (list.flags & ts.NodeFlags.Using) === 0
+  if (isConst) return 'const'
+  if ((list.flags & ts.NodeFlags.BlockScoped) === 0) return 'var'
+  return 'let'
+}
+
+function isFunctionNode(node: ts.Node): node is FunctionNode {
+  return ts.isFunctionDeclaration(node)
+    || ts.isFunctionExpression(node)
+    || ts.isArrowFunction(node)
+    || ts.isMethodDeclaration(node)
+    || ts.isConstructorDeclaration(node)
+    || ts.isGetAccessorDeclaration(node)
+    || ts.isSetAccessorDeclaration(node)
+}
+
+function addExportBucket(
+  exported: Map<string, ExportBucket>,
+  name: string,
+  declarations: Declaration[],
+): void {
+  const unique = [...new Set(declarations)]
+  const existing = exported.get(name)
+  if (!existing) {
+    exported.set(name, { declarations: unique, ambiguous: unique.length !== 1 })
+    return
+  }
+  const additions = unique.filter(declaration => !existing.declarations.includes(declaration))
+  existing.declarations.push(...additions)
+  existing.ambiguous = existing.ambiguous || unique.length !== 1 || existing.declarations.length > 1
+}
+
+function collectImportBindings(node: ts.ImportDeclaration, scope: Scope): void {
+  const clause = node.importClause
+  if (!clause || clause.isTypeOnly) return
+
+  const binding = (importedName: string): Declaration => ({
+    kind: 'import',
+    scope,
+    importedName,
+  })
+
+  if (clause.name) registerDeclaration(scope, clause.name.text, binding('default'))
+
+  const namedBindings = clause.namedBindings
+  if (!namedBindings) return
+  if (ts.isNamespaceImport(namedBindings)) {
+    registerDeclaration(scope, namedBindings.name.text, binding('*'))
+    return
+  }
+  for (const specifier of namedBindings.elements) {
+    if (specifier.isTypeOnly) continue
+    registerDeclaration(
+      scope,
+      specifier.name.text,
+      binding(specifier.propertyName?.text ?? specifier.name.text),
+    )
+  }
+}
+
+function analyzeScopes(sourceFile: ts.SourceFile): Pick<ScriptAnalysis, 'exported' | 'calls'> {
+  const rootScope = createScope(null)
+  const exported = new Map<string, ExportBucket>()
+  const calls: MatchMediaCall[] = []
+  const pendingExports: Array<{ localName: string; exportName: string }> = []
+
+  const collectVariable = (node: ts.VariableDeclaration, scope: Scope, functionScope: Scope): void => {
+    const list = node.parent
+    if (!ts.isVariableDeclarationList(list)) return
+    const kind = declarationKindOf(list)
+    const targetScope = kind === 'var' ? functionScope : scope
+    const statement = list.parent
+    const isModuleExport = targetScope === scope
+      && scope.parent === null
+      && ts.isVariableStatement(statement)
+      && hasExportModifier(statement)
+
+    if (ts.isIdentifier(node.name)) {
+      const declaration: Declaration = { kind, scope: targetScope, initializer: node.initializer }
+      registerDeclaration(targetScope, node.name.text, declaration)
+      if (isModuleExport) addExportBucket(exported, node.name.text, [declaration])
+      return
+    }
+
+    for (const name of bindingNames(node.name)) {
+      const declaration: Declaration = { kind: 'binding', scope: targetScope }
+      registerDeclaration(targetScope, name, declaration)
+      if (isModuleExport) addExportBucket(exported, name, [declaration])
+    }
+  }
+
+  const visitFunction = (node: FunctionNode, scope: Scope): void => {
+    const functionScope = createScope(scope)
+    if (ts.isFunctionExpression(node) && node.name) {
+      registerDeclaration(functionScope, node.name.text, { kind: 'binding', scope: functionScope })
+    }
+    for (const parameter of node.parameters) {
+      for (const name of bindingNames(parameter.name)) {
+        registerDeclaration(functionScope, name, { kind: 'parameter', scope: functionScope })
       }
     }
-    ts.forEachChild(node, visit)
+    for (const parameter of node.parameters) {
+      if (parameter.initializer) visit(parameter.initializer, functionScope, functionScope)
+    }
+    if (node.body) visit(node.body, functionScope, functionScope)
   }
 
-  visit(sourceFile)
-  return { local, exported }
-}
+  const visit = (node: ts.Node, scope: Scope, functionScope: Scope): void => {
+    if (ts.isImportDeclaration(node)) {
+      collectImportBindings(node, scope)
+      return
+    }
 
-function isMatchMediaCallee(expression: ts.Expression): boolean {
-  if (ts.isIdentifier(expression)) return expression.text === 'matchMedia'
-  return ts.isPropertyAccessExpression(expression) && expression.name.text === 'matchMedia'
-}
+    if (ts.isImportEqualsDeclaration(node)) {
+      registerDeclaration(scope, node.name.text, { kind: 'binding', scope })
+      return
+    }
 
-function collectMatchMediaCalls(sourceFile: ts.SourceFile): ts.CallExpression[] {
-  const calls: ts.CallExpression[] = []
+    if (ts.isVariableDeclaration(node)) {
+      collectVariable(node, scope, functionScope)
+      ts.forEachChild(node, child => visit(child, scope, functionScope))
+      return
+    }
 
-  const visit = (node: ts.Node) => {
-    if (ts.isCallExpression(node) && isMatchMediaCallee(node.expression)) calls.push(node)
-    ts.forEachChild(node, visit)
+    if (ts.isFunctionDeclaration(node)) {
+      if (node.name) registerDeclaration(scope, node.name.text, { kind: 'binding', scope })
+      visitFunction(node, scope)
+      return
+    }
+
+    if (isFunctionNode(node)) {
+      visitFunction(node, scope)
+      return
+    }
+
+    if (ts.isBlock(node) || ts.isModuleBlock(node) || ts.isCaseBlock(node)) {
+      const blockScope = createScope(scope)
+      ts.forEachChild(node, child => visit(child, blockScope, functionScope))
+      return
+    }
+
+    if (ts.isCatchClause(node)) {
+      const catchScope = createScope(scope)
+      if (node.variableDeclaration) {
+        for (const name of bindingNames(node.variableDeclaration.name)) {
+          registerDeclaration(catchScope, name, { kind: 'binding', scope: catchScope })
+        }
+      }
+      if (node.block) visit(node.block, catchScope, functionScope)
+      return
+    }
+
+    if (ts.isForStatement(node) || ts.isForOfStatement(node) || ts.isForInStatement(node)) {
+      const loopScope = createScope(scope)
+      ts.forEachChild(node, child => visit(child, loopScope, functionScope))
+      return
+    }
+
+    if (ts.isClassDeclaration(node)) {
+      if (node.name) registerDeclaration(scope, node.name.text, { kind: 'binding', scope })
+      const classScope = createScope(scope)
+      ts.forEachChild(node, child => visit(child, classScope, functionScope))
+      return
+    }
+
+    if (ts.isClassExpression(node)) {
+      const classScope = createScope(scope)
+      if (node.name) {
+        registerDeclaration(classScope, node.name.text, { kind: 'binding', scope: classScope })
+      }
+      ts.forEachChild(node, child => visit(child, classScope, functionScope))
+      return
+    }
+
+    if (ts.isExportDeclaration(node)) {
+      if (!node.moduleSpecifier && node.exportClause && ts.isNamedExports(node.exportClause)) {
+        for (const specifier of node.exportClause.elements) {
+          pendingExports.push({
+            localName: specifier.propertyName?.text ?? specifier.name.text,
+            exportName: specifier.name.text,
+          })
+        }
+      }
+      return
+    }
+
+    if (ts.isCallExpression(node)) {
+      const calleeText = node.expression.getText(sourceFile)
+      if (referencesMatchMedia(node.expression) || calleeText.includes('matchMedia')) {
+        calls.push({ node, scope, recognizedCallee: isMatchMediaCallee(node.expression) })
+      }
+      ts.forEachChild(node, child => visit(child, scope, functionScope))
+      return
+    }
+
+    ts.forEachChild(node, child => visit(child, scope, functionScope))
   }
 
-  visit(sourceFile)
-  return calls
+  visit(sourceFile, rootScope, rootScope)
+
+  for (const { localName, exportName } of pendingExports) {
+    const declarations = rootScope.declarations.get(localName) ?? []
+    addExportBucket(exported, exportName, declarations.length === 1 ? declarations : [])
+  }
+
+  return { exported, calls }
 }
 
 function analyzeSource(file: string, source: string): ScriptAnalysis {
@@ -186,8 +402,23 @@ function analyzeSource(file: string, source: string): ScriptAnalysis {
     true,
     file.endsWith('.tsx') ? ts.ScriptKind.TSX : ts.ScriptKind.TS,
   )
-  const { local, exported } = collectConstants(sourceFile)
-  return { file, sourceFile, local, exported, calls: collectMatchMediaCalls(sourceFile) }
+  const { exported, calls } = analyzeScopes(sourceFile)
+  return { file, sourceFile, exported, calls }
+}
+
+function buildExportTable(analyses: ScriptAnalysis[]): ExportTable {
+  const table: ExportTable = new Map()
+  for (const analysis of analyses) {
+    for (const [name, bucket] of analysis.exported) {
+      const [declaration] = bucket.declarations
+      if (bucket.ambiguous || bucket.declarations.length !== 1 || !declaration || table.has(name)) {
+        table.set(name, 'ambiguous')
+        continue
+      }
+      table.set(name, declaration)
+    }
+  }
+  return table
 }
 
 function unwrapExpression(node: ts.Expression): ts.Expression {
@@ -202,6 +433,34 @@ function unwrapExpression(node: ts.Expression): ts.Expression {
     current = current.expression
   }
   return current
+}
+
+function isMatchMediaCallee(expression: ts.Expression): boolean {
+  const callee = unwrapExpression(expression)
+  if (ts.isIdentifier(callee)) return callee.text === 'matchMedia'
+  if (ts.isPropertyAccessExpression(callee)) return callee.name.text === 'matchMedia'
+  if (ts.isElementAccessExpression(callee)) {
+    const argument = callee.argumentExpression
+    return !!argument && ts.isStringLiteralLike(argument) && argument.text === 'matchMedia'
+  }
+  return false
+}
+
+function referencesMatchMedia(expression: ts.Expression): boolean {
+  const callee = unwrapExpression(expression)
+  if (ts.isIdentifier(callee)) return callee.text === 'matchMedia'
+  if (ts.isPropertyAccessExpression(callee)) {
+    return callee.name.text === 'matchMedia' || referencesMatchMedia(callee.expression)
+  }
+  if (ts.isElementAccessExpression(callee)) {
+    const argument = callee.argumentExpression
+    const namesMatchMedia = !!argument
+      && ts.isStringLiteralLike(argument)
+      && argument.text === 'matchMedia'
+    return namesMatchMedia || referencesMatchMedia(callee.expression)
+  }
+  if (ts.isCallExpression(callee)) return referencesMatchMedia(callee.expression)
+  return false
 }
 
 function breakpointKeyOf(node: ts.Expression): string | null {
@@ -228,7 +487,64 @@ function breakpointKeyOf(node: ts.Expression): string | null {
   return null
 }
 
-function resolveQueryNode(node: ts.Expression, scope: ResolveScope, seen: Set<ts.Node>): QueryResolution {
+function findDeclaration(name: string, scope: Scope): Declaration[] | null {
+  let current: Scope | null = scope
+  while (current) {
+    const declarations = current.declarations.get(name)
+    if (declarations) return declarations
+    current = current.parent
+  }
+  return null
+}
+
+function resolveDeclaredQuery(
+  name: string,
+  declaration: Declaration,
+  exports: ExportTable,
+  seen: Set<ts.Node | Declaration>,
+): QueryResolution {
+  if (declaration.kind !== 'const') {
+    return { query: null, reason: `unsupported ${declaration.kind} declaration: ${name}` }
+  }
+  if (!declaration.initializer) {
+    return { query: null, reason: `constant without initializer: ${name}` }
+  }
+  if (seen.has(declaration.initializer)) {
+    return { query: null, reason: `cyclic constant: ${name}` }
+  }
+  seen.add(declaration.initializer)
+  return resolveQueryNode(declaration.initializer, declaration.scope, exports, seen)
+}
+
+function resolveImportedQuery(
+  name: string,
+  declaration: Declaration,
+  exports: ExportTable,
+  seen: Set<ts.Node | Declaration>,
+): QueryResolution {
+  const { importedName } = declaration
+  if (!importedName || importedName === '*' || importedName === 'default') {
+    return { query: null, reason: `unsupported import binding: ${name}` }
+  }
+  if (seen.has(declaration)) {
+    return { query: null, reason: `cyclic import: ${name}` }
+  }
+  seen.add(declaration)
+  const exported = exports.get(importedName)
+  if (!exported) return { query: null, reason: `unresolved import: ${name}` }
+  if (exported === 'ambiguous') return { query: null, reason: `ambiguous import: ${name}` }
+  if (exported.kind === 'import') {
+    return resolveImportedQuery(name, exported, exports, seen)
+  }
+  return resolveDeclaredQuery(name, exported, exports, seen)
+}
+
+function resolveQueryNode(
+  node: ts.Expression,
+  scope: Scope,
+  exports: ExportTable,
+  seen: Set<ts.Node | Declaration>,
+): QueryResolution {
   const expression = unwrapExpression(node)
 
   if (ts.isStringLiteralLike(expression)) return { query: expression.text, reason: null }
@@ -246,34 +562,35 @@ function resolveQueryNode(node: ts.Expression, scope: ResolveScope, seen: Set<ts
   }
 
   if (ts.isIdentifier(expression)) {
-    const declaration = scope.localByFile.get(scope.sourceFile)?.get(expression.text)
-      ?? scope.exported.get(expression.text)
-    if (!declaration) return { query: null, reason: `unresolved identifier: ${expression.text}` }
-    if (seen.has(declaration.initializer)) {
-      return { query: null, reason: `cyclic constant: ${expression.text}` }
+    const declarations = findDeclaration(expression.text, scope)
+    if (!declarations) return { query: null, reason: `unresolved identifier: ${expression.text}` }
+    const declaration = declarations.length === 1 ? declarations[0] : undefined
+    if (!declaration) return { query: null, reason: `ambiguous declaration: ${expression.text}` }
+    if (declaration.kind === 'import') {
+      return resolveImportedQuery(expression.text, declaration, exports, seen)
     }
-    seen.add(declaration.initializer)
-    return resolveQueryNode(declaration.initializer, { ...scope, sourceFile: declaration.sourceFile }, seen)
+    return resolveDeclaredQuery(expression.text, declaration, exports, seen)
   }
 
   return { query: null, reason: `unsupported expression: ${ts.SyntaxKind[expression.kind]}` }
 }
 
-function resolveCalls(
-  analysis: ScriptAnalysis,
-  exported: Map<string, ConstantDeclaration>,
-  localByFile: Map<ts.SourceFile, Map<string, ConstantDeclaration>>,
-): ResolvedCall[] {
-  return analysis.calls.map(call => {
-    const line = analysis.sourceFile.getLineAndCharacterOfPosition(call.getStart(analysis.sourceFile)).line + 1
-    const expression = call.getText(analysis.sourceFile)
-    const argument = call.arguments[0]
+function resolveCalls(analysis: ScriptAnalysis, exports: ExportTable): ResolvedCall[] {
+  return analysis.calls.map(({ node, scope, recognizedCallee }) => {
+    const line = analysis.sourceFile.getLineAndCharacterOfPosition(node.getStart(analysis.sourceFile)).line + 1
+    const expression = node.getText(analysis.sourceFile)
+    if (!recognizedCallee) {
+      return {
+        file: analysis.file,
+        line,
+        expression,
+        query: null,
+        reason: `unsupported matchMedia callee: ${node.expression.getText(analysis.sourceFile)}`,
+      }
+    }
+    const argument = node.arguments[0]
     if (!argument) return { file: analysis.file, line, expression, query: null, reason: 'missing argument' }
-    const resolution = resolveQueryNode(
-      argument,
-      { sourceFile: analysis.sourceFile, exported, localByFile },
-      new Set(),
-    )
+    const resolution = resolveQueryNode(argument, scope, exports, new Set())
     return { file: analysis.file, line, expression, query: resolution.query, reason: resolution.reason }
   })
 }
@@ -284,9 +601,14 @@ function collectProductionAnalyses(): ScriptAnalysis[] {
     .map(file => analyzeSource(file, readFileSync(file, 'utf8')))
 }
 
+function resolveFixture(sources: Record<string, string>): ResolvedCall[] {
+  const analyses = Object.entries(sources).map(([file, source]) => analyzeSource(file, source))
+  const exports = buildExportTable(analyses)
+  return analyses.flatMap(analysis => resolveCalls(analysis, exports))
+}
+
 function analyzeFixture(source: string): ResolvedCall[] {
-  const analysis = analyzeSource('fixture.ts', source)
-  return resolveCalls(analysis, new Map(), new Map([[analysis.sourceFile, analysis.local]]))
+  return resolveFixture({ 'fixture.ts': source })
 }
 
 function firstCall(source: string): ResolvedCall {
@@ -314,15 +636,8 @@ describe('responsive breakpoint policy', () => {
 
   it('audits every production matchMedia call', () => {
     const analyses = collectProductionAnalyses()
-    const exported = new Map<string, ConstantDeclaration>()
-    const localByFile = new Map<ts.SourceFile, Map<string, ConstantDeclaration>>()
-
-    for (const analysis of analyses) {
-      localByFile.set(analysis.sourceFile, analysis.local)
-      for (const [name, declaration] of analysis.exported) exported.set(name, declaration)
-    }
-
-    const calls = analyses.flatMap(analysis => resolveCalls(analysis, exported, localByFile))
+    const exported = buildExportTable(analyses)
+    const calls = analyses.flatMap(analysis => resolveCalls(analysis, exported))
     const unsupportedCalls = calls.filter(call => call.query === null)
     const supportedCalls = calls.filter((call): call is ResolvedCall & { query: string } => call.query !== null)
     const widthCalls = supportedCalls.filter(call => widthGroups(call.query.toLowerCase()).length > 0)
@@ -361,10 +676,36 @@ describe('responsive breakpoint policy', () => {
       .toContain('unsupported')
   })
 
+  it('recognizes every matchMedia callee form or fails closed', () => {
+    const parenthesizedCallee = firstCall("(window.matchMedia)('(width < 607px)')")
+    expect(parenthesizedCallee.query).toBe('(width < 607px)')
+    expect(auditMediaQuery(parenthesizedCallee.query ?? '')).toContain('unapproved-threshold')
+
+    const elementAccessCallee = firstCall("window['matchMedia']('(width < 606px)')")
+    expect(elementAccessCallee.query).toBe('(width < 606px)')
+    expect(auditMediaQuery(elementAccessCallee.query ?? '')).toContain('unapproved-threshold')
+
+    const nonNullCallee = firstCall("window.matchMedia!('(width < 609px)')")
+    expect(nonNullCallee.query).toBe('(width < 609px)')
+    expect(auditMediaQuery(nonNullCallee.query ?? '')).toContain('unapproved-threshold')
+
+    const assertedCallee = firstCall("(window.matchMedia as typeof window.matchMedia)('(width < 610px)')")
+    expect(assertedCallee.query).toBe('(width < 610px)')
+    expect(auditMediaQuery(assertedCallee.query ?? '')).toContain('unapproved-threshold')
+
+    expect(firstCall("foo.matchMedia.call(null, '(width < 608px)')").reason).toContain('unsupported')
+    expect(firstCall("matchMedia.apply(null, ['(width < 608px)'])").reason).toContain('unsupported')
+    expect(firstCall("(0, window.matchMedia)('(width < 611px)')").reason).toContain('unsupported')
+  })
+
   it('accepts literal, template, constant, parenthesized and as-const queries', () => {
     const literal = firstCall("window.matchMedia('(width < 640px)')")
     expect(literal.query).toBe('(width < 640px)')
     expect(auditMediaQuery(literal.query ?? '')).toEqual([])
+
+    const optionalCallee = firstCall("window.matchMedia?.('(width < 640px)')")
+    expect(optionalCallee.query).toBe('(width < 640px)')
+    expect(auditMediaQuery(optionalCallee.query ?? '')).toEqual([])
 
     const template = firstCall('window.matchMedia(`(width < ${BREAKPOINTS.sm}px)`)')
     expect(template.query).toBe('(width < ${BREAKPOINTS.sm}px)')
@@ -387,6 +728,95 @@ describe('responsive breakpoint policy', () => {
     )
     expect(constant.query).toBe('(width >= ${BREAKPOINTS.lg}px)')
     expect(auditMediaQuery(constant.query ?? '')).toEqual([])
+  })
+
+  it('resolves constants lexically and fails closed on mutable, shadowed or ambiguous bindings', () => {
+    const scoped = resolveFixture({
+      'fixture.ts': [
+        'export function narrow() {',
+        "  const QUERY = '(width < 601px)'",
+        '  return window.matchMedia(QUERY).matches',
+        '}',
+        'export function wide() {',
+        "  const QUERY = '(width < 640px)'",
+        '  return window.matchMedia(QUERY).matches',
+        '}',
+      ].join('\n'),
+    })
+    expect(scoped.map(call => call.query)).toEqual(['(width < 601px)', '(width < 640px)'])
+    expect(auditMediaQuery(scoped[0]?.query ?? '')).toContain('unapproved-threshold')
+
+    expect(firstCall("let mutableQuery = '(width < 640px)'; window.matchMedia(mutableQuery)").reason)
+      .toContain('unsupported')
+    expect(firstCall("let mutableQuery = '(width < 640px)'; mutableQuery = '(width < 601px)'; window.matchMedia(mutableQuery)").reason)
+      .toContain('unsupported')
+    expect(firstCall("var legacyQuery = '(width < 640px)'; window.matchMedia(legacyQuery)").reason)
+      .toContain('unsupported')
+
+    const parameterShadow = firstCall(
+      "const QUERY = '(width < 640px)'; function check(QUERY: string) { return window.matchMedia(QUERY) }",
+    )
+    expect(parameterShadow.reason).toContain('unsupported')
+
+    const catchShadow = firstCall(
+      "const QUERY = '(width < 640px)'; try {} catch (QUERY) { window.matchMedia(QUERY) }",
+    )
+    expect(catchShadow.reason).toContain('unsupported')
+
+    const blockShadow = firstCall(
+      "const QUERY = '(width < 640px)'; function check() { const QUERY = '(width < 601px)'; return window.matchMedia(QUERY) }",
+    )
+    expect(blockShadow.query).toBe('(width < 601px)')
+    expect(auditMediaQuery(blockShadow.query ?? '')).toContain('unapproved-threshold')
+
+    expect(firstCall("const QUERY = '(width < 640px)'; const QUERY = '(width < 601px)'; window.matchMedia(QUERY)").reason)
+      .toContain('ambiguous')
+  })
+
+  it('resolves imported constants through a unique export table or fails closed', () => {
+    const imported = resolveFixture({
+      'remote.ts': "export const QUERY = '(width < 640px)'",
+      'importer.ts': "import { QUERY } from './remote'; window.matchMedia(QUERY)",
+    })
+    expect(imported).toHaveLength(1)
+    expect(imported[0]?.query).toBe('(width < 640px)')
+
+    const aliased = resolveFixture({
+      'remote.ts': "const QUERY = '(width < 640px)'; export { QUERY as REMOTE_QUERY }",
+      'importer.ts': "import { REMOTE_QUERY } from './remote'; window.matchMedia(REMOTE_QUERY)",
+    })
+    expect(aliased[0]?.query).toBe('(width < 640px)')
+
+    const reExported = resolveFixture({
+      'remote.ts': "export const QUERY = '(width < 640px)'; export { QUERY }",
+      'importer.ts': "import { QUERY } from './remote'; window.matchMedia(QUERY)",
+    })
+    expect(reExported[0]?.query).toBe('(width < 640px)')
+
+    const ambiguousImports = resolveFixture({
+      'one.ts': "export const QUERY = '(width < 640px)'",
+      'two.ts': "export const QUERY = '(width < 601px)'",
+      'importer.ts': "import { QUERY } from './one'; window.matchMedia(QUERY)",
+    })
+    expect(ambiguousImports).toHaveLength(1)
+    expect(ambiguousImports[0]?.reason).toContain('ambiguous')
+
+    const mutableImport = resolveFixture({
+      'remote.ts': "export let QUERY = '(width < 640px)'",
+      'importer.ts': "import { QUERY } from './remote'; window.matchMedia(QUERY)",
+    })
+    expect(mutableImport[0]?.reason).toContain('unsupported')
+
+    const missingImport = resolveFixture({
+      'importer.ts': "import { QUERY } from './missing'; window.matchMedia(QUERY)",
+    })
+    expect(missingImport[0]?.reason).toContain('unresolved import')
+
+    const shadowedImport = resolveFixture({
+      'remote.ts': "export const QUERY = '(width < 640px)'",
+      'importer.ts': "import { QUERY } from './remote'; function check(QUERY: string) { window.matchMedia(QUERY) }",
+    })
+    expect(shadowedImport[0]?.reason).toContain('unsupported')
   })
 
   it('rejects legacy, non-range, unregistered, nested and uppercase queries', () => {
