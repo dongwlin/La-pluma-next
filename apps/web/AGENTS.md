@@ -33,7 +33,7 @@
 
 ## UI、样式与 PWA
 
-- 通用控件从 `@/shared/ui` 复用；新增或调整公共组件时同步公开导出和组件 API 文档，不在页面复制已有控件。
+- 通用控件从 `@/shared/ui` 复用；新增或调整公共组件时同步公开导出和组件 API 文档，不在页面复制已有控件。高度受限的表单、选择器与发现弹窗使用 shared `DialogFrame` / `DialogBody` / `DialogFrameFooter`，不复制标题栏、关闭按钮与滚动体壳层；无高度上限的简单弹窗仍可直接组合生成原语。
 - 页面根统一使用 `PageShell`；壳层、样式与测试通过 `data-region` / `data-page-*` 定位，不恢复 legacy 页面类或属性。页面不自建标题或页头。
 - 避免不必要的辅助标签与说明。让布局本身发挥解释作用。
 - 全局语义 token 与层序归 `src/styles/`；`index.css`、`layout.css`、`ios-theme.css` 不接收页面选择器。领域样式置于 `features/<domain>/styles/`，由域入口导入并收进 `@layer page`。

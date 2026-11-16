@@ -387,8 +387,12 @@ La Pluma Next 是一个高密度的本地自动化控制台，不是营销页面
 - **Shared State:** 两端复用 `Layout` 的 URL 路由和 active 状态；不要按 viewport 维护第二套导航状态，也不要让桌面侧栏样式扩散到移动底栏或“更多”Sheet。
 
 ### Dialog / Sheet
-- **Sizes:** 组合生成原语时按内容选择 `sm:max-w-md`、`sm:max-w-lg`、`sm:max-w-2xl`、`sm:max-w-4xl`；确认框使用 `AlertDialog` 的默认宽度。
+- **Frame:** 高度受限的表单、选择器与发现弹窗使用 `shared/components` 的 `DialogFrame`、`DialogBody` 与 `DialogFrameFooter`，不复制标题栏、关闭按钮、滚动体与页脚壳层；无高度上限的简单弹窗仍直接组合生成原语。
+- **Sizes:** `DialogFrame` 使用 `md`、`lg`、`4xl` 三档宽度；其他生成原语组合按内容选择 `sm:max-w-md`、`sm:max-w-lg`、`sm:max-w-2xl`、`sm:max-w-4xl`，确认框使用 `AlertDialog` 的默认宽度。
 - **Surface:** 使用 shadcn 生成物的 `bg-popover`、ring 与阴影；遮罩由 `DialogOverlay` 或 `Sheet` 原语提供。
+- **Height / Scroll:** 高度受限弹窗的最大高度只取自 `--layout-dialog-max-height`，标题栏与页脚固定在滚动内容之外，只有 `DialogBody` 纵向滚动；不手写视口高度或另建滚动宿主。
+- **Close:** 标题栏关闭按钮统一使用 `size="icon"`、`variant="ghost"`、`aria-label="关闭对话框"` 与 `X size-4`；保存或提交等待期间通过 `closeDisabled` 同时禁用按钮并拒绝 Escape 与遮罩关闭。
+- **Safe area:** 弹层最大高度 token 已预留 2rem 视口边距；移动端软键盘与真机 safe-area 按 Viewport Contract 的声明处理，不在弹窗内再叠 `env(safe-area-inset-*)`。
 - **Behavior:** 焦点陷阱、背景 `aria-hidden`、Esc 关闭、打开时锁定滚动、关闭后归还焦点由 Base UI 原语处理，页面不要自行实现；嵌套弹层按 React 父子关系组合。
 - **AlertDialog:** 删除、清空等不可逆操作必须使用 `AlertDialog` 或应用层 `ConfirmAlertDialog`，新代码不得使用 `window.confirm`。`onConfirm` 可以返回 Promise；返回 `false` 或抛出错误时弹窗保持打开，错误在弹窗内展示。
 
