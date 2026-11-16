@@ -12,7 +12,9 @@ const VIEWPORT_CONTENT_RE = /\bcontent=["']([^"']*)["']/i
 const BOOT_STYLE_RE = /<style id="la-pluma-boot-style">([\s\S]*?)<\/style>/
 const CUSTOM_PROPERTY_RE = /(--[\w-]+)\s*:\s*([^;]+);/g
 const DVH_SUPPORT_RE = /@supports\s+not\s*\(\s*height:\s*100dvh\s*\)/i
+const LVH_SUPPORT_RE = /@supports\s+not\s*\(\s*height:\s*100lvh\s*\)/i
 const STANDALONE_MEDIA_RE = /@media[^{]*display-mode\s*:\s*standalone\b/i
+const STANDALONE_CLASS_RE = /html\.la-pluma-standalone\s*\{/i
 const VIEWPORT_UNIT_RE = /(?<![\w-])(?:\d+(?:\.\d+)?(?:dvh|svh|lvh|vh)|(?:min-|max-)?[hw]-(?:dvh|svh|lvh))\b/g
 
 const DIALOG_MAX_HEIGHT_TOKEN = '--layout-dialog-max-height'
@@ -34,7 +36,7 @@ const BARE_VIEWPORT_UNIT_ALLOWLIST = new Map([
   ['src/styles/ios-theme.css', 'more-sheet 的 78dvh 局部例外，带 78vh 前置兜底'],
   ['src/features/automation/styles/automation.css', '自动化配置面板沿用 --layout-viewport-height 的既有 fallback'],
   ['src/features/logs/styles/logs.css', '日志控制台使用 svh 的页内固定高度，带 vh 前置兜底'],
-  ['src/features/device-mirror/components/ScrcpyDeviceView.tsx', '沉浸设备画面视口由设备画面批次处理，DESIGN 已登记例外'],
+  ['src/features/device-mirror/components/ScrcpyDeviceView.tsx', '沉浸设备画面按自身全屏契约使用视口高度，属 DESIGN 登记的局部例外'],
   ['src/shared/ui/sidebar.tsx', 'shadcn 生成文件按上游保留'],
 ])
 
@@ -84,6 +86,51 @@ function referencesMaxHeight(source: string, token: string): boolean {
   return new RegExp(`\\bmax-h-[^\\s"']*${token}\\b`).test(source)
 }
 
+function stripComments(source: string): string {
+  let result = ''
+  let index = 0
+  let quote: '"' | "'" | '`' | null = null
+  while (index < source.length) {
+    const char = source[index]
+    const next = source[index + 1]
+    if (char === undefined) break
+    if (quote) {
+      result += char
+      if (char === '\\' && next !== undefined) {
+        result += next
+        index += 2
+        continue
+      }
+      if (char === quote) quote = null
+      index += 1
+      continue
+    }
+    if (char === '"' || char === "'" || char === '`') {
+      quote = char
+      result += char
+      index += 1
+      continue
+    }
+    if (char === '/' && next === '/') {
+      const end = source.indexOf('\n', index)
+      if (end === -1) return result
+      result += '\n'
+      index = end + 1
+      continue
+    }
+    if (char === '/' && next === '*') {
+      const end = source.indexOf('*/', index + 2)
+      if (end === -1) return result
+      result += '\n'
+      index = end + 2
+      continue
+    }
+    result += char
+    index += 1
+  }
+  return result
+}
+
 function blockContents(source: string, startIndex: number): string {
   const open = source.indexOf('{', startIndex)
   if (open === -1) throw new Error(`missing block after index ${startIndex}`)
@@ -96,6 +143,10 @@ function blockContents(source: string, startIndex: number): string {
     }
   }
   throw new Error(`unbalanced block after index ${startIndex}`)
+}
+
+function blockValues(source: string, startIndex: number, token: string): string[] {
+  return declarationsOf(blockContents(source, startIndex), token).map(({ value }) => value)
 }
 
 function readIndexHtml(): string {
@@ -128,26 +179,51 @@ describe('viewport contract', () => {
     const layoutCss = readSource('src/styles/layout.css')
     const bootStyle = readBootStyle()
 
-    const layoutSupportIndex = layoutCss.search(DVH_SUPPORT_RE)
-    const standaloneIndex = layoutCss.search(STANDALONE_MEDIA_RE)
-    expect(layoutSupportIndex).toBeGreaterThan(-1)
-    expect(standaloneIndex).toBeGreaterThan(-1)
-    expect(layoutSupportIndex).toBeLessThan(standaloneIndex)
+    const layoutDvhSupportIndex = layoutCss.search(DVH_SUPPORT_RE)
+    const layoutStandaloneIndex = layoutCss.search(STANDALONE_MEDIA_RE)
+    const layoutStandaloneClassIndex = layoutCss.search(STANDALONE_CLASS_RE)
+    const layoutLvhSupportIndex = layoutCss.search(LVH_SUPPORT_RE)
+    expect(layoutDvhSupportIndex).toBeGreaterThan(-1)
+    expect(layoutStandaloneIndex).toBeGreaterThan(layoutDvhSupportIndex)
+    expect(layoutStandaloneClassIndex).toBeGreaterThan(layoutStandaloneIndex)
+    expect(layoutLvhSupportIndex).toBeGreaterThan(layoutStandaloneClassIndex)
 
-    const bootSupportIndex = bootStyle.search(DVH_SUPPORT_RE)
+    const bootDvhSupportIndex = bootStyle.search(DVH_SUPPORT_RE)
     const bootStandaloneIndex = bootStyle.search(STANDALONE_MEDIA_RE)
-    expect(bootSupportIndex).toBeGreaterThan(-1)
-    expect(bootStandaloneIndex).toBeGreaterThan(-1)
-    expect(bootSupportIndex).toBeLessThan(bootStandaloneIndex)
+    const bootStandaloneClassIndex = bootStyle.search(STANDALONE_CLASS_RE)
+    const bootLvhSupportIndex = bootStyle.search(LVH_SUPPORT_RE)
+    expect(bootDvhSupportIndex).toBeGreaterThan(-1)
+    expect(bootStandaloneIndex).toBeGreaterThan(bootDvhSupportIndex)
+    expect(bootStandaloneClassIndex).toBeGreaterThan(bootStandaloneIndex)
+    expect(bootLvhSupportIndex).toBeGreaterThan(bootStandaloneClassIndex)
 
     expect(declarationsOf(layoutCss, '--layout-viewport-height').map(({ value }) => value))
       .toEqual(['100dvh', '100vh', '100lvh', '100lvh', '100vh', '100vh'])
-    expect(declarationsOf(blockContents(layoutCss, layoutSupportIndex), '--layout-viewport-height')
-      .map(({ value }) => value)).toEqual(['100vh'])
+    expect(blockValues(layoutCss, layoutDvhSupportIndex, '--layout-viewport-height')).toEqual(['100vh'])
+    expect(blockValues(layoutCss, layoutStandaloneIndex, '--layout-viewport-height')).toEqual(['100lvh'])
+    expect(blockValues(layoutCss, layoutStandaloneClassIndex, '--layout-viewport-height')).toEqual(['100lvh'])
+
+    const layoutLvhSupport = blockContents(layoutCss, layoutLvhSupportIndex)
+    const layoutFallbackMediaIndex = layoutLvhSupport.search(STANDALONE_MEDIA_RE)
+    const layoutFallbackClassIndex = layoutLvhSupport.search(STANDALONE_CLASS_RE)
+    expect(layoutFallbackMediaIndex).toBeGreaterThan(-1)
+    expect(layoutFallbackClassIndex).toBeGreaterThan(-1)
+    expect(blockValues(layoutLvhSupport, layoutFallbackMediaIndex, '--layout-viewport-height')).toEqual(['100vh'])
+    expect(blockValues(layoutLvhSupport, layoutFallbackClassIndex, '--layout-viewport-height')).toEqual(['100vh'])
+
     expect(declarationsOf(bootStyle, '--boot-viewport-height').map(({ value }) => value))
       .toEqual(['100dvh', '100vh', '100lvh', '100lvh', '100vh', '100vh'])
-    expect(declarationsOf(blockContents(bootStyle, bootSupportIndex), '--boot-viewport-height')
-      .map(({ value }) => value)).toEqual(['100vh'])
+    expect(blockValues(bootStyle, bootDvhSupportIndex, '--boot-viewport-height')).toEqual(['100vh'])
+    expect(blockValues(bootStyle, bootStandaloneIndex, '--boot-viewport-height')).toEqual(['100lvh'])
+    expect(blockValues(bootStyle, bootStandaloneClassIndex, '--boot-viewport-height')).toEqual(['100lvh'])
+
+    const bootLvhSupport = blockContents(bootStyle, bootLvhSupportIndex)
+    const bootFallbackMediaIndex = bootLvhSupport.search(STANDALONE_MEDIA_RE)
+    const bootFallbackClassIndex = bootLvhSupport.search(STANDALONE_CLASS_RE)
+    expect(bootFallbackMediaIndex).toBeGreaterThan(-1)
+    expect(bootFallbackClassIndex).toBeGreaterThan(-1)
+    expect(blockValues(bootLvhSupport, bootFallbackMediaIndex, '--boot-viewport-height')).toEqual(['100vh'])
+    expect(blockValues(bootLvhSupport, bootFallbackClassIndex, '--boot-viewport-height')).toEqual(['100vh'])
   })
 
   it('defines dialog and sheet max heights with vh fallbacks', () => {
@@ -165,9 +241,9 @@ describe('viewport contract', () => {
       .map(({ value }) => value)).toEqual(['85vh'])
   })
 
-  it('routes dialogs, the mobile sheet and the log console through the contract', () => {
+  it('source contract guard: routes dialogs, the mobile sheet and the log console through the contract', () => {
     const problems = DIALOG_FILES.flatMap(file => {
-      const source = readSource(file)
+      const source = stripComments(readSource(file))
       return [
         ...(source.includes('100dvh') ? [`${file}: 仍包含 100dvh 字面量`] : []),
         ...(referencesMaxHeight(source, DIALOG_MAX_HEIGHT_TOKEN)
@@ -176,25 +252,25 @@ describe('viewport contract', () => {
       ]
     })
 
-    const detailLayer = readSource('src/features/combat/components/CombatCopilotDetailLayer.tsx')
+    const detailLayer = stripComments(readSource('src/features/combat/components/CombatCopilotDetailLayer.tsx'))
     if (detailLayer.includes('85dvh')) problems.push('CombatCopilotDetailLayer.tsx: 仍包含 85dvh 字面量')
     if (!referencesMaxHeight(detailLayer, SHEET_MAX_HEIGHT_TOKEN)) {
       problems.push(`CombatCopilotDetailLayer.tsx: 缺少引用 ${SHEET_MAX_HEIGHT_TOKEN} 的 max-h 工具类`)
     }
 
-    const logsCss = readSource('src/features/logs/styles/logs.css')
+    const logsCss = stripComments(readSource('src/features/logs/styles/logs.css'))
     if (logsCss.includes('55dvh')) problems.push('logs.css: 日志控制台仍使用 55dvh')
     if (!logsCss.includes('55vh')) problems.push('logs.css: 日志控制台缺少 55vh 兜底')
     if (!logsCss.includes('55svh')) problems.push('logs.css: 日志控制台未使用 55svh')
 
-    const iosThemeCss = readSource('src/styles/ios-theme.css')
+    const iosThemeCss = stripComments(readSource('src/styles/ios-theme.css'))
     if (!iosThemeCss.includes('min(28rem, 78vh)')) problems.push('ios-theme.css: more-sheet 缺少 78vh 兜底')
     if (!iosThemeCss.includes('min(28rem, 78dvh)')) problems.push('ios-theme.css: more-sheet 未使用 78dvh')
 
     expect(problems).toEqual([])
   })
 
-  it('keeps bare viewport units on declared owners', () => {
+  it('keeps bare viewport units registered per file (new units require registration)', () => {
     const missingOwners = [...BARE_VIEWPORT_UNIT_ALLOWLIST.keys()]
       .filter(file => !existsSync(join(WEB_ROOT, file)))
     expect(missingOwners).toEqual([])
@@ -209,6 +285,6 @@ describe('viewport contract', () => {
       ))
     })
 
-    expect(violations, '裸视口单位必须归入壳层 token 或登记局部例外').toEqual([])
+    expect(violations, '裸视口单位按文件登记；新增使用单位必须登记到 BARE_VIEWPORT_UNIT_ALLOWLIST').toEqual([])
   })
 })
