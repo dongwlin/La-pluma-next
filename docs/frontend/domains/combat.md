@@ -76,7 +76,7 @@ CombatTasks（app-page > app-stack-section > CombatWorkspace）
 ```
 
 - 模式 tab 使用 `combat-mode-tab-*` 与当前渲染面板的 `combat-mode-panel-*` 建立 `aria-controls`/`aria-labelledby` 配对；默认卸载的隐藏模式不输出 `aria-controls`，因此每个渲染出的 `aria-controls` 都指向存在的元素。方向键/Home/End 只移动 roving focus，Enter/Space 或点击才切换。`copilot` 与特殊任务面板使用默认卸载，切换作业类型时卡片 DOM 卸载；活动状态仍只由 `CombatWorkspace` 的 `activeCombatMode` 决定。
-- 工作区网格与设备画面由 `DeviceMonitorLayout(standard)` 持有：模式导航、执行进度与当前模式面板进入 main 列，`DeviceMonitorPanel` 位于 monitor 列；页面不再声明 `combat-workspace-grid` 或 monitor aside，设备画面类名与材质归 device-mirror 域。
+- 工作区网格与设备画面由 `DeviceMonitorLayout(standard)` 持有：模式导航、执行进度与当前模式面板进入 main 列，`DeviceMonitorPanel` 位于 monitor 列；页面不再声明 `combat-workspace-grid` 或 monitor aside，设备画面类名与材质归 device-mirror 域。作业页改用 `DeviceMonitorLayout(standard)` 后，standard monitor 在内容宽度超过 48rem 且视口小于 1360px 时使用 `max-width: 48rem` 并居中；这是标准化后的有意变化，1280 视口已有几何断言覆盖。
 
 | 状态 | 所有者 | 切换作业类型 | Activity 隐藏/恢复 | 真正卸载/刷新 |
 | --- | --- | --- | --- | --- |
