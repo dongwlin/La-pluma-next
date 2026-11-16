@@ -40,6 +40,7 @@ describe('Loading', () => {
   it('falls back to the screen-reader loading label when no text is provided', async () => {
     await act(async () => root.render(<Loading />))
 
-    expect(container.querySelector('.sr-only')?.textContent).toBe('加载中')
+    const status = container.querySelector<HTMLElement>('[role="status"]')
+    expect(status?.textContent).toBe('加载中')
   })
 })

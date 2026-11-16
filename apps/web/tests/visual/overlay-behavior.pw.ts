@@ -347,7 +347,15 @@ test.describe('feature overlay behavior', () => {
       await sort.scrollIntoViewIfNeeded()
       await sort.click()
       const content = page.locator('[data-slot="dropdown-menu-content"]')
-      await page.waitForTimeout(200)
+      await expect(content).toBeVisible()
+      await expect.poll(async () => {
+        const [sortBox, box] = await Promise.all([sort.boundingBox(), content.boundingBox()])
+        if (!sortBox || !box) return false
+        return Math.round(box.width) === 128
+          && Math.abs((box.x + box.width) - (sortBox.x + sortBox.width)) <= 1
+          && box.x >= 0
+          && box.x + box.width <= page.viewportSize()!.width
+      }).toBe(true)
       const [sortBox, box] = await Promise.all([sort.boundingBox(), content.boundingBox()])
       expect(sortBox).not.toBeNull()
       expect(box).not.toBeNull()
