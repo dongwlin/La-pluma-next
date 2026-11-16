@@ -32,6 +32,9 @@ export default function Layout({ activeTab, children }: LayoutProps) {
   const navigate = useNavigate()
   const { pathname } = useLocation()
   const pageTitle = resolvePageTitle(pathname, activeTab)
+  const mainRef = useRef<HTMLElement>(null)
+  const announcementRef = useRef<HTMLDivElement>(null)
+  const previousPathname = useRef(pathname)
   const scrollPositions = useRef(new Map<AppTab, number>())
   const activeTabRef = useRef<AppTab>(activeTab)
   const restoreFrame = useRef<number | null>(null)
@@ -141,13 +144,44 @@ export default function Layout({ activeTab, children }: LayoutProps) {
     document.title = `${pageTitle} · La Pluma Next`
   }, [pageTitle])
 
+  useEffect(() => {
+    if (previousPathname.current === pathname) return
+    previousPathname.current = pathname
+    if (announcementRef.current) announcementRef.current.textContent = `已切换到${pageTitle}`
+
+    const focused = document.activeElement
+    if (focused instanceof Element && focused.closest('[role="dialog"], [role="alertdialog"]')) return
+    mainRef.current?.focus({ preventScroll: true })
+  }, [pathname, pageTitle])
+
   return (
     <div className="view la-pluma-view">
       <div className="page la-pluma-page">
+        <a className="la-pluma-skip-link" href="#main-content">跳到主要内容</a>
+        <a className="la-pluma-skip-link la-pluma-skip-link-desktop" href="#app-sidebar-navigation">
+          跳到主导航
+        </a>
+        <a className="la-pluma-skip-link la-pluma-skip-link-mobile" href="#app-tabbar-navigation">
+          跳到主导航
+        </a>
+        <div
+          ref={announcementRef}
+          id="page-announcement"
+          className="sr-only"
+          role="status"
+          aria-live="polite"
+          aria-atomic="true"
+        />
         <div className="la-pluma-page-body">
           <AppNavbar pageTitle={pageTitle} />
           <AppSidebar activeTab={activeTab} onNavigate={navigateToTab} />
-          <main className="la-pluma-scroll-host" data-region="scroll">
+          <main
+            ref={mainRef}
+            id="main-content"
+            className="la-pluma-scroll-host"
+            data-region="scroll"
+            tabIndex={-1}
+          >
             <div className="la-pluma-content" data-region="page-content">
               {children}
             </div>

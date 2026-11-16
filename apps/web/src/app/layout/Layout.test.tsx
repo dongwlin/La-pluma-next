@@ -411,6 +411,59 @@ describe('top-level application navigation', () => {
     expect(document.title).toBe('日常 · La Pluma Next')
   })
 
+  it('exposes skip links, a focusable main region, and a permanent page announcement', async () => {
+    await renderLayout()
+
+    const contentSkipLink = container.querySelector<HTMLAnchorElement>('a[href="#main-content"]')!
+    expect(contentSkipLink.textContent).toBe('跳到主要内容')
+
+    const main = container.querySelector<HTMLElement>('#main-content')!
+    expect(main.tagName).toBe('MAIN')
+    expect(main.getAttribute('tabindex')).toBe('-1')
+
+    const sidebarSkipLink = container.querySelector<HTMLAnchorElement>('a[href="#app-sidebar-navigation"]')!
+    const tabbarSkipLink = container.querySelector<HTMLAnchorElement>('a[href="#app-tabbar-navigation"]')!
+    expect(sidebarSkipLink.textContent?.trim()).toBe('跳到主导航')
+    expect(tabbarSkipLink.textContent?.trim()).toBe('跳到主导航')
+    expect(container.querySelector('#app-sidebar-navigation')?.getAttribute('tabindex')).toBe('-1')
+    expect(container.querySelector('#app-tabbar-navigation')?.getAttribute('tabindex')).toBe('-1')
+
+    const announcement = container.querySelector<HTMLElement>('#page-announcement')!
+    expect(announcement.getAttribute('role')).toBe('status')
+    expect(announcement.getAttribute('aria-live')).toBe('polite')
+    expect(announcement.getAttribute('aria-atomic')).toBe('true')
+    expect(announcement.textContent).toBe('')
+  })
+
+  it('moves focus to main content and announces the page after a route change', async () => {
+    await renderLayout()
+    const main = container.querySelector<HTMLElement>('#main-content')!
+    expect(document.activeElement).not.toBe(main)
+
+    await act(async () => desktopLink('automation').click())
+
+    expect(document.activeElement).toBe(main)
+    expect(container.querySelector('#page-announcement')?.textContent).toBe('已切换到日常')
+    expect(document.title).toBe('日常 · La Pluma Next')
+  })
+
+  it('keeps focus inside an open dialog when navigation starts from it', async () => {
+    await renderLayout()
+    const dialog = document.createElement('div')
+    dialog.setAttribute('role', 'dialog')
+    const dialogAction = document.createElement('button')
+    dialogAction.type = 'button'
+    dialogAction.textContent = 'dialog-action'
+    dialog.append(dialogAction)
+    container.append(dialog)
+    dialogAction.focus()
+
+    await act(async () => desktopLink('automation').click())
+
+    expect(document.activeElement).toBe(dialogAction)
+    expect(container.querySelector('#page-announcement')?.textContent).toBe('已切换到日常')
+  })
+
   it('labels the theme gallery route from the same page title source', async () => {
     window.history.replaceState({}, '', '/dev/theme-gallery')
     await renderLayout()
@@ -540,6 +593,6 @@ describe('top-level application navigation', () => {
     expect(activeTabLabel()).toBe('roguelike')
     await act(async () => new Promise(resolve => { window.setTimeout(resolve, 0) }))
     expect(moreSheet()).toBeNull()
-    expect(document.activeElement).toBe(trigger)
+    expect(document.activeElement).toBe(container.querySelector('#main-content'))
   })
 })

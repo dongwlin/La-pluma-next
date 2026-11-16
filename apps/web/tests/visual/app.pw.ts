@@ -130,6 +130,57 @@ test.describe('app tabs', () => {
     await expectNoBrowserErrors(page)
   })
 
+  test('skip links move focus to main content and the active navigation', async ({ page }) => {
+    const environment = await installDeterministicEnvironment(page)
+
+    await page.goto('/app/dashboard')
+    await waitForPageReady(page, 'dashboard')
+
+    await page.keyboard.press('Tab')
+    const contentSkipLink = page.getByRole('link', { name: '跳到主要内容', exact: true })
+    await expect(contentSkipLink).toBeFocused()
+    await expect(contentSkipLink).toBeInViewport()
+
+    await page.keyboard.press('Enter')
+    await expect(page.locator('[data-region="scroll"]')).toBeFocused()
+
+    await page.goto('/app/dashboard')
+    await waitForPageReady(page, 'dashboard')
+
+    await page.keyboard.press('Tab')
+    await page.keyboard.press('Tab')
+    const navigationSkipLink = page.getByRole('link', { name: '跳到主导航', exact: true })
+    await expect(navigationSkipLink).toBeFocused()
+    await page.keyboard.press('Enter')
+    const navigationTarget = test.info().project.name === 'desktop'
+      ? '#app-sidebar-navigation'
+      : '#app-tabbar-navigation'
+    await expect(page.locator(navigationTarget)).toBeFocused()
+
+    environment.assertNoUnmatchedApi()
+    await expectNoBrowserErrors(page)
+  })
+
+  test('route focus moves to main content and announces the new page', async ({ page }) => {
+    const environment = await installDeterministicEnvironment(page)
+
+    await page.goto('/app/dashboard')
+    await waitForPageReady(page, 'dashboard')
+
+    const navButton = test.info().project.name === 'desktop'
+      ? page.locator('nav[aria-label="工作台"] button[data-app-tab="automation"]')
+      : page.locator('footer[data-region="tabbar"] button[data-app-tab="automation"]')
+    await navButton.click()
+
+    await expect(page).toHaveURL(/\/app\/automation$/)
+    await expect(page.locator('#main-content')).toBeFocused()
+    await expect(page.locator('#page-announcement')).toHaveText('已切换到日常')
+    await expect(page).toHaveTitle('日常 · La Pluma Next')
+
+    environment.assertNoUnmatchedApi()
+    await expectNoBrowserErrors(page)
+  })
+
   test('page title starts at the content leading edge', async ({ page }) => {
     const environment = await installDeterministicEnvironment(page)
 
