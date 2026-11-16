@@ -76,7 +76,7 @@ export default function AutomationTaskPicker({
             <DropdownMenuItem
               key={task.id}
               onClick={() => selectTask(task)}
-              className="automation-task-picker-option grid gap-2 rounded-none px-2 py-1.5 text-left"
+              className="automation-task-picker-option grid cursor-pointer gap-2 rounded-none px-2 py-1.5 text-left"
             >
               <span>{task.icon}</span>
               <strong>{task.name}</strong>

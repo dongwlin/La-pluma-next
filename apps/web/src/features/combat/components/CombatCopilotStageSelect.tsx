@@ -94,7 +94,7 @@ export default function CombatCopilotStageSelect({
           sideOffset={8}
           collisionPadding={12}
           aria-label="选择关卡"
-          className="combat-copilot-discovery-stage-panel grid w-(--combat-stage-panel-width) gap-2 p-3 shadow-(--combat-stage-panel-shadow) ring-0"
+          className="combat-copilot-discovery-stage-panel grid w-(--combat-stage-panel-width) gap-2 bg-card p-3 shadow-(--combat-stage-panel-shadow) ring-0"
         >
           <div className="relative">
             <Search size={17} strokeWidth={1.9} aria-hidden="true" className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-tertiary" />
