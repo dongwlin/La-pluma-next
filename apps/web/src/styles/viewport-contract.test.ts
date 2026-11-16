@@ -12,10 +12,11 @@ const VIEWPORT_CONTENT_RE = /\bcontent=["']([^"']*)["']/i
 const BOOT_STYLE_RE = /<style id="la-pluma-boot-style">([\s\S]*?)<\/style>/
 const CUSTOM_PROPERTY_RE = /(--[\w-]+)\s*:\s*([^;]+);/g
 const DVH_SUPPORT_RE = /@supports\s+not\s*\(\s*height:\s*100dvh\s*\)/i
+const STANDALONE_MEDIA_RE = /@media[^{]*display-mode\s*:\s*standalone\b/i
 const VIEWPORT_UNIT_RE = /(?<![\w-])(?:\d+(?:\.\d+)?(?:dvh|svh|lvh|vh)|(?:min-|max-)?[hw]-(?:dvh|svh|lvh))\b/g
 
-const DIALOG_MAX_HEIGHT_CLASS = 'max-h-(--layout-dialog-max-height)'
-const SHEET_MAX_HEIGHT_CLASS = 'max-h-(--layout-sheet-max-height)'
+const DIALOG_MAX_HEIGHT_TOKEN = '--layout-dialog-max-height'
+const SHEET_MAX_HEIGHT_TOKEN = '--layout-sheet-max-height'
 
 const DIALOG_FILES = [
   'src/features/automation/components/InfrastScheduleEditor.tsx',
@@ -30,10 +31,10 @@ const BARE_VIEWPORT_UNIT_ALLOWLIST = new Map([
   ['index.html', '启动壳视口高度 token 与 viewport meta'],
   ['src/styles/layout.css', '壳层与弹层视口 token 的唯一来源'],
   ['src/styles/index.css', 'PWA 提示沿用 --layout-viewport-height 的既有 fallback'],
-  ['src/styles/ios-theme.css', 'more-sheet 的 78dvh 局部例外'],
+  ['src/styles/ios-theme.css', 'more-sheet 的 78dvh 局部例外，带 78vh 前置兜底'],
   ['src/features/automation/styles/automation.css', '自动化配置面板沿用 --layout-viewport-height 的既有 fallback'],
-  ['src/features/logs/styles/logs.css', '日志控制台使用 svh 的页内固定高度'],
-  ['src/features/device-mirror/components/ScrcpyDeviceView.tsx', '沉浸设备画面视口由设备画面批次处理'],
+  ['src/features/logs/styles/logs.css', '日志控制台使用 svh 的页内固定高度，带 vh 前置兜底'],
+  ['src/features/device-mirror/components/ScrcpyDeviceView.tsx', '沉浸设备画面视口由设备画面批次处理，DESIGN 已登记例外'],
   ['src/shared/ui/sidebar.tsx', 'shadcn 生成文件按上游保留'],
 ])
 
@@ -79,6 +80,10 @@ function declarationsOf(source: string, token: string): TokenDeclaration[] {
   })
 }
 
+function referencesMaxHeight(source: string, token: string): boolean {
+  return new RegExp(`\\bmax-h-[^\\s"']*${token}\\b`).test(source)
+}
+
 function blockContents(source: string, startIndex: number): string {
   const open = source.indexOf('{', startIndex)
   if (open === -1) throw new Error(`missing block after index ${startIndex}`)
@@ -108,12 +113,13 @@ function readSource(relativePath: string): string {
 }
 
 describe('viewport contract', () => {
-  it('declares one viewport meta with cover and interactive widget resizing', () => {
+  it('declares one viewport meta with cover, initial scale and interactive widget declaration', () => {
     const metas = [...readIndexHtml().matchAll(VIEWPORT_META_RE)]
     expect(metas).toHaveLength(1)
 
     const content = VIEWPORT_CONTENT_RE.exec(metas[0]?.[0] ?? '')?.[1] ?? ''
     expect(content).toContain('width=device-width')
+    expect(content).toContain('initial-scale=1.0')
     expect(content).toContain('viewport-fit=cover')
     expect(content).toContain('interactive-widget=resizes-content')
   })
@@ -123,13 +129,13 @@ describe('viewport contract', () => {
     const bootStyle = readBootStyle()
 
     const layoutSupportIndex = layoutCss.search(DVH_SUPPORT_RE)
-    const standaloneIndex = layoutCss.indexOf('@media (display-mode: standalone)')
+    const standaloneIndex = layoutCss.search(STANDALONE_MEDIA_RE)
     expect(layoutSupportIndex).toBeGreaterThan(-1)
     expect(standaloneIndex).toBeGreaterThan(-1)
     expect(layoutSupportIndex).toBeLessThan(standaloneIndex)
 
     const bootSupportIndex = bootStyle.search(DVH_SUPPORT_RE)
-    const bootStandaloneIndex = bootStyle.indexOf('@media (display-mode: standalone)')
+    const bootStandaloneIndex = bootStyle.search(STANDALONE_MEDIA_RE)
     expect(bootSupportIndex).toBeGreaterThan(-1)
     expect(bootStandaloneIndex).toBeGreaterThan(-1)
     expect(bootSupportIndex).toBeLessThan(bootStandaloneIndex)
@@ -164,19 +170,26 @@ describe('viewport contract', () => {
       const source = readSource(file)
       return [
         ...(source.includes('100dvh') ? [`${file}: 仍包含 100dvh 字面量`] : []),
-        ...(source.includes(DIALOG_MAX_HEIGHT_CLASS) ? [] : [`${file}: 缺少 ${DIALOG_MAX_HEIGHT_CLASS}`]),
+        ...(referencesMaxHeight(source, DIALOG_MAX_HEIGHT_TOKEN)
+          ? []
+          : [`${file}: 缺少引用 ${DIALOG_MAX_HEIGHT_TOKEN} 的 max-h 工具类`]),
       ]
     })
 
     const detailLayer = readSource('src/features/combat/components/CombatCopilotDetailLayer.tsx')
     if (detailLayer.includes('85dvh')) problems.push('CombatCopilotDetailLayer.tsx: 仍包含 85dvh 字面量')
-    if (!detailLayer.includes(SHEET_MAX_HEIGHT_CLASS)) {
-      problems.push(`CombatCopilotDetailLayer.tsx: 缺少 ${SHEET_MAX_HEIGHT_CLASS}`)
+    if (!referencesMaxHeight(detailLayer, SHEET_MAX_HEIGHT_TOKEN)) {
+      problems.push(`CombatCopilotDetailLayer.tsx: 缺少引用 ${SHEET_MAX_HEIGHT_TOKEN} 的 max-h 工具类`)
     }
 
     const logsCss = readSource('src/features/logs/styles/logs.css')
     if (logsCss.includes('55dvh')) problems.push('logs.css: 日志控制台仍使用 55dvh')
+    if (!logsCss.includes('55vh')) problems.push('logs.css: 日志控制台缺少 55vh 兜底')
     if (!logsCss.includes('55svh')) problems.push('logs.css: 日志控制台未使用 55svh')
+
+    const iosThemeCss = readSource('src/styles/ios-theme.css')
+    if (!iosThemeCss.includes('min(28rem, 78vh)')) problems.push('ios-theme.css: more-sheet 缺少 78vh 兜底')
+    if (!iosThemeCss.includes('min(28rem, 78dvh)')) problems.push('ios-theme.css: more-sheet 未使用 78dvh')
 
     expect(problems).toEqual([])
   })
