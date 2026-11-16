@@ -69,6 +69,8 @@ describe('DeviceMonitorLayout', () => {
     expect(support?.textContent).toContain('通知内容')
     expect(support?.querySelector('[data-region="monitor"]')).not.toBeNull()
     expect(support?.firstElementChild?.querySelector('[data-region="monitor"]')).not.toBeNull()
+    expect(container.querySelector('[data-monitor-area="sequence"]')?.parentElement).toBe(layout)
+    expect(container.querySelector('[data-monitor-area="editor"]')?.parentElement).toBe(layout)
   })
 
   it('renders mode areas as direct grid children without wrapping the page content', async () => {
