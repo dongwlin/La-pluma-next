@@ -233,9 +233,12 @@ function unapprovedNamedBreakpointsOf(source: string): string[] {
 }
 
 function unapprovedCssVariantsOf(source: string): string[] {
-  return [...stripCssComments(source).matchAll(CSS_VARIANT_DIRECTIVE_RE)].flatMap(match => (
-    [...(match[1] ?? '').matchAll(UNAPPROVED_CSS_VARIANT_RE)].map(token => token[1] ?? '')
-  ))
+  return [...stripCssComments(source).matchAll(CSS_VARIANT_DIRECTIVE_RE)].flatMap(match => {
+    const tokens = match[1] ?? ''
+    const named = [...tokens.matchAll(UNAPPROVED_CSS_VARIANT_RE)].map(token => token[1] ?? '')
+    const arbitrary = [...tokens.matchAll(ARBITRARY_BREAKPOINT_RE)].map(token => token[0])
+    return [...named, ...arbitrary]
+  })
 }
 
 function themeBreakpointDefinitionsOf(source: string): ThemeBreakpointDefinition[] {
@@ -816,7 +819,7 @@ describe('responsive breakpoint policy', () => {
     ])).toEqual([])
   })
 
-  it('rejects unapproved breakpoint variants in CSS directives', () => {
+  it('rejects unapproved named breakpoint variants in CSS directives', () => {
     const variantDirective = (variant: string) => `.a { @variant ${variant} { display: flex; } }`
     const applyDirective = (utilities: string) => `.a { @apply ${utilities}; }`
     const namedVariant = (variant: string, utility: string) => `${variant}:${utility}`
@@ -831,7 +834,31 @@ describe('responsive breakpoint policy', () => {
       namedVariant('min-2xl', 'flex'),
     ].join(' ')))).toEqual(['max-2xl', 'min-2xl'])
     expect(unapprovedCssVariantsOf(applyDirective('text-2xl font-bold'))).toEqual([])
+  })
 
+  it('rejects arbitrary breakpoint variants in CSS directives', () => {
+    const variantDirective = (variant: string) => `.a { @variant ${variant} { display: flex; } }`
+    const applyDirective = (utilities: string) => `.a { @apply ${utilities}; }`
+    const namedVariant = (variant: string, utility: string) => `${variant}:${utility}`
+    const arbitraryToken = (kind: string, value: string) => `${kind}-[${value}]`
+    const arbitraryVariant = (kind: string, value: string, utility: string) => (
+      `${arbitraryToken(kind, value)}:${utility}`
+    )
+
+    expect(unapprovedCssVariantsOf(applyDirective(arbitraryVariant('max', '641px', 'flex'))))
+      .toEqual([arbitraryToken('max', '641px')])
+    expect(unapprovedCssVariantsOf(applyDirective(arbitraryVariant('min', '900px', 'flex'))))
+      .toEqual([arbitraryToken('min', '900px')])
+    expect(unapprovedCssVariantsOf(variantDirective(arbitraryToken('min', '900px'))))
+      .toEqual([arbitraryToken('min', '900px')])
+
+    expect(unapprovedCssVariantsOf(applyDirective('text-2xl font-bold'))).toEqual([])
+    expect(unapprovedCssVariantsOf(applyDirective(namedVariant('max-sm', 'flex')))).toEqual([])
+    expect(unapprovedCssVariantsOf(applyDirective(namedVariant('xl', 'grid-cols-4')))).toEqual([])
+    expect(unapprovedCssVariantsOf(applyDirective('[color:red]'))).toEqual([])
+  })
+
+  it('does not use unapproved breakpoint variants in CSS directives', () => {
     const variants = collectFiles(SRC_ROOT, CSS_EXTENSIONS).flatMap(file => (
       unapprovedCssVariantsOf(readFileSync(file, 'utf8')).map(variant => (
         `${location(file)}: ${variant}`
