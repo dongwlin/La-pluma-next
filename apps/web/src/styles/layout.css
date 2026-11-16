@@ -16,6 +16,9 @@
     --layout-tabbar-reserved-height: calc(
       var(--layout-tabbar-floating-height) + var(--layout-tabbar-bottom-clearance)
     );
+    --layout-floating-bottom-offset: calc(
+      var(--layout-tabbar-reserved-height) + 1rem
+    );
     --layout-sidebar-width: 17rem;
     --layout-content-max: 112rem;
     --layout-page-gutter: 2rem;
