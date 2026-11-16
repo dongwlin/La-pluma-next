@@ -43,6 +43,8 @@ PORT=3100 LA_PLUMA_DEV_PORT=5273 pnpm dev
 
 视口断点集合与方向以 [设计规范](../../DESIGN.md#breakpoints) 的 Breakpoints 表为准：CSS 使用 `width < Npx` / `width >= Npx` 区间语法，JS 媒体查询用 `apps/web/src/shared/lib/breakpoints.ts` 的 `BREAKPOINTS` 生成，不新增未登记阈值。
 
+视口高度契约由 `apps/web/src/styles/viewport-contract.test.ts` 静态审计：壳层与启动壳的 dvh → lvh → vh 分支、弹层高度 token、日志控制台 `svh` 与裸视口单位 allowlist。修改视口单位或弹层高度前，先核对[设计规范](../../DESIGN.md#viewport-contract)的视口契约。
+
 ### stylelint 预算制（ratchet）
 
 存量违规数冻结在 `apps/web/stylelint-baseline.json`（按文件粒度记录，文件移动/改名时比单一总数更稳）。存量违规一律 warning，不阻塞本地开发；拦净新增靠脚本：

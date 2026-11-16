@@ -272,6 +272,14 @@ La Pluma Next 是一个高密度的本地自动化控制台，不是营销页面
 - 新页面按 mobile-first 编写：`sm` 用于显示次级信息或恢复横向工具栏，`md` 用于中等宽度布局，`lg` 与 `xl` 才扩展为双栏或多栏。所有视口断点必须来自下方 Breakpoints 表，不要新增未登记阈值；日常页三栏等既有组件使用表中已登记的专用断点。
 - 页面滚动条当前全局隐藏，避免切换页面或列表时因系统滚动条出现导致布局左右跳动。文本和控件要在移动端自然换行，不允许为了保留桌面布局而裁剪有效内容。
 
+#### Viewport Contract
+
+- **应用壳**：普通浏览器使用 `100dvh`，跟随地址栏收放；`display-mode: standalone`、`display-mode: fullscreen` 与 `html.la-pluma-standalone` 使用 `100lvh`，让固定导航贴住物理屏幕边缘。`--layout-viewport-height` 是壳层视口高度的唯一来源，启动壳的 `--boot-viewport-height` 保持同样的分支。
+- **能力兜底**：不支持 `dvh` 时回退到 `100vh`，不支持 `lvh` 时同样回退到 `100vh`；`dvh` 兜底位于 standalone 的 `lvh` 覆盖之前，`lvh` 兜底保留在最后，顺序保证缺少对应能力时仍落到 `vh`。
+- **弹层**：Dialog 使用 `--layout-dialog-max-height`（`calc(100dvh - 2rem)`），移动 Sheet 使用 `--layout-sheet-max-height`（`85dvh`）；两者都带 `vh` 兜底，弹层不手写裸 `dvh` 高度。`ios-theme.css` 的 more-sheet 保留 `min(28rem, 78dvh)` 作为局部例外。
+- **页内固定块**：日志控制台这类随页面滚动的固定高度内容使用 `svh`，不随地址栏伸缩改变高度；只有壳层和弹层消费 `dvh`/`lvh`。
+- **软键盘**：viewport meta 声明 `interactive-widget=resizes-content`，软键盘出现时收缩内容区而不是覆盖输入控件；改动时保留 `width=device-width`、`initial-scale=1.0` 与 `viewport-fit=cover`。
+
 #### Breakpoints
 
 | 名称 | 阈值 | 用途 |
