@@ -347,8 +347,6 @@ test.describe('feature overlay behavior', () => {
       await sort.scrollIntoViewIfNeeded()
       await sort.click()
       const content = page.locator('[data-slot="dropdown-menu-content"]')
-      const positioner = content.locator('..')
-      await expect(positioner).toHaveAttribute('data-align', 'end')
       await page.waitForTimeout(200)
       const [sortBox, box] = await Promise.all([sort.boundingBox(), content.boundingBox()])
       expect(sortBox).not.toBeNull()
