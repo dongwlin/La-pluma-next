@@ -152,7 +152,10 @@ test.describe('viewport contract', () => {
   })
 
   test('keeps the mobile copilot detail sheet inside a short viewport', async ({ page }) => {
-    test.skip(test.info().project.name !== 'desktop', 'explicit viewport sizes are exercised once')
+    test.skip(
+      !['desktop', 'mobile'].includes(test.info().project.name),
+      'the short-viewport sheet is exercised once on desktop and once on mobile',
+    )
 
     recordBrowserErrors(page)
     await page.addInitScript(themeSeedScript('dark'))
