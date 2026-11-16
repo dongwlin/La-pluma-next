@@ -3,11 +3,6 @@
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
-  .roguelike-mode-skeleton-highlight {
-    inset: 0 auto auto 0;
-    width: calc((100% - 0.125rem) / 2);
-  }
-
   .roguelike-mode-shell {
     width: 100%;
   }
