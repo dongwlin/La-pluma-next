@@ -4,7 +4,7 @@ import ScreenMonitor from './ScreenMonitor'
 
 export function DeviceMonitorPanel({ className = '' }: { className?: string }) {
   return (
-    <Card className={`automation-monitor-surface ${className} gap-0 p-0!`} data-region="monitor">
+    <Card className={`device-monitor-surface ${className} gap-0 p-0!`} data-region="monitor">
       <div className="task-monitor-panel is-compact">
         <ScreenMonitor variant="compact" />
       </div>
@@ -42,8 +42,8 @@ export function DeviceMonitorLayout(props: DeviceMonitorLayoutProps) {
         {props.sequence}
         {props.editor}
         <div className="automation-support-column" data-monitor-area="support">
-          <div className="automation-monitor-column" data-monitor-area="monitor">
-            <DeviceMonitorPanel className="automation-monitor-panel" />
+          <div className="device-monitor-column" data-monitor-area="monitor">
+            <DeviceMonitorPanel className="device-monitor-panel" />
           </div>
           {props.support}
         </div>
@@ -56,8 +56,8 @@ export function DeviceMonitorLayout(props: DeviceMonitorLayoutProps) {
       <div className="roguelike-workspace-grid" data-device-monitor-layout="mode">
         {props.mode}
         {props.content}
-        <aside className="roguelike-monitor-column" aria-label="设备画面" data-monitor-area="monitor">
-          <DeviceMonitorPanel className="roguelike-monitor-panel roguelike-monitor-surface" />
+        <aside className="device-monitor-column" aria-label="设备画面" data-monitor-area="monitor">
+          <DeviceMonitorPanel className="device-monitor-panel" />
         </aside>
       </div>
     )
