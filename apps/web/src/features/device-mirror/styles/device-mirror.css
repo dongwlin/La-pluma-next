@@ -893,65 +893,67 @@
     }
   }
 
-  .la-pluma-app .device-preview-glass-button {
-    --glass-liquid-surface: color-mix(
-      in srgb,
-      var(--glass-bg) 42%,
-      transparent
-    );
+  @media (width < 1024px) {
+    .la-pluma-app .device-preview-glass-button {
+      --glass-liquid-surface: color-mix(
+        in srgb,
+        var(--glass-bg) 42%,
+        transparent
+      );
 
-    position: relative;
-    isolation: isolate;
-    border-color: transparent;
-    background:
-      linear-gradient(
-        var(--glass-liquid-surface-lift),
-        var(--glass-liquid-surface-lift)
-      ),
-      var(--glass-liquid-surface);
-    -webkit-backdrop-filter: blur(6px) saturate(140%); /* stylelint-disable-line property-no-vendor-prefix -- Safari 仍需前缀 */
-    backdrop-filter: blur(6px) saturate(140%);
-  }
+      position: relative;
+      isolation: isolate;
+      border-color: transparent;
+      background:
+        linear-gradient(
+          var(--glass-liquid-surface-lift),
+          var(--glass-liquid-surface-lift)
+        ),
+        var(--glass-liquid-surface);
+      -webkit-backdrop-filter: blur(6px) saturate(140%); /* stylelint-disable-line property-no-vendor-prefix -- Safari 仍需前缀 */
+      backdrop-filter: blur(6px) saturate(140%);
+    }
 
-  .la-pluma-app .device-preview-glass-button::before {
-    position: absolute;
-    inset: 0;
-    padding: 0.5px;
-    border-radius: inherit;
-    background: conic-gradient(
-      from 0deg,
-      var(--glass-edge-light) 0deg,
-      var(--glass-edge-light) 26deg,
-      var(--glass-edge-high) 32deg,
-      var(--glass-edge-mid) 38deg,
-      var(--glass-edge-faint) 44deg,
-      var(--glass-edge-clear) 50deg,
-      var(--glass-edge-faint) 56deg,
-      var(--glass-edge-mid) 62deg,
-      var(--glass-edge-high) 68deg,
-      var(--glass-edge-light) 74deg,
-      var(--glass-edge-light) 206deg,
-      var(--glass-edge-high) 212deg,
-      var(--glass-edge-mid) 218deg,
-      var(--glass-edge-faint) 224deg,
-      var(--glass-edge-clear) 230deg,
-      var(--glass-edge-faint) 236deg,
-      var(--glass-edge-mid) 242deg,
-      var(--glass-edge-high) 248deg,
-      var(--glass-edge-light) 254deg,
-      var(--glass-edge-light) 360deg
-    );
-    /* stylelint-disable-next-line property-no-vendor-prefix -- Safari 仍需前缀 */
-    -webkit-mask:
-      linear-gradient(#000 0 0) content-box,
-      linear-gradient(#000 0 0);
-    mask:
-      linear-gradient(#000 0 0) content-box,
-      linear-gradient(#000 0 0);
-    -webkit-mask-composite: xor; /* stylelint-disable-line property-no-vendor-prefix -- Safari 仍需前缀 */
-    mask-composite: exclude;
-    content: '';
-    pointer-events: none;
+    .la-pluma-app .device-preview-glass-button::before {
+      position: absolute;
+      inset: 0;
+      padding: 0.5px;
+      border-radius: inherit;
+      background: conic-gradient(
+        from 0deg,
+        var(--glass-edge-light) 0deg,
+        var(--glass-edge-light) 26deg,
+        var(--glass-edge-high) 32deg,
+        var(--glass-edge-mid) 38deg,
+        var(--glass-edge-faint) 44deg,
+        var(--glass-edge-clear) 50deg,
+        var(--glass-edge-faint) 56deg,
+        var(--glass-edge-mid) 62deg,
+        var(--glass-edge-high) 68deg,
+        var(--glass-edge-light) 74deg,
+        var(--glass-edge-light) 206deg,
+        var(--glass-edge-high) 212deg,
+        var(--glass-edge-mid) 218deg,
+        var(--glass-edge-faint) 224deg,
+        var(--glass-edge-clear) 230deg,
+        var(--glass-edge-faint) 236deg,
+        var(--glass-edge-mid) 242deg,
+        var(--glass-edge-high) 248deg,
+        var(--glass-edge-light) 254deg,
+        var(--glass-edge-light) 360deg
+      );
+      /* stylelint-disable-next-line property-no-vendor-prefix -- Safari 仍需前缀 */
+      -webkit-mask:
+        linear-gradient(#000 0 0) content-box,
+        linear-gradient(#000 0 0);
+      mask:
+        linear-gradient(#000 0 0) content-box,
+        linear-gradient(#000 0 0);
+      -webkit-mask-composite: xor; /* stylelint-disable-line property-no-vendor-prefix -- Safari 仍需前缀 */
+      mask-composite: exclude;
+      content: '';
+      pointer-events: none;
+    }
   }
 
   @media (prefers-reduced-transparency: reduce) {
