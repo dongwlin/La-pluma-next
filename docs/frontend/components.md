@@ -79,6 +79,44 @@ Props：`pageKind`（`AppTab` 或 `gallery`，必填）、`layout`（工作台�
 
 ---
 
+### DeviceMonitorLayout - 设备画面布局
+
+**文件位置**：`apps/web/src/features/device-mirror/components/DeviceMonitorPanel.tsx`
+
+**适用场景**：工作区把页面内容与共享设备画面（`DeviceMonitorPanel`）组合为统一网格。页面只提供具名区域，网格、monitor 列与画面渲染由本组件持有；不要在页面另写设备画面网格或重复渲染 `DeviceMonitorPanel`。
+
+```tsx
+import { DeviceMonitorLayout } from '@/features/device-mirror'
+
+// standard：内容主列 + 设备画面（日志、数据、养成、作业）
+<DeviceMonitorLayout variant="standard">
+  <WorkspaceContent />
+</DeviceMonitorLayout>
+
+// workbench：任务流程 / 任务配置 / 支撑列（日常）
+<DeviceMonitorLayout
+  variant="workbench"
+  sequence={<AutomationTaskFlowPanel ... />}
+  editor={<div data-monitor-area="editor">...</div>}
+  support={<><AutomationScheduleCard ... /><NotificationSettings /></>}
+/>
+
+// mode：模式导航 + display: contents 面板（肉鸽）
+<DeviceMonitorLayout
+  variant="mode"
+  mode={<RoguelikeModePanel ... />}
+  content={<SegmentedTabPanel className="contents">...</SegmentedTabPanel>}
+/>
+```
+
+Props 是 discriminated union：`standard` 接收 `children`；`workbench` 接收 `sequence`、`editor`、`support`；`mode` 接收 `mode`、`content`。不提供列数、区域、间距或画面位置等通用网格配置。
+
+根节点输出 `data-device-monitor-layout="standard|workbench|mode"`，区域输出 `data-monitor-area`（`main`、`monitor`、`sequence`、`editor`、`support`、`mode`、`settings`）。`standard` 的 `main`/`monitor` 和各 variant 的 `monitor` 由布局渲染；`workbench` 的 `sequence`/`editor`、`mode` 的 `mode` 以及 `main`/`settings` 由页面提供的根节点携带，布局不克隆或包裹这些节点。`mode` 的 `content` 保持页面传入的 `display: contents` 面板，由内部的 `main`/`settings` 参与网格。
+
+`data-region="monitor"` 仍只由 `DeviceMonitorPanel` 的卡片输出，每个页面恰好一个。概览页的设备卡片不纳入此布局，不输出 `data-device-monitor-layout`，也不渲染 `data-region="monitor"`。
+
+---
+
 ### SegmentedTabs - 分段页面导航
 
 **文件位置**：`apps/web/src/shared/components/SegmentedTabs.tsx`（组合 `@/shared/ui/tabs` 的 shadcn Base UI 原语）

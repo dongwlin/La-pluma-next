@@ -266,6 +266,7 @@ La Pluma Next 是一个高密度的本地自动化控制台，不是营销页面
 页面根统一由 `shared/components` 的 `PageShell` 提供：根节点输出 `data-region="page"` 与 `data-page-kind`，工作台页追加 `data-page-layout="workspace"`，无边框卡片页追加 `data-page-surface="borderless"`；`PageShell` 内部固定一个 `app-stack-section`，页面只提供内容，不自建标题或页头。布局、视觉与浏览器测试通过 `data-region` / `data-page-*` 定位，不依赖实现类名。
 
 - 应用壳的稳定 region 锚点：`page`、`page-header`、`page-title`、`page-content`、`scroll`、`monitor`、`toolbar`、`navbar`、`sidebar`、`tabbar`；滚动宿主固定为 `[data-region="scroll"]`。
+- 工作区设备画面布局由 `DeviceMonitorLayout` 输出 `data-device-monitor-layout="standard|workbench|mode"` 与 `data-monitor-area` 区域锚点；`data-region="monitor"` 仍只由 `DeviceMonitorPanel` 卡片输出，每页恰好一个。
 - 内容最大宽度 `112rem`（`--layout-content-max`），两侧对称居中。
 - 页面左右留白由 `--layout-page-gutter` 提供：桌面（`1024px` 及以上）`32px`；平板（`640px` 及以上且小于 `1024px`）`20px`；移动（小于 `640px`）`14px`。安全区取 `max(gutter, env(safe-area-inset-*))`，不叠加第二份 inset。
 - 基础节奏为 4px。页面外层用 `app-page`，区块之间用 `app-stack-section` / `app-grid-section`，卡片内部用 `app-stack-card` / `app-grid-card`。
