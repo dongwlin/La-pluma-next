@@ -1486,6 +1486,7 @@ function collectCssSelectorPreludes(css: string): CssSelectorPrelude[] {
   const preludes: CssSelectorPrelude[] = []
   let segmentStart = 0
   let quote: string | null = null
+  let depth = 0
 
   for (let index = 0; index < css.length; index += 1) {
     const character = css[index]
@@ -1513,8 +1514,12 @@ function collectCssSelectorPreludes(css: string): CssSelectorPrelude[] {
           index: segmentStart + (raw.length - raw.trimStart().length),
         })
       }
+      depth += 1
       segmentStart = index + 1
     } else if (character === '}') {
+      depth = Math.max(0, depth - 1)
+      segmentStart = index + 1
+    } else if (character === ';' && depth === 0) {
       segmentStart = index + 1
     }
   }
@@ -1581,6 +1586,13 @@ const LAYOUT_TEST_STYLE_PROPERTIES = new Set([
   'maxHeight',
 ])
 const LAYOUT_TEST_INVOCATION_KEYS = new Set(['behavior', 'block'])
+const LAYOUT_TEST_SELECTOR_FUNCTIONS = new Set(['querySelector', 'querySelectorAll'])
+
+function isClassSelectorArgument(argument: ts.Expression | undefined): boolean {
+  if (!argument) return false
+  const expression = unwrapExpression(argument)
+  return ts.isStringLiteralLike(expression) && expression.text.trimStart().startsWith('.')
+}
 
 function callExpressionName(node: ts.CallExpression): string | null {
   const expression = unwrapExpression(node.expression)
@@ -1621,11 +1633,19 @@ function collectLayoutTestViolations(file: SourceFile, violations: GuardrailViol
     if (ts.isCallExpression(node)) {
       const name = callExpressionName(node)
       if (name === 'toHaveClass') report(node, 'toHaveClass')
+      if (name === 'toHaveStyle') report(node, 'toHaveStyle')
       if (
-        name === 'toHaveBeenCalledWith'
+        (name === 'toHaveBeenCalledWith' || name === 'toHaveBeenLastCalledWith')
         && node.arguments.some(argument => objectLiteralContainsKey(argument, LAYOUT_TEST_INVOCATION_KEYS))
       ) {
-        report(node, 'toHaveBeenCalledWith 的 behavior/block 精确参数')
+        report(node, `${name} 的 behavior/block 精确参数`)
+      }
+      if (
+        name !== null
+        && LAYOUT_TEST_SELECTOR_FUNCTIONS.has(name)
+        && isClassSelectorArgument(node.arguments[0])
+      ) {
+        report(node, `${name} 的类选择器`)
       }
     }
 

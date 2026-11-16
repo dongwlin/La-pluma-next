@@ -16,7 +16,7 @@
 | 页面裸副作用 | 页面文件不得直接持有传输、存储或轮询原语 | 失败并指出原语/import |
 | 布局壳层锚点 | `Layout`、导航壳与 `PageShell` 的稳定 `data-region` / `data-page-*` 锚点必须存在 | 失败并指出文件与缺失锚点 |
 | 全局样式作用域 | 三个全局样式文件不得包含页面/领域选择器 | 失败并指出文件、行号与命中片段 |
-| 布局测试细节 | `src/**/*.layout.test.tsx` 不得锁定类名、内联样式、兄弟顺序或精确滚动参数 | 失败并指出文件与行号 |
+| 布局测试细节 | `src/**/*.layout.test.tsx` 不得锁定类名、内联样式、类选择器、兄弟顺序或精确滚动参数 | 失败并指出文件与行号 |
 
 范围：
 
@@ -96,11 +96,12 @@
 
 | 禁止项 | 原因 |
 | --- | --- |
-| `toHaveClass(`、`classList` | Vitest 不求值样式表，类名断言只核对 JSX 字符串 |
+| `toHaveClass(`、`toHaveStyle`、`classList` | Vitest 不求值样式表，类名与内联样式断言只核对 JSX 字符串或内联值 |
+| `querySelector('.`、`querySelectorAll('.` | 通过类名定位 DOM 会锁死样式实现，改用 role、label 或 `data-*` 语义锚点 |
 | `.style.width`、`.height`、`.top`、`.left`、`.right`、`.bottom`、`.display`、`.maxHeight` | 直接读取内联样式，锁死实现而非用户可见结果 |
 | `data-align` | 依赖内部对齐属性 |
 | `previousElementSibling`、`nextElementSibling` | 依赖 DOM 兄弟顺序 |
-| `toHaveBeenCalledWith` 中包含 `behavior` / `block` | 锁定 `scrollIntoView` 的精确参数 |
+| `toHaveBeenCalledWith`、`toHaveBeenLastCalledWith` 中包含 `behavior` / `block` | 锁定 `scrollIntoView` 的精确参数 |
 
 `scrollIntoView` 仅作为 jsdom prototype stub 出现是允许的；注释不参与匹配。失败信息包含文件与行号。
 
@@ -118,8 +119,8 @@ pnpm --filter la-pluma-next-client verify
 
 回归集中在 `apps/web/scripts/guardrails.test.ts`：
 
-- 正例：跨域公开面 import、同域相对 import、shared import、领域容器使用 fetch/计时器、页面经 `@/features/<domain>` 调用领域 hook、命名空间/动态导入只用领域 hook、页面仅 type-only 导入传输层类型、类型引用与 `typeof fetch` 等 TypeQuery、模块级同名本地 helper、import/export 别名与非全局赋值解构不误报、壳层锚点齐全、全局样式声明值与注释中的同名文本、布局测试的 prototype stub 与行为断言；
-- 反例：深路径、跨域相对绕过、shared→features、features→app、features→根入口、task-execution→runtime-status、双域依赖环、页面直接 import 传输层、页面经公开面（含 `export *`、同文件 `import`/`export` 的本地命名/默认/命名空间转发、`export * as`、命名空间、字面量动态 import）导入领域端点、页面导入本域 `@/features/<domain>/api` 或经根入口命名空间/动态 import 调用本域端点、页面使用 `fetch`/`WebSocket`/`localStorage`/`setInterval`（含 `window[...]` 计算属性与 `['fetch']` 字面量计算键、`window as any`/非空断言/括号包装、从全局对象变量声明/解构参数默认值/赋值解构（含嵌套对象模式）重命名、`window.window` 属性链、`window.top`/`parent` 代理与 `document.defaultView` 及其 `window.document` 变体）、命名空间/动态 import 经 as/非空/括号/satisfies 包装、局部别名、参数默认值/赋值解构/字面量计算键或 `.then` 包装回调访问端点、缺失壳层文件或锚点、全局样式中的页面/领域选择器、布局测试中的类名/内联样式/兄弟顺序/精确滚动参数；
+- 正例：跨域公开面 import、同域相对 import、shared import、领域容器使用 fetch/计时器、页面经 `@/features/<domain>` 调用领域 hook、命名空间/动态导入只用领域 hook、页面仅 type-only 导入传输层类型、类型引用与 `typeof fetch` 等 TypeQuery、模块级同名本地 helper、import/export 别名与非全局赋值解构不误报、壳层锚点齐全、全局样式声明值与注释中的同名文本、顶层 at-rule 语句后的真实选择器、布局测试的 prototype stub 与行为断言；
+- 反例：深路径、跨域相对绕过、shared→features、features→app、features→根入口、task-execution→runtime-status、双域依赖环、页面直接 import 传输层、页面经公开面（含 `export *`、同文件 `import`/`export` 的本地命名/默认/命名空间转发、`export * as`、命名空间、字面量动态 import）导入领域端点、页面导入本域 `@/features/<domain>/api` 或经根入口命名空间/动态 import 调用本域端点、页面使用 `fetch`/`WebSocket`/`localStorage`/`setInterval`（含 `window[...]` 计算属性与 `['fetch']` 字面量计算键、`window as any`/非空断言/括号包装、从全局对象变量声明/解构参数默认值/赋值解构（含嵌套对象模式）重命名、`window.window` 属性链、`window.top`/`parent` 代理与 `document.defaultView` 及其 `window.document` 变体）、命名空间/动态 import 经 as/非空/括号/satisfies 包装、局部别名、参数默认值/赋值解构/字面量计算键或 `.then` 包装回调访问端点、缺失壳层文件或锚点、全局样式中的页面/领域选择器、布局测试中的类名/内联样式/类选择器/兄弟顺序/精确滚动参数；
 - 当前源码树：无依赖/页面/布局治理违规。
 
 ## 8. 已知限制
@@ -134,4 +135,4 @@ pnpm --filter la-pluma-next-client verify
 - 测试文件被有意排除：它们可以 import 内部实现、使用 fetch 与计时器，且不会进入生产包。
 - 布局锚点规则只核对五个固定文件中的 JSX 属性存在性；不验证锚点唯一、是否位于预期元素、是否在运行时可见，也不覆盖由页面工作区提供的其他 `data-region`。
 - 全局样式规则只做选择器 prelude 的静态前缀匹配，不解析完整 CSS 语法：`#automation-*`、`[class*="automation-"]`、由其他属性拼出的页面选择器不会被识别，属性选择器值中出现前缀可能被误报；新增页面域时需要同步更新领域前缀集合。
-- 布局测试规则基于 AST 成员的简单名称匹配：`toHaveStyle`、`getComputedStyle`、动态属性访问、把类名或样式值经变量间接传入的断言不会被识别；`toHaveBeenCalledWith` 只识别参数对象树中出现 `behavior` / `block` 键的调用。
+- 布局测试规则基于 AST 成员的简单名称匹配：已覆盖 `toHaveStyle`、`toHaveBeenLastCalledWith` 与 `querySelector`/`querySelectorAll` 的字符串类选择器；未覆盖 `getComputedStyle`、动态属性访问、把类名或样式值经变量间接传入、`style` 对象整体断言，以及运行时拼接的选择器。`toHaveBeenCalledWith`/`toHaveBeenLastCalledWith` 只识别参数对象树中出现 `behavior` / `block` 键的调用。

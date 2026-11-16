@@ -394,6 +394,19 @@ describe('global style scope guardrails', () => {
     expect(violations).toEqual([])
   })
 
+  it('flags selectors after a top-level at-rule statement', () => {
+    const violations = checkGlobalStyleScope(globalStyleFiles({
+      'styles/index.css': [
+        '@import "theme.css";',
+        '.automation-evil { color: red; }',
+      ].join('\n'),
+    }))
+
+    expect(violations).toHaveLength(1)
+    expect(violations[0]?.message).toContain('第 2 行')
+    expect(violations[0]?.message).toContain('.automation-evil')
+  })
+
   it('flags page and domain selectors with the file and line number', () => {
     const violations = checkGlobalStyleScope(globalStyleFiles({
       'styles/layout.css': [
@@ -444,6 +457,7 @@ describe('layout test detail guardrails', () => {
       "  Object.defineProperty(HTMLElement.prototype, 'scrollIntoView', { value: vi.fn() })",
       "  expect(element.getAttribute('aria-label')).toBe('inspect')",
       "  expect(document.body.querySelector('[role=\"dialog\"]')).not.toBeNull()",
+      "  expect(container.querySelectorAll('[data-region=\"page\"]')).toHaveLength(1)",
       '})',
     ].join('\n')))
 
@@ -458,16 +472,31 @@ describe('layout test detail guardrails', () => {
       "expect(container.querySelector('[data-align=\"start\"]')).not.toBeNull()",
       'expect(handle.nextElementSibling).not.toBeNull()',
       "expect(scrollIntoView).toHaveBeenCalledWith({ behavior: 'smooth', block: 'start' })",
+      "expect(element).toHaveStyle({ display: 'none' })",
+      "expect(handler).toHaveBeenLastCalledWith({ behavior: 'smooth', block: 'end' })",
+      "expect(container.querySelector('.min-h-11')).not.toBeNull()",
+      "expect(container.querySelectorAll('.sr-only')).toHaveLength(1)",
     ].join('\n')))
 
-    expect(violations).toHaveLength(6)
+    expect(violations).toHaveLength(10)
     expect(violations.every(violation => violation.rule === 'layout-test-detail')).toBe(true)
     const messages = violations.map(violation => violation.message).join('\n')
-    for (const detail of ['toHaveClass', 'classList', '.style.width', 'data-align', 'nextElementSibling', 'behavior/block']) {
+    for (const detail of [
+      'toHaveClass',
+      'classList',
+      '.style.width',
+      'data-align',
+      'nextElementSibling',
+      'toHaveBeenCalledWith',
+      'toHaveStyle',
+      'toHaveBeenLastCalledWith',
+      'querySelector 的类选择器',
+      'querySelectorAll 的类选择器',
+    ]) {
       expect(messages).toContain(detail)
     }
     expect(violations[0]?.message).toContain('第 1 行')
-    expect(violations[5]?.message).toContain('第 6 行')
+    expect(violations[9]?.message).toContain('第 10 行')
   })
 
   it('fails closed when no layout test files are found', () => {
