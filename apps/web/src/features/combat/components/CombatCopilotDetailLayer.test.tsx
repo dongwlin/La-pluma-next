@@ -42,7 +42,7 @@ describe('CombatCopilotDetailLayer', () => {
   const setViewport = (isMobile: boolean) => {
     window.matchMedia = vi.fn().mockImplementation((query: string) => ({
       matches: isMobile
-        ? query === '(max-width: 40rem)'
+        ? query === '(width < 640px)'
         : query === '(prefers-reduced-motion: reduce)',
       media: query,
       onchange: null,
