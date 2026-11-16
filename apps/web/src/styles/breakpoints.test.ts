@@ -14,7 +14,11 @@ const SCRIPT_EXTENSIONS = new Set(['.ts', '.tsx'])
 const IGNORED_DIRECTORIES = new Set(['node_modules', 'dist', 'coverage'])
 const TEST_FILE_SUFFIXES = ['.test.ts', '.test.tsx']
 
-const MEDIA_AT_RULE_RE = /@media\s+([^{]+)\{/gi
+const MEDIA_AT_RULE_RE = /@media\b\s*([^{]+)\{/gi
+const CSS_COMMENT_RE = /\/\*[\s\S]*?\*\//g
+const THEME_BREAKPOINT_RE = /--breakpoint-([A-Za-z0-9-]+)\s*:/g
+const UNAPPROVED_NAMED_BREAKPOINT_RE = /(?:^|[\s"'`:])((?:max-|min-)?\d+xl):/gi
+const APPROVED_THEME_BREAKPOINTS = new Set(['workbench'])
 const LEGACY_WIDTH_FEATURE_RE = /\b(?:min|max)-width\s*:/
 const WIDTH_FEATURE_RE = /\bwidth\b/
 const PX_VALUE_RE = /(\d+(?:\.\d+)?)px/g
@@ -153,11 +157,26 @@ function auditMediaQuery(query: string): MediaQueryProblem[] {
   return [...problems]
 }
 
-function collectMediaConditions(file: string): string[] {
-  const source = readFileSync(file, 'utf8')
-  return [...source.matchAll(MEDIA_AT_RULE_RE)].flatMap(match => (
+function stripCssComments(source: string): string {
+  return source.replace(CSS_COMMENT_RE, '')
+}
+
+function mediaConditionsOf(source: string): string[] {
+  return [...stripCssComments(source).matchAll(MEDIA_AT_RULE_RE)].flatMap(match => (
     match[1] ? [match[1].trim()] : []
   ))
+}
+
+function collectMediaConditions(file: string): string[] {
+  return mediaConditionsOf(readFileSync(file, 'utf8'))
+}
+
+function unapprovedNamedBreakpointsOf(source: string): string[] {
+  return [...source.matchAll(UNAPPROVED_NAMED_BREAKPOINT_RE)].map(match => match[1] ?? '')
+}
+
+function themeBreakpointNamesOf(source: string): string[] {
+  return [...stripCssComments(source).matchAll(THEME_BREAKPOINT_RE)].map(match => match[1] ?? '')
 }
 
 function hasExportModifier(node: ts.Node): boolean {
@@ -632,6 +651,55 @@ describe('responsive breakpoint policy', () => {
       condition,
       problem,
     })))).toEqual([])
+  })
+
+  it('collects media queries without whitespace, with comments, or in different case', () => {
+    const noWhitespace = mediaConditionsOf('@media(width < 641px){.a{color:red}}')
+    expect(noWhitespace).toEqual(['(width < 641px)'])
+    expect(auditMediaQuery(noWhitespace[0] ?? '')).toContain('unapproved-threshold')
+
+    const commentedAtRule = mediaConditionsOf('@media/**/(width < 641px){.a{color:red}}')
+    expect(commentedAtRule).toEqual(['(width < 641px)'])
+    expect(auditMediaQuery(commentedAtRule[0] ?? '')).toContain('unapproved-threshold')
+
+    const uppercase = mediaConditionsOf('@MEDIA(WIDTH < 641px){.a{color:red}}')
+    expect(uppercase).toEqual(['(WIDTH < 641px)'])
+    expect(auditMediaQuery(uppercase[0] ?? '')).toContain('unapproved-threshold')
+
+    const commentWithBrace = mediaConditionsOf('@media (width < 641px) /* { */ { .a { color: red } }')
+    expect(commentWithBrace).toEqual(['(width < 641px)'])
+  })
+
+  it('rejects unregistered named Tailwind breakpoints and theme definitions', () => {
+    const namedVariant = (variant: string, utility: string) => `${variant}:${utility}`
+
+    expect(unapprovedNamedBreakpointsOf(namedVariant('2xl', 'grid-cols-6'))).toEqual(['2xl'])
+    expect(unapprovedNamedBreakpointsOf(namedVariant('max-2xl', 'flex'))).toEqual(['max-2xl'])
+    expect(unapprovedNamedBreakpointsOf(namedVariant('min-2xl', 'flex'))).toEqual(['min-2xl'])
+    expect(unapprovedNamedBreakpointsOf(namedVariant('hover:2xl', 'flex'))).toEqual(['2xl'])
+    expect(unapprovedNamedBreakpointsOf(
+      'xl:grid-cols-4 workbench:flex md:text-2xl font-bold sm:text-2xl text-2xl/7',
+    )).toEqual([])
+
+    expect(themeBreakpointNamesOf('@theme { --breakpoint-2xl: 1536px }')).toEqual(['2xl'])
+    expect(themeBreakpointNamesOf('@theme { --breakpoint-workbench: 900px }')).toEqual(['workbench'])
+    expect(themeBreakpointNamesOf('@theme { --breakpoint-2xl: 1536px; --breakpoint-workbench: 900px }'))
+      .toEqual(['2xl', 'workbench'])
+  })
+
+  it('does not use unapproved named Tailwind breakpoint variants', () => {
+    const variants = collectFiles(SRC_ROOT, SCRIPT_EXTENSIONS)
+      .filter(file => !isTestFile(file))
+      .flatMap(file => unapprovedNamedBreakpointsOf(readFileSync(file, 'utf8')).map(variant => (
+        `${location(file)}: ${variant}`
+      )))
+    expect(variants).toEqual([])
+
+    const themeBreakpoints = new Set(themeBreakpointNamesOf(
+      readFileSync(join(SRC_ROOT, 'styles', 'index.css'), 'utf8'),
+    ))
+    expect([...themeBreakpoints].filter(name => !APPROVED_THEME_BREAKPOINTS.has(name))).toEqual([])
+    expect(themeBreakpoints.has('workbench')).toBe(true)
   })
 
   it('audits every production matchMedia call', () => {

@@ -276,7 +276,7 @@ La Pluma Next 是一个高密度的本地自动化控制台，不是营销页面
 
 - 同一阈值只用成对区间表达：`width < Npx` 与 `width >= Npx`。禁止用 `max-width: N` 与 `min-width: N` 成对表达同一阈值，也不使用 `max-width: 1279px` 这类补偿值。
 - CSS 使用区间语法，跨区间写 `(768px <= width < 1280px)`；JS `matchMedia` 用 `apps/web/src/shared/lib/breakpoints.ts` 的 `BREAKPOINTS` 生成同样的区间查询。`sm`/`md`/`lg`/`xl` 使用 Tailwind 默认具名变体，`workbench` 由 `@theme` 添加；`flow-card`/`wide` 仅用于 CSS 媒体查询。
-- `apps/web/src/styles/breakpoints.test.ts` 静态审计直接 `matchMedia` 调用（含括号、断言、非空与元素访问写法）；先保存为别名再调用的情况不在此守卫范围内。
+- `apps/web/src/styles/breakpoints.test.ts` 静态审计直接 `matchMedia` 调用（含括号、断言、非空与元素访问写法）；先保存为别名再调用、或字符串内嵌的 `matchMedia` 不在静态审计范围（启动脚本内嵌查询不是宽度断点）。命名 Tailwind 变体只允许 `sm`/`md`/`lg`/`xl`/`workbench` 及其派生；`2xl` 与未登记的 `--breakpoint-*` 由守卫拒绝。
 - `@container` 查询由容器内容驱动，不属于视口断点，不受此表约束。
 - 新增专用断点必须先在此表登记用途与内容依据，优先评估容器查询；未登记的 `min-[Npx]` / `max-[Npx]` arbitrary 断点不允许出现。
 - 壳层结构几何断点（内容留白、navbar、tabbar 的切换）由 `styles/layout.css` 拥有；其他全局样式只能复用批准阈值，不得新增壳层阈值。
