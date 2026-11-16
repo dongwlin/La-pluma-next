@@ -115,6 +115,8 @@ Props 是 discriminated union：`standard` 接收 `children`；`workbench` 接�
 
 `data-region="monitor"` 仍只由 `DeviceMonitorPanel` 的卡片输出，每个页面恰好一个。概览页的设备卡片不纳入此布局，不输出 `data-device-monitor-layout`，也不渲染 `data-region="monitor"`。
 
+共享设备画面样式归 `features/device-mirror/styles/device-mirror.css`：画面根节点为 `device-monitor-surface`，`workbench`/`mode` 的 monitor 列与面板为 `device-monitor-column` / `device-monitor-panel`，紧凑玻璃按钮为 `device-preview-glass-button`，骨架屏使用 `device-monitor-skeleton*`；`standard` 继续使用 `task-monitor-*` 布局类。页面不得新增 `automation-*` / `roguelike-*` monitor 类，也不得按 `data-page-kind` 切换设备画面样式。
+
 ---
 
 ### SegmentedTabs - 分段页面导航
