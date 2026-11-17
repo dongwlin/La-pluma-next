@@ -90,10 +90,7 @@ export function DashboardSkeleton() {
               </div>
 
               <div className="dashboard-flow-stages" data-dashboard-flow-stages>
-                <div className="flex items-center justify-between gap-3.5">
-                  <Skeleton className="rounded-sm h-3 w-24" />
-                  <Skeleton className="rounded-sm h-2.5 w-16" />
-                </div>
+                <Skeleton className="rounded-sm h-3 w-28 max-w-full" />
                 <div className="mt-2 flex flex-wrap gap-1.5">
                   {[20, 24, 28, 20, 16].map((width, index) => (
                     <Skeleton key={index} className="h-6 rounded-lg" style={{ width: `${width / 4}rem` }} />

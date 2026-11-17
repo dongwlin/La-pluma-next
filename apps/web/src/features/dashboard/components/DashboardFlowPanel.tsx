@@ -112,10 +112,7 @@ export default function DashboardFlowPanel({ refreshDashboard, onMissingFlow }: 
       </div>
 
       <div className="dashboard-flow-stages" data-dashboard-flow-stages>
-        <div className="flex items-center justify-between gap-3.5">
-          <span className="text-xs font-semibold text-foreground">今日开放关卡</span>
-          <span className={`text-[11px] ${labelClass}`}>{openStageSummary.open.length} 个日常本</span>
-        </div>
+        <span className="text-xs font-semibold text-foreground">今日开放资源关卡</span>
         <div className="mt-2 flex flex-wrap gap-1.5">
           {openStageSummary.open.length > 0 ? (
             openStageSummary.open.map(item => (

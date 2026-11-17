@@ -164,6 +164,7 @@ Dashboard（app-page > app-stack-section > DashboardWorkspace；首屏门禁与�
   6. **连接告警 toast 化。** 原内联连接告警卡片移除，改由 `DashboardConnectionNotice` 发送常驻全局 toast：固定 id `dashboard-connection` 去重，`offline` 使用 warning 且不带 action，`unavailable` 使用 error 并附带“重试连接”action（复用完整快照协调器）；连接恢复、`unknown`、页面隐藏或卸载时 dismiss，`checking` 保持当前 toast。toast 不参与页面布局，出现/消失不再改变页面高度。流程卡不再重复连接标题/说明：`unknown`/`checking` 显示“正在检查服务 / 正在确认自动化服务状态”，`offline`/`unavailable` 显示“连接不可用 / 连接恢复后可以继续操作”。
   7. **概览卡片收敛。** 流程卡启动反馈条移除，启动结果统一经 `notify(..., { id: EXECUTION_NOTICE_ID })` 由全局 toast 呈现；命令区“运行状态”标签、开放关卡标题圆点与“当前活动”图标移除；活动时间窗口移到活动名称右侧，不再出现在 detail/meta；流程列宽测量不再扣除反馈行高度。
   8. **活动区控制行移除。** “当前活动”标题、“可能已过期”标记与活动重试按钮一并移除；活动区首行直接显示活动名称与时间窗口。失败刷新仍通过 detail/meta 保留失败原因与上次成功时间，恢复依赖自动刷新与连接通知的“重试连接”，卡内不再提供手动重试。
+  9. **开放资源关卡标题收敛。** 开放关卡区标题改为“今日开放资源关卡”，移除右侧“N 个日常本”计数；关卡 chips 与空态文案保持不变。
 
 ### 剩余边界
 
