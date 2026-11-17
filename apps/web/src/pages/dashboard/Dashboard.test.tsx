@@ -506,7 +506,7 @@ describe('Dashboard connectivity state', () => {
     await flushDashboard()
 
     expect(container.textContent).toContain('准备就绪')
-    expect(findButton('开始今日流程')?.disabled).toBe(false)
+    expect(findButton('执行日常')?.disabled).toBe(false)
     expect(apiMocks.notify).not.toHaveBeenCalled()
 
     online = false
@@ -526,7 +526,7 @@ describe('Dashboard connectivity state', () => {
     expect(container.textContent).not.toContain('当前网络离线')
     expect(container.textContent).toContain('连接不可用')
     expect(container.textContent).toContain('连接恢复后可以继续操作')
-    expect(findButton('开始今日流程')?.disabled).toBe(true)
+    expect(findButton('执行日常')?.disabled).toBe(true)
   })
 
   it('shows the checking copy while the backend status is being verified', async () => {
@@ -540,7 +540,7 @@ describe('Dashboard connectivity state', () => {
     expect(container.textContent).toContain('正在检查服务')
     expect(container.textContent).toContain('正在确认自动化服务状态')
     expect(container.textContent).not.toContain('连接不可用')
-    expect(findButton('开始今日流程')?.disabled).toBe(true)
+    expect(findButton('执行日常')?.disabled).toBe(true)
   })
 
   it('retries the full snapshot from the unavailable notice and recovers', async () => {
@@ -563,7 +563,7 @@ describe('Dashboard connectivity state', () => {
     expect(container.textContent).toContain('连接不可用')
     expect(container.textContent).toContain('测试活动')
     expect(useDashboardStore.getState().lastUpdate).not.toBeNull()
-    expect(findButton('开始今日流程')?.disabled).toBe(true)
+    expect(findButton('执行日常')?.disabled).toBe(true)
 
     const lastCall = apiMocks.notify.mock.calls[apiMocks.notify.mock.calls.length - 1]!
     const { action } = lastCall[2] as {
@@ -593,7 +593,7 @@ describe('Dashboard connectivity state', () => {
     expect(useStatusStore.getState().backendStatus).toBe('available')
     expect(apiMocks.dismissNotice).toHaveBeenCalledWith('dashboard-connection')
     expect(container.textContent).toContain('准备就绪')
-    expect(findButton('开始今日流程')?.disabled).toBe(false)
+    expect(findButton('执行日常')?.disabled).toBe(false)
   })
 
   it('omits redundant manual refresh controls', async () => {
@@ -666,7 +666,7 @@ describe('Dashboard connectivity state', () => {
     apiMocks.getTodayDrops.mockClear()
     apiMocks.getOpenTodayStages.mockClear()
 
-    const action = findButton('开始今日流程')
+    const action = findButton('执行日常')
     await act(async () => {
       action?.click()
       action?.click()
@@ -704,7 +704,7 @@ describe('Dashboard connectivity state', () => {
     await flushDashboard()
     apiMocks.loadUserConfig.mockResolvedValueOnce({ success: true, data: { taskFlow: [] } })
 
-    await act(async () => findButton('开始今日流程')?.click())
+    await act(async () => findButton('执行日常')?.click())
     await flushDashboard()
 
     expect(container.querySelector('[data-dashboard-flow-feedback]')?.textContent)
@@ -717,7 +717,7 @@ describe('Dashboard connectivity state', () => {
     await act(async () => renderDashboard())
     await flushDashboard()
 
-    await act(async () => findButton('开始今日流程')?.click())
+    await act(async () => findButton('执行日常')?.click())
     await flushDashboard()
     expect(container.textContent).toContain('正在执行: 收取信用')
 
@@ -734,13 +734,13 @@ describe('Dashboard connectivity state', () => {
 
     expect(apiMocks.notify).toHaveBeenCalledWith('今日流程执行完成', 'success', { id: 'execution' })
     expect(container.textContent).toContain('准备就绪')
-    expect(findButton('开始今日流程')?.disabled).toBe(false)
+    expect(findButton('执行日常')?.disabled).toBe(false)
   })
 
   it('lets another domain stop the dashboard run while keeping the global state consistent', async () => {
     await act(async () => renderDashboard())
     await flushDashboard()
-    await act(async () => findButton('开始今日流程')?.click())
+    await act(async () => findButton('执行日常')?.click())
     await flushDashboard()
     expect(findButton('正在运行')?.disabled).toBe(true)
 
@@ -792,7 +792,7 @@ describe('Dashboard connectivity state', () => {
     await flushDashboard()
 
     expect(container.textContent).toContain('设备被其他任务占用')
-    expect(findButton('开始今日流程')?.disabled).toBe(true)
+    expect(findButton('执行日常')?.disabled).toBe(true)
   })
 
   it('keeps the unknown phase and the last active run when observation disconnects', async () => {
@@ -813,7 +813,7 @@ describe('Dashboard connectivity state', () => {
 
     expect(container.textContent).toContain('执行状态未知')
     expect(container.textContent).toContain('网络中断')
-    expect(findButton('开始今日流程')?.disabled).toBe(true)
+    expect(findButton('执行日常')?.disabled).toBe(true)
     expect(apiMocks.notify).not.toHaveBeenCalled()
   })
 

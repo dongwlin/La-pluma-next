@@ -24,7 +24,7 @@ describe('buildDashboardFlowView', () => {
       statusLabel: '运行状态',
       commandTitle: '准备就绪',
       commandDescription: '设备待命，可以开始今天的自动化任务',
-      primaryActionLabel: '开始今日流程',
+      primaryActionLabel: '执行日常',
       primaryActionStatusKey: 'ready',
     })
   })

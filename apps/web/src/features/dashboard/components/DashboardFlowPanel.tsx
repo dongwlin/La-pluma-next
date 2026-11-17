@@ -61,14 +61,6 @@ export default function DashboardFlowPanel({ refreshDashboard, onMissingFlow }: 
       data-dashboard-flow-card
     >
       <Card className="dashboard-flow-card gap-0 p-0!">
-      <div className="dashboard-flow-header">
-        <div className="flex min-w-0 items-center gap-3.5">
-          <div className="min-w-0">
-            <div className="dashboard-flow-title text-base font-bold text-foreground">今日流程</div>
-          </div>
-        </div>
-      </div>
-
       <div className="dashboard-flow-command" data-dashboard-flow-command>
         <div className="min-w-0">
           <div className={`text-xs font-medium ${labelClass}`}>{view.statusLabel}</div>

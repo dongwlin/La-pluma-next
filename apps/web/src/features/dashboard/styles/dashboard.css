@@ -94,10 +94,6 @@
     background: color-mix(in srgb, var(--background) 94%, var(--primary) 6%);
   }
 
-  .dashboard-flow-skeleton .dashboard-flow-header {
-    height: 68.5px;
-  }
-
   .dashboard-flow-skeleton .dashboard-flow-command {
     min-height: 100px;
     height: auto;
@@ -158,15 +154,6 @@
     position: relative;
     isolation: isolate;
     border-radius: var(--radius-xl);
-  }
-
-  .dashboard-flow-header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 1rem;
-    padding: 0.875rem 1rem 0.75rem;
-    border-bottom: 1px solid var(--border);
   }
 
   .dashboard-flow-command {
@@ -509,10 +496,6 @@
       height: 131px;
     }
 
-    .dashboard-flow-header {
-      padding: 0.875rem 0.875rem 0.75rem;
-    }
-
     .dashboard-flow-command {
       grid-template-columns: minmax(0, 1fr);
       gap: 0.875rem;
@@ -578,18 +561,5 @@
       gap: var(--dashboard-card-gap);
     }
 
-    .la-pluma-app .dashboard-flow-header {
-      box-sizing: border-box;
-      height: 3.5rem;
-      padding: 0.75rem 1.25rem;
-      border-bottom: 1px solid var(--border);
-    }
-
-    .la-pluma-app .dashboard-flow-title {
-      /* S3: 移动端流程标题固定 18px/1.2，需压过 text-base 等排版 utilities。 */
-      margin-top: 0;
-      font-size: 1.125rem !important;
-      line-height: 1.2 !important;
-    }
   }
 }

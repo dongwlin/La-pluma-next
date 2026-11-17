@@ -22,7 +22,7 @@ export interface DashboardFlowView {
   readonly statusLabel: '当前任务' | '当前操作' | '运行状态'
   readonly commandTitle: string
   readonly commandDescription: string
-  readonly primaryActionLabel: '等待继续' | '正在运行' | '开始今日流程'
+  readonly primaryActionLabel: '等待继续' | '正在运行' | '执行日常'
   readonly primaryActionStatusKey: 'starting' | 'running' | 'ready'
 }
 
@@ -88,7 +88,7 @@ export function buildDashboardFlowView({
       ? '等待继续'
       : isRunning
         ? '正在运行'
-        : '开始今日流程',
+        : '执行日常',
     primaryActionStatusKey: quickStartLoading
       ? 'starting'
       : isRunning
