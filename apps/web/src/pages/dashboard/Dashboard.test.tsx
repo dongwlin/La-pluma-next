@@ -820,7 +820,7 @@ describe('Dashboard connectivity state', () => {
     expect(apiMocks.notify).not.toHaveBeenCalled()
   })
 
-  it('shows a distinct first-load activity failure and recovers through retry', async () => {
+  it('shows a distinct first-load activity failure and recovers on the next snapshot refresh', async () => {
     apiMocks.getActivity.mockResolvedValueOnce({ success: false, message: '活动服务不可用' })
 
     await act(async () => renderDashboard())
@@ -830,12 +830,15 @@ describe('Dashboard connectivity state', () => {
     expect(failed?.textContent).toContain('活动数据加载失败')
     expect(failed?.textContent).toContain('活动服务不可用')
     expect(failed?.textContent).not.toContain('暂无')
+    expect(failed?.querySelector('button')).toBeNull()
     expect(useDashboardStore.getState().lastRefreshError).toBe('活动服务不可用')
 
     apiMocks.getActivity.mockResolvedValueOnce(ok(activityDto({ name: '恢复活动' })))
-    const retry = Array.from(failed?.querySelectorAll('button') ?? [])
-      .find(button => button.textContent?.includes('重试'))
-    await act(async () => retry?.click())
+    useDashboardStore.setState({
+      lastRefreshAttemptAt: Date.now() - DASHBOARD_REFRESH_INTERVAL_MS,
+    })
+    await act(async () => root.render(<div>其他页面</div>))
+    await act(async () => renderDashboard())
     await flushDashboard()
 
     expect(apiMocks.getActivity).toHaveBeenCalledTimes(2)
@@ -901,11 +904,11 @@ describe('Dashboard connectivity state', () => {
 
     const stale = container.querySelector('[data-activity-status="stale"]')
     expect(stale?.textContent).toContain('已确认活动')
-    expect(stale?.textContent).toContain('可能已过期')
+    expect(stale?.textContent).not.toContain('可能已过期')
     expect(stale?.textContent).toContain('上次成功')
     expect(stale?.textContent).toContain('暂时不可用')
     expect(stale?.textContent).not.toContain('未确认活动')
-    expect(stale?.querySelector('button')?.textContent).toContain('重试')
+    expect(stale?.querySelector('button')).toBeNull()
   })
 
   it('refreshes a restored v1 cache immediately when the activity status is missing', async () => {

@@ -84,30 +84,7 @@ export default function DashboardFlowPanel({ refreshDashboard, onMissingFlow }: 
       </div>
 
       <div className="dashboard-flow-activity" data-activity-status={activityView.phase}>
-        <div className="flex items-center justify-between gap-2">
-          <span className={`text-xs font-medium ${labelClass}`}>当前活动</span>
-          <div className="flex shrink-0 items-center gap-2">
-            {activityView.phase === 'stale' && (
-              <span className={mutedChipClass}>可能已过期</span>
-            )}
-            {activityView.canRetry && (
-              <Button
-                size="sm"
-                variant="ghost"
-                disabled={isRefreshing}
-                aria-busy={isRefreshing || undefined}
-                onClick={() => {
-                  void refreshDashboard()
-                }}
-              >
-                {isRefreshing
-                  ? <><LoaderCircle className="animate-spin" aria-hidden="true" />刷新中</>
-                  : '重试'}
-              </Button>
-            )}
-          </div>
-        </div>
-        <div className="mt-2 flex flex-wrap items-baseline gap-x-2 gap-y-1">
+        <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
           <span className="wrap-break-word text-sm font-bold text-foreground">{activityView.title}</span>
           {activityView.duration && (
             <span className="text-xs text-muted-foreground">{activityView.duration}</span>

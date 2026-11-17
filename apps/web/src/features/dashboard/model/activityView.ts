@@ -14,7 +14,6 @@ export interface DashboardActivityView {
   duration: string
   detail: string
   meta: string
-  canRetry: boolean
   activities?: DashboardActivityItem[]
 }
 
@@ -120,7 +119,7 @@ const readOrigin = (summary: ActivitySummary): string => {
  *
  * `lastRefreshFailed` 只影响“数据是否仍然可信”：没有旧快照时是首轮失败，
  * 有快照时把 none/active 降为 stale；`unavailable` 与服务端 `stale` 保留
- * 各自的原因与重试入口。
+ * 各自的原因。
  */
 export function buildDashboardActivityView(
   input: DashboardActivityViewInput,
@@ -148,7 +147,6 @@ export function buildDashboardActivityView(
         duration: '',
         detail: '',
         meta: '',
-        canRetry: false,
       }
     }
     if (lastRefreshFailed) {
@@ -158,7 +156,6 @@ export function buildDashboardActivityView(
         duration: '',
         detail: lastRefreshError || '无法获取活动信息',
         meta: '',
-        canRetry: true,
       }
     }
     return {
@@ -167,7 +164,6 @@ export function buildDashboardActivityView(
       duration: '',
       detail: lastRefreshError || '尚未获取活动信息',
       meta: '',
-      canRetry: true,
     }
   }
 
@@ -179,7 +175,6 @@ export function buildDashboardActivityView(
         duration: activityDuration,
         detail: lastRefreshError || '最近一次刷新失败',
         meta: joinParts(origin, lastUpdateText),
-        canRetry: true,
       }
     }
     return {
@@ -188,7 +183,6 @@ export function buildDashboardActivityView(
       duration: '',
       detail: '',
       meta: '',
-      canRetry: false,
     }
   }
 
@@ -199,7 +193,6 @@ export function buildDashboardActivityView(
       duration: '',
       detail: summary.failure?.message || summary.message || '未知原因',
       meta: lastUpdateText,
-      canRetry: true,
     }
   }
 
@@ -216,7 +209,6 @@ export function buildDashboardActivityView(
       duration: activityDuration,
       detail,
       meta: joinParts(origin, lastRefreshFailed ? lastUpdateText : lastSuccessText, activityTraits),
-      canRetry: true,
       activities: multiActivityItems,
     }
   }
@@ -228,7 +220,6 @@ export function buildDashboardActivityView(
       duration: '',
       detail: joinParts(origin, updatedAt ? `更新于 ${updatedAt}` : ''),
       meta: '',
-      canRetry: false,
     }
   }
 
@@ -238,7 +229,6 @@ export function buildDashboardActivityView(
     duration: activityDuration,
     detail: joinParts(origin, updatedAt ? `更新于 ${updatedAt}` : '', activityTraits),
     meta: '',
-    canRetry: false,
     activities: multiActivityItems,
   }
 }

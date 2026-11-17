@@ -85,7 +85,6 @@ export function DashboardSkeleton() {
               </div>
 
               <div className="dashboard-flow-activity space-y-2">
-                <Skeleton className="rounded-sm h-2.5 w-16 max-w-full" />
                 <Skeleton className="rounded-sm h-4 w-36 max-w-full" />
                 <Skeleton className="rounded-sm h-2 w-52 max-w-full" />
               </div>

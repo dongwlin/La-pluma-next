@@ -32,7 +32,6 @@ describe('buildDashboardActivityView', () => {
       phase: 'loading',
       title: '正在获取活动信息',
       duration: '',
-      canRetry: false,
     })
     expect(result.title).not.toContain('等待活动数据')
   })
@@ -50,7 +49,6 @@ describe('buildDashboardActivityView', () => {
       title: '活动数据加载失败',
       duration: '',
       detail: '活动服务不可用',
-      canRetry: true,
     })
     expect(result.title).not.toBe('暂无当前刷关活动')
   })
@@ -76,7 +74,6 @@ describe('buildDashboardActivityView', () => {
       title: '活动信息可能已过期',
       detail: '网络中断',
       meta: '上次成功 T1760000000000',
-      canRetry: true,
     })
   })
 
@@ -91,7 +88,6 @@ describe('buildDashboardActivityView', () => {
       duration: '',
       detail: '官服 · MAA 活动表 · 更新于 T1760000100000',
       meta: '',
-      canRetry: false,
     })
   })
 
@@ -114,11 +110,10 @@ describe('buildDashboardActivityView', () => {
       duration: '',
       detail: 'B服 · 企鹅物流 · 更新于 T1760000100000',
       meta: '',
-      canRetry: false,
     })
   })
 
-  it('shows a server unavailable snapshot with its reason and retry action', () => {
+  it('shows a server unavailable snapshot with its reason', () => {
     const result = view({
       summary: summary({
         status: 'unavailable',
@@ -132,7 +127,6 @@ describe('buildDashboardActivityView', () => {
       title: '无法获取活动信息',
       detail: 'MAA 活动查询失败: 超时',
       meta: '上次成功 T1760000000000',
-      canRetry: true,
     })
   })
 
@@ -159,7 +153,6 @@ describe('buildDashboardActivityView', () => {
       duration: 'T1760000000000 ~ T1760100000000',
       detail: '备用活动数据源不可用: 503',
       meta: '官服 · MAA 活动表 · 上次成功 T1759000000000 · 复刻 · 1 个关卡',
-      canRetry: true,
     })
   })
 
@@ -181,7 +174,6 @@ describe('buildDashboardActivityView', () => {
       title: '昨日海',
       detail: '掉落服务不可用',
       meta: '官服 · MAA 活动表 · 上次成功 T1760000000000',
-      canRetry: true,
     })
   })
 
@@ -195,7 +187,6 @@ describe('buildDashboardActivityView', () => {
       phase: 'stale',
       title: '活动信息可能已过期',
       detail: '调度服务不可用',
-      canRetry: true,
     })
   })
 
@@ -264,7 +255,6 @@ describe('buildDashboardActivityView', () => {
     expect(result).toMatchObject({
       phase: 'active',
       title: '相变临界',
-      canRetry: false,
     })
   })
 
