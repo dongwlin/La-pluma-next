@@ -63,7 +63,7 @@ const DashboardPreviewEntry = memo(function DashboardPreviewEntry() {
         )}
         {error && (
           <Button onClick={retry} variant="secondary" size="sm" className="absolute bottom-2 right-2">
-            重试实时预览
+            重试
           </Button>
         )}
       </div>
