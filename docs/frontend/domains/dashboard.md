@@ -125,7 +125,7 @@ Dashboard（app-page > app-stack-section > DashboardWorkspace；首屏门禁与�
 | `controlsDisabled` | 启动 loading、设备忙或后端不可用 |
 | `commandTitle` | 检查中 → “正在检查服务”；不可用 → “连接不可用”；启动 loading → 对应进行中文案；再按 `waiting`/`running`（标签 → 当前任务 → 默认）/`occupied`/`unknown`/`idle` 回退 |
 | `commandDescription` | 检查中 → “正在确认自动化服务状态”；不可用 → “连接恢复后可以继续操作”；loading → 对应说明；再按阶段回退到运行说明、计划消息或待命文案 |
-| `primaryActionLabel` / `primaryActionStatusKey` | `waiting` → “等待继续”；运行 → “正在运行”；否则“执行日常”；loading 时状态为 `starting` |
+| `primaryActionLabel` | `waiting` → “等待继续”；运行 → “正在运行”；否则“执行日常” |
 
 `model/deviceView.ts` 的规则：
 

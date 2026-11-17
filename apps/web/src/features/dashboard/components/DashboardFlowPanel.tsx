@@ -54,12 +54,11 @@ export default function DashboardFlowPanel({ refreshDashboard, onMissingFlow }: 
   })
 
   return (
-    <div
-      className={`dashboard-flow-glow-shell status-border-beam ${quickStartLoading || view.isRunning ? 'is-active' : ''}`}
+    <Card
+      className="dashboard-flow-card gap-0 p-0!"
       aria-busy={quickStartLoading || view.isRunning}
       data-dashboard-flow-card
     >
-      <Card className="dashboard-flow-card gap-0 p-0!">
       <div className="dashboard-flow-command" data-dashboard-flow-command>
         <div className="min-w-0">
           <div className="truncate text-xl font-bold text-foreground">{view.commandTitle}</div>
@@ -70,7 +69,6 @@ export default function DashboardFlowPanel({ refreshDashboard, onMissingFlow }: 
             onClick={runTodayFlow}
             disabled={view.controlsDisabled || quickStartLoading}
             aria-busy={quickStartLoading || undefined}
-            data-status-key={view.primaryActionStatusKey}
             className="dashboard-flow-primary-action justify-center whitespace-nowrap"
           >
             {quickStartLoading
@@ -87,9 +85,7 @@ export default function DashboardFlowPanel({ refreshDashboard, onMissingFlow }: 
 
       <div className="dashboard-flow-activity" data-activity-status={activityView.phase}>
         <div className="flex items-center justify-between gap-2">
-          <div className="flex min-w-0 items-center gap-2">
-            <span className={`text-xs font-medium ${labelClass}`}>当前活动</span>
-          </div>
+          <span className={`text-xs font-medium ${labelClass}`}>当前活动</span>
           <div className="flex shrink-0 items-center gap-2">
             {activityView.phase === 'stale' && (
               <span className={mutedChipClass}>可能已过期</span>
@@ -124,7 +120,7 @@ export default function DashboardFlowPanel({ refreshDashboard, onMissingFlow }: 
           <div className={`mt-0.5 wrap-break-word text-[11px] ${labelClass}`}>{activityView.meta}</div>
         )}
         {activityView.activities && (
-          <div className="mt-2 flex flex-wrap gap-1.5" data-activity-list>
+          <div className="mt-2 flex flex-wrap gap-1.5">
             {activityView.activities.map((activity, index) => (
               <span
                 key={`${activity.title}-${index}`}
@@ -140,9 +136,7 @@ export default function DashboardFlowPanel({ refreshDashboard, onMissingFlow }: 
 
       <div className="dashboard-flow-stages" data-dashboard-flow-stages>
         <div className="flex items-center justify-between gap-3.5">
-          <div className="flex items-center gap-2">
-            <span className="text-xs font-semibold text-foreground">今日开放关卡</span>
-          </div>
+          <span className="text-xs font-semibold text-foreground">今日开放关卡</span>
           <span className={`text-[11px] ${labelClass}`}>{openStageSummary.open.length} 个日常本</span>
         </div>
         <div className="mt-2 flex flex-wrap gap-1.5">
@@ -156,7 +150,6 @@ export default function DashboardFlowPanel({ refreshDashboard, onMissingFlow }: 
         </div>
       </div>
 
-      </Card>
-    </div>
+    </Card>
   )
 }

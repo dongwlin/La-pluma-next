@@ -24,7 +24,6 @@ describe('buildDashboardFlowView', () => {
       commandTitle: '准备就绪',
       commandDescription: '设备待命，可以开始今天的自动化任务',
       primaryActionLabel: '执行日常',
-      primaryActionStatusKey: 'ready',
     })
   })
 
@@ -41,7 +40,6 @@ describe('buildDashboardFlowView', () => {
       commandTitle: '正在执行: 收取信用',
       commandDescription: '第 2 步',
       primaryActionLabel: '正在运行',
-      primaryActionStatusKey: 'running',
     })
   })
 
@@ -59,7 +57,6 @@ describe('buildDashboardFlowView', () => {
       commandTitle: '等待继续',
       commandDescription: '作业集等待下一关，请回到发起页面继续或停止',
       primaryActionLabel: '等待继续',
-      primaryActionStatusKey: 'running',
     })
   })
 
@@ -82,7 +79,6 @@ describe('buildDashboardFlowView', () => {
       controlsDisabled: true,
       commandTitle: '正在启动今日流程',
       commandDescription: '正在读取任务配置并提交执行',
-      primaryActionStatusKey: 'starting',
     })
   })
 

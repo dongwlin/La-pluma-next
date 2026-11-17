@@ -132,12 +132,10 @@
       );
     }
 
-    .dashboard-flow-layout > div,
-    .dashboard-flow-glow-shell {
+    .dashboard-flow-layout > div {
       display: flex;
     }
 
-    .dashboard-flow-glow-shell,
     .dashboard-flow-card,
     .dashboard-flow-layout [data-dashboard-preview-card] {
       flex: 1;
@@ -150,10 +148,8 @@
     }
   }
 
-  .dashboard-flow-glow-shell {
-    position: relative;
-    isolation: isolate;
-    border-radius: var(--radius-xl);
+  .dashboard-flow-card {
+    min-width: 0;
   }
 
   .dashboard-flow-command {

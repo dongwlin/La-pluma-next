@@ -73,38 +73,35 @@ export function DashboardSkeleton() {
     <PageShell pageKind="dashboard" className="dashboard-page" aria-busy="true" aria-label="概览加载中">
         <div ref={flowGridRef} className="dashboard-flow-layout" style={flowGridStyle}>
           <div ref={flowCardRef} className="min-w-0">
-            <div className="dashboard-flow-glow-shell status-border-beam">
-              <Card className="dashboard-flow-card dashboard-flow-skeleton gap-0 p-0!">
-                <div className="dashboard-flow-command">
-                  <div className="min-w-0 space-y-2">
-                    <Skeleton className="rounded-sm h-6 w-36 max-w-full" />
-                    <Skeleton className="rounded-sm h-2.5 w-52 max-w-full" />
-                  </div>
-                  <div className="dashboard-flow-actions">
-                    <Skeleton className="dashboard-flow-primary-action h-11 rounded-xl" />
-                  </div>
+            <Card className="dashboard-flow-card dashboard-flow-skeleton gap-0 p-0!">
+              <div className="dashboard-flow-command">
+                <div className="min-w-0 space-y-2">
+                  <Skeleton className="rounded-sm h-6 w-36 max-w-full" />
+                  <Skeleton className="rounded-sm h-2.5 w-52 max-w-full" />
                 </div>
-
-                <div className="dashboard-flow-activity space-y-2">
-                  <Skeleton className="rounded-sm h-2.5 w-16 max-w-full" />
-                  <Skeleton className="rounded-sm h-4 w-36 max-w-full" />
-                  <Skeleton className="rounded-sm h-2 w-52 max-w-full" />
+                <div className="dashboard-flow-actions">
+                  <Skeleton className="dashboard-flow-primary-action h-11 rounded-xl" />
                 </div>
+              </div>
 
-                <div className="dashboard-flow-stages" data-dashboard-flow-stages>
-                  <div className="flex items-center justify-between gap-3.5">
-                    <Skeleton className="rounded-sm h-3 w-24" />
-                    <Skeleton className="rounded-sm h-2.5 w-16" />
-                  </div>
-                  <div className="mt-2 flex flex-wrap gap-1.5">
-                    {[20, 24, 28, 20, 16].map((width, index) => (
-                      <Skeleton key={index} className="h-6 rounded-lg" style={{ width: `${width / 4}rem` }} />
-                    ))}
-                  </div>
+              <div className="dashboard-flow-activity space-y-2">
+                <Skeleton className="rounded-sm h-2.5 w-16 max-w-full" />
+                <Skeleton className="rounded-sm h-4 w-36 max-w-full" />
+                <Skeleton className="rounded-sm h-2 w-52 max-w-full" />
+              </div>
+
+              <div className="dashboard-flow-stages" data-dashboard-flow-stages>
+                <div className="flex items-center justify-between gap-3.5">
+                  <Skeleton className="rounded-sm h-3 w-24" />
+                  <Skeleton className="rounded-sm h-2.5 w-16" />
                 </div>
-
-              </Card>
-            </div>
+                <div className="mt-2 flex flex-wrap gap-1.5">
+                  {[20, 24, 28, 20, 16].map((width, index) => (
+                    <Skeleton key={index} className="h-6 rounded-lg" style={{ width: `${width / 4}rem` }} />
+                  ))}
+                </div>
+              </div>
+            </Card>
           </div>
 
           <div ref={flowPreviewRef} className="min-w-0">
