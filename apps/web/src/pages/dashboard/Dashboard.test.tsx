@@ -689,7 +689,7 @@ describe('Dashboard connectivity state', () => {
     })))
     await flushDashboard()
 
-    expect(container.querySelector('[data-dashboard-flow-feedback]')?.textContent).toBe('今日流程已开始执行')
+    expect(apiMocks.notify).toHaveBeenCalledWith('今日流程已开始执行', 'success', { id: 'execution' })
     expect(findButton('正在运行')?.disabled).toBe(true)
     expect(controller().getState().trackedScope).toBe('dashboard')
     expect(apiMocks.getActivity).toHaveBeenCalledTimes(1)
@@ -707,8 +707,11 @@ describe('Dashboard connectivity state', () => {
     await act(async () => findButton('执行日常')?.click())
     await flushDashboard()
 
-    expect(container.querySelector('[data-dashboard-flow-feedback]')?.textContent)
-      .toBe('还没有配置今日流程，先去日常页保存任务流。')
+    expect(apiMocks.notify).toHaveBeenCalledWith(
+      '还没有配置今日流程，先去日常页保存任务流。',
+      'warning',
+      { id: 'execution' },
+    )
     expect(container.querySelector('[data-testid="location"]')?.textContent).toBe('/app/automation')
     expect(apiMocks.executeScheduleNow).not.toHaveBeenCalled()
   })

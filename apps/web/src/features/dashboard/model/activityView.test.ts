@@ -31,6 +31,7 @@ describe('buildDashboardActivityView', () => {
     expect(result).toMatchObject({
       phase: 'loading',
       title: '正在获取活动信息',
+      duration: '',
       canRetry: false,
     })
     expect(result.title).not.toContain('等待活动数据')
@@ -47,6 +48,7 @@ describe('buildDashboardActivityView', () => {
     expect(result).toMatchObject({
       phase: 'unavailable',
       title: '活动数据加载失败',
+      duration: '',
       detail: '活动服务不可用',
       canRetry: true,
     })
@@ -86,6 +88,7 @@ describe('buildDashboardActivityView', () => {
     expect(result).toEqual({
       phase: 'none',
       title: '暂无当前刷关活动',
+      duration: '',
       detail: '官服 · MAA 活动表 · 更新于 T1760000100000',
       meta: '',
       canRetry: false,
@@ -108,6 +111,7 @@ describe('buildDashboardActivityView', () => {
     expect(result).toEqual({
       phase: 'active',
       title: '昨日海',
+      duration: '',
       detail: 'B服 · 企鹅物流 · 更新于 T1760000100000',
       meta: '',
       canRetry: false,
@@ -140,6 +144,10 @@ describe('buildDashboardActivityView', () => {
         code: 'OLD',
         name: '旧活动',
         source: 'maa',
+        startTime: 1_760_000_000_000,
+        endTime: 1_760_100_000_000,
+        stages: ['OLD-1'],
+        rerun: true,
         lastSuccessAt: 1_759_000_000_000,
         failure: { source: 'penguin', message: '备用活动数据源不可用: 503' },
       }),
@@ -148,8 +156,9 @@ describe('buildDashboardActivityView', () => {
     expect(result).toEqual({
       phase: 'stale',
       title: '旧活动',
+      duration: 'T1760000000000 ~ T1760100000000',
       detail: '备用活动数据源不可用: 503',
-      meta: '官服 · MAA 活动表 · 上次成功 T1759000000000',
+      meta: '官服 · MAA 活动表 · 上次成功 T1759000000000 · 复刻 · 1 个关卡',
       canRetry: true,
     })
   })
@@ -223,6 +232,9 @@ describe('buildDashboardActivityView', () => {
       }),
     })
 
+    expect(result.duration).toBe('T1760000000000 ~ T1760100000000')
+    expect(result.detail).not.toContain('T1760000000000')
+    expect(result.detail).not.toContain('T1760100000000')
     expect(result.detail).not.toContain('复刻')
     expect(result.detail).toContain('2 个关卡')
     expect(result.activities).toEqual([

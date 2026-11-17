@@ -19,7 +19,6 @@ export interface DashboardFlowViewInput {
 export interface DashboardFlowView {
   readonly isRunning: boolean
   readonly controlsDisabled: boolean
-  readonly statusLabel: '当前任务' | '当前操作' | '运行状态'
   readonly commandTitle: string
   readonly commandDescription: string
   readonly primaryActionLabel: '等待继续' | '正在运行' | '执行日常'
@@ -39,12 +38,6 @@ export function buildDashboardFlowView({
   observationError,
 }: DashboardFlowViewInput): DashboardFlowView {
   const isRunning = phase === 'running' || phase === 'waiting'
-
-  const statusLabel = automationAvailable && isRunning
-    ? '当前任务'
-    : quickStartLoading
-      ? '当前操作'
-      : '运行状态'
 
   const commandTitle = connectionChecking
     ? DASHBOARD_CONNECTION_CHECKING_TITLE
@@ -81,7 +74,6 @@ export function buildDashboardFlowView({
   return {
     isRunning,
     controlsDisabled: quickStartLoading || deviceBusy || !automationAvailable,
-    statusLabel,
     commandTitle,
     commandDescription,
     primaryActionLabel: phase === 'waiting'

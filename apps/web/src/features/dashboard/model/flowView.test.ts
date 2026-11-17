@@ -21,7 +21,6 @@ describe('buildDashboardFlowView', () => {
     expect(view()).toMatchObject({
       isRunning: false,
       controlsDisabled: false,
-      statusLabel: '运行状态',
       commandTitle: '准备就绪',
       commandDescription: '设备待命，可以开始今天的自动化任务',
       primaryActionLabel: '执行日常',
@@ -39,7 +38,6 @@ describe('buildDashboardFlowView', () => {
     const result = view({ phase: 'running', runLabel: '正在执行: 收取信用', runDetail: '第 2 步' })
     expect(result).toMatchObject({
       isRunning: true,
-      statusLabel: '当前任务',
       commandTitle: '正在执行: 收取信用',
       commandDescription: '第 2 步',
       primaryActionLabel: '正在运行',
@@ -78,17 +76,14 @@ describe('buildDashboardFlowView', () => {
       .toBe('暂时无法确认执行状态，恢复连接后会自动刷新')
   })
 
-  it('prioritizes loading feedback over the execution phase', () => {
+  it('prioritizes the starting state over the execution phase', () => {
     const quickStart = view({ quickStartLoading: true, phase: 'waiting' })
     expect(quickStart).toMatchObject({
       controlsDisabled: true,
-      statusLabel: '当前任务',
       commandTitle: '正在启动今日流程',
       commandDescription: '正在读取任务配置并提交执行',
       primaryActionStatusKey: 'starting',
     })
-
-    expect(view({ quickStartLoading: true }).statusLabel).toBe('当前操作')
   })
 
   it('shows a short connection block and disables the entries when automation is unavailable', () => {

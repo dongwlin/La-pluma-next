@@ -1,4 +1,4 @@
-import { CalendarDays, LoaderCircle, Play } from 'lucide-react'
+import { LoaderCircle, Play } from 'lucide-react'
 import { Button } from '@/shared/ui/button'
 import { Card } from '@/shared/ui/card'
 import { useDashboardStore } from '../store/dashboardStore'
@@ -29,7 +29,6 @@ export default function DashboardFlowPanel({ refreshDashboard, onMissingFlow }: 
     isAvailable,
     connectionChecking,
     quickStartLoading,
-    feedback,
     runTodayFlow,
   } = useDashboardFlowActions({ refreshDashboard, onMissingFlow })
 
@@ -63,8 +62,7 @@ export default function DashboardFlowPanel({ refreshDashboard, onMissingFlow }: 
       <Card className="dashboard-flow-card gap-0 p-0!">
       <div className="dashboard-flow-command" data-dashboard-flow-command>
         <div className="min-w-0">
-          <div className={`text-xs font-medium ${labelClass}`}>{view.statusLabel}</div>
-          <div className="mt-0.5 truncate text-xl font-bold text-foreground">{view.commandTitle}</div>
+          <div className="truncate text-xl font-bold text-foreground">{view.commandTitle}</div>
           <div className={`mt-1 truncate text-xs ${labelClass}`}>{view.commandDescription}</div>
         </div>
         <div className="dashboard-flow-actions">
@@ -87,20 +85,9 @@ export default function DashboardFlowPanel({ refreshDashboard, onMissingFlow }: 
         </div>
       </div>
 
-      {feedback.message && (
-        <div
-          className={`dashboard-flow-message is-${feedback.type} text-xs`}
-          data-dashboard-flow-feedback
-        >
-          <span className="dashboard-flow-message-dot" aria-hidden="true" />
-          <span className="min-w-0 flex-1">{feedback.message}</span>
-        </div>
-      )}
-
       <div className="dashboard-flow-activity" data-activity-status={activityView.phase}>
         <div className="flex items-center justify-between gap-2">
           <div className="flex min-w-0 items-center gap-2">
-            <CalendarDays className="h-3.5 w-3.5 text-primary-strong" strokeWidth={1.8} aria-hidden="true" />
             <span className={`text-xs font-medium ${labelClass}`}>当前活动</span>
           </div>
           <div className="flex shrink-0 items-center gap-2">
@@ -124,8 +111,11 @@ export default function DashboardFlowPanel({ refreshDashboard, onMissingFlow }: 
             )}
           </div>
         </div>
-        <div className="mt-2 wrap-break-word text-sm font-bold text-foreground">
-          {activityView.title}
+        <div className="mt-2 flex flex-wrap items-baseline gap-x-2 gap-y-1">
+          <span className="wrap-break-word text-sm font-bold text-foreground">{activityView.title}</span>
+          {activityView.duration && (
+            <span className="text-xs text-muted-foreground">{activityView.duration}</span>
+          )}
         </div>
         {activityView.detail && (
           <div className={`mt-0.5 wrap-break-word text-xs ${labelClass}`}>{activityView.detail}</div>
@@ -151,7 +141,6 @@ export default function DashboardFlowPanel({ refreshDashboard, onMissingFlow }: 
       <div className="dashboard-flow-stages" data-dashboard-flow-stages>
         <div className="flex items-center justify-between gap-3.5">
           <div className="flex items-center gap-2">
-            <span className="dashboard-flow-rail-dot" />
             <span className="text-xs font-semibold text-foreground">今日开放关卡</span>
           </div>
           <span className={`text-[11px] ${labelClass}`}>{openStageSummary.open.length} 个日常本</span>

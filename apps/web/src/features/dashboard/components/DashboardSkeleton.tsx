@@ -98,7 +98,6 @@ export function DashboardSkeleton() {
                 <div className="dashboard-flow-stages" data-dashboard-flow-stages>
                   <div className="flex items-center justify-between gap-3.5">
                     <div className="flex items-center gap-2">
-                      <span className="dashboard-flow-rail-dot" />
                       <Skeleton className="rounded-sm h-3 w-24" />
                     </div>
                     <Skeleton className="rounded-sm h-2.5 w-16" />

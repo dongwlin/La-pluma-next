@@ -1,13 +1,8 @@
 import { useCallback, useRef, useState } from 'react'
-import { notify, type NoticeType } from '@/shared/notifications'
+import { EXECUTION_NOTICE_ID, notify } from '@/shared/notifications'
 import { loadUserConfig } from '@/features/user-config'
 import { useDashboardExecution } from './useDashboardExecution'
 import { useDashboardServiceStatus } from './useDashboardServiceStatus'
-
-export interface DashboardFlowFeedback {
-  readonly message: string
-  readonly type: NoticeType
-}
 
 export interface DashboardFlowActionsOptions {
   refreshDashboard: () => Promise<void>
@@ -25,7 +20,6 @@ export function useDashboardFlowActions({ refreshDashboard, onMissingFlow }: Das
   } = useDashboardExecution({ notify })
 
   const [quickStartLoading, setQuickStartLoading] = useState(false)
-  const [feedback, setFeedback] = useState<DashboardFlowFeedback>({ message: '', type: 'default' })
   // 点击可能在重渲染前重复触发：执行意图只允许一个在途，避免第二个提交或提前解锁。
   const quickStartInFlightRef = useRef(false)
 
@@ -36,29 +30,25 @@ export function useDashboardFlowActions({ refreshDashboard, onMissingFlow }: Das
   const runTodayFlow = useCallback(async () => {
     if (quickStartInFlightRef.current) return
     if (!isAvailable) {
-      setFeedback({ message: unavailableMessage, type: 'warning' })
+      notify(unavailableMessage, 'warning', { id: EXECUTION_NOTICE_ID })
       return
     }
     quickStartInFlightRef.current = true
     setQuickStartLoading(true)
-    setFeedback({ message: '', type: 'info' })
     try {
       const configResult = await loadUserConfig('automation-tasks')
       const savedFlow = Array.isArray(configResult?.data?.taskFlow) ? configResult.data.taskFlow : []
       if (!configResult.success || savedFlow.length === 0) {
-        setFeedback({ message: '还没有配置今日流程，先去日常页保存任务流。', type: 'warning' })
+        notify('还没有配置今日流程，先去日常页保存任务流。', 'warning', { id: EXECUTION_NOTICE_ID })
         onMissingFlow()
         return
       }
 
       const outcome = await startFlow(savedFlow)
-      setFeedback({ message: outcome.message, type: outcome.type })
+      notify(outcome.message, outcome.type, { id: EXECUTION_NOTICE_ID })
       if (outcome.ok) await refreshDashboard()
     } catch (error) {
-      setFeedback({
-        message: (error as Error)?.message || '今日流程启动失败',
-        type: 'error',
-      })
+      notify((error as Error)?.message || '今日流程启动失败', 'error', { id: EXECUTION_NOTICE_ID })
     } finally {
       quickStartInFlightRef.current = false
       setQuickStartLoading(false)
@@ -72,7 +62,6 @@ export function useDashboardFlowActions({ refreshDashboard, onMissingFlow }: Das
     isAvailable,
     connectionChecking,
     quickStartLoading,
-    feedback,
     runTodayFlow,
   }
 }

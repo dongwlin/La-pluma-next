@@ -11,6 +11,7 @@ export interface DashboardActivityItem {
 export interface DashboardActivityView {
   phase: DashboardActivityPhase
   title: string
+  duration: string
   detail: string
   meta: string
   canRetry: boolean
@@ -64,6 +65,15 @@ const formatWindow = (
   return ''
 }
 
+const formatStageCount = (stageCount: number): string => (
+  stageCount ? `${stageCount} 个关卡` : ''
+)
+
+const formatActivityTraits = (rerun: boolean, stageCount: number): string => joinParts(
+  rerun ? '复刻' : '',
+  formatStageCount(stageCount),
+)
+
 const formatActivityDetail = (
   rerun: boolean,
   startTime: number | undefined,
@@ -73,7 +83,7 @@ const formatActivityDetail = (
 ): string => joinParts(
   rerun ? '复刻' : '',
   formatWindow(startTime, endTime, formatTimestamp),
-  stageCount ? `${stageCount} 个关卡` : '',
+  formatStageCount(stageCount),
 )
 
 const buildActivityItems = (
@@ -118,13 +128,11 @@ export function buildDashboardActivityView(
   const { summary, hasSnapshot, isRefreshing, lastRefreshFailed, lastRefreshError, lastUpdate } = input
   const formatTimestamp = input.formatTimestamp ?? formatDefaultTimestamp
   const activityItems = buildActivityItems(summary, formatTimestamp)
-  const activityDetail = formatActivityDetail(
+  const activityTraits = formatActivityTraits(
     summary.rerun ?? false,
-    summary.startTime,
-    summary.endTime,
     summary.stages?.length ?? 0,
-    formatTimestamp,
   )
+  const activityDuration = formatWindow(summary.startTime, summary.endTime, formatTimestamp)
   const multiActivityItems = activityItems.length > 1 ? activityItems : undefined
   const origin = readOrigin(summary)
   const updatedAt = summary.dataUpdatedAt !== undefined ? formatTimestamp(summary.dataUpdatedAt) : ''
@@ -137,6 +145,7 @@ export function buildDashboardActivityView(
       return {
         phase: 'loading',
         title: '正在获取活动信息',
+        duration: '',
         detail: '',
         meta: '',
         canRetry: false,
@@ -146,6 +155,7 @@ export function buildDashboardActivityView(
       return {
         phase: 'unavailable',
         title: '活动数据加载失败',
+        duration: '',
         detail: lastRefreshError || '无法获取活动信息',
         meta: '',
         canRetry: true,
@@ -154,6 +164,7 @@ export function buildDashboardActivityView(
     return {
       phase: 'unavailable',
       title: '无法获取活动信息',
+      duration: '',
       detail: lastRefreshError || '尚未获取活动信息',
       meta: '',
       canRetry: true,
@@ -165,6 +176,7 @@ export function buildDashboardActivityView(
       return {
         phase: 'stale',
         title: '活动信息可能已过期',
+        duration: activityDuration,
         detail: lastRefreshError || '最近一次刷新失败',
         meta: joinParts(origin, lastUpdateText),
         canRetry: true,
@@ -173,6 +185,7 @@ export function buildDashboardActivityView(
     return {
       phase: 'loading',
       title: '正在获取活动信息',
+      duration: '',
       detail: '',
       meta: '',
       canRetry: false,
@@ -183,6 +196,7 @@ export function buildDashboardActivityView(
     return {
       phase: 'unavailable',
       title: '无法获取活动信息',
+      duration: '',
       detail: summary.failure?.message || summary.message || '未知原因',
       meta: lastUpdateText,
       canRetry: true,
@@ -199,8 +213,9 @@ export function buildDashboardActivityView(
     return {
       phase: 'stale',
       title,
+      duration: activityDuration,
       detail,
-      meta: joinParts(origin, lastRefreshFailed ? lastUpdateText : lastSuccessText, activityDetail),
+      meta: joinParts(origin, lastRefreshFailed ? lastUpdateText : lastSuccessText, activityTraits),
       canRetry: true,
       activities: multiActivityItems,
     }
@@ -210,6 +225,7 @@ export function buildDashboardActivityView(
     return {
       phase: 'none',
       title: '暂无当前刷关活动',
+      duration: '',
       detail: joinParts(origin, updatedAt ? `更新于 ${updatedAt}` : ''),
       meta: '',
       canRetry: false,
@@ -219,7 +235,8 @@ export function buildDashboardActivityView(
   return {
     phase: 'active',
     title: summary.name || summary.code || '当前活动',
-    detail: joinParts(origin, updatedAt ? `更新于 ${updatedAt}` : '', activityDetail),
+    duration: activityDuration,
+    detail: joinParts(origin, updatedAt ? `更新于 ${updatedAt}` : '', activityTraits),
     meta: '',
     canRetry: false,
     activities: multiActivityItems,
