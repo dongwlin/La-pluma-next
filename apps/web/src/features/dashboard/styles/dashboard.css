@@ -94,6 +94,15 @@
     background: color-mix(in srgb, var(--background) 94%, var(--primary) 6%);
   }
 
+  @media (prefers-reduced-motion: reduce) {
+    .dashboard-preview-frame[data-dashboard-preview-frame],
+    .dashboard-preview-frame video,
+    .dashboard-preview-frame .dashboard-preview-empty,
+    .dashboard-preview-frame .dashboard-preview-snapshot-image {
+      transition: none;
+    }
+  }
+
   .dashboard-flow-skeleton .dashboard-flow-activity {
     height: 82.5px;
   }
