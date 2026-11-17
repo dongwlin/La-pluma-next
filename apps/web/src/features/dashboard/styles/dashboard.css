@@ -3,7 +3,7 @@
     display: grid;
     grid-template-columns: minmax(0, 1fr);
     align-items: start;
-    gap: 1.125rem;
+    gap: 1.5rem;
   }
 
   .dashboard-device-section {
@@ -184,7 +184,7 @@
   .dashboard-summary-grid {
     display: grid;
     grid-template-columns: minmax(0, 1fr);
-    gap: 1.25rem;
+    gap: 1.5rem;
   }
 
   .dashboard-summary-card {
@@ -405,6 +405,10 @@
 
   .la-pluma-app .dashboard-page .surface-panel-hover:hover:not(:disabled) {
     transform: none;
+  }
+
+  .la-pluma-app .dashboard-page > .app-stack-section {
+    gap: 1.5rem;
   }
 
   @media (width < 640px) {
