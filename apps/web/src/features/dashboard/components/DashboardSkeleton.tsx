@@ -1,5 +1,6 @@
 import { PageShell } from '@/shared/components'
 import { Card } from '@/shared/ui/card'
+import { Separator } from '@/shared/ui/separator'
 import { Skeleton } from '@/shared/ui/skeleton'
 import { useDashboardFlowLayout } from '../hooks/useDashboardFlowLayout'
 
@@ -84,10 +85,14 @@ export function DashboardSkeleton() {
                 </div>
               </div>
 
+              <Separator />
+
               <div className="dashboard-flow-activity space-y-2">
                 <Skeleton className="rounded-sm h-4 w-36 max-w-full" />
                 <Skeleton className="rounded-sm h-2 w-52 max-w-full" />
               </div>
+
+              <Separator />
 
               <div className="dashboard-flow-stages" data-dashboard-flow-stages>
                 <Skeleton className="rounded-sm h-3 w-28 max-w-full" />

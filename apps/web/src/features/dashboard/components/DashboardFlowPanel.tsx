@@ -1,6 +1,7 @@
 import { LoaderCircle, Play } from 'lucide-react'
 import { Button } from '@/shared/ui/button'
 import { Card } from '@/shared/ui/card'
+import { Separator } from '@/shared/ui/separator'
 import { useDashboardStore } from '../store/dashboardStore'
 import { useDashboardFlowActions } from '../hooks/useDashboardFlowActions'
 import { buildDashboardFlowView } from '../model/flowView'
@@ -83,6 +84,8 @@ export default function DashboardFlowPanel({ refreshDashboard, onMissingFlow }: 
         </div>
       </div>
 
+      <Separator />
+
       <div className="dashboard-flow-activity" data-activity-status={activityView.phase}>
         <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
           <span className="wrap-break-word text-sm font-bold text-foreground">{activityView.title}</span>
@@ -110,6 +113,8 @@ export default function DashboardFlowPanel({ refreshDashboard, onMissingFlow }: 
           </div>
         )}
       </div>
+
+      <Separator />
 
       <div className="dashboard-flow-stages" data-dashboard-flow-stages>
         <span className="text-xs font-semibold text-foreground">今日开放资源关卡</span>
