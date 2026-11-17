@@ -55,11 +55,6 @@ export default function DashboardDeviceSection() {
 
   return (
     <div className="dashboard-device-section">
-      <div className="flex items-center gap-2">
-        <div className="h-0.5 flex-1 bg-border rounded-full" />
-        <span className={`text-xs font-medium ${labelClass} uppercase shrink-0`}>设备状态</span>
-        <div className="h-0.5 flex-1 bg-border rounded-full" />
-      </div>
       <div className="dashboard-device-grid">
         {([
           { label: 'CPU', pct: deviceStats.cpuPct, sub: deviceStats.load1m != null ? `负载 ${deviceStats.load1m.toFixed(1)}` : '', Icon: Cpu, value: undefined as string | undefined },
