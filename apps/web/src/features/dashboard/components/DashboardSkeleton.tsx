@@ -77,7 +77,6 @@ export function DashboardSkeleton() {
               <Card className="dashboard-flow-card dashboard-flow-skeleton gap-0 p-0!">
                 <div className="dashboard-flow-command">
                   <div className="min-w-0 space-y-2">
-                    <Skeleton className="rounded-sm h-2.5 w-16" />
                     <Skeleton className="rounded-sm h-6 w-36 max-w-full" />
                     <Skeleton className="rounded-sm h-2.5 w-52 max-w-full" />
                   </div>
@@ -87,19 +86,14 @@ export function DashboardSkeleton() {
                 </div>
 
                 <div className="dashboard-flow-activity space-y-2">
-                  <div className="flex items-center gap-2">
-                    <Skeleton className="rounded-full h-3.5 w-3.5 shrink-0" />
-                    <Skeleton className="rounded-sm h-2.5 w-16 max-w-full" />
-                  </div>
+                  <Skeleton className="rounded-sm h-2.5 w-16 max-w-full" />
                   <Skeleton className="rounded-sm h-4 w-36 max-w-full" />
                   <Skeleton className="rounded-sm h-2 w-52 max-w-full" />
                 </div>
 
                 <div className="dashboard-flow-stages" data-dashboard-flow-stages>
                   <div className="flex items-center justify-between gap-3.5">
-                    <div className="flex items-center gap-2">
-                      <Skeleton className="rounded-sm h-3 w-24" />
-                    </div>
+                    <Skeleton className="rounded-sm h-3 w-24" />
                     <Skeleton className="rounded-sm h-2.5 w-16" />
                   </div>
                   <div className="mt-2 flex flex-wrap gap-1.5">
