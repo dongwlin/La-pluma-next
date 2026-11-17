@@ -8,7 +8,6 @@ function DashboardSummarySkeleton({ variant }: { variant: 'training' | 'drops' }
     <Card className={`dashboard-summary-card dashboard-summary-skeleton is-${variant} gap-0 p-0!`}>
       <div className="dashboard-summary-header">
         <div className="dashboard-summary-heading">
-          <Skeleton className="h-8 w-8 rounded-lg" />
           <Skeleton className="rounded-sm h-4 w-24" />
         </div>
         <Skeleton className="h-8 w-8 rounded-lg" />
@@ -78,7 +77,6 @@ export function DashboardSkeleton() {
               <Card className="dashboard-flow-card dashboard-flow-skeleton gap-0 p-0!">
                 <div className="dashboard-flow-header">
                   <div className="flex items-center gap-3.5">
-                    <Skeleton className="h-8 w-8 rounded-lg" />
                     <Skeleton className="rounded-sm h-4 w-20" />
                   </div>
                 </div>

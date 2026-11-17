@@ -1,4 +1,4 @@
-import { Activity, CalendarDays, LoaderCircle, Play } from 'lucide-react'
+import { CalendarDays, LoaderCircle, Play } from 'lucide-react'
 import { Button } from '@/shared/ui/button'
 import { Card } from '@/shared/ui/card'
 import { useDashboardStore } from '../store/dashboardStore'
@@ -63,9 +63,6 @@ export default function DashboardFlowPanel({ refreshDashboard, onMissingFlow }: 
       <Card className="dashboard-flow-card gap-0 p-0!">
       <div className="dashboard-flow-header">
         <div className="flex min-w-0 items-center gap-3.5">
-          <div className="dashboard-flow-mark" aria-hidden="true">
-            <Activity className="h-4 w-4" strokeWidth={1.8} />
-          </div>
           <div className="min-w-0">
             <div className="dashboard-flow-title text-base font-bold text-foreground">今日流程</div>
           </div>
