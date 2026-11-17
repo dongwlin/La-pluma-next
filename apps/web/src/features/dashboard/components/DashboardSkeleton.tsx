@@ -29,7 +29,7 @@ function DashboardSummarySkeleton({ variant }: { variant: 'training' | 'drops' }
           <div className="dashboard-summary-footer">
             <div className="dashboard-stage-list">
               {[14, 18, 16].map((width, index) => (
-                <Skeleton key={index} className="h-6 rounded-lg" style={{ width: `${width / 4}rem` }} />
+                <Skeleton key={index} className="dashboard-stage-skeleton h-6 rounded-lg" style={{ width: `${width / 4}rem` }} />
               ))}
             </div>
           </div>
@@ -50,12 +50,7 @@ function DashboardSummarySkeleton({ variant }: { variant: 'training' | 'drops' }
           </div>
           <div className="dashboard-summary-footer">
             <div className="dashboard-drop-list">
-              {[1, 2].map(item => (
-                <div key={item} className="dashboard-drop-row">
-                  <Skeleton className="dashboard-drop-stage h-6 w-12 rounded-lg" />
-                  <Skeleton className="rounded-sm dashboard-drop-items h-3 w-32 max-w-full" />
-                </div>
-              ))}
+              <Skeleton className="rounded-sm dashboard-drop-items h-3 w-3/4" />
             </div>
           </div>
         </div>

@@ -501,6 +501,24 @@ describe('Dashboard connectivity state', () => {
     expect(useDashboardStore.getState().temperatureHistory).toEqual([38])
   })
 
+  it('still renders the device cards without usage values when device stats are null', async () => {
+    apiMocks.getDeviceStats.mockResolvedValue({ success: true, data: null })
+
+    await act(async () => renderDashboard())
+    await flushDashboard()
+
+    const text = container.textContent ?? ''
+    expect(text).toContain('CPU')
+    expect(text).toContain('内存')
+    expect(text).toContain('磁盘')
+    expect(text).toContain('温度')
+    expect(text).toContain('实时采样')
+    expect(text).toContain('-- / --')
+    expect(text).toContain('等待温度采样')
+    expect(text).not.toContain('使用率')
+    expect(text).not.toMatch(/\d+%/)
+  })
+
   it('shows an offline notice and disables execution without inline page content', async () => {
     await act(async () => renderDashboard())
     await flushDashboard()

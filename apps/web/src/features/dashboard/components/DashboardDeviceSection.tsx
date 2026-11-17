@@ -51,16 +51,14 @@ export default function DashboardDeviceSection() {
   const deviceStats = useDashboardStore(state => state.deviceStats)
   const temperatureHistory = useDashboardStore(state => state.temperatureHistory)
 
-  if (!deviceStats) return null
-
   return (
     <div className="dashboard-device-section">
       <div className="dashboard-device-grid">
         {([
-          { label: 'CPU', pct: deviceStats.cpuPct, sub: deviceStats.load1m != null ? `负载 ${deviceStats.load1m.toFixed(1)}` : '', Icon: Cpu, value: undefined as string | undefined },
-          { label: '内存', pct: deviceStats.memPct, sub: `${deviceStats.memUsed ?? '--'} / ${deviceStats.memTotal ?? '--'}`, Icon: Database, value: undefined as string | undefined },
-          { label: '磁盘', pct: deviceStats.diskPct, sub: `${deviceStats.diskUsed ?? '--'} / ${deviceStats.diskTotal ?? '--'}`, Icon: HardDrive, value: undefined as string | undefined },
-          { label: '温度', pct: undefined, sub: '', Icon: Thermometer, value: deviceStats.temp != null ? `${deviceStats.temp}°C` : '--' },
+          { label: 'CPU', pct: deviceStats?.cpuPct, sub: deviceStats?.load1m != null ? `负载 ${deviceStats.load1m.toFixed(1)}` : '', Icon: Cpu, value: undefined as string | undefined },
+          { label: '内存', pct: deviceStats?.memPct, sub: `${deviceStats?.memUsed ?? '--'} / ${deviceStats?.memTotal ?? '--'}`, Icon: Database, value: undefined as string | undefined },
+          { label: '磁盘', pct: deviceStats?.diskPct, sub: `${deviceStats?.diskUsed ?? '--'} / ${deviceStats?.diskTotal ?? '--'}`, Icon: HardDrive, value: undefined as string | undefined },
+          { label: '温度', pct: undefined, sub: '', Icon: Thermometer, value: deviceStats?.temp != null ? `${deviceStats.temp}°C` : '--' },
         ] as const).map(({ label, pct, sub, Icon, value }) => {
           const tone = getUsageTone(pct)
           return (

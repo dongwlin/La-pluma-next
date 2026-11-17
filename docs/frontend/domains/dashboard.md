@@ -25,7 +25,7 @@
 | 当前活动卡状态投影 | `features/dashboard/model/activityView.ts` | 纯函数：把活动快照、刷新状态与旧 v1 缺字段投影为 loading/active/none/unavailable/stale |
 | 流程操作入口 | `features/dashboard/hooks/useDashboardFlowActions.ts` | 组合 `useDashboardExecution` 与刷新回调；不写 store、不另发请求 |
 | 连接健康投影 | `features/dashboard/hooks/useDashboardServiceStatus.ts` | 把 `backendStatus` 与在线状态映射成文案；探针仍归 `runtime-status` |
-| 设备状态区域 | `features/dashboard/components/DashboardDeviceSection.tsx` | 只订阅 `deviceStats` 与 `temperatureHistory`；无样本时不渲染 |
+| 设备状态区域 | `features/dashboard/components/DashboardDeviceSection.tsx` | 只订阅 `deviceStats` 与 `temperatureHistory`；无样本时仍渲染四卡，数据为空 |
 | 摘要区域 | `components/DashboardSummarySection.tsx` | 养成与掉落卡片常驻 |
 | 养成摘要卡 / 掉落摘要卡 | `components/DashboardTrainingSummaryCard.tsx`、`DashboardDropSummaryCard.tsx` | 各自订阅自己的摘要切片与导航函数 |
 | 流程展示计算 | `features/dashboard/model/flowView.ts` | 纯函数：命令标题/说明、按钮文案、禁用与忙碌标记 |
@@ -166,6 +166,8 @@ Dashboard（app-page > app-stack-section > DashboardWorkspace；首屏门禁与�
   8. **活动区控制行移除。** “当前活动”标题、“可能已过期”标记与活动重试按钮一并移除；活动区首行直接显示活动名称与时间窗口。失败刷新仍通过 detail/meta 保留失败原因与上次成功时间，恢复依赖自动刷新与连接通知的“重试连接”，卡内不再提供手动重试。
   9. **开放资源关卡标题收敛。** 开放关卡区标题改为“今日开放资源关卡”，移除右侧“N 个日常本”计数；关卡 chips 与空态文案保持不变。
   10. **命令区改为内容高度。** 移除流程卡命令区的 100px 最小高度，高度由 16px padding 与标题、说明、主按钮决定；骨架同步使用与 live 一致的行高并移除 100px / 142px 固定高度。三段之间统一使用 shared `Separator`。
+  11. **掉落摘要单行合并。** `buildDropSummary` 新增跨关卡 `items` 展示串，卡片不再显示关卡代号，物品按数量倒序单行排列；溢出时只保留完整物品并以“、…”结尾，不截断半个物品。`recent` 保留按关卡聚合用于缓存兼容。
+  12. **设备无样本仍渲染四卡。** `deviceStats` 为 null 时不再整段返回 null，四卡照常显示但无使用率条、内存/磁盘显示 `-- / --`、温度显示 `--` 与“等待温度采样”。养成摘要底部名称 chips 改为单行，溢出省略。
 
 ### 剩余边界
 
@@ -216,7 +218,7 @@ Dashboard（app-page > app-stack-section > DashboardWorkspace；首屏门禁与�
 - activity 必须通过 `normalizeActivityPayload`：`status` 为 active/none/unavailable/stale，`clientType`、`available`、`message` 与可空代号/名称/来源/时间戳、`stages`、`failure`、可选 `completion` 均按 `/agent/activity` DTO 校验；旧 `isActive`/`tip`/`description` 不再参与投影。
 - schedule execution 必须是对象；`isRunning`/`running`/`executing` 归一为运行态，`lastResult`/`result`/`lastMessage` 走既有摘要格式化。
 - training queue 接受数组或 `{ queue }`；drops 接受数组或 `{ records }`；open-today 必须是 `{ open, closed }`，两组均为 `{ stage, name }` 数组（每组最多 100 项）。
-- 掉落摘要由 `model/dropSummary.ts` 的 `buildDropSummary` 按关卡合并当日逐条记录：同一关卡只保留一行，物品按 `itemId`（缺失时按名称）累加，行内按累加数量倒序、行间按该关卡最近一次掉落倒序，最多展示 3 个关卡；`dropSummary.count` 仍是当日逐条记录数，与可见行数口径不同。原始逐条记录与数据页掉落列表不受影响。
+- 掉落摘要由 `model/dropSummary.ts` 的 `buildDropSummary` 合并当日逐条记录：`recent` 仍按关卡聚合（同一关卡一行、最多 3 个关卡），保留给缓存兼容；新增跨关卡合并的 `items`，物品按 `itemId`（缺失时按名称）累加并按数量倒序。卡片只显示 `items`，不显示关卡代号，单行显示；溢出时只保留完整物品并以“、…”结尾；`dropSummary.count` 仍是当日逐条记录数。原始逐条记录与数据页掉落列表不受影响。
 - open-today 的 `gameDate`（`YYYY-MM-DD`）、`clientType` 与 `weekday` 描述服务端判定所用的游戏日：`weekday` 是客户端服务区时区下、每日 04:00 日界之后的星期，不是浏览器或宿主日历星期。展示只读 `open`/`closed`，新增字段缺失也不影响归一。
 - 资源收集全开放活动期间，服务端按该客户端服务区在 MAA 活动表（`StageActivityV2.json`）中的 `resourceCollection` 窗口把所有资源本投影为开放，`closed` 为空；活动表不可读或不在窗口内时回落周表。该投影与养成计划、执行跳过同源，前端不区分全开放与周表开放。
 - 任一载荷缺失、形状不符或 completion 越界时返回 `null`；协调器不会提交部分结果。
@@ -300,7 +302,7 @@ Dashboard（app-page > app-stack-section > DashboardWorkspace；首屏门禁与�
 - 设备采样：同一 `dataUpdatedAt` 的缓存回放不重复追加温度点，新时间戳逐次追加（最多 36 个），`null` 载荷与非法字段保旧。
 - 订阅隔离：采样投影返回 `null` 不推动兄弟区域重渲染，流程卡独占执行订阅与终态提示；预览入口不条件卸载、预览画面不导航。
 - 连接通知：仅 `offline`/`unavailable` 发送固定 id 的常驻 toast，`checking` 保持当前通知，恢复自动 dismiss；离线不带 action，后端不可用时的“重试连接”复用完整快照协调器；通知组件返回 `null`，不改变页面布局。
-- 今日掉落摘要按关卡合并：同关卡累加、不同关卡分列、同物品按 `itemId` 合并；原始逐条记录接口与数据页列表语义不变。
+- 掉落摘要：同关卡累加、跨关卡合并为 `items`、同物品按 `itemId` 合并；卡片不显示关卡代号，单行溢出省略；`recent` 保留按关卡聚合用于缓存兼容，原始逐条记录接口与数据页列表语义不变。
 
 ### 验证命令
 

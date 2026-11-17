@@ -229,16 +229,18 @@
   }
 
   .dashboard-stage-list {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 0.375rem;
+    display: block;
+    overflow: hidden;
     margin-top: 0.625rem;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 
   .dashboard-stage-chip {
     display: inline-flex;
     min-height: 1.5rem;
     align-items: center;
+    margin-right: 0.375rem;
     border-radius: var(--radius-lg);
     padding: 0.25rem 0.5rem;
     background: var(--muted);
@@ -247,6 +249,12 @@
     font-size: 0.75rem;
     font-weight: 600;
     line-height: 1.2;
+  }
+
+  .dashboard-stage-skeleton {
+    display: inline-block;
+    margin-right: 0.375rem;
+    vertical-align: top;
   }
 
   .dashboard-stage-chip.is-accent {
@@ -326,28 +334,15 @@
   }
 
   .dashboard-drop-list {
-    display: grid;
-    gap: 0.5rem;
-  }
-
-  .dashboard-drop-row {
-    display: grid;
-    grid-template-columns: auto minmax(0, 1fr);
-    align-items: center;
-    gap: 0.625rem;
-  }
-
-  .dashboard-drop-stage {
-    color: var(--summary-accent);
-    font-size: 0.75rem;
-    font-weight: 700;
+    display: block;
+    overflow: hidden;
   }
 
   .dashboard-drop-items {
+    display: block;
     overflow: hidden;
     color: var(--muted-foreground);
     font-size: 0.75rem;
-    text-overflow: ellipsis;
     white-space: nowrap;
   }
 
