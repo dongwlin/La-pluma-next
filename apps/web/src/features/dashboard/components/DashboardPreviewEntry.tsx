@@ -1,5 +1,5 @@
 import { memo } from 'react'
-import { Monitor } from 'lucide-react'
+import { Smartphone } from 'lucide-react'
 import { Button } from '@/shared/ui/button'
 import { Card } from '@/shared/ui/card'
 import { useDashboardPreview } from '../hooks/useDashboardPreview'
@@ -54,8 +54,8 @@ const DashboardPreviewEntry = memo(function DashboardPreviewEntry() {
             aria-live="polite"
           >
             <div>
-              <div className="device-preview-empty-icon mx-auto mb-3 flex h-10 w-10 items-center justify-center rounded-lg">
-                <Monitor size={17} strokeWidth={2} />
+              <div className="device-preview-empty-icon mx-auto mb-3 flex h-11 w-11 items-center justify-center rounded-lg">
+                <Smartphone className="h-5 w-5" strokeWidth={1.6} aria-hidden="true" />
               </div>
               <div className="text-sm font-semibold text-foreground">{statusText}</div>
             </div>
