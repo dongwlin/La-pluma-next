@@ -2,8 +2,6 @@ import type { GlobalRunPhase } from '@/features/task-execution'
 
 export interface DashboardFlowViewInput {
   readonly automationAvailable: boolean
-  readonly connectionTitle: string
-  readonly connectionDescription: string
   readonly quickStartLoading: boolean
   readonly deviceBusy: boolean
   readonly phase: GlobalRunPhase
@@ -26,8 +24,6 @@ export interface DashboardFlowView {
 
 export function buildDashboardFlowView({
   automationAvailable,
-  connectionTitle,
-  connectionDescription,
   quickStartLoading,
   deviceBusy,
   phase,
@@ -46,7 +42,7 @@ export function buildDashboardFlowView({
       : '运行状态'
 
   const commandTitle = !automationAvailable
-    ? connectionTitle
+    ? '连接不可用'
     : quickStartLoading
       ? '正在启动今日流程'
       : phase === 'waiting'
@@ -60,7 +56,7 @@ export function buildDashboardFlowView({
               : '准备就绪'
 
   const commandDescription = !automationAvailable
-    ? connectionDescription
+    ? '连接恢复后可以继续操作'
     : quickStartLoading
       ? '正在读取任务配置并提交执行'
       : phase === 'waiting'

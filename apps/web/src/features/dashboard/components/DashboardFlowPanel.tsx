@@ -27,8 +27,6 @@ export default function DashboardFlowPanel({ refreshDashboard, onMissingFlow }: 
     isBusy,
     observationError,
     isAvailable,
-    connectionTitle,
-    connectionDescription,
     quickStartLoading,
     feedback,
     runTodayFlow,
@@ -36,8 +34,6 @@ export default function DashboardFlowPanel({ refreshDashboard, onMissingFlow }: 
 
   const view = buildDashboardFlowView({
     automationAvailable: isAvailable,
-    connectionTitle,
-    connectionDescription,
     quickStartLoading,
     deviceBusy: isBusy,
     phase: status.phase,

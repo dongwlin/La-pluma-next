@@ -501,35 +501,84 @@ describe('Dashboard connectivity state', () => {
     expect(useDashboardStore.getState().temperatureHistory).toEqual([38])
   })
 
-  it('disables execution actions as soon as the browser goes offline', async () => {
+  it('shows an offline notice and disables execution without inline page content', async () => {
     await act(async () => renderDashboard())
     await flushDashboard()
 
     expect(container.textContent).toContain('准备就绪')
     expect(findButton('开始今日流程')?.disabled).toBe(false)
+    expect(apiMocks.notify).not.toHaveBeenCalled()
 
     online = false
-    act(() => window.dispatchEvent(new Event('offline')))
+    await act(async () => {
+      window.dispatchEvent(new Event('offline'))
+    })
 
-    expect(container.textContent).toContain('当前网络离线')
+    expect(apiMocks.notify).toHaveBeenCalledWith(
+      '当前网络离线',
+      'warning',
+      {
+        id: 'dashboard-connection',
+        duration: Infinity,
+        description: '恢复网络连接后会自动重新检查服务',
+        action: { label: '重试连接', onClick: expect.any(Function) },
+      },
+    )
+    expect(container.textContent).not.toContain('当前网络离线')
+    expect(container.textContent).toContain('连接不可用')
+    expect(container.textContent).toContain('连接恢复后可以继续操作')
     expect(findButton('开始今日流程')?.disabled).toBe(true)
   })
 
-  it('shows a retry action and recovers after the backend becomes available', async () => {
+  it('retries the full snapshot from the unavailable notice and recovers', async () => {
     apiMocks.getTaskStatus.mockRejectedValueOnce(new Error('无法连接后端服务，请确认服务已启动'))
 
     await act(async () => renderDashboard())
     await flushDashboard()
 
-    expect(container.textContent).toContain('后端服务不可用')
+    expect(apiMocks.notify).toHaveBeenCalledWith(
+      '后端服务不可用',
+      'error',
+      {
+        id: 'dashboard-connection',
+        duration: Infinity,
+        description: '无法连接后端服务，请确认服务已启动',
+        action: { label: '重试连接', onClick: expect.any(Function) },
+      },
+    )
+    expect(container.textContent).not.toContain('后端服务不可用')
+    expect(container.textContent).toContain('连接不可用')
     expect(container.textContent).toContain('测试活动')
     expect(useDashboardStore.getState().lastUpdate).not.toBeNull()
-    expect(findButton('重试连接')).toBeDefined()
     expect(findButton('开始今日流程')?.disabled).toBe(true)
 
-    await act(async () => findButton('重试连接')?.click())
+    const lastCall = apiMocks.notify.mock.calls[apiMocks.notify.mock.calls.length - 1]!
+    const { action } = lastCall[2] as {
+      action: { label: string; onClick: () => void }
+    }
+    expect(action.label).toBe('重试连接')
+    let resolveRetry: ((value: unknown) => void) | undefined
+    apiMocks.getTaskStatus.mockReturnValueOnce(new Promise(resolve => {
+      resolveRetry = resolve
+    }))
+    apiMocks.dismissNotice.mockClear()
+
+    await act(async () => {
+      action.onClick()
+      await Promise.resolve()
+    })
+
+    expect(useStatusStore.getState().backendStatus).toBe('checking')
+    expect(apiMocks.dismissNotice).not.toHaveBeenCalledWith('dashboard-connection')
+
+    await act(async () => resolveRetry?.({
+      success: true,
+      data: { isRunning: false },
+    }))
     await flushDashboard()
 
+    expect(useStatusStore.getState().backendStatus).toBe('available')
+    expect(apiMocks.dismissNotice).toHaveBeenCalledWith('dashboard-connection')
     expect(container.textContent).toContain('准备就绪')
     expect(findButton('开始今日流程')?.disabled).toBe(false)
   })

@@ -3,8 +3,6 @@ import { buildDashboardFlowView, type DashboardFlowViewInput } from './flowView'
 
 const base: DashboardFlowViewInput = {
   automationAvailable: true,
-  connectionTitle: '正在检查服务',
-  connectionDescription: '正在确认自动化服务状态',
   quickStartLoading: false,
   deviceBusy: false,
   phase: 'idle',
@@ -92,18 +90,16 @@ describe('buildDashboardFlowView', () => {
     expect(view({ quickStartLoading: true }).statusLabel).toBe('当前操作')
   })
 
-  it('shows the connection copy and disables the entries when automation is unavailable', () => {
+  it('shows a short connection block and disables the entries when automation is unavailable', () => {
     const result = view({
       automationAvailable: false,
-      connectionTitle: '当前网络离线',
-      connectionDescription: '恢复网络连接后会自动重新检查服务',
       phase: 'running',
     })
     expect(result).toMatchObject({
       isRunning: true,
       controlsDisabled: true,
-      commandTitle: '当前网络离线',
-      commandDescription: '恢复网络连接后会自动重新检查服务',
+      commandTitle: '连接不可用',
+      commandDescription: '连接恢复后可以继续操作',
     })
   })
 
