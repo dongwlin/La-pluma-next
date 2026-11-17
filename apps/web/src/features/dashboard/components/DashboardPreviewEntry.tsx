@@ -58,13 +58,13 @@ const DashboardPreviewEntry = memo(function DashboardPreviewEntry() {
                 <Smartphone className="h-5 w-5" strokeWidth={1.6} aria-hidden="true" />
               </div>
               <div className="text-sm font-semibold text-foreground">{statusText}</div>
+              {error && (
+                <Button onClick={retry} variant="secondary" size="sm" className="mt-3">
+                  重试
+                </Button>
+              )}
             </div>
           </div>
-        )}
-        {error && (
-          <Button onClick={retry} variant="secondary" size="sm" className="absolute bottom-2 right-2">
-            重试
-          </Button>
         )}
       </div>
     </Card>

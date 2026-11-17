@@ -133,6 +133,7 @@ describe('DashboardPreviewEntry', () => {
 
     const retry = Array.from(container.querySelectorAll('button')).find(button => button.textContent === '重试')
     expect(retry).not.toBeUndefined()
+    expect(container.querySelector('.dashboard-preview-empty')?.contains(retry ?? null)).toBe(true)
     expect(container.textContent).not.toContain('重试实时预览')
   })
 })
