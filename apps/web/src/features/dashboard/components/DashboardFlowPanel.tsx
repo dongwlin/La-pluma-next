@@ -73,7 +73,7 @@ export default function DashboardFlowPanel({ refreshDashboard, onMissingFlow }: 
             disabled={view.controlsDisabled || quickStartLoading}
             aria-busy={quickStartLoading || undefined}
             data-status-key={view.primaryActionStatusKey}
-            className="dashboard-flow-primary-action dashboard-flow-shining-action justify-center whitespace-nowrap"
+            className="dashboard-flow-primary-action justify-center whitespace-nowrap"
           >
             {quickStartLoading
               ? <><LoaderCircle className="animate-spin" aria-hidden="true" />启动中</>
