@@ -32,12 +32,16 @@ export default function DashboardConnectionNotice({ refreshDashboard }: Dashboar
       id: DASHBOARD_CONNECTION_NOTICE_ID,
       duration: Infinity,
       description: connectionDescription,
-      action: {
-        label: '重试连接',
-        onClick: () => {
-          void refreshDashboard()
-        },
-      },
+      ...(serviceStatus === 'unavailable'
+        ? {
+            action: {
+              label: '重试连接',
+              onClick: () => {
+                void refreshDashboard()
+              },
+            },
+          }
+        : {}),
     })
   }, [connectionDescription, connectionTitle, refreshDashboard, serviceStatus])
 

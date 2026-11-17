@@ -521,12 +521,25 @@ describe('Dashboard connectivity state', () => {
         id: 'dashboard-connection',
         duration: Infinity,
         description: '恢复网络连接后会自动重新检查服务',
-        action: { label: '重试连接', onClick: expect.any(Function) },
       },
     )
     expect(container.textContent).not.toContain('当前网络离线')
     expect(container.textContent).toContain('连接不可用')
     expect(container.textContent).toContain('连接恢复后可以继续操作')
+    expect(findButton('开始今日流程')?.disabled).toBe(true)
+  })
+
+  it('shows the checking copy while the backend status is being verified', async () => {
+    await act(async () => renderDashboard())
+    await flushDashboard()
+
+    await act(async () => {
+      useStatusStore.getState().setBackendStatus('checking')
+    })
+
+    expect(container.textContent).toContain('正在检查服务')
+    expect(container.textContent).toContain('正在确认自动化服务状态')
+    expect(container.textContent).not.toContain('连接不可用')
     expect(findButton('开始今日流程')?.disabled).toBe(true)
   })
 

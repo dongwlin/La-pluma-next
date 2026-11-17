@@ -3,6 +3,7 @@ import { buildDashboardFlowView, type DashboardFlowViewInput } from './flowView'
 
 const base: DashboardFlowViewInput = {
   automationAvailable: true,
+  connectionChecking: false,
   quickStartLoading: false,
   deviceBusy: false,
   phase: 'idle',
@@ -100,6 +101,19 @@ describe('buildDashboardFlowView', () => {
       controlsDisabled: true,
       commandTitle: '连接不可用',
       commandDescription: '连接恢复后可以继续操作',
+    })
+  })
+
+  it('distinguishes an in-progress connection check from an unavailable connection', () => {
+    const result = view({
+      automationAvailable: false,
+      connectionChecking: true,
+      phase: 'running',
+    })
+    expect(result).toMatchObject({
+      controlsDisabled: true,
+      commandTitle: '正在检查服务',
+      commandDescription: '正在确认自动化服务状态',
     })
   })
 

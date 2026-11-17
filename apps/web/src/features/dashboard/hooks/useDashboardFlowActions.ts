@@ -16,6 +16,7 @@ export interface DashboardFlowActionsOptions {
 
 export function useDashboardFlowActions({ refreshDashboard, onMissingFlow }: DashboardFlowActionsOptions) {
   const { serviceStatus, isAvailable } = useDashboardServiceStatus()
+  const connectionChecking = serviceStatus === 'unknown' || serviceStatus === 'checking'
   const {
     status,
     isBusy,
@@ -69,6 +70,7 @@ export function useDashboardFlowActions({ refreshDashboard, onMissingFlow }: Das
     isBusy,
     observationError,
     isAvailable,
+    connectionChecking,
     quickStartLoading,
     feedback,
     runTodayFlow,

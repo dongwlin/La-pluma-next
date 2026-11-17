@@ -19,7 +19,7 @@
 | 页面壳、首屏门禁与工作区组合 | `pages/dashboard/Dashboard.tsx` | 未加载时返回完整骨架；加载后组合工作区；只订阅 `hasLoaded` 并持有唯一的 `useDashboardSnapshotRefresh` |
 | 区域组合与导航回调 | `features/dashboard/components/DashboardWorkspace.tsx` | 组合连接通知、流程、设备与摘要区域；创建“打开自动化/养成/数据（掉落记录）”三个回调 |
 | 设备采样投影 | `DashboardWorkspace` 内的 `DashboardDeviceSampleProjection` | 只调用一次 `useDashboardDeviceStats`，返回 `null`；样本更新不推动兄弟区域重渲染 |
-| 连接健康提示与重试 | `features/dashboard/components/DashboardConnectionNotice.tsx` | 只在离线/后端不可用时发送常驻全局 toast；返回 `null`，不参与页面布局；重试调用完整快照协调器 |
+| 连接健康提示与重试 | `features/dashboard/components/DashboardConnectionNotice.tsx` | 只在离线/后端不可用时发送常驻全局 toast；离线不带 action，后端不可用时附带“重试连接”；返回 `null`，不参与页面布局；重试调用完整快照协调器 |
 | 流程区域（网格与预览入口） | `features/dashboard/components/DashboardFlowSection.tsx` | `useDashboardFlowLayout` 的网格测量与预览壳；预览入口始终挂载 |
 | 今日流程卡 | `features/dashboard/components/DashboardFlowPanel.tsx` | 订阅活动/定时/开放关卡摘要与刷新错误；持有启动反馈 |
 | 当前活动卡状态投影 | `features/dashboard/model/activityView.ts` | 纯函数：把活动快照、刷新状态与旧 v1 缺字段投影为 loading/active/none/unavailable/stale |
@@ -123,8 +123,8 @@ Dashboard（app-page > app-stack-section > DashboardWorkspace；首屏门禁与�
 | `isRunning` | `phase` 为 `running`/`waiting` |
 | `controlsDisabled` | 启动 loading、设备忙或后端不可用 |
 | `statusLabel` | 有活动 run 时为“当前任务”；否则 loading 时为“当前操作”；否则“运行状态” |
-| `commandTitle` | 不可用 → “连接不可用”；启动 loading → 对应进行中文案；再按 `waiting`/`running`（标签 → 当前任务 → 默认）/`occupied`/`unknown`/`idle` 回退 |
-| `commandDescription` | 不可用 → “连接恢复后可以继续操作”；loading → 对应说明；再按阶段回退到运行说明、计划消息或待命文案 |
+| `commandTitle` | 检查中 → “正在检查服务”；不可用 → “连接不可用”；启动 loading → 对应进行中文案；再按 `waiting`/`running`（标签 → 当前任务 → 默认）/`occupied`/`unknown`/`idle` 回退 |
+| `commandDescription` | 检查中 → “正在确认自动化服务状态”；不可用 → “连接恢复后可以继续操作”；loading → 对应说明；再按阶段回退到运行说明、计划消息或待命文案 |
 | `primaryActionLabel` / `primaryActionStatusKey` | `waiting` → “等待继续”；运行 → “正在运行”；否则“开始今日流程”；loading 时状态为 `starting` |
 
 `model/deviceView.ts` 的规则：
@@ -160,7 +160,7 @@ Dashboard（app-page > app-stack-section > DashboardWorkspace；首屏门禁与�
   3. **状态消息不再重渲染页面。** 流程卡通过 `notify` 发送提示，总览不再因全局通知正文整体重渲染；显示内容与计时器由 sonner 通知器持有。
   4. **执行订阅随工作区挂载。** 首屏骨架期间不再建立流程卡的执行订阅；骨架期间完成的 run 不产生页面内终态提示，全局运行投影仍独立展示。页面正常装载后的观察、身份与提示规则不变。
   5. **活动卡状态化。** `/agent/activity` 返回 `status`、`clientType`、来源时间与失败原因；卡片不再读取 `tip`/`description`/`isActive` 或用固定文案冒充加载态。成功空窗显示“暂无当前刷关活动”，来源失败显示“无法获取活动信息”与重试；刷新失败保留旧快照并标记“可能已过期”。
-  6. **连接告警 toast 化。** 原内联连接告警卡片移除，改由 `DashboardConnectionNotice` 发送常驻全局 toast：固定 id `dashboard-connection` 去重，`offline`/`unavailable` 分别使用 warning/error 与完整标题/说明，“重试连接”复用完整快照协调器；连接恢复、`unknown`、页面隐藏或卸载时 dismiss，`checking` 保持当前 toast。toast 不参与页面布局，出现/消失不再改变页面高度。流程卡不再重复连接标题/说明，连接不可用时显示“连接不可用 / 连接恢复后可以继续操作”。
+  6. **连接告警 toast 化。** 原内联连接告警卡片移除，改由 `DashboardConnectionNotice` 发送常驻全局 toast：固定 id `dashboard-connection` 去重，`offline` 使用 warning 且不带 action，`unavailable` 使用 error 并附带“重试连接”action（复用完整快照协调器）；连接恢复、`unknown`、页面隐藏或卸载时 dismiss，`checking` 保持当前 toast。toast 不参与页面布局，出现/消失不再改变页面高度。流程卡不再重复连接标题/说明：`unknown`/`checking` 显示“正在检查服务 / 正在确认自动化服务状态”，`offline`/`unavailable` 显示“连接不可用 / 连接恢复后可以继续操作”。
 
 ### 剩余边界
 
@@ -294,7 +294,7 @@ Dashboard（app-page > app-stack-section > DashboardWorkspace；首屏门禁与�
 - 活动卡 phase（loading/active/none/unavailable/stale）矩阵；`la-pluma-dashboard-cache` v1 的版本/形状/时钟偏差校验，失败刷新不覆盖成功缓存。
 - 设备采样：同一 `dataUpdatedAt` 的缓存回放不重复追加温度点，新时间戳逐次追加（最多 36 个），`null` 载荷与非法字段保旧。
 - 订阅隔离：采样投影返回 `null` 不推动兄弟区域重渲染，流程卡独占执行订阅与终态提示；预览入口不条件卸载、预览画面不导航。
-- 连接通知：仅 `offline`/`unavailable` 发送固定 id 的常驻 toast，`checking` 保持当前通知，恢复自动 dismiss；重试 action 复用完整快照协调器；通知组件返回 `null`，不改变页面布局。
+- 连接通知：仅 `offline`/`unavailable` 发送固定 id 的常驻 toast，`checking` 保持当前通知，恢复自动 dismiss；离线不带 action，后端不可用时的“重试连接”复用完整快照协调器；通知组件返回 `null`，不改变页面布局。
 - 今日掉落摘要按关卡合并：同关卡累加、不同关卡分列、同物品按 `itemId` 合并；原始逐条记录接口与数据页列表语义不变。
 
 ### 验证命令
