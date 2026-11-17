@@ -76,12 +76,12 @@ export function DashboardSkeleton() {
           <div ref={flowCardRef} className="min-w-0">
             <Card className="dashboard-flow-card dashboard-flow-skeleton gap-0 p-0!">
               <div className="dashboard-flow-command">
-                <div className="min-w-0 space-y-2">
-                  <Skeleton className="rounded-sm h-6 w-36 max-w-full" />
-                  <Skeleton className="rounded-sm h-2.5 w-52 max-w-full" />
+                <div className="min-w-0 space-y-1">
+                  <Skeleton className="rounded-sm h-7 w-36 max-w-full" />
+                  <Skeleton className="rounded-sm h-4 w-52 max-w-full" />
                 </div>
                 <div className="dashboard-flow-actions">
-                  <Skeleton className="dashboard-flow-primary-action h-11 rounded-xl" />
+                  <Skeleton className="dashboard-flow-primary-action h-8 rounded-lg" />
                 </div>
               </div>
 

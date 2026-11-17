@@ -94,11 +94,6 @@
     background: color-mix(in srgb, var(--background) 94%, var(--primary) 6%);
   }
 
-  .dashboard-flow-skeleton .dashboard-flow-command {
-    min-height: 100px;
-    height: auto;
-  }
-
   .dashboard-flow-skeleton .dashboard-flow-activity {
     height: 82.5px;
   }
@@ -157,7 +152,6 @@
     grid-template-columns: minmax(0, 1fr) auto;
     align-items: center;
     gap: 1rem;
-    min-height: 6.25rem;
     padding: 1rem;
     background: transparent;
   }
@@ -377,11 +371,6 @@
   }
 
   @media (width < 640px) {
-    .dashboard-flow-skeleton .dashboard-flow-command {
-      min-height: 142px;
-      height: auto;
-    }
-
     .dashboard-flow-skeleton .dashboard-flow-stages {
       height: 131px;
     }
