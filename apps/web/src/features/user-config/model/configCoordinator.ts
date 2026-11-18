@@ -392,7 +392,6 @@ class ConfigKeyState<TDraft, TWire> implements ConfigChannel<TDraft> {
     }
 
     if (sequence !== this.loadSequence || controller.signal.aborted) {
-      // 新加载或 dispose 已接管状态，本次迟到结果不再写入。
       return { reason: 'stale' }
     }
 

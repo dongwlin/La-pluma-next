@@ -318,7 +318,6 @@ describe('AutomationTasks config persistence', () => {
       },
     )
     expect(container.querySelector('[role="alert"]')).toBeNull()
-    // 保存失败仍保留本地草稿编辑能力，不能退化成全局只读。
     expect(container.querySelector(
       '[aria-label="启动游戏启用状态"][disabled], [aria-label="启动游戏启用状态"][aria-disabled="true"]',
     )).toBeNull()

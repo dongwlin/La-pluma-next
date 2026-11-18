@@ -276,7 +276,6 @@ function normalizeTaskFlowItem(item: Record<string, unknown>): AutomationTaskFlo
     description: typeof item.description === 'string'
       ? item.description
       : definition?.description ?? '',
-    // 已知任务以目录默认值补齐缺失参数；已有参数优先，未知任务只保留空参数。
     params: definition ? { ...definition.defaultParams, ...migratedParams } : {},
   }
   if (isRecord(defaultParams)) normalized.defaultParams = defaultParams
