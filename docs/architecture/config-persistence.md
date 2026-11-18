@@ -206,7 +206,7 @@ function CombatWorkspace() {
 - 工作区只订阅与编辑通道，不建立第二份 revision、pending 状态或保存队列。
 - `Activity` 隐藏/恢复只影响 Effects；`hydrate()` 的已加载守卫保证恢复时不重读，pending 草稿仍优先。
 - automation 订阅 `automation-config`/`automation-schedule` 失效后通过 `reload({ force: true })` 重读；返回 `local-draft` 时不得丢弃本地编辑。计划应用不再使用 window `training-plan-applied` 事件。
-- 成功/失败通知由页面通过 `notify` 发送，页内错误文案由页面从 `syncState`/`error` 和 `retry()` 结果派生；协调器不直接写 `statusStore` 或通知器。
+- 成功/失败通知由页面通过固定 id 的 `notify` 发送；automation 的保存/恢复失败使用 `automation-config-save`，成功清除错误后关闭同 id toast，页内不再派生错误文案；协调器不直接写 `statusStore` 或通知器。
 
 ### 6.1 肉鸽适配器
 
@@ -283,7 +283,7 @@ pending 标记存在但本地草稿不可读时，协调器必须删除该标记
 pnpm --filter la-pluma-next-client verify
 ```
 
-三域必须保持既有配置 key、本地键与服务端 wire；自动化额外兼容 `entries`/`times` 及任务参数旧格式，无须手工迁移本地草稿。同步失败使用 `role="alert"` 显示重试入口，不改变成功路径的默认视觉。
+三域必须保持既有配置 key、本地键与服务端 wire；自动化额外兼容 `entries`/`times` 及任务参数旧格式，无须手工迁移本地草稿。automation 同步失败使用固定 id toast 与 action 重试；`role="alert"` 仅适用于仍保留页内反馈的域，不改变成功路径的默认视觉。
 
 ## 关联
 
