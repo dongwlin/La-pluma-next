@@ -1,14 +1,13 @@
 {
   "_comment": "stylelint ratchet 基线：按文件记录存量违规数（文件 -> 规则 -> 数量）。禁止手工放宽，仅可通过 `pnpm --filter la-pluma-next-client stylelint:baseline` 在违规数下降或有意的重构后重新生成。",
-  "_total": 321,
+  "_total": 315,
   "files": {
     "src/features/automation/styles/automation.css": {
       "alpha-value-notation": 3,
       "color-function-alias-notation": 3,
       "color-function-notation": 4,
-      "declaration-block-no-redundant-longhand-properties": 2,
       "declaration-empty-line-before": 1,
-      "no-descending-specificity": 14,
+      "no-descending-specificity": 10,
       "selector-not-notation": 1
     },
     "src/features/dashboard/styles/dashboard.css": {
