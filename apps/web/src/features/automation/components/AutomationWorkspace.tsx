@@ -468,18 +468,20 @@ export default function AutomationWorkspace() {
       <Card
         role={loadFailed ? 'alert' : 'status'}
         aria-live={loadFailed ? 'assertive' : 'polite'}
-        className="min-h-40 gap-0 p-0!"
+        className="h-40 gap-0 overflow-hidden p-0!"
       >
-        <div className="flex min-h-40 flex-col items-center justify-center gap-3 px-4 py-6 text-center">
+        <div className="flex h-full flex-col items-center justify-center gap-3 px-4 py-4 text-center">
           {loadFailed
             ? <AlertTriangle size={22} strokeWidth={1.9} className="text-destructive" aria-hidden="true" />
             : <LoaderCircle size={22} strokeWidth={1.9} className="animate-spin" aria-hidden="true" />}
-          <div className="space-y-1">
+          <div className="w-full min-w-0 space-y-1">
             <p className="text-sm font-medium">
               {loadFailed ? '自动化配置暂时不可用' : '正在读取自动化配置…'}
             </p>
             {loadFailed && (
-              <p className="text-xs text-muted-foreground">{configLoadError ?? '请稍后重新加载'}</p>
+              <p className="line-clamp-2 wrap-break-word text-xs text-muted-foreground">
+                {configLoadError ?? '请稍后重新加载'}
+              </p>
             )}
           </div>
           {loadFailed && (
