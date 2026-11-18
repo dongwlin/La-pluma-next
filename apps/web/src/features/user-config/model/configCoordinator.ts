@@ -449,6 +449,11 @@ class ConfigKeyState<TDraft, TWire> implements ConfigChannel<TDraft> {
   }
 
   private failLoad(message: string): void {
+    if (this.draft !== null) {
+      this.markLoaded()
+      this.publish()
+      return
+    }
     this.loadState = 'failed'
     this.loadError = message
     this.publish()

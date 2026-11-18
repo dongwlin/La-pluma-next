@@ -693,6 +693,28 @@ describe('force reload', () => {
     expect(harness.fetchMock).toHaveBeenCalledTimes(2)
   })
 
+  it('keeps the loaded draft editable when a forced refresh fails and local storage is unreadable', async () => {
+    harness.fetchMock.mockResolvedValueOnce({ ok: true, payload: { value: 'server', mode: 'normal' } })
+    const channel = harness.coordinator.channel(harness.adapter)
+    await channel.hydrate()
+
+    harness.fetchMock.mockResolvedValueOnce({ ok: false, message: 'offline' })
+    const failing = harness.coordinator.channel({
+      ...harness.adapter,
+      readLocalDraft: () => {
+        throw new Error('disk')
+      },
+    })
+
+    await expect(failing.reload({ force: true })).resolves.toEqual({ reason: 'failed' })
+    expect(failing.getState()).toMatchObject({
+      draft: { value: 'server', mode: 'normal' },
+      hydrated: true,
+      loadState: 'ready',
+      loadError: null,
+    })
+  })
+
   it('keeps an unsynced draft and an in-flight save when forced', async () => {
     harness.fetchMock.mockResolvedValue({ ok: true, payload: { value: 'v1', mode: 'normal' } })
     harness.commitMock.mockReturnValue(new Promise<ConfigCommitResult>(() => {}))

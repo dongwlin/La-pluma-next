@@ -797,6 +797,9 @@ describe('AutomationTasks config persistence', () => {
 
     expect(mocks.loadUserConfig).toHaveBeenCalledTimes(2)
     expect(mocks.notify).toHaveBeenCalledWith('自动化配置刷新失败，请稍后重试', 'warning')
+    expect(container.textContent).toContain('理智作战')
+    expect(container.querySelector('[aria-haspopup="menu"]')).not.toBeNull()
+    expect(container.textContent).not.toContain('自动化配置暂时不可用')
   })
 
   it('reloads the automation flow when training applies a plan', async () => {

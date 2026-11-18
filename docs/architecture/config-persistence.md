@@ -180,7 +180,7 @@ function CombatWorkspace() {
 - **迟到加载不写回**：加载返回时校验加载序号、`AbortSignal`、revision 与 pending 标记；任何一项变化都返回 `stale`。
 - **损坏草稿可回退**：单个损坏键由适配器清理；标记指向的草稿整体不可读时删除标记并读服务端，不会永久停在“本地优先”。
 - **读取失败会重试**：`failed` 不标记 `hydrated`，`Activity` 恢复或下次挂载会再次尝试；服务端失败且本地有草稿时静默回退，不打断编辑。
-- **读取状态可观察**：`loadState` 在读取开始时进入 `loading`，拿到服务端或本地草稿后进入 `ready`，没有可回退草稿时进入 `failed` 并带上 `loadError`；`hydrated` 仍只表示“已有可用草稿”，三个状态与它各自独立。日常页只在 `ready` 时渲染编辑器，`loading`/`failed` 使用只读占位，`failed` 的重新加载走 `reload({ force: true })`。
+- **读取状态可观察**：`loadState` 在读取开始时进入 `loading`，拿到服务端或本地草稿后进入 `ready`，没有可回退草稿时进入 `failed` 并带上 `loadError`；已有内存草稿时强制重读失败仍保持 `ready`，不会隐藏已有草稿的编辑器。`hydrated` 仍只表示“已有可用草稿”，三个状态与它各自独立。日常页只在 `ready` 时渲染编辑器，`loading`/`failed` 使用只读占位，`failed` 的重新加载走 `reload({ force: true })`。
 
 ### 跨页面读写的一致性
 
