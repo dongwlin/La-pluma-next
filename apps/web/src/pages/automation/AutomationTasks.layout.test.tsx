@@ -1397,8 +1397,13 @@ describe('AutomationTasks layout surfaces', () => {
     await renderPage()
 
     const trigger = container.querySelector<HTMLButtonElement>('[aria-haspopup="menu"]')!
-    expect(trigger.textContent).toContain('添加任务')
+    expect(trigger.getAttribute('aria-label')).toBe('添加任务')
+    expect(trigger.getAttribute('title')).toBe('添加任务')
+    expect(trigger.textContent).toBe('')
     expect(trigger.getAttribute('aria-expanded')).toBe('false')
+    const flowHeader = Array.from(container.querySelectorAll('h3'))
+      .find(heading => heading.textContent === '任务流程')?.parentElement?.parentElement
+    expect(flowHeader?.contains(trigger)).toBe(true)
 
     await act(async () => trigger.click())
     await flush()
@@ -1576,7 +1581,7 @@ describe('AutomationTasks layout surfaces', () => {
       ])
   })
 
-  it('closes the add-task picker when pressing outside its region', async () => {
+  it('closes the add-task picker when pressing outside it', async () => {
     await renderPage()
 
     const trigger = container.querySelector<HTMLButtonElement>('[aria-haspopup="menu"]')!

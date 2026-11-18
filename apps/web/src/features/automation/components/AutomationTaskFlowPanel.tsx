@@ -1,4 +1,3 @@
-import { useRef } from 'react'
 import { motion, useReducedMotion } from 'framer-motion'
 import {
   AlertTriangle,
@@ -33,7 +32,6 @@ export default function AutomationTaskFlowPanel({
   onToggleTask,
 }: AutomationTaskFlowPanelProps) {
   const shouldReduceMotion = useReducedMotion()
-  const taskPickerRegionRef = useRef<HTMLDivElement>(null)
   const executionView = {
     isRunning: execution.isRunning,
     taskResults: execution.taskResults,
@@ -53,9 +51,16 @@ export default function AutomationTaskFlowPanel({
               <span>任务流程</span>
             </h3>
           </div>
-          <span className="automation-flow-summary">
-            {enabledCount}/{tasks.length}
-          </span>
+          <div className="flex flex-none items-center gap-2">
+            <span className="automation-flow-summary">
+              {enabledCount}/{tasks.length}
+            </span>
+            <AutomationTaskPicker
+              flow={tasks}
+              disabled={editingLocked}
+              onAddTask={onAddTask}
+            />
+          </div>
           <span className="sr-only" aria-live="polite">{sorting.announcement}</span>
         </div>
 
@@ -65,7 +70,7 @@ export default function AutomationTaskFlowPanel({
             compact
             icon={<ListPlus size={20} strokeWidth={1.8} />}
             title="流程为空"
-            description="使用下方入口添加任务"
+            description="使用右上角的 + 添加任务"
           />
         ) : (
           <div className="automation-sequence-list">
@@ -155,20 +160,14 @@ export default function AutomationTaskFlowPanel({
           </div>
         )}
 
-        <div ref={taskPickerRegionRef} className="automation-sequence-footer">
-            <AutomationTaskPicker
-              flow={tasks}
-              disabled={editingLocked}
-              onAddTask={onAddTask}
-              regionRef={taskPickerRegionRef}
-            />
+        <div className="automation-sequence-footer">
             <Button
               onClick={execution.onExecute}
               disabled={!execution.automationAvailable || execution.isRunning || execution.isSubmitting || enabledCount === 0}
               title={!execution.automationAvailable ? execution.unavailableMessage : undefined}
               aria-busy={execution.isRunning || execution.isSubmitting || undefined}
               data-status-key={execution.isRunning || execution.isSubmitting ? 'running' : 'ready'}
-              className={`automation-run-button w-full justify-center whitespace-nowrap${execution.isRunning ? ' is-running' : ''}`}
+              className={`automation-run-button flex-1 justify-center whitespace-nowrap${execution.isRunning ? ' is-running' : ''}`}
             >
               {execution.isRunning || execution.isSubmitting
                 ? <><LoaderCircle className="animate-spin" aria-hidden="true" />{execution.isRunning ? '执行中' : '正在启动'}</>
@@ -181,7 +180,7 @@ export default function AutomationTaskFlowPanel({
                 aria-busy={execution.isStopping || undefined}
                 data-status-key={execution.isStopping ? 'stopping' : 'stop-ready'}
                 variant={execution.isStopping ? 'secondary' : 'destructive'}
-                className={`automation-stop-button w-full justify-center${execution.isStopping ? ' is-stopping' : ''}`}
+                className={`automation-stop-button flex-1 justify-center${execution.isStopping ? ' is-stopping' : ''}`}
               >
                 {execution.isStopping
                   ? <><LoaderCircle className="animate-spin" aria-hidden="true" />正在终止</>
