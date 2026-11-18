@@ -646,7 +646,7 @@ describe('AutomationTasks execution', () => {
     expect(completedItems()).toHaveLength(3)
     expect(runningItems()).toHaveLength(0)
     expect(stopButton()).toBeNull()
-    expect(runButton()?.textContent).toContain('立即执行')
+    expect(runButton()?.textContent).toContain('开始')
     expect(container.textContent).toContain('最近执行')
     expect(mocks.notify).toHaveBeenLastCalledWith('任务流程执行完成', 'success', { id: 'execution' })
   })
@@ -702,7 +702,7 @@ describe('AutomationTasks execution', () => {
     useIdentity({ runId: 'run-1', operationId: 'run_task', scope: 'dashboard' })
     await renderPage()
 
-    expect(runButton()?.textContent).toContain('立即执行')
+    expect(runButton()?.textContent).toContain('开始')
     expect(stopButton()).toBeNull()
   })
 

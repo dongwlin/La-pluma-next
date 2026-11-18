@@ -8,7 +8,6 @@ import {
   ListPlus,
   LoaderCircle,
   Minus,
-  Play,
   Square,
   Trash2,
 } from 'lucide-react'
@@ -175,12 +174,7 @@ export default function AutomationTaskFlowPanel({
             >
               {execution.isRunning || execution.isSubmitting
                 ? <><LoaderCircle className="animate-spin" aria-hidden="true" />{execution.isRunning ? '执行中' : '正在启动'}</>
-                : (
-                  <>
-                    <Play size={16} fill="currentColor" aria-hidden="true" />
-                    立即执行
-                  </>
-                )}
+                : '开始'}
             </Button>
             {execution.isRunning && (
               <Button
@@ -196,7 +190,7 @@ export default function AutomationTaskFlowPanel({
                   : (
                     <>
                       <Square size={14} fill="currentColor" aria-hidden="true" />
-                      终止执行
+                      终止
                     </>
                   )}
               </Button>

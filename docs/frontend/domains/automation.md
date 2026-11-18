@@ -66,7 +66,7 @@ AutomationTasks（app-page > app-stack-section > AutomationWorkspace）
       │  ├─ 任务流程列表（拖拽、启用、删除、撤销）
       │  ├─ automation-sequence-footer
       │  │  ├─ AutomationTaskPicker（页脚区域仍由本面板传入）
-      │  │  └─ 立即执行 / 终止执行
+      │  │  └─ 开始 / 终止
       │  └─ AutomationExecutionSummary
       ├─ automation-task-editor（editor 区域；任务配置；同一草稿与执行投影）
       └─ automation-support-column（support 区域）
@@ -333,7 +333,7 @@ AutomationTasks（app-page > app-stack-section > AutomationWorkspace）
    │  ├─ 任务流程列表（拖拽预览、拖拽公告）
    │  └─ automation-sequence-footer
    │     ├─ AutomationTaskPicker（open / 外部点击 / Escape / disabled 收起）
-   │     ├─ 立即执行 / 终止执行（工作区回调）
+   │     ├─ 开始 / 终止（工作区回调）
    │     └─ …
    └─ automation-task-editor
       └─ AutomationStageEditor（isSmartStageLoading / 关卡写回）

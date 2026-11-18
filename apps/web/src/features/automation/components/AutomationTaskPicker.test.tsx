@@ -40,7 +40,7 @@ function Host({ disabled = false, flow = [] as TaskFlowItem[] }: {
         onAddTask={onAddTask}
         regionRef={regionRef}
       />
-      <button type="button">立即执行</button>
+      <button type="button">开始</button>
     </div>
   )
 }
@@ -135,7 +135,7 @@ describe('AutomationTaskPicker', () => {
     await openPicker()
 
     const runButton = Array.from(container.querySelectorAll<HTMLButtonElement>('button'))
-      .find(button => button.textContent === '立即执行')!
+      .find(button => button.textContent === '开始')!
     await dispatchPointerDown(runButton)
     expect(menu()).not.toBeNull()
 
