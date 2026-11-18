@@ -5,23 +5,16 @@ import { useReducedMotion } from 'framer-motion'
 import {
   AlertTriangle,
   LoaderCircle,
-  SlidersHorizontal,
 } from 'lucide-react'
 import { DeviceMonitorLayout } from '@/features/device-mirror'
 import { Button } from '@/shared/ui/button'
-import { Switch } from '@/shared/ui/switch'
 import { Card } from '@/shared/ui/card'
-import { EmptyState } from '@/shared/components'
 import { dismissNotice, notify } from '@/shared/notifications'
 import { useAutomationAvailability } from '@/features/runtime-status'
 import { useUserConfig } from '@/features/user-config'
 import { useResourceInvalidation, type ResourceInvalidation } from '@/features/resource-invalidation'
 import { testConnection as testAdbConnection } from '@/features/settings'
-import AutomationTaskField from './AutomationTaskField'
-import FightAdvancedSettings from './FightAdvancedSettings'
-import InfrastAdvancedSettings from './InfrastAdvancedSettings'
-import RecruitAdvancedSettings from './RecruitAdvancedSettings'
-import StartupConnectionTest from './StartupConnectionTest'
+import AutomationTaskEditor from './AutomationTaskEditor'
 import AutomationTaskFlowPanel from './AutomationTaskFlowPanel'
 import AutomationScheduleCard from './AutomationScheduleCard'
 import NotificationSettings from './NotificationSettings'
@@ -183,6 +176,10 @@ export default function AutomationWorkspace() {
   })
   const currentStep = selectFlowCurrentStep(displayedTaskFlow, executionProgress, isRunning)
   const executionView = { isRunning, taskResults, currentStep }
+  const activeTaskIndex = displayedTaskFlow.findIndex(task => task.id === activeTaskId)
+  const activeTask = activeTaskIndex >= 0 ? displayedTaskFlow[activeTaskIndex] ?? null : null
+  const activeTaskIsCurrent = activeTask !== null
+    && resolveFlowTaskExecutionState(activeTask, activeTaskIndex, executionView) === 'running'
 
   const selectTaskForEditing = (taskId: string) => {
     if (isFlowEditingLockedRef.current) return
@@ -472,117 +469,21 @@ export default function AutomationWorkspace() {
           />
         )}
         editor={(
-          <div ref={editorColumnRef} id="automation-task-editor" className="automation-editor-column" tabIndex={-1} data-monitor-area="editor">
-            <Card className="automation-editor-panel gap-0 p-0!">
-              <div className="automation-editor-heading">
-                <div>
-                  <h3><span>任务配置</span></h3>
-                </div>
-                {activeTaskId && (
-                  <span>{String(displayedTaskFlow.findIndex(task => task.id === activeTaskId) + 1).padStart(2, '0')}</span>
-                )}
-              </div>
-              {!activeTaskId ? (
-                <EmptyState
-                  className="automation-editor-empty"
-                  compact
-                  icon={<SlidersHorizontal size={22} strokeWidth={1.7} />}
-                  title="暂无可配置任务"
-                  description="先从任务流程中添加一个任务"
-                />
-              ) : (
-                <div className="automation-editor-content">
-                  {displayedTaskFlow.filter(task => task.id === activeTaskId).map((task) => {
-                    const index = displayedTaskFlow.findIndex(item => item.id === task.id)
-                    const isCurrentTask = resolveFlowTaskExecutionState(task, index, executionView) === 'running'
-                    const connectionFeedback = connectionStatus[task.id]
-                    // 公招的「3 星保留招聘许可」标签连同图标超过 5rem 标签列，只有该卡片需要加宽列。
-                    const usesWideFieldLabels = task.commandId === 'recruit'
-
-                    return (
-                    <div
-                      key={task.id}
-                      className={`automation-task-editor${isCurrentTask ? ' is-current' : ''}${!task.enabled ? ' is-disabled' : ''}`}
-                    >
-                      <div className="automation-flow-card-header">
-                        <div className="automation-flow-card-identity">
-                          <span className="automation-flow-sequence">{String(index + 1).padStart(2, '0')}</span>
-                          <span className="automation-flow-task-name">
-                            <strong>{task.name}</strong>
-                            <small>{isCurrentTask ? '正在执行' : task.taskType || task.commandId}</small>
-                          </span>
-                        </div>
-                        <div className="automation-flow-card-controls">
-                          <Switch
-                            checked={task.enabled}
-                            onCheckedChange={() => toggleTaskEnabled(index)}
-                            disabled={isFlowEditingLocked}
-                            aria-label={`${task.name}启用状态`}
-                          />
-                        </div>
-                      </div>
-
-                      {task.paramFields && task.paramFields.length > 0 && (
-                        <div className={`automation-param-fields${usesWideFieldLabels ? ' has-wide-field-labels' : ''}`}>
-                          {task.paramFields.map(field => (
-                            <AutomationTaskField
-                              key={field.key}
-                              task={task}
-                              field={field}
-                              taskIndex={index}
-                              isEditingLocked={isFlowEditingLocked}
-                              onUpdateParam={updateTaskParam}
-                              onSuccess={showSuccess}
-                              onError={showError}
-                            />
-                          ))}
-                        </div>
-                      )}
-
-                      {task.commandId === 'fight' && (
-                        <FightAdvancedSettings
-                          task={task}
-                          taskIndex={index}
-                          disabled={isFlowEditingLocked || !task.enabled}
-                          onUpdateParam={updateTaskParam}
-                        />
-                      )}
-
-                      {task.commandId === 'infrast' && (
-                        <InfrastAdvancedSettings
-                          task={task}
-                          taskIndex={index}
-                          disabled={isFlowEditingLocked || !task.enabled}
-                          onUpdateParam={updateTaskParam}
-                        />
-                      )}
-
-                      {task.commandId === 'recruit' && (
-                        <RecruitAdvancedSettings
-                          task={task}
-                          taskIndex={index}
-                          disabled={isFlowEditingLocked || !task.enabled}
-                          onUpdateParam={updateTaskParam}
-                        />
-                      )}
-
-                      {task.commandId === 'startup' && (
-                        <StartupConnectionTest
-                          taskId={task.id}
-                          enabled={task.enabled}
-                          isEditingLocked={isFlowEditingLocked}
-                          testingTaskId={testingConnectionTaskId}
-                          feedback={connectionFeedback}
-                          onTestConnection={testConnection}
-                        />
-                      )}
-                    </div>
-                    )
-                  })}
-                </div>
-              )}
-            </Card>
-          </div>
+          <AutomationTaskEditor
+            task={activeTask}
+            taskIndex={activeTaskIndex}
+            isRunning={isRunning}
+            isSubmitting={isSubmitting}
+            isCurrentTask={activeTaskIsCurrent}
+            connectionStatus={connectionStatus}
+            testingConnectionTaskId={testingConnectionTaskId}
+            containerRef={editorColumnRef}
+            onToggleEnabled={toggleTaskEnabled}
+            onUpdateParam={updateTaskParam}
+            onTestConnection={testConnection}
+            onSuccess={showSuccess}
+            onError={showError}
+          />
         )}
         support={(
           <>
