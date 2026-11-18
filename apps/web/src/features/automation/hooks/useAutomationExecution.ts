@@ -17,7 +17,7 @@ import {
   type ExecutionController,
 } from '@/features/task-execution'
 import { executeScheduleNow } from '../api'
-import type { TaskFlowItem } from '../types'
+import type { TaskFlowItem, TaskFlowWireItem } from '../types'
 import {
   describeAutomationRunTerminal,
   readAutomationExecutionSummary,
@@ -64,7 +64,7 @@ interface UseAutomationExecutionOptions {
   storage?: LegacyFlowCheckpointStorage | null
 }
 
-function cleanFlow(flow: TaskFlowItem[]) {
+function cleanFlow(flow: TaskFlowItem[]): TaskFlowWireItem[] {
   return flow.map(task => ({
     id: task.id,
     name: task.name,

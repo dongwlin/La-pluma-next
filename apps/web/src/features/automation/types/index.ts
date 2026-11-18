@@ -124,6 +124,17 @@ export interface TaskParams {
 export type TaskParamKey = keyof TaskParams
 export type TaskParamValue = TaskParams[TaskParamKey]
 
+export interface TaskFlowWireItem {
+  id: string
+  name: string
+  commandId: TaskCommandId
+  taskType?: string
+  params: TaskParams
+  enabled: boolean
+  description?: string
+  defaultParams?: TaskParams
+}
+
 export interface AutomationAvailableTask {
   id: TaskCommandId
   name: string
