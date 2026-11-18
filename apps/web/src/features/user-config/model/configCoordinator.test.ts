@@ -117,6 +117,72 @@ afterEach(() => {
 })
 
 describe('hydrate', () => {
+  it('starts idle and exposes loading before the first draft is available', async () => {
+    const pending = deferred<ConfigLoadResult>()
+    harness.fetchMock.mockReturnValue(pending.promise)
+    const channel = harness.coordinator.channel(harness.adapter)
+
+    expect(channel.getState()).toMatchObject({
+      hydrated: false,
+      loadState: 'idle',
+      loadError: null,
+    })
+
+    const loading = channel.reload()
+    expect(channel.getState()).toMatchObject({
+      draft: null,
+      hydrated: false,
+      loadState: 'loading',
+      loadError: null,
+    })
+
+    pending.resolve({ ok: true, payload: { value: 'server', mode: 'normal' } })
+    await expect(loading).resolves.toEqual({ reason: 'loaded' })
+    expect(channel.getState()).toMatchObject({
+      hydrated: true,
+      loadState: 'ready',
+      loadError: null,
+    })
+  })
+
+  it('reports a failed read without hydrating and recovers on the next load', async () => {
+    harness.fetchMock.mockResolvedValueOnce({ ok: false, message: '后端暂不可用' })
+    const channel = harness.coordinator.channel(harness.adapter)
+
+    await expect(channel.reload()).resolves.toEqual({ reason: 'failed' })
+    expect(channel.getState()).toMatchObject({
+      draft: null,
+      hydrated: false,
+      loadState: 'failed',
+      loadError: '后端暂不可用',
+    })
+
+    harness.fetchMock.mockResolvedValueOnce({ ok: true, payload: { value: 'server', mode: 'normal' } })
+    await expect(channel.reload()).resolves.toEqual({ reason: 'loaded' })
+    expect(channel.getState()).toMatchObject({
+      draft: { value: 'server', mode: 'normal' },
+      hydrated: true,
+      loadState: 'ready',
+      loadError: null,
+    })
+  })
+
+  it('keeps the restored local draft ready even when the server read would fail', async () => {
+    harness.storage.setItem(PENDING_KEY, 'pending-token')
+    harness.local.write({ value: 'local', mode: 'normal' })
+    const channel = harness.coordinator.channel(harness.adapter)
+
+    await expect(channel.reload()).resolves.toEqual({ reason: 'local-draft' })
+    expect(harness.fetchMock).not.toHaveBeenCalled()
+    expect(channel.getState()).toMatchObject({
+      draft: { value: 'local', mode: 'normal' },
+      hydrated: true,
+      loadState: 'ready',
+      loadError: null,
+      syncState: 'failed',
+    })
+  })
+
   it('loads the server draft, migrates it, and mirrors it locally without committing', async () => {
     harness.fetchMock.mockResolvedValue({ ok: true, payload: { value: 'server', mode: '1' } })
     const channel = harness.coordinator.channel(harness.adapter)
@@ -130,6 +196,8 @@ describe('hydrate', () => {
       pending: false,
       syncState: 'idle',
       error: null,
+      loadState: 'ready',
+      loadError: null,
       revision: 0,
     })
     expect(harness.local.read()).toEqual({ value: 'server', mode: 'raid' })
