@@ -37,7 +37,6 @@ function Host({ disabled = false, flow = [] as TaskFlowItem[] }: {
         disabled={disabled}
         onAddTask={onAddTask}
       />
-      <button type="button">开始</button>
     </div>
   )
 }

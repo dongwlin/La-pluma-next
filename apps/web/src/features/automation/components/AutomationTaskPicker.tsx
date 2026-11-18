@@ -34,7 +34,7 @@ export default function AutomationTaskPicker({
   return (
     <DropdownMenu open={isOpen} onOpenChange={setOpen} modal={false}>
       <DropdownMenuTrigger
-        render={<Button type="button" variant="outline" size="icon" />}
+        render={<Button type="button" variant="ghost" size="icon" />}
         aria-label="添加任务"
         title="添加任务"
         disabled={disabled}

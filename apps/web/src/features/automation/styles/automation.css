@@ -727,7 +727,6 @@
 
   .automation-time-input {
     flex: 0 0 6.25rem;
-    width: 6.25rem;
     font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
     font-variant-numeric: tabular-nums;
     letter-spacing: 0.04em;
@@ -740,9 +739,7 @@
 
   .automation-schedule-row-remove,
   .automation-schedule-row-remove-placeholder {
-    flex: 0 0 2.75rem;
-    width: 2.75rem;
-    height: 2.75rem;
+    flex: 0 0 2rem;
   }
 
   .automation-schedule-row-remove {

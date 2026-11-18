@@ -92,6 +92,20 @@ describe('dependency guardrails', () => {
     ])
   })
 
+  it('flags a feature model type-only importing its own components', () => {
+    const analysis = analyzeDependencies(files(
+      ['features/a/model/state.ts', "import type { View } from '../components/View'\n"],
+      ['features/a/components/View.tsx', 'export type View = { id: string }\n'],
+    ))
+
+    expect(analysis.violations).toEqual([
+      expect.objectContaining({
+        rule: 'model-component-dependency',
+        file: 'features/a/model/state.ts',
+      }),
+    ])
+  })
+
   it('flags explicit index paths and trailing slashes as public-surface bypass', () => {
     const analysis = analyzeDependencies(files(
       ['features/a/index.ts', "export { b } from '@/features/b/index'\nexport { b as c } from '@/features/b/'\n"],
