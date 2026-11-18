@@ -1045,7 +1045,6 @@
     margin: 0;
     padding: 0;
     border: 0;
-    container-type: inline-size;
   }
 
   .automation-stage-editor-header {
