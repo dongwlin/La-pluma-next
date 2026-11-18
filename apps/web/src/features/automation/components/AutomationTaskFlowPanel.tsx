@@ -44,6 +44,7 @@ export default function AutomationTaskFlowPanel({
     currentStep: execution.currentStep,
   }
   const enabledCount = tasks.filter(task => task.enabled).length
+  const editingLocked = execution.isRunning || execution.isSubmitting
 
   return (
     <div className="automation-sequence-column" data-monitor-area="sequence">
@@ -95,9 +96,9 @@ export default function AutomationTaskFlowPanel({
                   onPointerDown={(event) => sorting.onPointerDown(event, task.id)}
                   onKeyDown={(event) => sorting.onKeyDown(event, task.id)}
                   className={`automation-sequence-drag min-h-11 min-w-11 touch-none${execution.isRunning ? ' is-placeholder' : ''}`}
-                  title={execution.isRunning ? '执行期间不能排序' : '拖动排序，或使用上下方向键调整'}
+                  title={editingLocked ? '执行期间不能排序' : '拖动排序，或使用上下方向键调整'}
                   aria-label={`调整${task.name}顺序，当前第 ${index + 1} 位`}
-                  disabled={execution.isRunning}
+                  disabled={editingLocked}
                 >
                   <GripVertical size={16} strokeWidth={1.8} />
                 </button>
@@ -108,6 +109,7 @@ export default function AutomationTaskFlowPanel({
                   aria-controls="automation-task-editor"
                   aria-pressed={isSelectedTask}
                   aria-current={isCurrentStep ? 'step' : undefined}
+                  disabled={editingLocked}
                 >
                   <span className="automation-sequence-node" aria-hidden="true">
                     <span>
@@ -132,7 +134,7 @@ export default function AutomationTaskFlowPanel({
                     size="sm"
                     checked={task.enabled}
                     onCheckedChange={() => onToggleTask(index)}
-                    disabled={execution.isRunning}
+                    disabled={editingLocked}
                     aria-label={`${task.name}启用状态`}
                   />
                 </span>
@@ -144,7 +146,7 @@ export default function AutomationTaskFlowPanel({
                   <button
                     type="button"
                     onClick={() => onRemoveTask(index)}
-                    disabled={execution.isRunning}
+                    disabled={editingLocked}
                     className="automation-sequence-delete min-h-11 min-w-11"
                     title="删除任务"
                     aria-label={`删除${task.name}`}
@@ -164,7 +166,7 @@ export default function AutomationTaskFlowPanel({
             <button
               type="button"
               onClick={onRestoreDeletedTask}
-              disabled={execution.isRunning}
+              disabled={editingLocked}
               className="min-h-11 shrink-0 px-2 font-medium text-primary disabled:cursor-not-allowed disabled:opacity-40"
             >
               恢复
@@ -175,7 +177,7 @@ export default function AutomationTaskFlowPanel({
         <div ref={taskPickerRegionRef} className="automation-sequence-footer">
             <AutomationTaskPicker
               flow={tasks}
-              disabled={execution.isRunning}
+              disabled={editingLocked}
               onAddTask={onAddTask}
               regionRef={taskPickerRegionRef}
             />

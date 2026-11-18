@@ -176,6 +176,7 @@ export default function AutomationWorkspace() {
   const scheduleEnabled = configDraft?.schedule.enabled ?? false
   const scheduleEntries = configDraft?.schedule.entries ?? createDefaultScheduleEntries()
   const isRetryingConfigSave = configSyncState === 'saving'
+  const isFlowEditingLocked = isSubmitting || isRunning
 
   const currentDraft = () => configChannel.getState().draft ?? createDefaultAutomationDraft()
 
@@ -201,7 +202,7 @@ export default function AutomationWorkspace() {
   }, [configChannel, updateConfig])
   const sorting = useTaskFlowSorting({
     flow: taskFlow,
-    disabled: isRunning,
+    disabled: isFlowEditingLocked,
     onCommit: commitTaskFlowOrder,
   })
   const displayedTaskFlow = sorting.displayedFlow
@@ -251,6 +252,7 @@ export default function AutomationWorkspace() {
   }, [])
 
   const addTaskToFlow = (task: AutomationAvailableTask) => {
+    if (isFlowEditingLocked) return
     const current = currentDraft()
     const added = appendTaskToFlow(current.taskFlow, task)
 
@@ -259,6 +261,7 @@ export default function AutomationWorkspace() {
   }
 
   const removeTaskFromFlow = (index: number) => {
+    if (isFlowEditingLocked) return
     const current = currentDraft()
     const removedTask = current.taskFlow[index]
     if (!removedTask) return
@@ -272,7 +275,11 @@ export default function AutomationWorkspace() {
   }
 
   const restoreDeletedTask = () => {
-    if (!lastDeletedTask || isRunning) return
+    if (!lastDeletedTask) return
+    if (isFlowEditingLocked) {
+      notify('执行或启动期间不能恢复已删除的任务', 'warning')
+      return
+    }
     const current = currentDraft()
     const newFlow = insertTaskFlowItem(
       current.taskFlow,
@@ -285,12 +292,14 @@ export default function AutomationWorkspace() {
   }
 
   const toggleTaskEnabled = (index: number) => {
+    if (isFlowEditingLocked) return
     const current = currentDraft()
     if (!current.taskFlow[index]) return
     updateConfig({ ...current, taskFlow: toggleTaskFlowItemEnabled(current.taskFlow, index) })
   }
 
   const updateTaskParam = (index: number, key: string, value: any) => {
+    if (isFlowEditingLocked) return
     const current = currentDraft()
     if (!current.taskFlow[index]) return
 
@@ -502,7 +511,7 @@ export default function AutomationWorkspace() {
             sorting={{
               draggedIndex: sorting.draggedIndex,
               announcement: sorting.announcement,
-              disabled: isRunning,
+              disabled: isFlowEditingLocked,
               registerItem: sorting.registerItem,
               onPointerDown: sorting.handlePointerDown,
               onKeyDown: sorting.handleKeyDown,
@@ -565,7 +574,7 @@ export default function AutomationWorkspace() {
                           <Switch
                             checked={task.enabled}
                             onCheckedChange={() => toggleTaskEnabled(index)}
-                            disabled={isRunning}
+                            disabled={isFlowEditingLocked}
                             aria-label={`${task.name}启用状态`}
                           />
                         </div>
@@ -585,15 +594,15 @@ export default function AutomationWorkspace() {
                             return (
                             <div key={field.key} className={`automation-param-field is-${field.type}`}>
                               {field.type === 'oper-progress-plans' ? (
-                                <OperProgressPlansEditor plans={task.params.plans ?? []} disabled={isRunning || !task.enabled} onChange={plans => updateTaskParam(index, 'plans', plans)} />
+                                <OperProgressPlansEditor plans={task.params.plans ?? []} disabled={isFlowEditingLocked || !task.enabled} onChange={plans => updateTaskParam(index, 'plans', plans)} />
                               ) : field.type === 'theme-list' ? (
-                                <ThemeListEditor themes={task.params.themes ?? []} disabled={isRunning || !task.enabled} onChange={themes => updateTaskParam(index, 'themes', themes)} />
+                                <ThemeListEditor themes={task.params.themes ?? []} disabled={isFlowEditingLocked || !task.enabled} onChange={themes => updateTaskParam(index, 'themes', themes)} />
                               ) : field.type === 'infrast-schedule' ? (
                                 <InfrastScheduleField
                                   fieldId={fieldId}
                                   filename={typeof task.params.filename === 'string' ? task.params.filename : ''}
                                   planIndex={task.params.plan_index ?? 0}
-                                  disabled={isRunning || !task.enabled}
+                                  disabled={isFlowEditingLocked || !task.enabled}
                                   onChange={(key, value) => updateTaskParam(index, key, value)}
                                 />
                               ) : field.type === 'checkbox' ? (
@@ -601,7 +610,7 @@ export default function AutomationWorkspace() {
                                   id={fieldId}
                                   label={field.label}
                                   checked={task.params[field.key] || false}
-                                  disabled={isRunning || !task.enabled}
+                                  disabled={isFlowEditingLocked || !task.enabled}
                                   hint={helperTooltip}
                                   onChange={(checked) => updateTaskParam(index, field.key, checked)}
                                 />
@@ -611,7 +620,7 @@ export default function AutomationWorkspace() {
                                   fieldId={fieldId}
                                   task={task}
                                   taskIndex={index}
-                                  isRunning={isRunning}
+                                  isRunning={isFlowEditingLocked}
                                   hint={helperTooltip}
                                   onUpdate={updateTaskParam}
                                   onSuccess={showSuccess}
@@ -628,7 +637,7 @@ export default function AutomationWorkspace() {
                                       value={task.params[field.key] || ''}
                                       onChange={(e) => updateTaskParam(index, field.key, e.target.value)}
                                       placeholder={field.placeholder}
-                                      disabled={isRunning || !task.enabled}
+                                      disabled={isFlowEditingLocked || !task.enabled}
                                       className="h-full flex-1 rounded-none border-0 bg-transparent px-3 focus-visible:ring-0 min-w-0"
                                     />
                                     <div className="w-px h-6 bg-white/20"></div>
@@ -640,7 +649,7 @@ export default function AutomationWorkspace() {
                                       value={task.params.times || ''}
                                       onChange={(e) => updateTaskParam(index, 'times', e.target.value)}
                                       placeholder=""
-                                      disabled={isRunning || !task.enabled}
+                                      disabled={isFlowEditingLocked || !task.enabled}
                                       min="0"
                                       className="h-full w-16 rounded-none border-0 bg-transparent px-2 text-center focus-visible:ring-0 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                                     />
@@ -651,7 +660,7 @@ export default function AutomationWorkspace() {
                                           const currentValue = Number(task.params.times) || 0;
                                           updateTaskParam(index, 'times', (currentValue + 1).toString());
                                         }}
-                                        disabled={isRunning || !task.enabled}
+                                        disabled={isFlowEditingLocked || !task.enabled}
                                         className="flex-1 px-1.5 bg-white/5 hover:bg-white/10 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center rounded-tr-xl"
                                         aria-label={`增加${field.label}执行次数`}
                                       >
@@ -668,7 +677,7 @@ export default function AutomationWorkspace() {
                                             updateTaskParam(index, 'times', (currentValue - 1).toString());
                                           }
                                         }}
-                                        disabled={isRunning || !task.enabled}
+                                        disabled={isFlowEditingLocked || !task.enabled}
                                         className="flex-1 px-1.5 bg-white/5 hover:bg-white/10 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center rounded-br-xl"
                                         aria-label={`减少${field.label}执行次数`}
                                       >
@@ -698,7 +707,7 @@ export default function AutomationWorkspace() {
                                                 : currentValue.filter((s: number) => s !== star);
                                               updateTaskParam(index, field.key, newValue);
                                             }}
-                                            disabled={isRunning || !task.enabled}
+                                            disabled={isFlowEditingLocked || !task.enabled}
                                           />
                                           <span className="group-hover:text-primary transition-colors flex items-center space-x-1">
                                             <span>{star}</span>
@@ -747,7 +756,7 @@ export default function AutomationWorkspace() {
                                                 : currentValue.filter((f: string) => f !== facility.value);
                                               updateTaskParam(index, field.key, newValue);
                                             }}
-                                            disabled={isRunning || !task.enabled}
+                                            disabled={isFlowEditingLocked || !task.enabled}
                                           />
                                           <span className="group-hover:text-primary transition-colors">{facility.label}</span>
                                         </label>
@@ -762,7 +771,7 @@ export default function AutomationWorkspace() {
                                     id={fieldId}
                                     items={asSelectItems(field.options)}
                                     value={task.params[field.key] || (asSelectItems(field.options)[0]?.value ?? '')}
-                                    disabled={isRunning || !task.enabled}
+                                    disabled={isFlowEditingLocked || !task.enabled}
                                     onValueChange={(value) => updateTaskParam(index, field.key, value)}
                                   />
                                 </div>
@@ -781,7 +790,7 @@ export default function AutomationWorkspace() {
                                         step={field.step}
                                         min={field.min}
                                         max={field.max}
-                                        disabled={isRunning || !task.enabled}
+                                        disabled={isFlowEditingLocked || !task.enabled}
                                         className="min-w-0"
                                       />
                                       <div className="number-input-controls hidden workbench:flex">
@@ -794,7 +803,7 @@ export default function AutomationWorkspace() {
                                             const newValue = Math.max(currentValue - step, min);
                                             updateTaskParam(index, field.key, newValue.toString());
                                           }}
-                                          disabled={isRunning || !task.enabled}
+                                          disabled={isFlowEditingLocked || !task.enabled}
                                           aria-label={`减少${field.label}`}
                                         >
                                           <Minus size={14} strokeWidth={2.2} aria-hidden="true" />
@@ -808,7 +817,7 @@ export default function AutomationWorkspace() {
                                             const newValue = Math.min(currentValue + step, max);
                                             updateTaskParam(index, field.key, newValue.toString());
                                           }}
-                                          disabled={isRunning || !task.enabled}
+                                          disabled={isFlowEditingLocked || !task.enabled}
                                           aria-label={`增加${field.label}`}
                                         >
                                           <Plus size={14} strokeWidth={2.2} aria-hidden="true" />
@@ -826,7 +835,7 @@ export default function AutomationWorkspace() {
                                       step={field.step}
                                       min={field.min}
                                       max={field.max}
-                                      disabled={isRunning || !task.enabled}
+                                      disabled={isFlowEditingLocked || !task.enabled}
                                     />
                                   )}
                                 </div>
@@ -872,7 +881,7 @@ export default function AutomationWorkspace() {
                                   { value: 'Txwy', label: '繁中服' },
                                 ]}
                                 value={task.params.clientType || ''}
-                                disabled={isRunning || !task.enabled}
+                                disabled={isFlowEditingLocked || !task.enabled}
                                 onValueChange={(value) => updateTaskParam(index, 'clientType', value)}
                               />
                             </div>
@@ -882,7 +891,7 @@ export default function AutomationWorkspace() {
                                 <Checkbox
                                   checked={Boolean(task.params.DrGrandet)}
                                   onCheckedChange={(checked) => updateTaskParam(index, 'DrGrandet', checked)}
-                                  disabled={isRunning || !task.enabled}
+                                  disabled={isFlowEditingLocked || !task.enabled}
                                 />
                                 <span>葛朗台碎石模式</span>
                               </label>
@@ -894,7 +903,7 @@ export default function AutomationWorkspace() {
                                 <Checkbox
                                   checked={Boolean(task.params.report_to_penguin)}
                                   onCheckedChange={(checked) => updateTaskParam(index, 'report_to_penguin', checked)}
-                                  disabled={isRunning || !task.enabled}
+                                  disabled={isFlowEditingLocked || !task.enabled}
                                 />
                                 汇报掉落至企鹅物流
                               </label>
@@ -908,7 +917,7 @@ export default function AutomationWorkspace() {
                                     value={task.params.penguin_id || ''}
                                     onChange={(e) => updateTaskParam(index, 'penguin_id', e.target.value)}
                                     placeholder="留空则匿名汇报"
-                                    disabled={isRunning || !task.enabled}
+                                    disabled={isFlowEditingLocked || !task.enabled}
                                     className="min-w-0 flex-1"
                                   />
                                 </div>
@@ -920,7 +929,7 @@ export default function AutomationWorkspace() {
                                 <Checkbox
                                   checked={Boolean(task.params.report_to_yituliu)}
                                   onCheckedChange={(checked) => updateTaskParam(index, 'report_to_yituliu', checked)}
-                                  disabled={isRunning || !task.enabled}
+                                  disabled={isFlowEditingLocked || !task.enabled}
                                 />
                                 汇报掉落至一图流
                               </label>
@@ -934,7 +943,7 @@ export default function AutomationWorkspace() {
                                     value={task.params.yituliu_id || ''}
                                     onChange={(e) => updateTaskParam(index, 'yituliu_id', e.target.value)}
                                     placeholder="留空则匿名汇报"
-                                    disabled={isRunning || !task.enabled}
+                                    disabled={isFlowEditingLocked || !task.enabled}
                                     className="min-w-0 flex-1"
                                   />
                                 </div>
@@ -962,7 +971,7 @@ export default function AutomationWorkspace() {
                                   <Checkbox
                                     checked={Boolean(task.params.dorm_notstationed_enabled)}
                                     onCheckedChange={(checked) => updateTaskParam(index, 'dorm_notstationed_enabled', checked)}
-                                    disabled={isRunning || !task.enabled}
+                                    disabled={isFlowEditingLocked || !task.enabled}
                                   />
                                   使用“未进驻”筛选
                                 </label>
@@ -970,7 +979,7 @@ export default function AutomationWorkspace() {
                                   <Checkbox
                                     checked={Boolean(task.params.dorm_trust_enabled)}
                                     onCheckedChange={(checked) => updateTaskParam(index, 'dorm_trust_enabled', checked)}
-                                    disabled={isRunning || !task.enabled}
+                                    disabled={isFlowEditingLocked || !task.enabled}
                                   />
                                   空位补入未满信赖干员
                                 </label>
@@ -984,7 +993,7 @@ export default function AutomationWorkspace() {
                                   <Checkbox
                                     checked={Boolean(task.params.reception_message_board)}
                                     onCheckedChange={(checked) => updateTaskParam(index, 'reception_message_board', checked)}
-                                    disabled={isRunning || !task.enabled}
+                                    disabled={isFlowEditingLocked || !task.enabled}
                                   />
                                   领取信息板信用
                                 </label>
@@ -992,7 +1001,7 @@ export default function AutomationWorkspace() {
                                   <Checkbox
                                     checked={Boolean(task.params.reception_clue_exchange)}
                                     onCheckedChange={(checked) => updateTaskParam(index, 'reception_clue_exchange', checked)}
-                                    disabled={isRunning || !task.enabled}
+                                    disabled={isFlowEditingLocked || !task.enabled}
                                   />
                                   发起线索交流
                                 </label>
@@ -1000,7 +1009,7 @@ export default function AutomationWorkspace() {
                                   <Checkbox
                                     checked={Boolean(task.params.reception_send_clue)}
                                     onCheckedChange={(checked) => updateTaskParam(index, 'reception_send_clue', checked)}
-                                    disabled={isRunning || !task.enabled}
+                                    disabled={isFlowEditingLocked || !task.enabled}
                                   />
                                   自动赠送线索
                                 </label>
@@ -1014,7 +1023,7 @@ export default function AutomationWorkspace() {
                                   <Checkbox
                                     checked={Boolean(task.params.continue_training)}
                                     onCheckedChange={(checked) => updateTaskParam(index, 'continue_training', checked)}
-                                    disabled={isRunning || !task.enabled}
+                                    disabled={isFlowEditingLocked || !task.enabled}
                                   />
                                   完成后继续专精
                                 </label>
@@ -1053,7 +1062,7 @@ export default function AutomationWorkspace() {
                                   { value: '2', label: '尽量多选高星 Tag 组合' },
                                 ]}
                                 value={String(task.params.extra_tags_mode ?? 0)}
-                                disabled={isRunning || !task.enabled}
+                                disabled={isFlowEditingLocked || !task.enabled}
                                 onValueChange={(value) => updateTaskParam(index, 'extra_tags_mode', Number(value))}
                               />
                             </div>
@@ -1074,7 +1083,7 @@ export default function AutomationWorkspace() {
                                 value={Array.isArray(task.params.first_tags) ? task.params.first_tags.join(',') : (task.params.first_tags || '')}
                                 onChange={(e) => updateTaskParam(index, 'first_tags', e.target.value)}
                                 placeholder="近卫干员,治疗"
-                                disabled={isRunning || !task.enabled}
+                                disabled={isFlowEditingLocked || !task.enabled}
                                 className="min-w-0 flex-1"
                               />
                             </div>
@@ -1111,7 +1120,7 @@ export default function AutomationWorkspace() {
                                         min={RECRUITMENT_TIME_MIN}
                                         max={RECRUITMENT_TIME_MAX}
                                         step={RECRUITMENT_TIME_STEP}
-                                        disabled={isRunning || !task.enabled}
+                                        disabled={isFlowEditingLocked || !task.enabled}
                                         className="min-w-0 flex-1 border-0 bg-transparent text-right dark:bg-transparent focus-visible:ring-0"
                                       />
                                       <span className="shrink-0 text-xs text-gray-400">分钟</span>
@@ -1130,7 +1139,7 @@ export default function AutomationWorkspace() {
                             type="button"
                             variant="secondary"
                             onClick={() => void testConnection(task.id)}
-                            disabled={isRunning || !task.enabled || testingConnectionTaskId !== null || isTestingConnection}
+                            disabled={isFlowEditingLocked || !task.enabled || testingConnectionTaskId !== null || isTestingConnection}
                             data-status-key={isTestingConnection ? 'testing' : connectionFeedback?.success ? 'success' : connectionFeedback ? 'error' : 'idle'}
                             aria-busy={isTestingConnection || undefined}
                             className={`automation-test-connection w-full${isTestingConnection ? ' is-testing' : ''}`}

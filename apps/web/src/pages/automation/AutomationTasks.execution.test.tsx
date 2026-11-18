@@ -349,6 +349,9 @@ const click = async (element: HTMLElement | null) => {
   await flush()
 }
 
+const isDisabled = (element: Element | null) => Boolean(element && (
+  element.hasAttribute('disabled') || element.getAttribute('aria-disabled') === 'true'
+))
 const runButton = () => container.querySelector<HTMLButtonElement>(
   'button[data-status-key="ready"], button[data-status-key="running"]',
 )
@@ -497,6 +500,33 @@ describe('AutomationTasks execution', () => {
 
     expect(document.querySelector('[role="menu"]')).toBeNull()
     expect(container.querySelector<HTMLButtonElement>('[aria-haspopup="menu"]')?.disabled).toBe(true)
+  })
+
+  it('locks flow editing while a submission is pending but keeps schedule editing available', async () => {
+    useIdentity()
+    await renderPage()
+    const submission = deferred<ApiResponse<Record<string, unknown>>>()
+    mocks.executeScheduleNow.mockReturnValue(submission.promise)
+
+    await click(runButton())
+
+    expect(runButton()?.textContent).toContain('正在启动')
+    const dragHandles = [...container.querySelectorAll('[aria-label^="调整"]')]
+    expect(dragHandles.length).toBeGreaterThan(0)
+    expect(dragHandles.every(isDisabled)).toBe(true)
+    expect([...container.querySelectorAll('[aria-controls="automation-task-editor"]')].every(isDisabled)).toBe(true)
+    expect([...container.querySelectorAll('[role="switch"][aria-label$="启用状态"]')].every(isDisabled)).toBe(true)
+    expect([...container.querySelectorAll('[aria-label^="删除"]')].every(isDisabled)).toBe(true)
+    expect(isDisabled(container.querySelector('[aria-haspopup="menu"]'))).toBe(true)
+    expect(isDisabled(container.querySelector('#automation-startup-1-accountName'))).toBe(true)
+    expect(isDisabled(container.querySelector('[aria-label="启用定时执行"]'))).toBe(false)
+
+    await act(async () => submission.resolve(ok({
+      accepted: true,
+      runId: 'run-1',
+      run: dailyRun('run-1', 'running'),
+    })))
+    await flush()
   })
 
   it('blocks a custom shift without a schedule file and selects it for editing', async () => {
