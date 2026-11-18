@@ -450,6 +450,7 @@ class ConfigKeyState<TDraft, TWire> implements ConfigChannel<TDraft> {
 
   private failLoad(message: string): void {
     if (this.draft !== null) {
+      this.hydrated = true
       this.markLoaded()
       this.publish()
       return

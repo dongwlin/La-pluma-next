@@ -167,6 +167,25 @@ describe('hydrate', () => {
     })
   })
 
+  it('keeps an in-memory draft hydrated when a failed reload has no local fallback', async () => {
+    const channel = harness.coordinator.channel({
+      ...harness.adapter,
+      readLocalDraft: () => null,
+      writeLocalDraft: () => {},
+    })
+    harness.fetchMock.mockResolvedValueOnce({ ok: false, message: 'offline' })
+    channel.setDraft({ value: 'edited', mode: 'normal' })
+
+    await expect(channel.reload()).resolves.toEqual({ reason: 'failed' })
+    expect(channel.getState()).toMatchObject({
+      draft: { value: 'edited', mode: 'normal' },
+      hydrated: true,
+      loadState: 'ready',
+      loadError: null,
+      pending: true,
+    })
+  })
+
   it('keeps the restored local draft ready even when the server read would fail', async () => {
     harness.storage.setItem(PENDING_KEY, 'pending-token')
     harness.local.write({ value: 'local', mode: 'normal' })
