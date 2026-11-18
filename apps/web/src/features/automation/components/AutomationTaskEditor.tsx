@@ -13,8 +13,7 @@ import type { ConnectionTestStatus, TaskFlowItem } from '../types'
 interface AutomationTaskEditorProps {
   task: TaskFlowItem | null
   taskIndex: number
-  isRunning: boolean
-  isSubmitting: boolean
+  isEditingLocked: boolean
   isCurrentTask: boolean
   connectionStatus: Record<string, ConnectionTestStatus>
   testingConnectionTaskId: string | null
@@ -29,8 +28,7 @@ interface AutomationTaskEditorProps {
 export default function AutomationTaskEditor({
   task,
   taskIndex,
-  isRunning,
-  isSubmitting,
+  isEditingLocked,
   isCurrentTask,
   connectionStatus,
   testingConnectionTaskId,
@@ -41,7 +39,6 @@ export default function AutomationTaskEditor({
   onSuccess,
   onError,
 }: AutomationTaskEditorProps) {
-  const isEditingLocked = isRunning || isSubmitting
   const usesWideFieldLabels = task?.commandId === 'recruit'
 
   return (

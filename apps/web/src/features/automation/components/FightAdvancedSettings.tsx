@@ -1,7 +1,7 @@
-import { ChevronDown, SlidersHorizontal } from 'lucide-react'
 import { FieldHint } from '@/shared/components'
 import { Checkbox } from '@/shared/ui/checkbox'
 import { Input } from '@/shared/ui/input'
+import AutomationAdvancedSettings from './AutomationAdvancedSettings'
 import AutomationSelectField from './AutomationSelectField'
 import type { TaskFlowItem } from '../types'
 
@@ -19,16 +19,7 @@ export default function FightAdvancedSettings({
   onUpdateParam,
 }: FightAdvancedSettingsProps) {
   return (
-    <details className="group mt-3 rounded-lg border border-border bg-muted px-3 py-2">
-      <summary className="flex min-h-11 cursor-pointer list-none items-center justify-between gap-3.5 text-sm font-medium text-gray-700 marker:hidden dark:text-gray-200 [&::-webkit-details-marker]:hidden">
-        <span className="flex items-center gap-2">
-          <SlidersHorizontal size={15} strokeWidth={1.9} />
-          高级设置
-        </span>
-        <ChevronDown size={15} strokeWidth={2} className="transition-transform group-open:rotate-180" />
-      </summary>
-
-      <div className="mt-3 space-y-3 border-t border-border pt-3">
+    <AutomationAdvancedSettings>
         <div className="flex items-center gap-2">
           <span className="flex w-24 shrink-0 items-center gap-1">
             <label htmlFor={`${task.id}-fight-client-type`} className="whitespace-nowrap text-sm text-gray-600 dark:text-gray-400">闪退重启:</label>
@@ -115,7 +106,6 @@ export default function FightAdvancedSettings({
             </div>
           )}
         </section>
-      </div>
-    </details>
+    </AutomationAdvancedSettings>
   )
 }

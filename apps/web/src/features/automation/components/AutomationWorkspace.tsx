@@ -472,8 +472,7 @@ export default function AutomationWorkspace() {
           <AutomationTaskEditor
             task={activeTask}
             taskIndex={activeTaskIndex}
-            isRunning={isRunning}
-            isSubmitting={isSubmitting}
+            isEditingLocked={isFlowEditingLocked}
             isCurrentTask={activeTaskIsCurrent}
             connectionStatus={connectionStatus}
             testingConnectionTaskId={testingConnectionTaskId}

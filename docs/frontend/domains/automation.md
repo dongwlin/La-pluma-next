@@ -21,7 +21,12 @@
 | 内容 | 唯一归属 | 说明 |
 | --- | --- | --- |
 | 页面壳与工作区组合 | `pages/automation/AutomationTasks.tsx` | 只渲染 `app-page`/`app-stack-section` 与 `AutomationWorkspace` |
-| 配置订阅、Run 订阅、选中项、删除撤销、连接测试、跨域失效、任务编辑 | `components/AutomationWorkspace.tsx` | 页面级领域容器；仍调用所属领域 hook，不直接调用 API/存储/轮询 |
+| 配置订阅、Run 订阅、选中项、删除撤销、连接测试、跨域失效、排序、加载门控与布局编排 | `components/AutomationWorkspace.tsx` | 页面级领域容器；仍调用所属领域 hook，不直接调用 API/存储/轮询 |
+| 任务配置卡壳、任务卡、参数字段列表与按 `commandId` 组合高级设置 | `components/AutomationTaskEditor.tsx` | 接收选中任务、编辑锁、当前执行态与连接反馈；不持有配置/执行状态 |
+| 单个参数字段渲染（可见性、`fieldId`、hint、disabled 与写回） | `components/AutomationTaskField.tsx` | 按字段类型分发到共享控件、关卡编辑器、排班编辑器与主题/养成子编辑器 |
+| fight / infrast / recruit 高级设置 | `components/FightAdvancedSettings.tsx` / `components/InfrastAdvancedSettings.tsx` / `components/RecruitAdvancedSettings.tsx` | 各自只渲染对应命令的高级设置内容，参数经 `onUpdateParam` 写回 |
+| startup 连接测试入口 | `components/StartupConnectionTest.tsx` | 只渲染测试/重新测试按钮区域；结果反馈走全局 toast |
+| Select 控件与选项归一化 | `components/AutomationSelectField.tsx` + `components/automationSelectItems.ts` | 统一受控选择器；选项同时接受字符串与 `{ value, label }` |
 | 流程列表、标题栏、页脚与摘要组合 | `components/AutomationTaskFlowPanel.tsx` | 接收只读 Run 投影、排序投影与配置回调；标题栏右侧承载统计与添加任务入口，页脚只保留开始/终止 |
 | 定时编辑 | `components/AutomationScheduleCard.tsx` | 绑定 `model/automationSchedule.ts`；结果经 `onChange` 交给唯一配置 owner |
 | 通知配置读取、草稿与保存 | `components/NotificationSettings.tsx` + `model/queries.ts` | 独立卡片；读取 `notificationConfigQueryOptions()`；保存成功后 `setQueryData` 回写同一 key；脏态与总开关依赖由卡内持有，测试/保存结果走全局 toast |
@@ -40,8 +45,10 @@
 - 不改变任务参数默认值、智能养成参数、执行前校验顺序或执行身份。
 - 控件统一使用共享 `Input`/`Button`/`Select`/`Switch`/`Checkbox`；表单 `id`/`aria-label`、菜单 `id`/`role`、
   焦点顺序与键盘行为保持。
-- 任务配置编辑器（通用参数字段、高级设置与连接测试）仍与工作区同文件组合；
-  它读取同一草稿、选中项与执行投影，表单结构与参数规则保持不变。
+- 任务配置编辑器按职责拆分：`AutomationTaskEditor` 只组合任务卡、参数字段与
+  高级设置，`AutomationTaskField` 负责单字段渲染，命令专属高级设置与 startup
+  连接测试各自独立；它们只接收显式 props，不读取配置通道或执行控制器，
+  也不建立第二份草稿。字段结构、表单 `id`、文案与参数规则保持不变。
 
 
 **日常任务参数对齐。** `model/automationTaskDefaults.ts` 负责每类任务的名称、描述、`taskType` 与默认参数，`components/automationTaskCatalog.tsx` 只组合图标与参数字段；`automationConfig.migrateTaskParams` 在读取本地或服务端旧草稿时补齐缺失字段：
@@ -69,7 +76,7 @@ AutomationTasks（app-page > app-stack-section > AutomationWorkspace）
       │  ├─ 任务流程列表（拖拽、启用、删除；撤销经 toast）
       │  ├─ automation-sequence-footer（开始 / 终止）
       │  └─ AutomationExecutionSummary
-      ├─ automation-task-editor（editor 区域；任务配置；同一草稿与执行投影）
+      ├─ automation-task-editor（editor 区域；由 AutomationTaskEditor 组合；同一草稿与执行投影）
       └─ automation-support-column（support 区域）
          ├─ DeviceMonitorPanel（共享实时会话）
          ├─ AutomationScheduleCard（定时编辑；关闭时保留时间摘要）
@@ -207,8 +214,9 @@ browser releases pointer capture”用例固定。性能复测采用[性能采�
 
 ### 剩余边界
 
-- 通用任务配置编辑器仍在 `AutomationWorkspace` 内组合；流程、定时
-  与摘要在各自面板中，未改变其表单结构或参数规则。
+- 任务配置编辑器已从 `AutomationWorkspace` 拆出；工作区仍持有配置订阅、
+  选中项、连接测试、删除撤销、排序、加载门控与布局编排，编辑组件只接收
+  显式 props。流程、定时与摘要在各自面板中，表单结构或参数规则未改变。
 - 指针排序的性能比较必须先验证保存完成条件；旧版取消结果不可直接与成功保存耗时比较。采样方法见[性能采样工具](../../../apps/web/tests/performance/README.md)。
 
 ## 纯模型与排序
@@ -306,7 +314,12 @@ browser releases pointer capture”用例固定。性能复测采用[性能采�
 
 | 内容 | 唯一归属 | 说明 |
 | --- | --- | --- |
-| 页面组合、配置订阅、执行订阅、选中项、删除撤销 toast、连接测试 | `pages/automation/AutomationTasks.tsx` + `components/AutomationWorkspace.tsx` | 目前页面只组合工作区；流程/定时/摘要分别在独立面板 |
+| 页面组合、配置订阅、执行订阅、选中项、删除撤销 toast、连接测试、排序与加载门控 | `pages/automation/AutomationTasks.tsx` + `components/AutomationWorkspace.tsx` | 页面只组合工作区；流程/定时/摘要分别在独立面板，编辑器壳由 `AutomationTaskEditor` 组合 |
+| 任务配置卡壳与任务卡 | `components/AutomationTaskEditor.tsx` | 标题栏、序号、空态、任务卡头部、字段列表与高级设置组合；不持有配置/执行状态 |
+| 单个参数字段渲染 | `components/AutomationTaskField.tsx` | 处理 `visibleWhen`/`hiddenWhen`、`fieldId`、hint、disabled 与参数写回 |
+| 命令专属高级设置 | `components/FightAdvancedSettings.tsx` / `components/InfrastAdvancedSettings.tsx` / `components/RecruitAdvancedSettings.tsx` | 分别渲染 fight / infrast / recruit 的高级设置内容 |
+| startup 连接测试 | `components/StartupConnectionTest.tsx` | 只渲染测试/重新测试按钮区域，结果反馈走全局 toast |
+| Select 控件与选项转换 | `components/AutomationSelectField.tsx` + `components/automationSelectItems.ts` | 统一受控选择器与字符串/对象选项归一化 |
 | 流程列表、拖拽排序、页脚与执行摘要 | `components/AutomationTaskFlowPanel.tsx` + `hooks/useTaskFlowSorting.ts` | 只接只读 Run 投影；标题栏承载添加任务入口，排序预览与编辑器共享 |
 | 定时编辑 | `components/AutomationScheduleCard.tsx` | 绑定定时纯模型，经工作区唯一配置 owner 写入 |
 | 通知卡 | `components/NotificationSettings.tsx` | 独立卡片；Query、草稿与脏态归卡内，结果反馈走全局 toast |
@@ -340,8 +353,13 @@ AutomationTasks（app-page > app-stack-section > AutomationWorkspace）
    │  ├─ automation-flow-header（标题 + 统计 + AutomationTaskPicker）
    │  ├─ 任务流程列表（拖拽预览、拖拽公告）
    │  └─ automation-sequence-footer（开始 / 终止）
-   └─ automation-task-editor
-      └─ AutomationStageEditor（isSmartStageLoading / 关卡写回）
+   └─ AutomationTaskEditor（editor 区域；id="automation-task-editor"）
+      ├─ 任务配置标题栏 / 序号 / 空态
+      └─ 任务卡（automation-task-editor）
+         ├─ AutomationTaskField（按 paramFields 渲染）
+         │  └─ AutomationStageEditor（multi-stages 字段）
+         ├─ FightAdvancedSettings / InfrastAdvancedSettings / RecruitAdvancedSettings（按 commandId）
+         └─ StartupConnectionTest（startup）
 ```
 
 | 状态 | 所有者 | Activity 隐藏/恢复 | 真正卸载/刷新 |
