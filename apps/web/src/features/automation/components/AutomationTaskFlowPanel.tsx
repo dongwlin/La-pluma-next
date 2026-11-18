@@ -93,7 +93,7 @@ export default function AutomationTaskFlowPanel({
                   onPointerDown={(event) => sorting.onPointerDown(event, task.id)}
                   onKeyDown={(event) => sorting.onKeyDown(event, task.id)}
                   className={`automation-sequence-drag min-h-11 min-w-11 touch-none${execution.isRunning ? ' is-placeholder' : ''}`}
-                  title={editingLocked ? '执行期间不能排序' : '拖动排序，或使用上下方向键调整'}
+                  title={editingLocked ? '执行或启动期间不能排序' : '拖动排序，或使用上下方向键调整'}
                   aria-label={`调整${task.name}顺序，当前第 ${index + 1} 位`}
                   disabled={editingLocked}
                 >

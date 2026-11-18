@@ -219,6 +219,7 @@ export default function AutomationWorkspace() {
 
   // 拖拽期间只渲染本地预览，松手时才把最终顺序作为一次编辑写入协调器。
   const commitTaskFlowOrder = useCallback((nextFlow: TaskFlowItem[]) => {
+    if (isFlowEditingLockedRef.current) return
     const current = configChannel.getState().draft ?? createDefaultAutomationDraft()
     updateConfig({ ...current, taskFlow: toPersistedTaskFlow(nextFlow) })
   }, [configChannel, updateConfig])
@@ -248,6 +249,7 @@ export default function AutomationWorkspace() {
   const executionView = { isRunning, taskResults, currentStep }
 
   const selectTaskForEditing = (taskId: string) => {
+    if (isFlowEditingLockedRef.current) return
     setSelectedTaskId(taskId)
     if (!window.matchMedia?.(`(width < ${BREAKPOINTS.workbench}px)`).matches) return
 

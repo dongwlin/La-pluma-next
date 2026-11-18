@@ -514,6 +514,7 @@ describe('AutomationTasks execution', () => {
     const dragHandles = [...container.querySelectorAll('[aria-label^="调整"]')]
     expect(dragHandles.length).toBeGreaterThan(0)
     expect(dragHandles.every(isDisabled)).toBe(true)
+    expect(dragHandles[0]?.getAttribute('title')).toBe('执行或启动期间不能排序')
     expect([...container.querySelectorAll('[aria-controls="automation-task-editor"]')].every(isDisabled)).toBe(true)
     expect([...container.querySelectorAll('[role="switch"][aria-label$="启用状态"]')].every(isDisabled)).toBe(true)
     expect([...container.querySelectorAll('[aria-label^="删除"]')].every(isDisabled)).toBe(true)
@@ -555,6 +556,42 @@ describe('AutomationTasks execution', () => {
       { id: 'automation-restore-blocked' },
     )
     expect(container.querySelectorAll('[aria-controls="automation-task-editor"]')).toHaveLength(2)
+  })
+
+  it('keeps the deleted-task restore action from editing the flow while a submission is pending', async () => {
+    useIdentity()
+    await renderPage()
+
+    await click(container.querySelector<HTMLButtonElement>('[aria-label="删除启动游戏"]'))
+    const deletedNotice = mocks.notify.mock.calls.find(([message]) => (
+      String(message).includes('已删除“启动游戏”')
+    ))
+    expect(deletedNotice).toBeDefined()
+    const { action } = deletedNotice![2] as {
+      action: { label: string; onClick: () => void }
+    }
+
+    const submission = deferred<ApiResponse<Record<string, unknown>>>()
+    mocks.executeScheduleNow.mockReturnValue(submission.promise)
+    await click(runButton())
+    expect(runButton()?.textContent).toContain('正在启动')
+
+    await act(async () => action.onClick())
+    await flush()
+
+    expect(mocks.notify).toHaveBeenCalledWith(
+      '执行或启动期间不能恢复已删除的任务',
+      'warning',
+      { id: 'automation-restore-blocked' },
+    )
+    expect(container.querySelectorAll('[aria-controls="automation-task-editor"]')).toHaveLength(2)
+
+    await act(async () => submission.resolve(ok({
+      accepted: true,
+      runId: 'run-1',
+      run: dailyRun('run-1', 'running'),
+    })))
+    await flush()
   })
 
   it('blocks a custom shift without a schedule file and selects it for editing', async () => {
