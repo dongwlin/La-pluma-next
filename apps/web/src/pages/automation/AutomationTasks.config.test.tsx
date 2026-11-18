@@ -312,6 +312,11 @@ describe('AutomationTasks config persistence', () => {
     expect(container.querySelector('[role="alert"]')?.textContent)
       .toContain('配置已保存在此设备，但尚未同步到服务器：配置存储暂不可用')
     expect(mocks.notify).not.toHaveBeenCalled()
+    // 保存失败仍保留本地草稿编辑能力，不能退化成全局只读。
+    expect(container.querySelector(
+      '[aria-label="启动游戏启用状态"][disabled], [aria-label="启动游戏启用状态"][aria-disabled="true"]',
+    )).toBeNull()
+    expect(container.querySelector('[aria-label="删除启动游戏"][disabled]')).toBeNull()
   })
 
   it('keeps the pending draft when the schedule step fails after the config save, then clears it on a later full success', async () => {
@@ -501,7 +506,7 @@ describe('AutomationTasks config persistence', () => {
     expect(pendingDraft()).toBeNull()
   })
 
-  it('ignores a server load that settles after the user edits the schedule', async () => {
+  it('keeps the loading gate without editable controls until the server read settles', async () => {
     const serverLoad = deferred<{
       success: boolean
       data: { taskFlow: typeof taskFlowFixture }
@@ -509,14 +514,48 @@ describe('AutomationTasks config persistence', () => {
     mocks.loadUserConfig.mockReturnValueOnce(serverLoad.promise)
 
     await renderAutomation()
-    await click(scheduleSwitch())
+
+    expect(container.textContent).toContain('正在读取自动化配置…')
+    expect(container.querySelector('[role="status"]')?.textContent).toContain('正在读取自动化配置…')
+    expect(scheduleSwitch()).toBeNull()
+    expect(container.querySelector('[aria-haspopup="menu"]')).toBeNull()
+    expect(container.querySelector('[aria-controls="automation-task-editor"]')).toBeNull()
+    expect(JSON.parse(localStorage.getItem('maa-task-flow') || '[]')).toEqual([])
 
     await act(async () => serverLoad.resolve({ success: true, data: { taskFlow: taskFlowFixture } }))
     await settle()
 
-    expect(mocks.loadUserConfig).toHaveBeenCalledOnce()
-    expect(container.textContent).not.toContain('理智作战')
-    expect(JSON.parse(localStorage.getItem('maa-task-flow') || '[]')).toEqual([])
+    expect(container.textContent).toContain('理智作战')
+    expect(scheduleSwitch()).not.toBeNull()
+    expect(container.querySelector('[aria-haspopup="menu"]')).not.toBeNull()
+  })
+
+  it('shows a fixed-height load failure gate and recovers through a forced reload', async () => {
+    mocks.loadUserConfig
+      .mockResolvedValueOnce({ success: false, message: '配置读取失败' })
+      .mockResolvedValueOnce({ success: true, data: { taskFlow: taskFlowFixture } })
+
+    await renderAutomation()
+
+    const gate = container.querySelector<HTMLElement>('[role="alert"]')
+    expect(gate?.textContent).toContain('自动化配置暂时不可用')
+    expect(gate?.textContent).toContain('配置读取失败')
+    expect(scheduleSwitch()).toBeNull()
+    expect(container.querySelector('[aria-haspopup="menu"]')).toBeNull()
+    expect(container.querySelector('[aria-controls="automation-task-editor"]')).toBeNull()
+
+    const reloadButton = Array.from(container.querySelectorAll<HTMLButtonElement>('button'))
+      .find(button => button.textContent?.includes('重新加载'))
+    expect(reloadButton).toBeDefined()
+
+    await click(reloadButton!)
+    await settle()
+
+    expect(mocks.loadUserConfig).toHaveBeenCalledTimes(2)
+    expect(container.querySelector('[role="alert"]')).toBeNull()
+    expect(container.textContent).toContain('理智作战')
+    expect(scheduleSwitch()).not.toBeNull()
+    expect(container.querySelector('[aria-haspopup="menu"]')).not.toBeNull()
   })
 
   it('loads the server copy when a pending marker has no local draft', async () => {

@@ -153,6 +153,8 @@ export default function AutomationWorkspace() {
     draft: configDraft,
     syncState: configSyncState,
     error: configSyncError,
+    loadState: configLoadState,
+    loadError: configLoadError,
     update: updateConfig,
     channel: configChannel,
     retry: retryConfigSave,
@@ -418,6 +420,41 @@ export default function AutomationWorkspace() {
       document.removeEventListener('visibilitychange', handleVisibilityChange)
     }
   }, [reloadConfig])
+
+  if (configLoadState !== 'ready') {
+    const loadFailed = configLoadState === 'failed'
+    return (
+      <Card
+        role={loadFailed ? 'alert' : 'status'}
+        aria-live={loadFailed ? 'assertive' : 'polite'}
+        className="min-h-40 gap-0 p-0!"
+      >
+        <div className="flex min-h-40 flex-col items-center justify-center gap-3 px-4 py-6 text-center">
+          {loadFailed
+            ? <AlertTriangle size={22} strokeWidth={1.9} className="text-destructive" aria-hidden="true" />
+            : <LoaderCircle size={22} strokeWidth={1.9} className="animate-spin" aria-hidden="true" />}
+          <div className="space-y-1">
+            <p className="text-sm font-medium">
+              {loadFailed ? '自动化配置暂时不可用' : '正在读取自动化配置…'}
+            </p>
+            {loadFailed && (
+              <p className="text-xs text-muted-foreground">{configLoadError ?? '请稍后重新加载'}</p>
+            )}
+          </div>
+          {loadFailed && (
+            <Button
+              type="button"
+              variant="secondary"
+              size="sm"
+              onClick={() => void reloadConfig({ force: true })}
+            >
+              重新加载
+            </Button>
+          )}
+        </div>
+      </Card>
+    )
+  }
 
   return (
     <>
