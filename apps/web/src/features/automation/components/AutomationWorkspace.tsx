@@ -17,7 +17,6 @@ import { DeviceMonitorLayout } from '@/features/device-mirror'
 import { Button } from '@/shared/ui/button'
 import { Checkbox } from '@/shared/ui/checkbox'
 import { Input } from '@/shared/ui/input'
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/shared/ui/select'
 import { Switch } from '@/shared/ui/switch'
 import { Card } from '@/shared/ui/card'
 import { EmptyState, FieldHint } from '@/shared/components'
@@ -27,6 +26,8 @@ import { useUserConfig } from '@/features/user-config'
 import { useResourceInvalidation, type ResourceInvalidation } from '@/features/resource-invalidation'
 import { testConnection as testAdbConnection } from '@/features/settings'
 import AutomationStageEditor from './AutomationStageEditor'
+import AutomationSelectField from './AutomationSelectField'
+import { asSelectItems } from './automationSelectItems'
 import InfrastScheduleField from './InfrastScheduleField'
 import OperProgressPlansEditor from './OperProgressPlansEditor'
 import ThemeListEditor from './ThemeListEditor'
@@ -73,7 +74,7 @@ import {
   selectFlowDisplaySummary,
   selectFlowTaskResults,
 } from '../model/flowExecution'
-import type { AutomationAvailableTask, ConnectionTestStatus, TaskFlowItem, TaskParamField } from '../types'
+import type { AutomationAvailableTask, ConnectionTestStatus, TaskFlowItem } from '../types'
 
 /** 养成为任务流程或定时配置发布失效；页面据此强制重读同一协调器通道。 */
 const AUTOMATION_RESOURCE_SCOPES = ['automation-config', 'automation-schedule'] as const
@@ -81,50 +82,6 @@ const AUTOMATION_CONFIG_NOTICE_ID = 'automation-config-save'
 const AUTOMATION_CONNECTION_NOTICE_ID = 'automation-connection-test'
 const AUTOMATION_DELETED_TASK_NOTICE_ID = 'automation-deleted-task'
 const AUTOMATION_RESTORE_BLOCKED_NOTICE_ID = 'automation-restore-blocked'
-
-interface SelectFieldItem {
-  value: string
-  label: string
-}
-
-const asSelectItems = (options: TaskParamField['options']): SelectFieldItem[] => {
-  const items: SelectFieldItem[] = []
-  for (const option of options ?? []) {
-    items.push(typeof option === 'object' ? option : { value: option, label: option })
-  }
-  return items
-}
-
-function SelectField({
-  id,
-  items,
-  value,
-  disabled,
-  onValueChange,
-  className,
-  'aria-label': ariaLabel,
-}: {
-  id?: string
-  items: SelectFieldItem[]
-  value?: string | null
-  disabled?: boolean
-  onValueChange: (value: string) => void
-  className?: string
-  'aria-label'?: string
-}) {
-  return (
-    <Select items={items} value={value} onValueChange={(next, details) => { if (details.reason === 'none' || next === null) return; onValueChange(next) }} disabled={disabled}>
-      <SelectTrigger id={id} aria-label={ariaLabel} className={className ?? 'w-full'}>
-        <SelectValue />
-      </SelectTrigger>
-      <SelectContent>
-        {items.map(item => (
-          <SelectItem key={item.value} value={item.value}>{item.label}</SelectItem>
-        ))}
-      </SelectContent>
-    </Select>
-  )
-}
 
 interface DeletedTaskSnapshot {
   task: TaskFlowItem
@@ -712,7 +669,7 @@ export default function AutomationWorkspace() {
                               ) : field.type === 'select' ? (
                                 <div className="automation-field-row">
                                   <AutomationFieldLabel htmlFor={fieldId} label={field.label} hint={helperTooltip} />
-                                  <SelectField
+                                  <AutomationSelectField
                                     id={fieldId}
                                     items={asSelectItems(field.options)}
                                     value={task.params[field.key] || (asSelectItems(field.options)[0]?.value ?? '')}
@@ -813,7 +770,7 @@ export default function AutomationWorkspace() {
                                 <label htmlFor={`${task.id}-fight-client-type`} className="whitespace-nowrap text-sm text-gray-600 dark:text-gray-400">闪退重启:</label>
                                 <FieldHint id={`${task.id}-fight-client-type-hint`} label="闪退重启" hint="选择客户端后，游戏闪退时会自动重新启动。" />
                               </span>
-                              <SelectField
+                              <AutomationSelectField
                                 id={`${task.id}-fight-client-type`}
                                 className="w-full min-w-0 flex-1"
                                 items={[
@@ -998,7 +955,7 @@ export default function AutomationWorkspace() {
                                   hint="默认行为只选能组成有效组合的 Tag；“选 3 个 Tags”会尽量凑满 3 个；“尽量多选高星 Tag 组合”优先保留高星组合，可能包含冲突标签。"
                                 />
                               </span>
-                              <SelectField
+                              <AutomationSelectField
                                 id={`${task.id}-extra-tags-mode`}
                                 className="w-full min-w-0 flex-1"
                                 items={[
