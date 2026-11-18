@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { motion, useReducedMotion } from 'framer-motion'
 import { Clock3, Plus, X } from 'lucide-react'
 import { Button } from '@/shared/ui/button'
+import { Input } from '@/shared/ui/input'
 import { Switch } from '@/shared/ui/switch'
 import { Card } from '@/shared/ui/card'
 import {
@@ -67,7 +68,7 @@ function ScheduleTimeField({ index, time, disabled, onCommit }: ScheduleTimeFiel
   }
 
   return (
-    <input
+    <Input
       type="text"
       inputMode="numeric"
       autoComplete="off"

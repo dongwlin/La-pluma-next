@@ -740,7 +740,7 @@ export default function AutomationWorkspace() {
                                         min={field.min}
                                         max={field.max}
                                         disabled={isFlowEditingLocked || !task.enabled}
-                                        className="min-w-0"
+                                        className="min-w-0 workbench:pr-16"
                                       />
                                       <div className="number-input-controls hidden workbench:flex">
                                         <button

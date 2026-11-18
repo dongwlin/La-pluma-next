@@ -3,6 +3,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Bell, LoaderCircle, Save, Send } from 'lucide-react'
 import type { ApiResponse } from '@/shared/api'
 import { Button } from '@/shared/ui/button'
+import { Input } from '@/shared/ui/input'
 import { Switch } from '@/shared/ui/switch'
 import { Card } from '@/shared/ui/card'
 import { dismissNotice, notify } from '@/shared/notifications'
@@ -216,27 +217,25 @@ export default function NotificationSettings() {
               <div className="automation-notification-details">
                 <label className="automation-notification-field">
                   <span>Bot Token</span>
-                  <input
+                  <Input
                     type="text"
                     value={telegram.botToken}
                     onChange={(event) => updateTelegram({ botToken: event.target.value })}
                     placeholder="Telegram Bot Token"
                     disabled={!config.enabled || saving}
                     autoComplete="off"
-                    className="app-native-control"
                   />
                 </label>
 
                 <label className="automation-notification-field">
                   <span>Chat ID</span>
-                  <input
+                  <Input
                     type="text"
                     value={telegram.chatId}
                     onChange={(event) => updateTelegram({ chatId: event.target.value })}
                     placeholder="Telegram Chat ID"
                     disabled={!config.enabled || saving}
                     autoComplete="off"
-                    className="app-native-control"
                   />
                 </label>
               </div>

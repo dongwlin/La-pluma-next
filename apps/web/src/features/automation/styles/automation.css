@@ -863,24 +863,10 @@
   .automation-time-input {
     flex: 0 0 6.25rem;
     width: 6.25rem;
-    height: 2.25rem;
-    border: 0;
-    border-radius: var(--radius-lg);
-    padding: 0 0.5rem;
-    background: var(--muted);
-    color: var(--foreground);
     font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-    font-size: 0.875rem;
     font-variant-numeric: tabular-nums;
     letter-spacing: 0.04em;
     text-align: center;
-    outline: 0;
-    transition: box-shadow 160ms ease, opacity 160ms ease;
-  }
-
-  .automation-time-input:disabled {
-    cursor: not-allowed;
-    opacity: 0.5;
   }
 
   .automation-schedule-row-switch {
@@ -1026,25 +1012,6 @@
     color: var(--muted-foreground);
     font-size: 0.75rem;
     font-weight: 700;
-  }
-
-  .automation-notification-field input {
-    width: 100%;
-    min-width: 0;
-    height: 2.25rem;
-    border: 0;
-    border-radius: var(--radius-lg);
-    padding: 0 0.625rem;
-    background: var(--muted);
-    color: var(--foreground);
-    font-size: 0.875rem;
-    outline: 0;
-    transition: box-shadow 160ms ease, opacity 160ms ease;
-  }
-
-  .automation-notification-field input:disabled {
-    cursor: not-allowed;
-    opacity: 0.45;
   }
 
   .automation-notification-actions {
@@ -1377,36 +1344,17 @@
     box-shadow: none;
   }
 
-  .automation-task-editor .number-input-wrapper {
-    height: 2.75rem;
-    overflow: hidden;
-  }
-
-  .automation-task-editor .number-input-wrapper > input[type="number"] {
-    width: 100%;
-    height: 100%;
-    border: 0;
-    border-radius: 0;
-    padding: 0 6.25rem 0 0.75rem;
-    background: transparent;
-    color: var(--foreground);
-    box-shadow: none;
-    font-size: 1rem;
-    font-weight: 500;
-    outline: 0;
-  }
-
   .automation-task-editor .number-input-controls {
-    width: 5.5rem;
+    width: 4rem;
     flex-direction: row;
     border-left-color: var(--border);
   }
 
   .automation-task-editor .number-input-controls button {
-    width: 2.75rem;
-    min-width: 2.75rem;
-    min-height: 2.75rem;
-    flex: 0 0 2.75rem;
+    width: 2rem;
+    min-width: 2rem;
+    min-height: 0;
+    flex: 1 1 0;
     border-radius: 0;
     background: transparent;
     color: var(--tertiary-foreground);
@@ -1831,18 +1779,6 @@
     .automation-sequence-list {
       overflow: visible;
     }
-
-    .automation-text-control,
-    .automation-select-control select,
-    .automation-task-editor .number-input-wrapper,
-    .automation-composite-control {
-      min-height: 2.75rem;
-      height: 2.75rem;
-    }
-
-    .automation-task-editor .number-input-wrapper > input[type="number"] {
-      padding-right: 0.875rem;
-    }
   }
 
   @media (width < 640px) {
@@ -1877,11 +1813,6 @@
       padding: 0 0.875rem;
       border-radius: var(--radius-xl);
       font-size: 0.75rem;
-    }
-
-    .automation-time-input,
-    .automation-notification-field input {
-      height: 2.75rem;
     }
 
     .automation-task-picker-toggle,
@@ -2021,15 +1952,6 @@
 
   [data-page-kind="automation"] :is(
     .automation-task-picker-toggle,
-    .automation-run-button,
-    .automation-stop-button,
-    .automation-test-connection
-  ) {
-    border-radius: 9999px;
-  }
-
-  [data-page-kind="automation"] :is(
-    .automation-task-picker-toggle,
     .automation-task-picker-option,
     .automation-run-button,
     .automation-stop-button,
@@ -2130,39 +2052,6 @@
 
       border-color: var(--input);
     }
-  }
-
-  /* Automation owns a few compact field implementations instead of the shared
-     Input component. Keep their filled grouping while removing the permanent
-     hairlines used by the former desktop control treatment. */
-  .la-pluma-app [data-page-kind="automation"] :is(
-    .automation-select-control select,
-    .automation-task-editor .automation-text-control,
-    .automation-task-editor .number-input-wrapper,
-    .automation-composite-control,
-    .automation-time-input,
-    .automation-notification-field input
-  ) {
-    border: 0;
-    box-shadow: none;
-  }
-
-  .la-pluma-app [data-page-kind="automation"] :is(
-    .automation-select-control:hover select,
-    .automation-task-editor .automation-text-control:hover,
-    .automation-task-editor .number-input-wrapper:hover,
-    .automation-composite-control:hover
-  ) {
-    box-shadow: none;
-  }
-
-  .la-pluma-app [data-page-kind="automation"] .automation-time-input:focus,
-  .la-pluma-app [data-page-kind="automation"] .automation-notification-field input:focus,
-  .la-pluma-app [data-page-kind="automation"] .automation-select-control:has(select:focus) select,
-  .la-pluma-app [data-page-kind="automation"] .automation-task-editor .automation-text-control:focus,
-  .la-pluma-app [data-page-kind="automation"] .automation-task-editor .number-input-wrapper:has(input:focus),
-  .la-pluma-app [data-page-kind="automation"] .automation-composite-control:has(input:focus) {
-    box-shadow: 0 0 0 3px color-mix(in srgb, var(--primary) 16%, transparent);
   }
 
 }
