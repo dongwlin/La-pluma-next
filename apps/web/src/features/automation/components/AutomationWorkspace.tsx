@@ -4,8 +4,6 @@ import { BREAKPOINTS } from '@/shared/lib/breakpoints'
 import { useReducedMotion } from 'framer-motion'
 import {
   AlertTriangle,
-  Cable,
-  CheckCircle2,
   LoaderCircle,
   SlidersHorizontal,
 } from 'lucide-react'
@@ -23,6 +21,7 @@ import AutomationTaskField from './AutomationTaskField'
 import FightAdvancedSettings from './FightAdvancedSettings'
 import InfrastAdvancedSettings from './InfrastAdvancedSettings'
 import RecruitAdvancedSettings from './RecruitAdvancedSettings'
+import StartupConnectionTest from './StartupConnectionTest'
 import AutomationTaskFlowPanel from './AutomationTaskFlowPanel'
 import AutomationScheduleCard from './AutomationScheduleCard'
 import NotificationSettings from './NotificationSettings'
@@ -497,7 +496,6 @@ export default function AutomationWorkspace() {
                     const index = displayedTaskFlow.findIndex(item => item.id === task.id)
                     const isCurrentTask = resolveFlowTaskExecutionState(task, index, executionView) === 'running'
                     const connectionFeedback = connectionStatus[task.id]
-                    const isTestingConnection = testingConnectionTaskId === task.id
                     // 公招的「3 星保留招聘许可」标签连同图标超过 5rem 标签列，只有该卡片需要加宽列。
                     const usesWideFieldLabels = task.commandId === 'recruit'
 
@@ -569,30 +567,14 @@ export default function AutomationWorkspace() {
                       )}
 
                       {task.commandId === 'startup' && (
-                        <div className="mt-4 pt-4 border-t border-gray-200 dark:border-white/10">
-                          <Button
-                            type="button"
-                            variant="secondary"
-                            onClick={() => void testConnection(task.id)}
-                            disabled={isFlowEditingLocked || !task.enabled || testingConnectionTaskId !== null || isTestingConnection}
-                            data-status-key={isTestingConnection ? 'testing' : connectionFeedback?.success ? 'success' : connectionFeedback ? 'error' : 'idle'}
-                            aria-busy={isTestingConnection || undefined}
-                            className={`automation-test-connection w-full${isTestingConnection ? ' is-testing' : ''}`}
-                          >
-                            {isTestingConnection
-                              ? <><LoaderCircle className="animate-spin" aria-hidden="true" />正在检查</>
-                              : (
-                                <>
-                                  {connectionFeedback?.success
-                                    ? <CheckCircle2 size={16} strokeWidth={2.2} aria-hidden="true" />
-                                    : connectionFeedback
-                                      ? <AlertTriangle size={16} strokeWidth={2.2} aria-hidden="true" />
-                                      : <Cable size={16} strokeWidth={2.1} aria-hidden="true" />}
-                                  {connectionFeedback ? '重新测试' : '测试连接'}
-                                </>
-                              )}
-                          </Button>
-                        </div>
+                        <StartupConnectionTest
+                          taskId={task.id}
+                          enabled={task.enabled}
+                          isEditingLocked={isFlowEditingLocked}
+                          testingTaskId={testingConnectionTaskId}
+                          feedback={connectionFeedback}
+                          onTestConnection={testConnection}
+                        />
                       )}
                     </div>
                     )
