@@ -3,7 +3,6 @@ import { motion, useReducedMotion } from 'framer-motion'
 import {
   AlertTriangle,
   Check,
-  ClipboardList,
   GripVertical,
   ListPlus,
   LoaderCircle,
@@ -51,7 +50,6 @@ export default function AutomationTaskFlowPanel({
         <div className="automation-flow-header">
           <div className="min-w-0">
             <h3>
-              <ClipboardList size={16} strokeWidth={1.8} aria-hidden="true" />
               <span>任务流程</span>
             </h3>
           </div>

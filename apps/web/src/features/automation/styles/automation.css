@@ -10,18 +10,9 @@
   }
 
   .automation-flow-header h3 {
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
     color: var(--foreground);
     font-size: 1rem;
     font-weight: 600;
-  }
-
-  .automation-flow-header h3 svg {
-    width: 1.05rem;
-    height: 1.05rem;
-    color: var(--primary);
   }
 
   .automation-flow-summary {
@@ -709,16 +700,9 @@
   }
 
   .automation-editor-heading h3 {
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
     color: var(--foreground);
     font-size: 1rem;
     font-weight: 600;
-  }
-
-  .automation-editor-heading h3 svg {
-    color: var(--primary);
   }
 
   .automation-editor-heading > span {
@@ -753,33 +737,9 @@
   }
 
   .automation-side-card-heading h3 {
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
     color: var(--foreground);
     font-size: 1rem;
     font-weight: 600;
-  }
-
-  .automation-side-card-heading h3 svg {
-    width: 1rem;
-    height: 1rem;
-    color: var(--primary);
-  }
-
-  .automation-flow-header h3 .icon-well svg,
-  .automation-editor-heading h3 .icon-well svg,
-  .automation-side-card-heading h3 .icon-well svg {
-    /* S3: 标题图标使用固定 16px 视觉尺寸，需要压过 Icons 上的 w-3.5。 */
-    width: 1rem !important;
-    height: 1rem !important;
-  }
-
-  .automation-side-card-heading p {
-    margin-top: 0.2rem;
-    color: var(--tertiary-foreground);
-    font-size: 0.75rem;
-    line-height: 1.45;
   }
 
   .automation-side-card-heading-actions {
@@ -1841,14 +1801,6 @@
   ) {
     /* S3: 自动化分组使用更淡的发丝线，压过 border-border。 */
     border-color: var(--automation-hairline) !important;
-  }
-
-  [data-page-kind="automation"] :is(
-    .automation-flow-header,
-    .automation-editor-heading,
-    .automation-side-card-heading
-  ) h3 svg {
-    color: var(--tertiary-foreground);
   }
 
   [data-page-kind="automation"] :is(

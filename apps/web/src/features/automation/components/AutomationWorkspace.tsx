@@ -540,7 +540,7 @@ export default function AutomationWorkspace() {
             <Card className="automation-editor-panel gap-0 p-0!">
               <div className="automation-editor-heading">
                 <div>
-                  <h3><SlidersHorizontal size={16} strokeWidth={1.8} aria-hidden="true" /><span>任务配置</span></h3>
+                  <h3><span>任务配置</span></h3>
                 </div>
                 {activeTaskId && (
                   <span>{String(displayedTaskFlow.findIndex(task => task.id === activeTaskId) + 1).padStart(2, '0')}</span>

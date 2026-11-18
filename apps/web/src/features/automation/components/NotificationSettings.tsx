@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { Bell, LoaderCircle, Save, Send } from 'lucide-react'
+import { LoaderCircle, Save, Send } from 'lucide-react'
 import type { ApiResponse } from '@/shared/api'
 import { Button } from '@/shared/ui/button'
 import { Input } from '@/shared/ui/input'
@@ -178,8 +178,7 @@ export default function NotificationSettings() {
     <Card className="automation-side-card gap-0 p-0!">
       <div className="automation-side-card-heading">
         <div className="automation-side-card-heading-text">
-          <h3><Bell size={16} strokeWidth={1.8} aria-hidden="true" /><span>通知</span></h3>
-          <p>任务流程结束后发送结果</p>
+          <h3><span>通知</span></h3>
         </div>
         <div className="automation-side-card-heading-actions">
           <Switch
