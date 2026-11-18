@@ -367,7 +367,7 @@ describe('automation config adapter', () => {
       commandId: 'custom',
       name: 'custom',
       enabled: true,
-      params: {},
+      params: { legacy: true },
     })
     expect(namedCustom).toMatchObject({
       commandId: 'custom',
@@ -375,6 +375,21 @@ describe('automation config adapter', () => {
       enabled: true,
       params: {},
     })
+  })
+
+  it('keeps unknown command params through decode, local read, and encode', () => {
+    const params = { legacy: 7, nested: { mode: 'custom' } }
+    const decoded = automationConfigAdapter.decodeDraft({
+      taskFlow: [{ id: 'custom-1', name: '自定义任务', params }],
+    })!
+
+    expect(decoded.taskFlow[0]?.params).toEqual(params)
+
+    automationConfigAdapter.writeLocalDraft(decoded)
+    const local = automationConfigAdapter.readLocalDraft()!
+
+    expect(local.taskFlow[0]?.params).toEqual(params)
+    expect(automationConfigAdapter.encodeDraft(local).taskFlow[0]?.params).toEqual(params)
   })
 
   it('keeps explicit task fields and params over the catalog defaults', () => {
@@ -414,6 +429,11 @@ describe('automation config adapter', () => {
       enabled: true,
       params: { clientType: 'Official', start_game_enabled: true },
     })
+
+    const unknown = automationConfigAdapter.decodeDraft({
+      taskFlow: [{ id: 'custom-1', params: [] }],
+    })!
+    expect(unknown.taskFlow[0]?.params).toEqual({})
   })
 
   it('normalizes legacy local drafts on read', () => {

@@ -249,7 +249,7 @@ function CombatWorkspace() {
 | 身份 | key `automation-tasks`；pending 键 `automationConfigSyncPending` |
 | 本地草稿 | `maa-task-flow`（任务数组）与 `maa-schedule`（`{ enabled, times, entries }`）；单个键损坏清理后丢弃该部分，两个键都不可读才返回 null 并让协调器删除 pending 标记、改读服务端 |
 | wire | `{ taskFlow, schedule: { enabled, times } }`；task flow 去掉 `icon`/`paramFields` 等界面字段，其余旧字段（如 `name`、`description`、`defaultParams`、`taskType`）原样保留；`times` 只包含启用的时间点 |
-| 加载迁移 | 兼容 `maa-schedule.entries` 与旧 `times`；`times` 为空时保留默认执行时间；任务条目在解码与本地读取时归一化：缺失 `commandId` 时从 `id` 前缀推导，已知任务用任务目录 `defaultParams` 补齐缺失参数且已有参数优先，`enabled` 缺省为 `true`，`name` 缺失时回退目录名称或 `commandId`，未知任务保留可读名称但参数回退 `{}`。既有参数迁移（`skip_robot`→`preserve_tags`、新旧字段补齐）、启动/关闭客户端类型同步、关闭游戏置底仍在同一路径执行；只有 task flow 不是数组、条目不是对象或缺 `id` 时才拒绝整份草稿 |
+| 加载迁移 | 兼容 `maa-schedule.entries` 与旧 `times`；`times` 为空时保留默认执行时间；任务条目在解码与本地读取时归一化：缺失 `commandId` 时从 `id` 前缀推导，已知任务用任务目录 `defaultParams` 补齐缺失参数且已有参数优先，`enabled` 缺省为 `true`，`name` 缺失时回退目录名称或 `commandId`，未知任务保留可读名称与已有参数（仅原始 `params` 不是对象时才回退 `{}`）。既有参数迁移（`skip_robot`→`preserve_tags`、新旧字段补齐）、启动/关闭客户端类型同步、关闭游戏置底仍在同一路径执行；只有 task flow 不是数组、条目不是对象或缺 `id` 时才拒绝整份草稿 |
 | 提交时机 | `commitDelayMs = 300` + `localWriteDelayMs = 250`；连续编辑只提交最后一次，本地草稿也只写最后一次；提交、`flush`、`dispose` 或页面卸载前强制落盘 |
 | 草稿等价 | 适配器 `fingerprint` 比较 task flow 与本地 `schedule.entries`，而不是只看 wire；编辑或删除禁用时间点仍会接受草稿、写回本地并触发提交，不会被协调器当成无变化而静默丢弃。wire 未变化时这次提交内容与上一次相同，属于幂等写入 |
 | 完整提交 | `saveUserConfig('automation-tasks', wire)` 成功后再执行 `setupSchedule('default', times, taskFlow)`（启用且存在时间点）或 `stopSchedule('default')`；任一步失败都返回 `ok: false`，协调器保留 pending 与“重新同步”入口，重试重跑整段提交 |

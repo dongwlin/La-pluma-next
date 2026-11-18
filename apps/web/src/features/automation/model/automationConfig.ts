@@ -276,7 +276,7 @@ function normalizeTaskFlowItem(item: Record<string, unknown>): AutomationTaskFlo
     description: typeof item.description === 'string'
       ? item.description
       : definition?.description ?? '',
-    params: definition ? { ...definition.defaultParams, ...migratedParams } : {},
+    params: definition ? { ...definition.defaultParams, ...migratedParams } : migratedParams,
   }
   if (isRecord(defaultParams)) normalized.defaultParams = defaultParams
   if (typeof item.taskType === 'string') normalized.taskType = item.taskType
