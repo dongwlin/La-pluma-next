@@ -65,9 +65,8 @@ export default function AutomationTaskPicker({
         align="start"
         sideOffset={8}
         collisionPadding={12}
-        data-page-kind="automation"
         aria-label="可添加任务"
-        className="automation-task-picker max-h-[min(14rem,var(--available-height))] gap-0 rounded-xl bg-(--automation-picker-surface) p-1.5 shadow-(--automation-overlay-shadow) ring-0"
+        className="max-h-[min(14rem,var(--available-height))] w-60"
       >
         {AVAILABLE_TASKS.map(task => {
           const addedCount = flow.filter(flowTask => flowTask.commandId === task.id).length
@@ -76,7 +75,7 @@ export default function AutomationTaskPicker({
             <DropdownMenuItem
               key={task.id}
               onClick={() => selectTask(task)}
-              className="automation-task-picker-option grid cursor-pointer gap-2 rounded-none px-2 py-1.5 text-left"
+              className="automation-task-picker-option grid cursor-pointer gap-2 px-2 py-1.5 text-left"
             >
               <span>{task.icon}</span>
               <strong>{task.name}</strong>
