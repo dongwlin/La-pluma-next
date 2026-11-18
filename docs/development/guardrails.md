@@ -50,6 +50,8 @@
 
 域环按强连通分量判空，不要求页面域之间零 import。当前依赖图无环；`task-execution` 只依赖 `shared`。
 
+依赖图按 import 说明符建边，不区分 `import type` 与内联 `type` 说明符；因此 `features/a/model/**` 对 `features/a/components/**` 的纯类型导入也会触发 `model-component-dependency`。这是保守策略：类型依赖同样意味着模型与组件层耦合，共享类型应放到 `model` 或 `shared`。
+
 ### 2.2 与 ESLint 的分工
 
 `apps/web/eslint.config.js` 继续负责编辑器内的快速反馈：拦截 `@/features/<domain>/...` 深路径、features/shared 反向依赖 app 或 pages、shared 依赖 features/pages，以及 pages 反向依赖 app。页面测试（`src/pages/**/*.test.tsx`）允许深路径到被测域内部以构造领域状态，不进入产物；CLI 的生产依赖图同样跳过测试文件。CLI 额外解析相对路径、目录 index 与动态 import，因此能发现 ESLint 字符串规则看不到的公开面绕过与真实域环。两处规则的权威事实都来自 `app → pages → features → shared`，新增边界时先更新本文与脚本，再考虑 ESLint 的即时提示。
@@ -120,8 +122,8 @@ pnpm --filter la-pluma-next-client verify
 
 回归集中在 `apps/web/scripts/guardrails.test.ts`：
 
-- 正例：跨域公开面 import、同域相对 import、shared import、领域容器使用 fetch/计时器、页面经 `@/features/<domain>` 调用领域 hook、命名空间/动态导入只用领域 hook、页面仅 type-only 导入传输层类型、类型引用与 `typeof fetch` 等 TypeQuery、模块级同名本地 helper、import/export 别名与非全局赋值解构不误报、壳层锚点齐全、全局样式声明值与注释中的同名文本、顶层 at-rule 语句后的真实选择器、布局测试的 prototype stub 与行为断言；
-- 反例：深路径、跨域相对绕过、shared→features、features→app、features→根入口、task-execution→runtime-status、双域依赖环、页面直接 import 传输层、页面经公开面（含 `export *`、同文件 `import`/`export` 的本地命名/默认/命名空间转发、`export * as`、命名空间、字面量动态 import）导入领域端点、页面导入本域 `@/features/<domain>/api` 或经根入口命名空间/动态 import 调用本域端点、页面使用 `fetch`/`WebSocket`/`localStorage`/`setInterval`（含 `window[...]` 计算属性与 `['fetch']` 字面量计算键、`window as any`/非空断言/括号包装、从全局对象变量声明/解构参数默认值/赋值解构（含嵌套对象模式）重命名、`window.window` 属性链、`window.top`/`parent` 代理与 `document.defaultView` 及其 `window.document` 变体）、命名空间/动态 import 经 as/非空/括号/satisfies 包装、局部别名、参数默认值/赋值解构/字面量计算键或 `.then` 包装回调访问端点、缺失壳层文件或锚点、全局样式中的页面/领域选择器、布局测试中的类名/内联样式/类选择器/兄弟顺序/精确滚动参数；
+- 正例：跨域公开面 import、同域相对 import、shared import、领域容器使用 fetch/计时器、页面经 `@/features/<domain>` 调用领域 hook、命名空间/动态导入只用领域 hook、页面仅 type-only 导入传输层类型、类型引用与 `typeof fetch` 等 TypeQuery、模块级同名本地 helper、import/export 别名与非全局赋值解构不误报、模型不依赖组件、壳层锚点齐全、全局样式声明值与注释中的同名文本、顶层 at-rule 语句后的真实选择器、布局测试的 prototype stub 与行为断言；
+- 反例：深路径、跨域相对绕过、shared→features、features→app、features→根入口、task-execution→runtime-status、双域依赖环、`features/a/model/**` import `features/a/components/**`（含 `import type`）、页面直接 import 传输层、页面经公开面（含 `export *`、同文件 `import`/`export` 的本地命名/默认/命名空间转发、`export * as`、命名空间、字面量动态 import）导入领域端点、页面导入本域 `@/features/<domain>/api` 或经根入口命名空间/动态 import 调用本域端点、页面使用 `fetch`/`WebSocket`/`localStorage`/`setInterval`（含 `window[...]` 计算属性与 `['fetch']` 字面量计算键、`window as any`/非空断言/括号包装、从全局对象变量声明/解构参数默认值/赋值解构（含嵌套对象模式）重命名、`window.window` 属性链、`window.top`/`parent` 代理与 `document.defaultView` 及其 `window.document` 变体）、命名空间/动态 import 经 as/非空/括号/satisfies 包装、局部别名、参数默认值/赋值解构/字面量计算键或 `.then` 包装回调访问端点、缺失壳层文件或锚点、全局样式中的页面/领域选择器、布局测试中的类名/内联样式/类选择器/兄弟顺序/精确滚动参数；
 - 当前源码树：无依赖/页面/布局治理违规。
 
 ## 8. 已知限制
