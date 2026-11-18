@@ -46,7 +46,13 @@ import {
   selectFlowDisplaySummary,
   selectFlowTaskResults,
 } from '../model/flowExecution'
-import type { AutomationAvailableTask, ConnectionTestStatus, TaskFlowItem } from '../types'
+import type {
+  AutomationAvailableTask,
+  ConnectionTestStatus,
+  TaskFlowItem,
+  TaskParamKey,
+  TaskParamValue,
+} from '../types'
 
 /** 养成为任务流程或定时配置发布失效；页面据此强制重读同一协调器通道。 */
 const AUTOMATION_RESOURCE_SCOPES = ['automation-config', 'automation-schedule'] as const
@@ -262,7 +268,7 @@ export default function AutomationWorkspace() {
     updateConfig({ ...current, taskFlow: toggleTaskFlowItemEnabled(current.taskFlow, index) })
   }
 
-  const updateTaskParam = (index: number, key: string, value: any) => {
+  const updateTaskParam = (index: number, key: TaskParamKey, value: TaskParamValue) => {
     if (isFlowEditingLocked) return
     const current = currentDraft()
     if (!current.taskFlow[index]) return

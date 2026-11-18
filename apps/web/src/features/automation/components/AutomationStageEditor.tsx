@@ -28,7 +28,7 @@ interface AutomationStageEditorProps {
   taskIndex: number
   isRunning: boolean
   hint?: string
-  onUpdate: (taskIndex: number, key: string, value: Array<string | StageConfig>) => void
+  onUpdate: (taskIndex: number, key: 'stages', value: Array<string | StageConfig>) => void
   onSuccess: (message: string) => void
   onError: (message: string) => void
 }

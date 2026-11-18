@@ -3,13 +3,13 @@ import { Checkbox } from '@/shared/ui/checkbox'
 import { Input } from '@/shared/ui/input'
 import AutomationAdvancedSettings from './AutomationAdvancedSettings'
 import AutomationSelectField from './AutomationSelectField'
-import type { TaskFlowItem } from '../types'
+import type { TaskFlowItem, TaskParamKey, TaskParamValue } from '../types'
 
 interface FightAdvancedSettingsProps {
   task: TaskFlowItem
   taskIndex: number
   disabled: boolean
-  onUpdateParam: (taskIndex: number, key: string, value: any) => void
+  onUpdateParam: (taskIndex: number, key: TaskParamKey, value: TaskParamValue) => void
 }
 
 export default function FightAdvancedSettings({

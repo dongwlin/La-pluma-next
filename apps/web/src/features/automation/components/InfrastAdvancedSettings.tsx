@@ -1,12 +1,12 @@
 import { Checkbox } from '@/shared/ui/checkbox'
 import AutomationAdvancedSettings from './AutomationAdvancedSettings'
-import type { TaskFlowItem } from '../types'
+import type { TaskFlowItem, TaskParamKey, TaskParamValue } from '../types'
 
 interface InfrastAdvancedSettingsProps {
   task: TaskFlowItem
   taskIndex: number
   disabled: boolean
-  onUpdateParam: (taskIndex: number, key: string, value: any) => void
+  onUpdateParam: (taskIndex: number, key: TaskParamKey, value: TaskParamValue) => void
 }
 
 export default function InfrastAdvancedSettings({

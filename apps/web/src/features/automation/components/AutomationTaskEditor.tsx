@@ -8,7 +8,7 @@ import FightAdvancedSettings from './FightAdvancedSettings'
 import InfrastAdvancedSettings from './InfrastAdvancedSettings'
 import RecruitAdvancedSettings from './RecruitAdvancedSettings'
 import StartupConnectionTest from './StartupConnectionTest'
-import type { ConnectionTestStatus, TaskFlowItem } from '../types'
+import type { ConnectionTestStatus, TaskFlowItem, TaskParamKey, TaskParamValue } from '../types'
 
 interface AutomationTaskEditorProps {
   task: TaskFlowItem | null
@@ -19,7 +19,7 @@ interface AutomationTaskEditorProps {
   testingConnectionTaskId: string | null
   containerRef: RefObject<HTMLDivElement | null>
   onToggleEnabled: (taskIndex: number) => void
-  onUpdateParam: (taskIndex: number, key: string, value: any) => void
+  onUpdateParam: (taskIndex: number, key: TaskParamKey, value: TaskParamValue) => void
   onTestConnection: (taskId: string) => void
   onSuccess: (message: string) => void
   onError: (message: string) => void

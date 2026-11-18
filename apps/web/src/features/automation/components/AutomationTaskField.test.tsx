@@ -4,7 +4,7 @@ import { act } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import AutomationTaskField from './AutomationTaskField'
-import type { TaskFlowItem, TaskParamField } from '../types'
+import type { TaskFlowItem, TaskParamField, TaskParamKey, TaskParamValue } from '../types'
 
 ;(globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true
 
@@ -41,7 +41,7 @@ const renderField = async ({
   field: TaskParamField
   taskIndex: number
   isEditingLocked: boolean
-  onUpdateParam: (taskIndex: number, key: string, value: any) => void
+  onUpdateParam: (taskIndex: number, key: TaskParamKey, value: TaskParamValue) => void
 }) => {
   await act(async () => {
     root.render(
@@ -153,14 +153,14 @@ describe('AutomationTaskField infrast-schedule wrapper', () => {
         commandId: 'infrast',
         params: { filename: 'base.json', plan_index: 1 },
       }),
-      field: { key: 'schedule', label: '自定义排班', type: 'infrast-schedule' },
+      field: { key: 'filename', label: '自定义排班', type: 'infrast-schedule' },
       taskIndex: 5,
       isEditingLocked: false,
       onUpdateParam,
     })
 
-    const filenameInput = container.querySelector<HTMLInputElement>('#automation-infrast-1-schedule-filename')
-    const planInput = container.querySelector<HTMLInputElement>('#automation-infrast-1-schedule-plan-index')
+    const filenameInput = container.querySelector<HTMLInputElement>('#automation-infrast-1-filename-filename')
+    const planInput = container.querySelector<HTMLInputElement>('#automation-infrast-1-filename-plan-index')
     if (!filenameInput) throw new Error('missing filename input')
     if (!planInput) throw new Error('missing plan index input')
     expect(filenameInput.value).toBe('base.json')
@@ -177,14 +177,14 @@ describe('AutomationTaskField infrast-schedule wrapper', () => {
     const onUpdateParam = vi.fn()
     await renderField({
       task: makeTask({ id: 'infrast-1', commandId: 'infrast', params: { filename: 'base.json', plan_index: 0 } }),
-      field: { key: 'schedule', label: '自定义排班', type: 'infrast-schedule' },
+      field: { key: 'filename', label: '自定义排班', type: 'infrast-schedule' },
       taskIndex: 0,
       isEditingLocked: true,
       onUpdateParam,
     })
 
-    expect(container.querySelector<HTMLInputElement>('#automation-infrast-1-schedule-filename')?.disabled).toBe(true)
-    expect(container.querySelector<HTMLInputElement>('#automation-infrast-1-schedule-plan-index')?.disabled).toBe(true)
+    expect(container.querySelector<HTMLInputElement>('#automation-infrast-1-filename-filename')?.disabled).toBe(true)
+    expect(container.querySelector<HTMLInputElement>('#automation-infrast-1-filename-plan-index')?.disabled).toBe(true)
     expect(findButton('编辑排班')?.disabled).toBe(true)
 
     await renderField({
@@ -194,14 +194,14 @@ describe('AutomationTaskField infrast-schedule wrapper', () => {
         enabled: false,
         params: { filename: 'base.json', plan_index: 0 },
       }),
-      field: { key: 'schedule', label: '自定义排班', type: 'infrast-schedule' },
+      field: { key: 'filename', label: '自定义排班', type: 'infrast-schedule' },
       taskIndex: 0,
       isEditingLocked: false,
       onUpdateParam,
     })
 
-    expect(container.querySelector<HTMLInputElement>('#automation-infrast-1-schedule-filename')?.disabled).toBe(true)
-    expect(container.querySelector<HTMLInputElement>('#automation-infrast-1-schedule-plan-index')?.disabled).toBe(true)
+    expect(container.querySelector<HTMLInputElement>('#automation-infrast-1-filename-filename')?.disabled).toBe(true)
+    expect(container.querySelector<HTMLInputElement>('#automation-infrast-1-filename-plan-index')?.disabled).toBe(true)
     expect(findButton('编辑排班')?.disabled).toBe(true)
   })
 })

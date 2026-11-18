@@ -9,17 +9,35 @@ import InfrastScheduleField from './InfrastScheduleField'
 import OperProgressPlansEditor from './OperProgressPlansEditor'
 import ThemeListEditor from './ThemeListEditor'
 import { resolveFieldHelperTooltip } from '../model/taskFieldHelper'
-import type { TaskFlowItem, TaskParamField } from '../types'
+import type { TaskFlowItem, TaskParamField, TaskParamKey, TaskParamValue } from '../types'
 
 interface AutomationTaskFieldProps {
   task: TaskFlowItem
   field: TaskParamField
   taskIndex: number
   isEditingLocked: boolean
-  onUpdateParam: (taskIndex: number, key: string, value: any) => void
+  onUpdateParam: (taskIndex: number, key: TaskParamKey, value: TaskParamValue) => void
   onSuccess: (message: string) => void
   onError: (message: string) => void
 }
+
+const readCheckboxValue = (value: TaskParamValue): boolean => Boolean(value)
+
+const readNumberSelection = (value: TaskParamValue): number[] => (
+  Array.isArray(value) ? value as number[] : []
+)
+
+const readStringSelection = (value: TaskParamValue): string[] => (
+  Array.isArray(value) ? value as string[] : []
+)
+
+const readInputValue = (value: TaskParamValue): string | number => (
+  typeof value === 'string' || typeof value === 'number' ? value || '' : ''
+)
+
+const readSelectValue = (value: TaskParamValue, fallback: string): string => (
+  (value as string | null | undefined) || fallback
+)
 
 export default function AutomationTaskField({
   task,
@@ -59,7 +77,7 @@ export default function AutomationTaskField({
         <AutomationCheckboxField
           id={fieldId}
           label={field.label}
-          checked={task.params[field.key] || false}
+          checked={readCheckboxValue(task.params[field.key])}
           disabled={disabled}
           hint={helperTooltip}
           onChange={(checked) => onUpdateParam(taskIndex, field.key, checked)}
@@ -81,7 +99,7 @@ export default function AutomationTaskField({
           <AutomationFieldLegend label={field.label} hintId={`${fieldId}-hint`} hint={helperTooltip} />
           <div className="flex items-center space-x-2 flex-wrap">
             {[3, 4, 5, 6].map(star => {
-              const currentValue = Array.isArray(task.params[field.key]) ? task.params[field.key] : [];
+              const currentValue = readNumberSelection(task.params[field.key]);
               const isChecked = currentValue.includes(star);
               const optionId = `${fieldId}-${star}`
               return (
@@ -130,7 +148,7 @@ export default function AutomationTaskField({
               { value: 'Training', label: '训练室' },
               { value: 'AssistantChange', label: '副手换人' }
             ].map(facility => {
-              const currentValue = Array.isArray(task.params[field.key]) ? task.params[field.key] : [];
+              const currentValue = readStringSelection(task.params[field.key]);
               const isChecked = currentValue.includes(facility.value);
               const optionId = `${fieldId}-${facility.value}`
               return (
@@ -158,7 +176,7 @@ export default function AutomationTaskField({
           <AutomationSelectField
             id={fieldId}
             items={asSelectItems(field.options)}
-            value={task.params[field.key] || (asSelectItems(field.options)[0]?.value ?? '')}
+            value={readSelectValue(task.params[field.key], asSelectItems(field.options)[0]?.value ?? '')}
             disabled={disabled}
             onValueChange={(value) => onUpdateParam(taskIndex, field.key, value)}
           />
@@ -172,7 +190,7 @@ export default function AutomationTaskField({
                 id={fieldId}
                 type="number"
                 autoComplete="off"
-                value={task.params[field.key] || ''}
+                value={readInputValue(task.params[field.key])}
                 onChange={(e) => onUpdateParam(taskIndex, field.key, e.target.value)}
                 placeholder={field.placeholder}
                 step={field.step}
@@ -217,7 +235,7 @@ export default function AutomationTaskField({
               id={fieldId}
               type={field.type}
               autoComplete="off"
-              value={task.params[field.key] || ''}
+              value={readInputValue(task.params[field.key])}
               onChange={(e) => onUpdateParam(taskIndex, field.key, e.target.value)}
               placeholder={field.placeholder}
               step={field.step}
