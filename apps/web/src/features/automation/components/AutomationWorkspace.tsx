@@ -633,68 +633,6 @@ export default function AutomationWorkspace() {
                                   onSuccess={showSuccess}
                                   onError={showError}
                                 />
-                              ) : field.type === 'stage-with-times' ? (
-                                <div className="flex items-center space-x-2">
-                                  <label htmlFor={fieldId} className="automation-field-label w-20 whitespace-nowrap">{field.label}</label>
-                                  <div className="automation-composite-control flex items-center flex-1 max-w-70">
-                                    <Input
-                                      id={fieldId}
-                                      type="text"
-                                      autoComplete="off"
-                                      value={task.params[field.key] || ''}
-                                      onChange={(e) => updateTaskParam(index, field.key, e.target.value)}
-                                      placeholder={field.placeholder}
-                                      disabled={isFlowEditingLocked || !task.enabled}
-                                      className="h-full flex-1 rounded-none border-0 bg-transparent px-3 focus-visible:ring-0 min-w-0"
-                                    />
-                                    <div className="w-px h-6 bg-white/20"></div>
-                                    <Input
-                                      id={`${fieldId}-times`}
-                                      type="number"
-                                      autoComplete="off"
-                                      aria-label={`${field.label}执行次数`}
-                                      value={task.params.times || ''}
-                                      onChange={(e) => updateTaskParam(index, 'times', e.target.value)}
-                                      placeholder=""
-                                      disabled={isFlowEditingLocked || !task.enabled}
-                                      min="0"
-                                      className="h-full w-16 rounded-none border-0 bg-transparent px-2 text-center focus-visible:ring-0 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
-                                    />
-                                    <div className="hidden flex-col self-stretch overflow-hidden border-l border-white/10 workbench:flex">
-                                      <button
-                                        type="button"
-                                        onClick={() => {
-                                          const currentValue = Number(task.params.times) || 0;
-                                          updateTaskParam(index, 'times', (currentValue + 1).toString());
-                                        }}
-                                        disabled={isFlowEditingLocked || !task.enabled}
-                                        className="flex-1 px-1.5 bg-white/5 hover:bg-white/10 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center rounded-tr-xl"
-                                        aria-label={`增加${field.label}执行次数`}
-                                      >
-                                        <svg className="w-3 h-3 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
-                                          <path strokeLinecap="round" strokeLinejoin="round" d="M5 15l7-7 7 7" />
-                                        </svg>
-                                      </button>
-                                      <div className="w-full h-px bg-white/10"></div>
-                                      <button
-                                        type="button"
-                                        onClick={() => {
-                                          const currentValue = Number(task.params.times) || 0;
-                                          if (currentValue > 0) {
-                                            updateTaskParam(index, 'times', (currentValue - 1).toString());
-                                          }
-                                        }}
-                                        disabled={isFlowEditingLocked || !task.enabled}
-                                        className="flex-1 px-1.5 bg-white/5 hover:bg-white/10 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center rounded-br-xl"
-                                        aria-label={`减少${field.label}执行次数`}
-                                      >
-                                        <svg className="w-3 h-3 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
-                                          <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
-                                        </svg>
-                                      </button>
-                                    </div>
-                                  </div>
-                                </div>
                               ) : field.type === 'star-select' ? (
                                 <fieldset>
                                   <AutomationFieldLegend label={field.label} hintId={`${fieldId}-hint`} hint={helperTooltip} />

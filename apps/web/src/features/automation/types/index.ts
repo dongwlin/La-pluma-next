@@ -8,7 +8,6 @@ export type TaskParamFieldType =
   | 'select'
   | 'checkbox'
   | 'multi-stages'
-  | 'stage-with-times'
   | 'star-select'
   | 'facility-select'
   | 'infrast-schedule'
