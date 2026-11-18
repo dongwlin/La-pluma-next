@@ -29,12 +29,10 @@ export default function AutomationTaskFlowPanel({
   activeTaskId,
   execution,
   sorting,
-  lastDeletedTaskName,
   onSelectTask,
   onAddTask,
   onRemoveTask,
   onToggleTask,
-  onRestoreDeletedTask,
 }: AutomationTaskFlowPanelProps) {
   const shouldReduceMotion = useReducedMotion()
   const taskPickerRegionRef = useRef<HTMLDivElement>(null)
@@ -157,20 +155,6 @@ export default function AutomationTaskFlowPanel({
                 </motion.div>
               )
             })}
-          </div>
-        )}
-
-        {lastDeletedTaskName && (
-          <div className="mx-3.5 flex min-h-11 items-center justify-between gap-3.5 border-t border-border text-xs text-muted-foreground sm:mx-4" role="status">
-            <span className="min-w-0 truncate">已删除“{lastDeletedTaskName}”</span>
-            <button
-              type="button"
-              onClick={onRestoreDeletedTask}
-              disabled={editingLocked}
-              className="min-h-11 shrink-0 px-2 font-medium text-primary disabled:cursor-not-allowed disabled:opacity-40"
-            >
-              恢复
-            </button>
           </div>
         )}
 

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { getErrorMessage, isRecord } from '@/shared/api'
 import { BREAKPOINTS } from '@/shared/lib/breakpoints'
-import { AnimatePresence, motion, useReducedMotion } from 'framer-motion'
+import { useReducedMotion } from 'framer-motion'
 import {
   AlertTriangle,
   Cable,
@@ -21,7 +21,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Switch } from '@/shared/ui/switch'
 import { Card } from '@/shared/ui/card'
 import { EmptyState, FieldHint } from '@/shared/components'
-import { notify } from '@/shared/notifications'
+import { dismissNotice, notify } from '@/shared/notifications'
 import { useAutomationAvailability } from '@/features/runtime-status'
 import { useUserConfig } from '@/features/user-config'
 import { useResourceInvalidation, type ResourceInvalidation } from '@/features/resource-invalidation'
@@ -77,6 +77,10 @@ import type { AutomationAvailableTask, ConnectionTestStatus, TaskFlowItem, TaskP
 
 /** 养成为任务流程或定时配置发布失效；页面据此强制重读同一协调器通道。 */
 const AUTOMATION_RESOURCE_SCOPES = ['automation-config', 'automation-schedule'] as const
+const AUTOMATION_CONFIG_NOTICE_ID = 'automation-config-save'
+const AUTOMATION_CONNECTION_NOTICE_ID = 'automation-connection-test'
+const AUTOMATION_DELETED_TASK_NOTICE_ID = 'automation-deleted-task'
+const AUTOMATION_RESTORE_BLOCKED_NOTICE_ID = 'automation-restore-blocked'
 
 interface SelectFieldItem {
   value: string
@@ -182,18 +186,36 @@ export default function AutomationWorkspace() {
 
   const handleRetryConfigSave = async () => {
     if (isRetryingConfigSave) return
-    const saved = await retryConfigSave()
-    if (saved) notify('自动化配置已同步', 'success')
+    await retryConfigSave()
   }
+  const retryConfigSaveRef = useRef(handleRetryConfigSave)
+  retryConfigSaveRef.current = handleRetryConfigSave
+
+  useEffect(() => {
+    if (!configSyncError) {
+      dismissNotice(AUTOMATION_CONFIG_NOTICE_ID)
+      return
+    }
+    notify(configSyncError, 'error', {
+      id: AUTOMATION_CONFIG_NOTICE_ID,
+      action: {
+        label: '重新同步',
+        onClick: () => {
+          void retryConfigSaveRef.current()
+        },
+      },
+    })
+  }, [configSyncError])
 
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null)
-  const [lastDeletedTask, setLastDeletedTask] = useState<DeletedTaskSnapshot | null>(null)
   const [connectionStatus, setConnectionStatus] = useState<Record<string, ConnectionTestStatus>>({})
   const [testingConnectionTaskId, setTestingConnectionTaskId] = useState<string | null>(null)
   const connectionTestInFlightRef = useRef(false)
   const connectionTestAbortRef = useRef<AbortController | null>(null)
   const connectionTestMountedRef = useRef(true)
   const editorColumnRef = useRef<HTMLDivElement>(null)
+  const isFlowEditingLockedRef = useRef(isFlowEditingLocked)
+  isFlowEditingLockedRef.current = isFlowEditingLocked
 
   // 拖拽期间只渲染本地预览，松手时才把最终顺序作为一次编辑写入协调器。
   const commitTaskFlowOrder = useCallback((nextFlow: TaskFlowItem[]) => {
@@ -270,25 +292,32 @@ export default function AutomationWorkspace() {
       setSelectedTaskId(newFlow[Math.min(index, newFlow.length - 1)]?.id ?? null)
     }
     const removedDisplayTask = taskFlow[index]
-    if (removedDisplayTask) setLastDeletedTask({ task: removedDisplayTask, index })
+    if (removedDisplayTask) {
+      const snapshot = { task: removedDisplayTask, index }
+      notify(`已删除“${removedDisplayTask.name}”`, 'info', {
+        id: AUTOMATION_DELETED_TASK_NOTICE_ID,
+        action: { label: '恢复', onClick: () => restoreDeletedTask(snapshot) },
+      })
+    }
     updateConfig({ ...current, taskFlow: newFlow })
   }
 
-  const restoreDeletedTask = () => {
-    if (!lastDeletedTask) return
-    if (isFlowEditingLocked) {
-      notify('执行或启动期间不能恢复已删除的任务', 'warning')
+  const restoreDeletedTask = (snapshot: DeletedTaskSnapshot) => {
+    if (isFlowEditingLockedRef.current) {
+      notify('执行或启动期间不能恢复已删除的任务', 'warning', {
+        id: AUTOMATION_RESTORE_BLOCKED_NOTICE_ID,
+      })
       return
     }
     const current = currentDraft()
     const newFlow = insertTaskFlowItem(
       current.taskFlow,
-      toPersistedTaskFlowItem(lastDeletedTask.task),
-      lastDeletedTask.index,
+      toPersistedTaskFlowItem(snapshot.task),
+      snapshot.index,
     )
     updateConfig({ ...current, taskFlow: newFlow })
-    setSelectedTaskId(lastDeletedTask.task.id)
-    setLastDeletedTask(null)
+    setSelectedTaskId(snapshot.task.id)
+    dismissNotice(AUTOMATION_DELETED_TASK_NOTICE_ID)
   }
 
   const toggleTaskEnabled = (index: number) => {
@@ -333,13 +362,15 @@ export default function AutomationWorkspace() {
       if (controller.signal.aborted) return
       const payload = result.data as ConnectionTestStatus | undefined
       const success = Boolean(result.success && payload?.success)
+      const message = payload?.message || getErrorMessage(result)
       setConnectionStatus(prev => ({
         ...prev,
         [taskId]: {
           success,
-          message: payload?.message || getErrorMessage(result),
+          message,
         },
       }))
+      notify(message, success ? 'success' : 'error', { id: AUTOMATION_CONNECTION_NOTICE_ID })
     } catch (error: unknown) {
       if (error instanceof Error && error.name === 'AbortError') return
       await waitForStableFeedback()
@@ -352,6 +383,7 @@ export default function AutomationWorkspace() {
           message: errorMessage,
         }
       }))
+      notify(errorMessage, 'error', { id: AUTOMATION_CONNECTION_NOTICE_ID })
     } finally {
       if (connectionTestAbortRef.current === controller) {
         connectionTestInFlightRef.current = false
@@ -466,30 +498,7 @@ export default function AutomationWorkspace() {
   }
 
   return (
-    <>
-      {configSyncError && (
-        <div
-          role="alert"
-          className="status-warning flex min-h-11 flex-wrap items-center justify-between gap-3.5 rounded-lg px-3 py-2 text-sm leading-5"
-        >
-          <span className="min-w-0 flex-1">{configSyncError}</span>
-          <Button
-            type="button"
-            variant="ghost"
-            size="sm"
-            onClick={() => void handleRetryConfigSave()}
-            disabled={isRetryingConfigSave}
-            aria-busy={isRetryingConfigSave || undefined}
-            className="min-h-11 shrink-0"
-          >
-            {isRetryingConfigSave
-              ? <><LoaderCircle className="animate-spin" aria-hidden="true" />同步中</>
-              : '重新同步'}
-          </Button>
-        </div>
-      )}
-
-      <DeviceMonitorLayout
+    <DeviceMonitorLayout
         variant="workbench"
         sequence={(
           <AutomationTaskFlowPanel
@@ -516,12 +525,10 @@ export default function AutomationWorkspace() {
               onPointerDown: sorting.handlePointerDown,
               onKeyDown: sorting.handleKeyDown,
             }}
-            lastDeletedTaskName={lastDeletedTask?.task.name ?? null}
             onSelectTask={selectTaskForEditing}
             onAddTask={addTaskToFlow}
             onRemoveTask={removeTaskFromFlow}
             onToggleTask={toggleTaskEnabled}
-            onRestoreDeletedTask={restoreDeletedTask}
           />
         )}
         editor={(
@@ -1157,26 +1164,6 @@ export default function AutomationWorkspace() {
                                 </>
                               )}
                           </Button>
-
-                          <AnimatePresence initial={false}>
-                            {connectionFeedback && (
-                              <motion.div
-                                key={task.id}
-                                initial={shouldReduceMotion ? { opacity: 0 } : { opacity: 0, height: 0, y: -6 }}
-                                animate={shouldReduceMotion ? { opacity: 1 } : { opacity: 1, height: 'auto', y: 0 }}
-                                exit={shouldReduceMotion ? { opacity: 0 } : { opacity: 0, height: 0, y: -4 }}
-                                transition={{ duration: shouldReduceMotion ? 0.08 : 0.18, ease: 'easeOut' }}
-                                className={`app-info-card mt-3 flex min-w-0 items-start gap-2 overflow-hidden text-sm ${connectionFeedback.success ? 'status-success' : 'status-danger'}`}
-                                role={connectionFeedback.success ? 'status' : 'alert'}
-                                aria-live={connectionFeedback.success ? 'polite' : undefined}
-                              >
-                                {connectionFeedback.success
-                                  ? <CheckCircle2 size={18} className="mt-0.5 shrink-0" strokeWidth={2.2} aria-hidden="true" />
-                                  : <AlertTriangle size={18} className="mt-0.5 shrink-0" strokeWidth={2.2} aria-hidden="true" />}
-                                <span className="min-w-0 wrap-break-word leading-5">{connectionFeedback.message}</span>
-                              </motion.div>
-                            )}
-                          </AnimatePresence>
                         </div>
                       )}
                     </div>
@@ -1200,7 +1187,6 @@ export default function AutomationWorkspace() {
             <NotificationSettings />
           </>
         )}
-      />
-    </>
+    />
   )
 }
