@@ -9,8 +9,8 @@ import {
   type ConfigPersistenceAdapter,
 } from '@/features/user-config'
 import { setupSchedule, stopSchedule } from '../api'
-import { AVAILABLE_TASKS } from '../components/automationTaskCatalog'
 import type { TaskFlowItem } from '../types'
+import { findAutomationTaskDefaults } from './automationTaskDefaults'
 import {
   activeScheduleTimes,
   createDefaultScheduleEntries,
@@ -256,7 +256,7 @@ function normalizeTaskFlowItem(item: Record<string, unknown>): AutomationTaskFlo
   const commandId = typeof item.commandId === 'string' && item.commandId.length > 0
     ? item.commandId
     : id.split('-')[0] || ''
-  const definition = AVAILABLE_TASKS.find(task => task.id === commandId)
+  const definition = findAutomationTaskDefaults(commandId)
   const {
     icon: _icon,
     paramFields: _paramFields,

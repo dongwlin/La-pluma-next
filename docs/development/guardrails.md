@@ -2,7 +2,7 @@
 
 > [← 返回文档索引](../README.md)
 
-本文说明自动检查：功能域依赖环、公开面与分层方向、非页面微域的反向依赖、页面裸副作用、布局壳层锚点、全局样式作用域与布局测试细节。规则实现在 `apps/web/scripts/guardrails.ts`，CLI 为 `apps/web/scripts/check-guardrails.ts`，已接入客户端 `verify`。
+本文说明自动检查：功能域依赖环、公开面与分层方向、模型到组件的反向依赖、非页面微域的反向依赖、页面裸副作用、布局壳层锚点、全局样式作用域与布局测试细节。规则实现在 `apps/web/scripts/guardrails.ts`，CLI 为 `apps/web/scripts/check-guardrails.ts`，已接入客户端 `verify`。
 
 它只做静态事实判断，不证明运行时所有权，也不替代[执行客户端](../architecture/execution-client.md)、[配置持久化协调器](../architecture/config-persistence.md)或[Query 缓存](../architecture/query-cache.md)的行为契约。
 
@@ -35,6 +35,7 @@
 | 违规 | 例子 | 原因 |
 | --- | --- | --- |
 | `layer-direction` | `shared/**` import `@/features/x`、`@/pages/...` 或 `@/app`；`features/**` import `@/pages/x/Page`、`@/app` 或 `@/main` 等根入口模块；`pages/**` import `@/app` 或根入口 | 下层不得反向依赖上层，根入口只组装 app |
+| `model-component-dependency` | `features/a/model/**` import `features/a/components/**` | 纯模型与持久化逻辑不得依赖 React 组件；静态默认值应放在 `model`，由组件组合 |
 | `deep-import` | `features/a/**` import `@/features/b/model/x`；`app/**` import `../../features/b/components/Workspace` | 功能域对外只有 `index.ts` 一个公开面 |
 | `deep-import` | `pages/a/Page.tsx` import `@/features/a/model/x`（生产代码） | 页面只经功能域根入口组合；页面测试可深路径构造领域状态 |
 | `deep-import` | `features/a/**` 用 `@/features/a/...` 访问自身内部 | 同一域内应使用相对路径，避免经公开面形成内部环 |
