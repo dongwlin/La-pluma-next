@@ -561,10 +561,6 @@ export default function AutomationWorkspace() {
                     const isCurrentTask = resolveFlowTaskExecutionState(task, index, executionView) === 'running'
                     const connectionFeedback = connectionStatus[task.id]
                     const isTestingConnection = testingConnectionTaskId === task.id
-                    const parameterFields = task.paramFields ?? []
-                    const usesGroupedParameterRows = parameterFields.length > 0 && parameterFields.every(field => (
-                      field.type === 'select' || field.type === 'text' || field.type === 'number'
-                    ))
                     // 公招的「3 星保留招聘许可」标签连同图标超过 5rem 标签列，只有该卡片需要加宽列。
                     const usesWideFieldLabels = task.commandId === 'recruit'
 
@@ -592,7 +588,7 @@ export default function AutomationWorkspace() {
                       </div>
 
                       {task.paramFields && task.paramFields.length > 0 && (
-                        <div className={`automation-param-fields${usesGroupedParameterRows ? ' is-grouped' : ''}${usesWideFieldLabels ? ' has-wide-field-labels' : ''}`}>
+                        <div className={`automation-param-fields${usesWideFieldLabels ? ' has-wide-field-labels' : ''}`}>
                           {task.paramFields.map((field) => {
                             if (field.visibleWhen && String(task.params[field.visibleWhen.key] ?? '') !== String(field.visibleWhen.value)) {
                               return null
