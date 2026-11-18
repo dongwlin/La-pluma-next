@@ -180,7 +180,7 @@ export default function AutomationStageEditor({
                     variant="ghost"
                     onClick={() => togglePinned(stageIndex)}
                     disabled={stageControlsDisabled}
-                    className={`automation-stage-pin min-h-11 min-w-11${isPinnedStage ? ' is-active' : ''}`}
+                    className={`automation-stage-pin${isPinnedStage ? ' is-active' : ''}`}
                     title={isPinnedStage ? '取消置顶' : '置顶'}
                     aria-label={`${isPinnedStage ? '取消置顶' : '置顶'}：${field.label} ${stageIndex + 1}`}
                   >
@@ -198,7 +198,7 @@ export default function AutomationStageEditor({
                   onChange={event => updateStageName(stageIndex, event.target.value)}
                   placeholder={field.placeholder}
                   disabled={stageControlsDisabled || isSmartStageRow}
-                  className="automation-stage-name-input h-auto min-w-0 flex-1 rounded-none border-0 bg-transparent px-1.5 shadow-none md:text-sm focus-visible:ring-0"
+                  className={`min-w-0 flex-1${isSmartStageRow ? ' disabled:opacity-100 disabled:text-foreground' : ''}`}
                   data-automation-stage-name
                 />
                 <datalist id={suggestionsId}>
@@ -218,29 +218,31 @@ export default function AutomationStageEditor({
                     placeholder="0"
                     disabled={stageControlsDisabled || isSmartStageRow}
                     min="0"
-                    className="h-full min-w-0 rounded-none border-0 bg-transparent px-1 text-center shadow-none focus-visible:ring-0 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                    className={`w-16 text-center tabular-nums${isSmartStageRow ? ' disabled:opacity-100 disabled:text-foreground' : ''}`}
                   />
                   <span aria-hidden="true">次</span>
                 </div>
 
                 {!isSmartStageRow && (
-                  <div className="automation-stage-stepper hidden workbench:flex">
-                    <button
-                      type="button"
+                  <div className="hidden items-center workbench:flex">
+                    <Button
+                      size="icon"
+                      variant="ghost"
                       onClick={() => adjustStageTimes(stageIndex, -1)}
                       disabled={stageControlsDisabled || Number(stageTimes) <= 0}
                       aria-label={`减少${field.label} ${stageIndex + 1} 的执行次数`}
                     >
                       <Minus size={14} strokeWidth={2.1} aria-hidden="true" />
-                    </button>
-                    <button
-                      type="button"
+                    </Button>
+                    <Button
+                      size="icon"
+                      variant="ghost"
                       onClick={() => adjustStageTimes(stageIndex, 1)}
                       disabled={stageControlsDisabled}
                       aria-label={`增加${field.label} ${stageIndex + 1} 的执行次数`}
                     >
                       <Plus size={14} strokeWidth={2.1} aria-hidden="true" />
-                    </button>
+                    </Button>
                   </div>
                 )}
 
@@ -250,7 +252,7 @@ export default function AutomationStageEditor({
                     variant="ghost"
                     onClick={() => deleteStage(stageIndex)}
                     disabled={stageControlsDisabled}
-                    className="automation-stage-delete min-h-11 min-w-11"
+                    className="text-destructive hover:bg-destructive/10 hover:text-destructive"
                     title="删除此关卡"
                     aria-label={`删除${field.label} ${stageIndex + 1}`}
                   >
@@ -266,7 +268,7 @@ export default function AutomationStageEditor({
           variant="ghost"
           onClick={() => updateStages([...stages, { stage: '', times: '' }])}
           disabled={stageControlsDisabled}
-          className="automation-stage-add w-full"
+          className="automation-stage-add w-full justify-start"
         >
           <ListPlus size={17} strokeWidth={1.9} aria-hidden="true" />
           添加关卡

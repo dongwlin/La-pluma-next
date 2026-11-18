@@ -1113,6 +1113,8 @@
     min-width: 0;
     min-height: 3.25rem;
     align-items: center;
+    gap: 0.5rem;
+    padding: 0 0.375rem;
     transition: background 160ms ease;
   }
 
@@ -1128,20 +1130,15 @@
     background: color-mix(in srgb, var(--primary-soft) 42%, transparent);
   }
 
-  .automation-stage-kind,
-  .automation-stage-pin {
-    width: 2.75rem;
-    min-width: 2.75rem;
-    height: 2.75rem;
-    min-height: 2.75rem;
-    flex: 0 0 2.75rem;
-    border-radius: var(--radius-lg);
-  }
-
   .automation-stage-kind {
     display: inline-flex;
+    width: 2rem;
+    min-width: 2rem;
+    height: 2rem;
+    flex: 0 0 2rem;
     align-items: center;
     justify-content: center;
+    border-radius: var(--radius-lg);
     color: var(--primary);
   }
 
@@ -1154,169 +1151,26 @@
     color: var(--primary-strong);
   }
 
-  input.automation-stage-name-input {
-    width: 100%;
-    min-width: 0;
-    height: 3.25rem;
-    flex: 1 1 auto;
-    border: 0;
-    border-radius: 0;
-    padding: 0 0.75rem 0 0.25rem;
-    background: transparent;
-    background-color: transparent;
-    color: var(--foreground);
-    box-shadow: none;
-    font-size: 0.9375rem;
-    font-weight: 500;
-    line-height: 1.25;
-    outline: 0;
-  }
-
-  input.automation-stage-name-input::placeholder {
-    color: var(--tertiary-foreground);
-    font-weight: 400;
-    opacity: 1;
-  }
-
   .automation-stage-times {
     display: flex;
-    width: 4.25rem;
-    min-width: 4.25rem;
-    height: 2rem;
-    flex: 0 0 4.25rem;
+    flex: 0 0 auto;
     align-items: center;
-    border-left: 1px solid var(--border);
+    gap: 0.25rem;
     color: var(--tertiary-foreground);
-  }
-
-  .automation-stage-times input {
-    width: 2.75rem;
-    min-width: 0;
-    height: 100%;
-    border: 0;
-    border-radius: 0;
-    padding: 0 0.1875rem 0 0.375rem;
-    background: transparent;
-    color: var(--foreground);
-    box-shadow: none;
-    font-size: 0.8125rem;
-    font-variant-numeric: tabular-nums;
-    text-align: right;
-    outline: 0;
-    appearance: textfield;
-  }
-
-  .automation-stage-times input::-webkit-inner-spin-button,
-  .automation-stage-times input::-webkit-outer-spin-button {
-    appearance: none;
-  }
-
-  .dark input.automation-stage-name-input,
-  .dark .automation-stage-times input {
-    background: transparent;
-    background-color: transparent;
   }
 
   .automation-stage-times span {
-    padding-right: 0.5rem;
     font-size: 0.6875rem;
     white-space: nowrap;
   }
 
-  input.automation-stage-name-input:focus-visible,
-  .automation-stage-times input:focus-visible {
-    color: var(--primary-strong);
-  }
-
-  input.automation-stage-name-input:disabled,
-  .automation-stage-times input:disabled {
-    cursor: not-allowed;
-    opacity: 0.55;
-  }
-
-  .automation-stage-item.is-smart :is(
-    input.automation-stage-name-input:disabled,
-    .automation-stage-times input:disabled
-  ) {
-    color: var(--foreground);
-    opacity: 1;
+  .automation-stage-item.is-smart input:disabled {
     -webkit-text-fill-color: var(--foreground);
-  }
-
-  .automation-stage-stepper {
-    display: none !important;
-    height: 2.75rem;
-    flex: 0 0 auto;
-    align-items: center;
-    border-left: 1px solid var(--border);
-  }
-
-  .automation-stage-stepper button {
-    display: inline-flex;
-    width: 2.75rem;
-    min-width: 2.75rem;
-    height: 2.75rem;
-    min-height: 2.75rem;
-    align-items: center;
-    justify-content: center;
-    border: 0;
-    border-radius: 0;
-    background: transparent;
-    color: var(--tertiary-foreground);
-    transition: background 160ms ease, color 160ms ease, opacity 160ms ease;
-  }
-
-  .automation-stage-stepper button + button {
-    border-left: 1px solid var(--border);
-  }
-
-  .automation-stage-stepper button:hover:not(:disabled) {
-    background: var(--primary-soft);
-    color: var(--primary-strong);
-  }
-
-  .automation-stage-stepper button:focus-visible {
-    position: relative;
-    z-index: 1;
-    outline: 2px solid var(--primary);
-    outline-offset: -2px;
-  }
-
-  .automation-stage-stepper button:disabled {
-    cursor: not-allowed;
-    opacity: 0.32;
-  }
-
-  .automation-stage-delete {
-    color: var(--destructive);
-  }
-
-  .automation-stage-delete:hover:not(:disabled) {
-    background: color-mix(in srgb, var(--destructive) 10%, transparent);
-    color: var(--destructive);
   }
 
   .automation-stage-add {
     position: relative;
-    justify-content: flex-start;
-    border-radius: 0;
-    padding-right: 0.875rem;
-    padding-left: 1rem;
     color: var(--primary-strong);
-    box-shadow: none;
-  }
-
-  .automation-stage-add:hover:not(:disabled) {
-    background: color-mix(in srgb, var(--primary-soft) 42%, transparent);
-    color: var(--primary-strong);
-  }
-
-  .automation-stage-list :is(
-    .automation-stage-pin,
-    .automation-stage-delete,
-    .automation-stage-add
-  ):focus-visible {
-    outline-offset: -2px;
   }
 
   .automation-smart-stage-entry {
@@ -1380,13 +1234,6 @@
   .automation-smart-stage-action {
     flex: 0 0 auto;
     box-shadow: none;
-  }
-
-  @container (min-width: 30rem) {
-    .automation-stage-stepper {
-      /* S3: 宽容器下恢复 flex；display 工具类可能先声明，故保留 important。 */
-      display: flex !important;
-    }
   }
 
   @media (prefers-contrast: more) {
