@@ -66,6 +66,10 @@ interface DeletedTaskSnapshot {
   index: number
 }
 
+const isConnectionTestStatus = (value: unknown): value is ConnectionTestStatus => (
+  isRecord(value) && typeof value.success === 'boolean' && typeof value.message === 'string'
+)
+
 export default function AutomationWorkspace() {
   const shouldReduceMotion = useReducedMotion()
   const { isAvailable: automationAvailable, unavailableMessage } = useAutomationAvailability()
@@ -301,7 +305,7 @@ export default function AutomationWorkspace() {
       const result = await testAdbConnection(undefined, undefined, controller.signal)
       await waitForStableFeedback()
       if (controller.signal.aborted) return
-      const payload = result.data as ConnectionTestStatus | undefined
+      const payload = isConnectionTestStatus(result.data) ? result.data : undefined
       const success = Boolean(result.success && payload?.success)
       const message = payload?.message || getErrorMessage(result)
       setConnectionStatus(prev => ({
