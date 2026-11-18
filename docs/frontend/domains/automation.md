@@ -63,6 +63,8 @@
 
 服务端 `gameTaskConfigService.ts` 维护同一组限制（Fight 连战范围与天数、Recruit 许可保留/多选策略、Infrast 设施、Award/StartUp 开关），日常流程构建与 Agent `run_task` 共用；前端 `findTaskFlowValidationFailure` 在提交前给出同样的范围提示。
 
+**任务参数与 wire 类型。** `types/index.ts` 的 `TaskParams` 只显式声明本页已知参数，`TaskParamKey`/`TaskParamValue` 是字段键与写回值的派生类型：目录字段、可见性条件与参数写回链都收窄到这两类，动态写入集中到 `setTaskParam`。执行与定时请求的流程项由同一文件的 `TaskFlowWireItem` 描述，`cleanFlow` 与持久化流程必须满足该形状；wire 字段、序列化顺序与服务端契约不随之变化，参数清单仍以模型与目录源码为准。
+
 **控件与外观基准。** 日常页表单使用 32px 高、`rounded-lg` 的共享 `Input`，按钮使用共享 `Button` 的 `rounded-lg`；数字输入框的步进按钮叠放在输入框右侧，但输入框自身的高度、边框、内边距与聚焦态仍由共享 `Input` 决定。流程与侧栏卡片标题只保留文本，不再使用标题图标或副标题。任务挑选菜单使用不透明 `bg-popover` 表面，不使用 `backdrop-filter` 或玻璃材质。
 
 ### 2. 组合与状态边界
