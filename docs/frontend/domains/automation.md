@@ -21,10 +21,10 @@
 | 内容 | 唯一归属 | 说明 |
 | --- | --- | --- |
 | 页面壳与工作区组合 | `pages/automation/AutomationTasks.tsx` | 只渲染 `app-page`/`app-stack-section` 与 `AutomationWorkspace` |
-| 配置订阅、Run 订阅、选中项、撤销、连接测试、跨域失效、任务编辑 | `components/AutomationWorkspace.tsx` | 页面级领域容器；仍调用所属领域 hook，不直接调用 API/存储/轮询 |
+| 配置订阅、Run 订阅、选中项、删除撤销、连接测试、跨域失效、任务编辑 | `components/AutomationWorkspace.tsx` | 页面级领域容器；仍调用所属领域 hook，不直接调用 API/存储/轮询 |
 | 流程列表、页脚与摘要组合 | `components/AutomationTaskFlowPanel.tsx` | 接收只读 Run 投影、排序投影与配置回调；页脚仍是任务挑选菜单的点击区域 |
 | 定时编辑 | `components/AutomationScheduleCard.tsx` | 绑定 `model/automationSchedule.ts`；结果经 `onChange` 交给唯一配置 owner |
-| 通知配置读取、草稿与保存 | `components/NotificationSettings.tsx` + `model/queries.ts` | 独立卡片；读取 `notificationConfigQueryOptions()`；保存成功后 `setQueryData` 回写同一 key；脏态、总开关依赖与测试反馈在卡内持有 |
+| 通知配置读取、草稿与保存 | `components/NotificationSettings.tsx` + `model/queries.ts` | 独立卡片；读取 `notificationConfigQueryOptions()`；保存成功后 `setQueryData` 回写同一 key；脏态与总开关依赖由卡内持有，测试/保存结果走全局 toast |
 | 最近执行摘要 | `components/AutomationExecutionSummary.tsx` | 只接只读摘要与 run 身份；负责保留最后一份、展开/收起与失败自动展开 |
 | 拖拽/键盘排序的 React 接线 | `hooks/useTaskFlowSorting.ts` | 预览、pointer 生命周期、Escape、公告；规则仍来自 `model/taskFlowSort.ts` |
 | 活动 DTO 校验 | `model/activity.ts` | 纯函数：校验 `/agent/activity` 的 status/来源时间/failure/completion，不推断活动状态 |
@@ -60,10 +60,10 @@
 
 ```
 AutomationTasks（app-page > app-stack-section > AutomationWorkspace）
-└─ AutomationWorkspace（配置/执行/选中/撤销/连接/失效）
+└─ AutomationWorkspace（配置/执行/选中/删除撤销/连接/失效）
    └─ DeviceMonitorLayout(workbench)
       ├─ AutomationTaskFlowPanel（sequence 区域）
-      │  ├─ 任务流程列表（拖拽、启用、删除、撤销）
+      │  ├─ 任务流程列表（拖拽、启用、删除；撤销经 toast）
       │  ├─ automation-sequence-footer
       │  │  ├─ AutomationTaskPicker（页脚区域仍由本面板传入）
       │  │  └─ 开始 / 终止
@@ -81,15 +81,23 @@ AutomationTasks（app-page > app-stack-section > AutomationWorkspace）
 | --- | --- | --- | --- |
 | 配置草稿、pending 与提交队列 | `user-config` 协调器 | 保留；不重读已 hydrate 的草稿 | 应用级通道继续持有 |
 | Run 身份、进度、终态摘要 | `task-execution` 控制器 + `useAutomationExecution` | 控制器继续观察；页面只重新订阅 | 按持久化身份恢复，不重提 |
-| 选中任务、撤销快照、连接反馈 | `AutomationWorkspace` | 保留 | 重置 |
+| 选中任务、连接反馈 | `AutomationWorkspace` | 保留 | 重置 |
 | 拖拽预览、当前拖拽索引、公告 | `useTaskFlowSorting` | 清理 document 监听并丢弃进行中的预览 | 重置 |
 | 摘要保留与详情展开 | `AutomationExecutionSummary` | 保留；恢复时按当前摘要调整 | 重置 |
 | 通知配置 | `automation/notification-config` Query | 观察者注销，恢复后按新鲜度重取 | 缓存按 `gcTime` 回收 |
-| 通知草稿、脏态与测试反馈 | `NotificationSettings` | 保留 | 重置 |
+| 通知草稿与脏态（测试/保存结果走 toast） | `NotificationSettings` | 保留 | 重置 |
 | 菜单开关 | `AutomationTaskPicker`；外部点击、Escape 与回焦由 Base UI DropdownMenu 管理 | 保留；Base UI 恢复后重新注册 dismiss 与焦点管理 | 关闭 |
 
 - **配置写入仍然单通道。** 流程、定时和任务编辑都调用工作区的
   `updateConfig`；面板不创建草稿副本，也不调用 `saveUserConfig`。
+- **读取完成前只读。** 工作区消费 `useUserConfig` 的 `loadState`：`idle`/`loading`
+  显示固定高度的读取占位，`failed` 显示固定高度错误态与“重新加载”
+  （`reload({ force: true })`），两者都不渲染编辑器、添加任务或定时控件；
+  只有 `ready` 才进入正常编辑。保存失败不回退为只读，草稿仍可编辑，
+  并以固定 id 的 error toast 提供“重新同步” action。
+- **提交期间锁定流程编辑。** `isSubmitting || isRunning` 时排序、添加/删除、
+  启用开关、删除撤销、任务选择、参数编辑与任务挑选器全部禁用；定时卡与
+  通知卡是独立保存单元，不受流程提交锁定。
 - **执行只读。** 流程列表与摘要只消费 `isRunning`/`isStopping`/`isSubmitting`/
   `taskResults`/`currentStep`/终态摘要；启动仍只由 `submitFlow` 发出一次
   `run_daily_flow`，停止仍按控制器持有的 runId。归属按操作标识判定，
@@ -179,19 +187,19 @@ browser releases pointer capture”用例固定；DOM/CSS 未变化。性能复�
 
 | 状态 | 行为 |
 | --- | --- |
-| 加载中 | 只显示“读取通知配置…”，不渲染空配置，避免开关先显示为关闭再跳变 |
-| 加载失败 | 卡内错误 + 重新加载；不渲染渠道与 footer |
+| 加载中 | 只显示固定高度的“读取通知配置…”占位，不渲染空配置，避免开关先显示为关闭再跳变 |
+| 加载失败 | 固定高度的“通知配置暂不可用”占位；错误详情走固定 id 的 error toast，并提供“重新加载” action；不渲染渠道与 footer |
 | 总开关关闭 | 渠道开关、输入与测试禁用，并显示“先启用通知”等原因 |
 | 总开关开、无可用渠道/凭据 | 显示“未启用渠道，不会发送”或“凭据不完整，不会发送” |
 | 脏态 | 编辑后“保存”才可用；成功后回到“已保存”并再次禁用；保存失败保留草稿与脏态 |
-| 测试与保存 | 两个独立命令，互不禁用；测试结果落在按钮下方，保存结果落在 footer 上方，互不覆盖 |
+| 测试与保存 | 两个独立命令，互不禁用；结果通过各自固定 id 的 success/error toast 反馈，不在卡片内插入 notice |
 
 ### 7. Activity 与兼容约束
 
 - **Activity 隐藏/恢复**：流程排序的 document 监听随 Effect 清理并丢弃进行中
   的预览；摘要保留与展开状态保留；配置通道与执行控制器不受影响。
-- **真正卸载/刷新**：选中、撤销、拖拽预览、摘要与连接反馈重置；配置草稿、
-  pending 队列与 Run 身份仍由应用级所有者持有。
+- **真正卸载/刷新**：选中、拖拽预览、摘要与连接反馈重置；删除撤销 toast 由
+  全局通知器持有，不会跨页面恢复。配置草稿、pending 队列与 Run 身份仍由应用级所有者持有。
 - 配置 key、本地存储键、wire 形状、调度与执行端点均未变化；旧草稿与服务端
   配置可直接读取。
 - 流程列表、页脚与摘要沿用既有 DOM/CSS 类名；侧栏两张卡共用 `automation-side-card` 卡壳。
@@ -206,7 +214,7 @@ browser releases pointer capture”用例固定；DOM/CSS 未变化。性能复�
 
 ## 纯模型与排序
 
-配置提交仍由 [`automationConfig.ts`](../../../apps/web/src/features/automation/model/automationConfig.ts) 适配器与 `user-config` 协调器持有，执行仍由 `task-execution` 控制器与服务端 Run 持有；当前指针/键盘接线由 `hooks/useTaskFlowSorting.ts` 持有，逐项执行状态与摘要来源由 `model/flowExecution.ts` 提供，模型本身仍不访问 React、网络或存储。
+配置提交仍由 [`automationConfig.ts`](../../../apps/web/src/features/automation/model/automationConfig.ts) 适配器与 `user-config` 协调器持有，执行仍由 `task-execution` 控制器与服务端 Run 持有；当前指针/键盘接线由 `hooks/useTaskFlowSorting.ts` 持有，逐项执行状态与摘要来源由 `model/flowExecution.ts` 提供。模型本身不调用 React hooks、网络或存储；任务归一化直接复用 `automationTaskCatalog` 的静态默认值，不维护第二份目录。
 
 ### 1. 定位与边界
 
@@ -299,13 +307,13 @@ browser releases pointer capture”用例固定；DOM/CSS 未变化。性能复�
 
 | 内容 | 唯一归属 | 说明 |
 | --- | --- | --- |
-| 页面组合、配置订阅、执行订阅、选中项、撤销、连接测试 | `pages/automation/AutomationTasks.tsx` + `components/AutomationWorkspace.tsx` | 目前页面只组合工作区；流程/定时/摘要分别在独立面板 |
+| 页面组合、配置订阅、执行订阅、选中项、删除撤销 toast、连接测试 | `pages/automation/AutomationTasks.tsx` + `components/AutomationWorkspace.tsx` | 目前页面只组合工作区；流程/定时/摘要分别在独立面板 |
 | 流程列表、拖拽排序、页脚与执行摘要 | `components/AutomationTaskFlowPanel.tsx` + `hooks/useTaskFlowSorting.ts` | 只接只读 Run 投影；排序预览与编辑器共享 |
 | 定时编辑 | `components/AutomationScheduleCard.tsx` | 绑定定时纯模型，经工作区唯一配置 owner 写入 |
-| 通知卡 | `components/NotificationSettings.tsx` | 独立卡片；Query、草稿、脏态与测试反馈归卡内 |
+| 通知卡 | `components/NotificationSettings.tsx` | 独立卡片；Query、草稿与脏态归卡内，结果反馈走全局 toast |
 | 关卡列表编辑、次数步进、置顶、增删行 | `components/AutomationStageEditor.tsx` | 受控面板：参数经 `onUpdate(index, 'stages', value)` 写回工作区 |
 | 智能养成加入/移除与在途标记 | `components/AutomationStageEditor.tsx` + `model/stageEditing.ts` | 读取 `training-queue`、调用 `generateTrainingPlan({ mode: 'current' })`；合成规则在纯模型 |
-| 任务挑选菜单 | `components/AutomationTaskPicker.tsx` | 菜单开关与页脚点击区域例外由面板持有；外部 pointerdown、Escape 与回焦交给 Base UI DropdownMenu，运行态收起仍由面板派生 |
+| 任务挑选菜单 | `components/AutomationTaskPicker.tsx` | 菜单开关与页脚点击区域例外由面板持有；外部 pointerdown、Escape 与回焦交给 Base UI DropdownMenu，编辑锁态收起仍由面板派生 |
 | 可添加任务目录 | `components/automationTaskCatalog.tsx` | 名称、图标、默认参数与参数字段；不读取配置/Query/执行状态 |
 | 游戏内培养计划编辑 | `components/OperProgressPlansEditor.tsx` | 复用 `features/training` 的 `OperatorSelectModal`；计划仍只保存中文名与职业，只读全量干员目录回显头像（同名干员用职业消歧），目录里找不到时保留通用人像占位 |
 | 关卡分组与智能养成合成 | `model/stageEditing.ts` | 纯模型；`orderStagesForEditing` 也复用同一分组 |
@@ -328,7 +336,7 @@ browser releases pointer capture”用例固定；DOM/CSS 未变化。性能复�
 
 ```
 AutomationTasks（app-page > app-stack-section > AutomationWorkspace）
-└─ AutomationWorkspace（配置/执行/选中/撤销/连接/失效）
+└─ AutomationWorkspace（配置/执行/选中/删除撤销/连接/失效）
    ├─ AutomationTaskFlowPanel
    │  ├─ 任务流程列表（拖拽预览、拖拽公告）
    │  └─ automation-sequence-footer
@@ -345,7 +353,7 @@ AutomationTasks（app-page > app-stack-section > AutomationWorkspace）
 | 关卡列表 | 配置草稿 `task.params.stages` | 保留 | 随草稿恢复 |
 | 智能养成在途标记 | `AutomationStageEditor` | 保留；在途 promise 不受 Effect 清理取消，`finally` 继续清标记 | 重置 |
 | 菜单开关 | `AutomationTaskPicker` | 保留；Base UI 在恢复后重新注册 dismiss 与焦点管理 | 重置为关闭 |
-| 选中任务、撤销、连接反馈 | `AutomationWorkspace` | 保留 | 重置 |
+| 选中任务、连接反馈 | `AutomationWorkspace` | 保留 | 重置 |
 | 拖拽预览、公告 | `useTaskFlowSorting` | 清理 document 监听并丢弃进行中的预览 | 重置 |
 | 执行详情 | `AutomationExecutionSummary` | 保留 | 重置 |
 
