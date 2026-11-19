@@ -488,15 +488,68 @@ describe('AutomationTasks execution', () => {
   })
 
   it('moves focus to the stop action after this page starts the flow', async () => {
-    api.fetchSnapshot.mockResolvedValue(ok(activeSnapshot()))
+    api.fetchSnapshot.mockResolvedValue(ok(snapshot()))
     useIdentity()
     await renderPage()
-    runButton()?.focus()
+    const submission = deferred<ApiResponse<Record<string, unknown>>>()
+    mocks.executeScheduleNow.mockReturnValue(submission.promise)
 
     await click(runButton())
 
+    expect(runButton()?.textContent).toContain('正在启动')
+    document.body.tabIndex = -1
+    document.body.focus()
+    expect(document.activeElement).toBe(document.body)
+
+    api.fetchSnapshot.mockResolvedValue(ok(activeSnapshot()))
+    await act(async () => submission.resolve(ok({
+      accepted: true,
+      runId: 'run-1',
+      run: dailyRun('run-1', 'running'),
+    })))
+    await flush()
+
     expect(runButton()).toBeNull()
     expect(document.activeElement).toBe(stopButton())
+    document.body.removeAttribute('tabindex')
+  })
+
+  it('does not take focus when an external run appears after a rejected local start', async () => {
+    const invalidFlow: TaskFlowItem[] = [
+      flow[0]!,
+      {
+        id: 'infrast-1',
+        commandId: 'infrast',
+        name: '基建换班',
+        icon: null,
+        description: '自动基建换班收菜',
+        defaultParams: {},
+        paramFields: [],
+        params: { mode: '10000', filename: '' },
+        enabled: true,
+        taskType: 'Infrast',
+      },
+    ]
+    mocks.loadUserConfig.mockResolvedValue(ok({ taskFlow: invalidFlow }))
+    useIdentity()
+    await renderPage()
+
+    await click(runButton())
+
+    expect(mocks.executeScheduleNow).not.toHaveBeenCalled()
+    document.body.tabIndex = -1
+    document.body.focus()
+    expect(document.activeElement).toBe(document.body)
+
+    api.fetchSnapshot.mockResolvedValue(ok(activeSnapshot({ runId: 'run-ext' })))
+    await act(async () => {
+      mocks.controller.current.observeRun('run-ext', 'run_daily_flow', 'dashboard')
+    })
+    await flush()
+
+    expect(stopButton()).not.toBeNull()
+    expect(document.activeElement).toBe(document.body)
+    document.body.removeAttribute('tabindex')
   })
 
   it('closes the add-task picker when a run starts', async () => {
@@ -524,7 +577,11 @@ describe('AutomationTasks execution', () => {
 
     await click(runButton())
 
-    expect(runButton()?.textContent).toContain('正在启动')
+    const submittingRunButton = runButton()
+    expect(submittingRunButton?.textContent).toContain('正在启动')
+    expect(submittingRunButton?.getAttribute('data-status-key')).toBe('running')
+    expect(submittingRunButton?.getAttribute('aria-busy')).toBe('true')
+    expect(submittingRunButton?.disabled).toBe(true)
     const dragHandles = [...container.querySelectorAll('[aria-label^="调整"]')]
     expect(dragHandles.length).toBeGreaterThan(0)
     expect(dragHandles.every(isDisabled)).toBe(true)

@@ -43,19 +43,14 @@ export default function AutomationTaskFlowPanel({
   const editingLocked = execution.isRunning || execution.isSubmitting
 
   useEffect(() => {
-    if (execution.isRunning) {
-      if (!focusStopAfterStart.current) return
+    if (execution.isSubmitting) focusStopAfterStart.current = true
+    if (execution.isRunning && focusStopAfterStart.current) {
       focusStopAfterStart.current = false
       stopButtonRef.current?.focus()
       return
     }
-    if (!execution.isSubmitting) focusStopAfterStart.current = false
+    if (!execution.isSubmitting && !execution.isRunning) focusStopAfterStart.current = false
   }, [execution.isRunning, execution.isSubmitting])
-
-  const handleExecute = () => {
-    focusStopAfterStart.current = true
-    execution.onExecute()
-  }
 
   return (
     <div className="automation-sequence-column" data-monitor-area="sequence">
@@ -190,7 +185,7 @@ export default function AutomationTaskFlowPanel({
             </Button>
           ) : (
             <Button
-              onClick={handleExecute}
+              onClick={execution.onExecute}
               disabled={!execution.automationAvailable || execution.isSubmitting || enabledCount === 0}
               title={!execution.automationAvailable ? execution.unavailableMessage : undefined}
               aria-busy={execution.isSubmitting || undefined}
