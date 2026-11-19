@@ -480,9 +480,23 @@ describe('AutomationTasks execution', () => {
     expect(options.waitForCompletion).toBe(false)
     expect(options.idempotencyKey).toMatch(/^run_daily_flow-/)
     expect(stopButton()).not.toBeNull()
+    expect(stopButton()?.textContent?.trim()).toBe('终止')
+    expect(stopButton()?.querySelector('svg')).toBeNull()
+
+    expect(runButton()).toBeNull()
+    expect(mocks.executeScheduleNow).toHaveBeenCalledOnce()
+  })
+
+  it('moves focus to the stop action after this page starts the flow', async () => {
+    api.fetchSnapshot.mockResolvedValue(ok(activeSnapshot()))
+    useIdentity()
+    await renderPage()
+    runButton()?.focus()
 
     await click(runButton())
-    expect(mocks.executeScheduleNow).toHaveBeenCalledOnce()
+
+    expect(runButton()).toBeNull()
+    expect(document.activeElement).toBe(stopButton())
   })
 
   it('closes the add-task picker when a run starts', async () => {
@@ -651,6 +665,7 @@ describe('AutomationTasks execution', () => {
 
     expect(runningItems()).toHaveLength(1)
     expect(completedItems()).toHaveLength(0)
+    expect(runButton()).toBeNull()
     expect(stopButton()).not.toBeNull()
 
     api.fetchSnapshot.mockResolvedValue(ok(activeSnapshot({
@@ -661,6 +676,9 @@ describe('AutomationTasks execution', () => {
     expect(completedItems()).toHaveLength(1)
     expect(runningItems()).toHaveLength(1)
     expect(sequenceLabels()).toEqual(['已完成', '正在执行', '等待执行'])
+    const completedRow = container.querySelector<HTMLElement>('[data-execution-state="completed"]')
+    expect(completedRow?.querySelector('[role="img"][aria-label="已完成"]')).toBeNull()
+    expect(isDisabled(completedRow?.querySelector('button[aria-label^="删除"]') ?? null)).toBe(true)
 
     // 第二项已完成、流程处于两项之间的延迟：Run 仍活动，不能提前标成完成。
     api.fetchSnapshot.mockResolvedValue(ok(activeSnapshot({
@@ -715,9 +733,10 @@ describe('AutomationTasks execution', () => {
     useIdentity({ runId: 'run-1', operationId: 'run_daily_flow', scope: 'dashboard' })
     await renderPage()
 
-    expect(runButton()?.textContent).toContain('执行中')
-    expect(runButton()?.disabled).toBe(true)
+    expect(runButton()).toBeNull()
     expect(stopButton()).not.toBeNull()
+    expect(stopButton()?.textContent?.trim()).toBe('终止')
+    expect(document.activeElement).not.toBe(stopButton())
     expect(sequenceLabels()).toEqual(['正在执行', '等待执行', '等待执行'])
     expect(mocks.executeScheduleNow).not.toHaveBeenCalled()
 

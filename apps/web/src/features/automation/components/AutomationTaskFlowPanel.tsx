@@ -1,3 +1,4 @@
+import { useEffect, useRef } from 'react'
 import { motion, useReducedMotion } from 'framer-motion'
 import {
   AlertTriangle,
@@ -6,7 +7,6 @@ import {
   ListPlus,
   LoaderCircle,
   Minus,
-  Square,
   Trash2,
 } from 'lucide-react'
 import { Button } from '@/shared/ui/button'
@@ -32,6 +32,8 @@ export default function AutomationTaskFlowPanel({
   onToggleTask,
 }: AutomationTaskFlowPanelProps) {
   const shouldReduceMotion = useReducedMotion()
+  const stopButtonRef = useRef<HTMLButtonElement>(null)
+  const focusStopAfterStart = useRef(false)
   const executionView = {
     isRunning: execution.isRunning,
     taskResults: execution.taskResults,
@@ -39,6 +41,21 @@ export default function AutomationTaskFlowPanel({
   }
   const enabledCount = tasks.filter(task => task.enabled).length
   const editingLocked = execution.isRunning || execution.isSubmitting
+
+  useEffect(() => {
+    if (execution.isRunning) {
+      if (!focusStopAfterStart.current) return
+      focusStopAfterStart.current = false
+      stopButtonRef.current?.focus()
+      return
+    }
+    if (!execution.isSubmitting) focusStopAfterStart.current = false
+  }, [execution.isRunning, execution.isSubmitting])
+
+  const handleExecute = () => {
+    focusStopAfterStart.current = true
+    execution.onExecute()
+  }
 
   return (
     <div className="automation-sequence-column" data-monitor-area="sequence">
@@ -138,11 +155,7 @@ export default function AutomationTaskFlowPanel({
                     aria-label={`${task.name}启用状态`}
                   />
                 </span>
-                {execution.isRunning && isCompletedStep ? (
-                  <span className="automation-completed-mark" role="img" aria-label="已完成" title="已完成">
-                    <Check size={13} strokeWidth={2.6} aria-hidden="true" />
-                  </span>
-                ) : !isCurrentStep ? (
+                {!isCurrentStep ? (
                   <button
                     type="button"
                     onClick={() => onRemoveTask(index)}
@@ -161,37 +174,34 @@ export default function AutomationTaskFlowPanel({
         )}
 
         <div className="automation-sequence-footer">
+          {execution.isRunning ? (
             <Button
-              onClick={execution.onExecute}
-              disabled={!execution.automationAvailable || execution.isRunning || execution.isSubmitting || enabledCount === 0}
-              title={!execution.automationAvailable ? execution.unavailableMessage : undefined}
-              aria-busy={execution.isRunning || execution.isSubmitting || undefined}
-              data-status-key={execution.isRunning || execution.isSubmitting ? 'running' : 'ready'}
-              className={`automation-run-button flex-1 justify-center whitespace-nowrap${execution.isRunning ? ' is-running' : ''}`}
+              ref={stopButtonRef}
+              onClick={execution.onStop}
+              disabled={execution.isStopping}
+              aria-busy={execution.isStopping || undefined}
+              data-status-key={execution.isStopping ? 'stopping' : 'stop-ready'}
+              variant={execution.isStopping ? 'secondary' : 'destructive'}
+              className={`automation-stop-button flex-1 justify-center${execution.isStopping ? ' is-stopping' : ''}`}
             >
-              {execution.isRunning || execution.isSubmitting
-                ? <><LoaderCircle className="animate-spin" aria-hidden="true" />{execution.isRunning ? '执行中' : '正在启动'}</>
+              {execution.isStopping
+                ? <><LoaderCircle className="animate-spin" aria-hidden="true" />正在终止</>
+                : '终止'}
+            </Button>
+          ) : (
+            <Button
+              onClick={handleExecute}
+              disabled={!execution.automationAvailable || execution.isSubmitting || enabledCount === 0}
+              title={!execution.automationAvailable ? execution.unavailableMessage : undefined}
+              aria-busy={execution.isSubmitting || undefined}
+              data-status-key={execution.isSubmitting ? 'running' : 'ready'}
+              className="automation-run-button flex-1 justify-center whitespace-nowrap"
+            >
+              {execution.isSubmitting
+                ? <><LoaderCircle className="animate-spin" aria-hidden="true" />正在启动</>
                 : '开始'}
             </Button>
-            {execution.isRunning && (
-              <Button
-                onClick={execution.onStop}
-                disabled={execution.isStopping}
-                aria-busy={execution.isStopping || undefined}
-                data-status-key={execution.isStopping ? 'stopping' : 'stop-ready'}
-                variant={execution.isStopping ? 'secondary' : 'destructive'}
-                className={`automation-stop-button flex-1 justify-center${execution.isStopping ? ' is-stopping' : ''}`}
-              >
-                {execution.isStopping
-                  ? <><LoaderCircle className="animate-spin" aria-hidden="true" />正在终止</>
-                  : (
-                    <>
-                      <Square size={14} fill="currentColor" aria-hidden="true" />
-                      终止
-                    </>
-                  )}
-              </Button>
-            )}
+          )}
         </div>
 
         <AutomationExecutionSummary

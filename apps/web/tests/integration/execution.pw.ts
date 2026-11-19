@@ -132,7 +132,7 @@ test('概览发起的今日流程由日常页接管并可直接停止', async ({
 
   // 同一 run_daily_flow 身份：日常页按操作标识接管概览发起的执行，入口不再可提交。
   await navigateTo(page, 'automation')
-  await expect(page.getByRole('button', { name: '执行中', exact: true })).toBeDisabled()
+  await expect(page.getByRole('button', { name: '执行中', exact: true })).toHaveCount(0)
   await expect(page.getByRole('button', { name: '终止', exact: true })).toBeVisible()
   await expect(page.locator('[data-execution-state="running"]')).toHaveCount(1)
   expect(state.submissions).toHaveLength(1)

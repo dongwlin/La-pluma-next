@@ -471,19 +471,6 @@
     }
   }
 
-  .automation-completed-mark {
-    display: inline-flex;
-    width: 1.5rem;
-    height: 1.5rem;
-    align-items: center;
-    justify-content: center;
-    justify-self: center;
-    border-radius: 50%;
-    background: color-mix(in srgb, var(--success) 11%, var(--card));
-    color: var(--success-text);
-    box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--success) 22%, var(--border));
-  }
-
   .automation-sequence-copy {
     display: grid;
     min-width: 0;
@@ -522,14 +509,6 @@
     gap: 0.5rem;
     padding: 0.75rem;
     border-top: 1px solid var(--border);
-  }
-
-  [data-page-kind="automation"] .automation-run-button.is-running:is(:disabled, .disabled) {
-    cursor: progress;
-    opacity: 1 !important;
-    background: color-mix(in srgb, var(--primary) 11%, var(--card)) !important;
-    color: var(--primary-strong) !important;
-    box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--primary) 24%, var(--border)) !important;
   }
 
   [data-page-kind="automation"] .automation-stop-button.is-stopping:is(:disabled, .disabled) {
