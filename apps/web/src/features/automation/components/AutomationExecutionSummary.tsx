@@ -6,6 +6,7 @@ import {
   executionSummaryHasFailure,
   type AutomationExecutionSummary as AutomationExecutionSummaryData,
 } from '../model/automationRun'
+import { filterExecutionActionsForDisplay, hasExecutionDetailContent } from '../model/executionActionDisplay'
 import { describeDeferredMastery, describeGameTaskDetail } from '../model/gameTaskResultText'
 
 interface AutomationExecutionSummaryProps {
@@ -41,6 +42,9 @@ export default function AutomationExecutionSummary({
   const detailsOpen = view?.detailsOpen ?? false
   if (!lastSummary) return null
 
+  const visibleActions = filterExecutionActionsForDisplay(lastSummary.actions)
+  const hasDetailContent = hasExecutionDetailContent(lastSummary, visibleActions)
+
   const toggleDetails = () => {
     setView(current => current ? { ...current, detailsOpen: !current.detailsOpen } : current)
   }
@@ -63,23 +67,25 @@ export default function AutomationExecutionSummary({
                 ? `${lastSummary.skippedCount} 项任务已跳过`
                 : '任务流程执行完成')}
         </span>
-        <button
-          type="button"
-          onClick={toggleDetails}
-          aria-expanded={detailsOpen}
-          aria-label={detailsOpen ? '收起执行详情' : '展开执行详情'}
-          title={detailsOpen ? '收起详情' : '展开详情'}
-          className="flex min-h-11 min-w-11 shrink-0 items-center justify-center rounded-md text-gray-400 transition-colors hover:bg-black/5 hover:text-gray-600 dark:hover:bg-white/5 dark:hover:text-gray-200"
-        >
-          <ChevronDown
-            size={15}
-            strokeWidth={2}
-            className={`${shouldReduceMotion ? '' : 'transition-transform duration-200'} ${detailsOpen ? 'rotate-180' : ''}`}
-          />
-        </button>
+        {hasDetailContent && (
+          <button
+            type="button"
+            onClick={toggleDetails}
+            aria-expanded={detailsOpen}
+            aria-label={detailsOpen ? '收起执行详情' : '展开执行详情'}
+            title={detailsOpen ? '收起详情' : '展开详情'}
+            className="flex min-h-11 min-w-11 shrink-0 items-center justify-center rounded-md text-gray-400 transition-colors hover:bg-black/5 hover:text-gray-600 dark:hover:bg-white/5 dark:hover:text-gray-200"
+          >
+            <ChevronDown
+              size={15}
+              strokeWidth={2}
+              className={`${shouldReduceMotion ? '' : 'transition-transform duration-200'} ${detailsOpen ? 'rotate-180' : ''}`}
+            />
+          </button>
+        )}
       </div>
 
-      {detailsOpen && (
+      {detailsOpen && hasDetailContent && (
         <motion.div
           initial={shouldReduceMotion ? false : { opacity: 0, height: 0 }}
           animate={{ opacity: 1, height: 'auto' }}
@@ -123,9 +129,9 @@ export default function AutomationExecutionSummary({
             </div>
           )}
 
-          {lastSummary.actions?.length > 0 && (
+          {visibleActions.length > 0 && (
             <div className="mt-2 space-y-1.5 border-t border-border pt-2">
-              {lastSummary.actions.map((action, actionIndex) => {
+              {visibleActions.map((action, actionIndex) => {
                 const unconfirmed = isUnconfirmedGameAction(action)
                 return (
                   <div key={`${action.action}-${action.task}-${actionIndex}`} className="min-w-0">
