@@ -451,7 +451,7 @@ describe('AutomationTasks execution', () => {
     api.fetchSnapshot.mockResolvedValue(ok(snapshot({ lastRun: dailyRun('run-1', 'succeeded', { result: { summary: result } }) })))
     await refreshController()
     expect(stopButton()).toBeNull()
-    expect(container.textContent).toContain('游戏任务 · 成功 1 项 · 跳过 1 项')
+    expect(container.textContent).toContain('游戏任务 · 跳过 1 项')
     await click(container.querySelector<HTMLButtonElement>('[aria-label="展开执行详情"]'))
     expect(container.textContent).toContain('已启动专精训练')
     expect(container.textContent).toContain('主题已设置')
@@ -992,8 +992,9 @@ describe('AutomationTasks execution', () => {
     await renderPage()
 
     expect(container.textContent).toContain('最近执行')
-    expect(container.textContent).toContain('成功 6')
-    expect(container.textContent).toContain('跳过 1')
+    expect(container.textContent).toContain('用时 952 秒')
+    expect(container.textContent).toContain('1 项任务已跳过')
+    expect(container.textContent).not.toContain('成功 6')
     expect(mocks.executeScheduleNow).not.toHaveBeenCalled()
   })
 

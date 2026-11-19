@@ -60,7 +60,7 @@ describe('AutomationExecutionSummary', () => {
       actions: [{ action: 'operprogress', task: '游戏内培养', status: 'success', observed: false, message: '培养进程已结束，游戏结果未确认' }],
     })} runId="run-game" />)
     expect(container.textContent).toContain('培养进程已结束，游戏结果未确认')
-    expect(container.querySelector('[aria-label="游戏结果未确认"]')).not.toBeNull()
+    expect(container.querySelector('[aria-label="游戏结果未确认"]')).toBeNull()
     await act(async () => detailsButton()?.click())
     expect(container.textContent).not.toContain('培养目标已完成')
   })
@@ -85,12 +85,13 @@ describe('AutomationExecutionSummary', () => {
   it('keeps the last summary while a new submission clears the projection', async () => {
     await render(<AutomationExecutionSummary summary={summary()} runId="run-1" />)
     expect(container.textContent).toContain('最近执行')
-    expect(container.textContent).toContain('成功 3')
+    expect(container.textContent).toContain('用时 65 秒')
+    expect(container.textContent).not.toContain('成功 3')
 
     await render(<AutomationExecutionSummary summary={null} runId="run-1" />)
 
     expect(container.textContent).toContain('最近执行')
-    expect(container.textContent).toContain('成功 3')
+    expect(container.textContent).toContain('用时 65 秒')
   })
 
   it('opens failures, preserves a manual collapse, and reopens for a new run', async () => {

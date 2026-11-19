@@ -72,7 +72,7 @@ test('停止中切页、断线重连和刷新都保留同一 Run，旧终态不�
   state.runState = 'stopped'
   await page.evaluate(() => window.dispatchEvent(new Event('focus')))
   await expect(page.getByRole('button', { name: '开始', exact: true })).toBeVisible()
-  await expect(page.getByRole('region', { name: '最近执行结果' })).toContainText('成功 1')
+  await expect(page.getByRole('region', { name: '最近执行结果' })).toContainText('用时 12 秒')
   await navigateTo(page, 'dashboard')
   await expect(page.locator('[data-dashboard-flow-command]').getByText('准备就绪', { exact: true })).toBeVisible()
   await expect(page.getByRole('button', { name: '开始', exact: true })).toBeEnabled()
