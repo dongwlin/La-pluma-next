@@ -27,7 +27,7 @@
 | fight / infrast / recruit 高级设置 | `components/FightAdvancedSettings.tsx` / `components/InfrastAdvancedSettings.tsx` / `components/RecruitAdvancedSettings.tsx` | 各自只渲染对应命令的高级设置内容，参数经 `onUpdateParam` 写回 |
 | startup 连接测试入口 | `components/StartupConnectionTest.tsx` | 只渲染测试/重新测试按钮区域；结果反馈走全局 toast |
 | Select 控件与选项归一化 | `components/AutomationSelectField.tsx` + `components/automationSelectItems.ts` | 统一受控选择器；选项同时接受字符串与 `{ value, label }` |
-| 流程列表、标题栏、页脚与摘要组合 | `components/AutomationTaskFlowPanel.tsx` | 接收只读 Run 投影、排序投影与配置回调；标题栏右侧承载统计与添加任务入口，页脚只保留开始/终止 |
+| 流程列表、标题栏、页脚与摘要组合 | `components/AutomationTaskFlowPanel.tsx` | 接收只读 Run 投影、排序投影与配置回调；标题栏右侧承载统计与添加任务入口，页脚空闲只有开始、提交中显示正在启动、运行中仅显示终止、停止中显示正在终止 |
 | 定时编辑 | `components/AutomationScheduleCard.tsx` | 绑定 `model/automationSchedule.ts`；结果经 `onChange` 交给唯一配置 owner |
 | 通知配置读取、草稿与保存 | `components/NotificationSettings.tsx` + `model/queries.ts` | 独立卡片；读取 `notificationConfigQueryOptions()`；保存成功后 `setQueryData` 回写同一 key；脏态与总开关依赖由卡内持有，测试/保存结果走全局 toast |
 | 最近执行摘要 | `components/AutomationExecutionSummary.tsx` | 只接只读摘要与 run 身份；负责保留最后一份、展开/收起与失败自动展开 |
@@ -76,7 +76,7 @@ AutomationTasks（app-page > app-stack-section > AutomationWorkspace）
       ├─ AutomationTaskFlowPanel（sequence 区域）
       │  ├─ automation-flow-header（标题 + 统计 + AutomationTaskPicker）
       │  ├─ 任务流程列表（拖拽、启用、删除；撤销经 toast）
-      │  ├─ automation-sequence-footer（开始 / 终止）
+      │  ├─ automation-sequence-footer（空闲：开始；提交中：正在启动；运行中：仅终止；停止中：正在终止）
       │  └─ AutomationExecutionSummary
       ├─ automation-task-editor（editor 区域；由 AutomationTaskEditor 组合；同一草稿与执行投影）
       └─ automation-support-column（support 区域）
@@ -109,7 +109,10 @@ AutomationTasks（app-page > app-stack-section > AutomationWorkspace）
   启用开关、删除撤销、任务选择、参数编辑与任务挑选器全部禁用；定时卡与
   通知卡是独立保存单元，不受流程提交锁定。
 - **执行只读。** 流程列表与摘要只消费 `isRunning`/`isStopping`/`isSubmitting`/
-  `taskResults`/`currentStep`/终态摘要；启动仍只由 `submitFlow` 发出一次
+  `taskResults`/`currentStep`/终态摘要；页脚按状态映射：空闲只有「开始」，
+  提交在途显示禁用的「正在启动」，运行中只渲染「终止」且不再渲染运行按钮，
+  停止中同一按钮显示「正在终止」忙碌态。本页点击开始进入运行态后焦点移交到
+  「终止」，接管已有 run 时不抢焦点。启动仍只由 `submitFlow` 发出一次
   `run_daily_flow`，停止仍按控制器持有的 runId。归属按操作标识判定，
   因此概览快捷入口发起的同一次今日流程也能在本页看到进度并停止。
 - **执行摘要不推断完成。** 步间延迟期间 run 仍活动；只有服务端终态摘要或
@@ -354,7 +357,7 @@ AutomationTasks（app-page > app-stack-section > AutomationWorkspace）
    ├─ AutomationTaskFlowPanel
    │  ├─ automation-flow-header（标题 + 统计 + AutomationTaskPicker）
    │  ├─ 任务流程列表（拖拽预览、拖拽公告）
-   │  └─ automation-sequence-footer（开始 / 终止）
+   │  └─ automation-sequence-footer（空闲：开始；提交中：正在启动；运行中：仅终止；停止中：正在终止）
    └─ AutomationTaskEditor（editor 区域；id="automation-task-editor"）
       ├─ 任务配置标题栏 / 序号 / 空态
       └─ 任务卡（automation-task-editor）
