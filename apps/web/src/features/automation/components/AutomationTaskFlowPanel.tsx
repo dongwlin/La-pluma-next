@@ -155,7 +155,8 @@ export default function AutomationTaskFlowPanel({
                     type="button"
                     onClick={() => onRemoveTask(index)}
                     disabled={editingLocked}
-                    className="automation-sequence-delete min-h-11 min-w-11"
+                    aria-hidden={editingLocked || undefined}
+                    className={`automation-sequence-delete min-h-11 min-w-11${editingLocked ? ' is-execution-hidden' : ''}`}
                     title="删除任务"
                     aria-label={`删除${task.name}`}
                   >

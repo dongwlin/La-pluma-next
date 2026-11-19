@@ -601,6 +601,57 @@ describe('AutomationTasks execution', () => {
     await flush()
   })
 
+  it('hides flow delete actions while submitting or running and restores them when idle', async () => {
+    const deleteButtons = () => [...container.querySelectorAll<HTMLButtonElement>('[aria-label^="删除"]')]
+    const enabledSwitches = () => [...container.querySelectorAll('[role="switch"][aria-label$="启用状态"]')]
+
+    useIdentity()
+    await renderPage()
+    const submission = deferred<ApiResponse<Record<string, unknown>>>()
+    mocks.executeScheduleNow.mockReturnValue(submission.promise)
+
+    await click(runButton())
+
+    expect(deleteButtons().length).toBeGreaterThan(0)
+    expect(deleteButtons().every(isDisabled)).toBe(true)
+    expect(deleteButtons().every(button => button.getAttribute('aria-hidden') === 'true')).toBe(true)
+    expect(deleteButtons().every(button => button.classList.contains('is-execution-hidden'))).toBe(true)
+    expect(enabledSwitches().length).toBeGreaterThan(0)
+    expect(enabledSwitches().every(isDisabled)).toBe(true)
+    expect(enabledSwitches().every(element => element.getAttribute('aria-hidden') === null)).toBe(true)
+
+    api.fetchSnapshot.mockResolvedValue(ok(activeSnapshot()))
+    await act(async () => submission.resolve(ok({
+      accepted: true,
+      runId: 'run-1',
+      run: dailyRun('run-1', 'running'),
+    })))
+    await flush()
+
+    expect(stopButton()).not.toBeNull()
+    expect(runningItems()).toHaveLength(1)
+    expect(deleteButtons().length).toBeGreaterThan(0)
+    expect(deleteButtons().every(isDisabled)).toBe(true)
+    expect(deleteButtons().every(button => button.getAttribute('aria-hidden') === 'true')).toBe(true)
+    expect(deleteButtons().every(button => button.classList.contains('is-execution-hidden'))).toBe(true)
+    expect(enabledSwitches().length).toBeGreaterThan(0)
+    expect(enabledSwitches().every(isDisabled)).toBe(true)
+    expect(enabledSwitches().every(element => element.getAttribute('aria-hidden') === null)).toBe(true)
+
+    api.fetchSnapshot.mockResolvedValue(ok(terminalSnapshot('succeeded', {
+      message: '任务流程执行完成',
+      summary: summary(['success', 'success', 'success']),
+    })))
+    await refreshController()
+
+    expect(stopButton()).toBeNull()
+    expect(runButton()?.textContent).toContain('开始')
+    expect(deleteButtons().length).toBeGreaterThan(0)
+    expect(deleteButtons().every(button => button.getAttribute('aria-hidden') === null)).toBe(true)
+    expect(deleteButtons().every(button => !button.classList.contains('is-execution-hidden'))).toBe(true)
+    expect(deleteButtons().every(button => !isDisabled(button))).toBe(true)
+  })
+
   it('keeps the deleted-task restore action from editing the flow during a run', async () => {
     useIdentity()
     await renderPage()

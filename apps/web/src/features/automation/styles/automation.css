@@ -373,7 +373,13 @@
   .automation-sequence-delete {
     width: 1.75rem;
     height: 1.75rem;
-    transition: background 160ms ease, color 160ms ease;
+    transition: background 160ms ease, color 160ms ease, opacity 160ms ease, transform 160ms ease;
+  }
+
+  .automation-sequence-delete.is-execution-hidden {
+    opacity: 0;
+    transform: scale(0.82);
+    pointer-events: none;
   }
 
   .automation-sequence-delete:hover {
@@ -468,6 +474,10 @@
   @media (prefers-reduced-motion: reduce) {
     .automation-sequence-progress {
       animation: none;
+    }
+
+    .automation-sequence-delete {
+      transition: none;
     }
   }
 
