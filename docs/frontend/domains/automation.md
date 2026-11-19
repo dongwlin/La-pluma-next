@@ -332,7 +332,7 @@ browser releases pointer capture”用例固定。性能复测采用[性能采�
 | 流程列表、拖拽排序、页脚与执行摘要 | `components/AutomationTaskFlowPanel.tsx` + `hooks/useTaskFlowSorting.ts` | 只接只读 Run 投影；标题栏承载添加任务入口，排序预览与编辑器共享 |
 | 定时编辑 | `components/AutomationScheduleCard.tsx` | 绑定定时纯模型，经工作区唯一配置 owner 写入 |
 | 通知卡 | `components/NotificationSettings.tsx` | 独立卡片；Query、草稿与脏态归卡内，结果反馈走全局 toast |
-| 关卡列表编辑、次数步进、置顶、增删行 | `components/AutomationStageEditor.tsx` | 受控面板：参数经 `onUpdate(index, 'stages', value)` 写回工作区 |
+| 关卡列表编辑、内联次数步进、置顶、增删行 | `components/AutomationStageEditor.tsx` | 受控面板：参数经 `onUpdate(index, 'stages', value)` 写回工作区；智能行只读，步进与删除位以空白占位保持列对齐 |
 | 智能养成加入/移除与在途标记 | `components/AutomationStageEditor.tsx` + `model/stageEditing.ts` | 读取 `training-queue`、调用 `generateTrainingPlan({ mode: 'current' })`；合成规则在纯模型 |
 | 任务挑选菜单 | `components/AutomationTaskPicker.tsx` | 标题栏右侧的单个 `+` 图标按钮；菜单开关由组件持有，外部 pointerdown、Escape 与回焦交给 Base UI DropdownMenu，编辑锁态收起仍由面板派生 |
 | 可添加任务目录 | `components/automationTaskCatalog.tsx` + `model/automationTaskDefaults.ts` | 默认值模型负责名称、描述、`taskType` 与默认参数；目录只组合图标与参数字段，不读取配置/Query/执行状态 |
@@ -393,7 +393,7 @@ AutomationTasks（app-page > app-stack-section > AutomationWorkspace）
 | --- | --- |
 | 默认列表 | 草稿缺失时返回新的空白行；显式空数组保持为空，由“添加关卡”继续输入 |
 | 分组 | `splitStagesForEditing` 输出 置顶 → 智能养成 → 普通 → 空白；`flattenStagesForEditing` 按同序拼接；同时带 `pinned` 与 `smart` 的异常形状只归入置顶 |
-| 统计 | `countConfiguredStages` 只数有关卡名的行；`findTrainingOperators` 取最后一个带干员信息的智能关卡 |
+| 养成干员 | `findTrainingOperators` 取最后一个带干员信息的智能关卡 |
 | 置顶 | 字符串行升级为 `{ stage, times: '', pinned: true }`；对象行切换 `pinned`；智能关卡与缺失索引返回原引用 |
 | 改名/次数 | 字符串行升级为对象形状；缺失索引返回原引用 |
 | 次数步进 | 从 `Number(times) || 0` 起算，最低 0；智能关卡不参与 |
@@ -402,7 +402,7 @@ AutomationTasks（app-page > app-stack-section > AutomationWorkspace）
 | 智能养成插入 | 置顶之后、普通关卡之前插入生成项，再交给 `updateTaskFlowParams` 的 `orderStagesForEditing` 统一顺序 |
 | 生成项 | 沿用计划的 `stage` 与 `totalTimes`，写 `smart: true` 与本次计划的干员名列表 |
 
-`AutomationStageEditor` 的 `updateStages` 只在模型返回新数组时调用 `onUpdate`；无效索引与智能关卡的不可达编辑不会产生配置写入。智能养成失败路径保持原文案与顺序：
+`AutomationStageEditor` 的 `updateStages` 只在模型返回新数组时调用 `onUpdate`；无效索引与智能关卡的不可达编辑不会产生配置写入。标题行只保留「关卡计划」与说明入口，不显示关卡计数；次数输入复用数值字段的内联步进，`次` 位于步进组右侧。所有行保持「置顶/图标位 → 名称 → 次数 → 删除位」同列：智能行不渲染步进与删除按钮，分别以固定宽度输入框的右侧留白与 `aria-hidden` 空白占位保持对齐。智能养成失败路径保持原文案与顺序：
 
 - 养成队列为空/读取失败 → “智能养成队列为空，请先添加干员”；
 - 生成计划失败 → “生成刷取计划失败”；
