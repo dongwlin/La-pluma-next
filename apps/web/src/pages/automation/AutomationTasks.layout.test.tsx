@@ -932,8 +932,9 @@ describe('AutomationTasks layout surfaces', () => {
 
     const stageFieldset = findStageEditor()
     expect(stageFieldset).toBeDefined()
-    expect(stageFieldset?.textContent).toContain('关卡计划')
-    expect(stageFieldset?.textContent).toContain('2 个关卡')
+    const stageTitle = stageFieldset?.querySelector('.automation-stage-editor-title')
+    expect(stageTitle?.textContent).toContain('关卡计划')
+    expect(stageTitle?.textContent).not.toContain('个关卡')
     const stageHint = stageFieldset?.querySelector<HTMLButtonElement>('button[aria-label="关卡计划说明"]')
     expect(stageHint).not.toBeNull()
 

@@ -1058,15 +1058,6 @@
     line-height: 1.25rem;
   }
 
-  .automation-stage-editor-title span {
-    overflow: hidden;
-    color: var(--tertiary-foreground);
-    font-size: 0.6875rem;
-    line-height: 1rem;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-
   .automation-stage-editor-title button {
     align-self: center;
   }
