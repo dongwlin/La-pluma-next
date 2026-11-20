@@ -188,32 +188,33 @@ export default function CombatCopilotDiscoveryDialog({ search, children }: Comba
       title="发现作业"
       size="4xl"
       layers={children}
+      toolbar={(
+        <CombatCopilotSearchBar
+          keyword={keyword}
+          level={level}
+          order={order}
+          operatorSelection={operatorSelection}
+          stages={search.stages}
+          stagesLoading={search.stagesLoading}
+          stagesError={search.stagesError}
+          matchEnabled={match.enabled}
+          operatorFilterEnabled={operatorFilterEnabled}
+          view={view}
+          searching={search.searching}
+          onKeywordChange={handleKeywordChange}
+          onSubmit={handleSubmit}
+          onLevelChange={handleLevelChange}
+          onOrderChange={handleOrderChange}
+          onOpenOperatorFilter={() => setOperatorFilterOpen(true)}
+          onToggleOperatorFilter={handleToggleOperatorFilter}
+          onOpenMatch={() => setMatchOpen(true)}
+          onViewChange={handleViewChange}
+          onRetryData={search.onRetryData}
+        />
+      )}
     >
       <DialogBody onScroll={handleBodyScroll}>
         <div className="combat-copilot-discovery">
-          <CombatCopilotSearchBar
-            keyword={keyword}
-            level={level}
-            order={order}
-            operatorSelection={operatorSelection}
-            stages={search.stages}
-            stagesLoading={search.stagesLoading}
-            stagesError={search.stagesError}
-            matchEnabled={match.enabled}
-            operatorFilterEnabled={operatorFilterEnabled}
-            view={view}
-            searching={search.searching}
-            onKeywordChange={handleKeywordChange}
-            onSubmit={handleSubmit}
-            onLevelChange={handleLevelChange}
-            onOrderChange={handleOrderChange}
-            onOpenOperatorFilter={() => setOperatorFilterOpen(true)}
-            onToggleOperatorFilter={handleToggleOperatorFilter}
-            onOpenMatch={() => setMatchOpen(true)}
-            onViewChange={handleViewChange}
-            onRetryData={search.onRetryData}
-          />
-
           {search.result && !search.error && (
             <div className="combat-copilot-discovery-summary">
               <span>共 {total} 条</span>

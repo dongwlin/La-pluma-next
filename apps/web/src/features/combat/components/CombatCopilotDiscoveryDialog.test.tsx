@@ -293,6 +293,22 @@ describe('CombatCopilotDiscoveryDialog', () => {
     })
   })
 
+  it('keeps the search controls in a fixed toolbar above the scrollable results', async () => {
+    await renderDialog()
+
+    const dialog = findDialogByTitle('发现作业')
+    expect(dialog).not.toBeNull()
+    const toolbar = dialog!.querySelector<HTMLElement>('[data-slot="dialog-toolbar"]')
+    expect(toolbar).not.toBeNull()
+    expect(toolbar!.querySelector('[aria-label="作业搜索"]')).not.toBeNull()
+    expect(toolbar!.contains(keywordInput())).toBe(true)
+
+    const body = discoveryBody()
+    expect(body.querySelector('[aria-label="作业搜索"]')).toBeNull()
+    expect(body.textContent).toContain('共 3 条')
+    expect(toolbar!.textContent).not.toContain('共 3 条')
+  })
+
   it('cancels in-flight searches while typing and submits on Enter', async () => {
     const search = await renderDialog()
 

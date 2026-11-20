@@ -431,7 +431,7 @@ import { DialogBody, DialogFrame, DialogFrameFooter } from '@/shared/components'
 </DialogFrame>
 ```
 
-`DialogFrame` 的 props：`open`、`onOpenChange`、`title`、`description`、`children`、`footer`、`layers`、`size`（`md` 为默认，另有 `lg`、`4xl`）、`closeDisabled`、`disablePointerDismissal`、`id`、`className`。`closeDisabled` 禁用标题栏关闭按钮，并拒绝 Escape、遮罩点击与关闭请求；保存或提交等待期间使用。`layers` 承载与对话框同一 Base UI root 的嵌套弹层（如发现作业中的详情抽屉），以保持 Escape 顺序与层级关系。`DialogBody` 是唯一可滚动内容区，透传原生 `div` 属性（如 `onScroll`）；`DialogFrameFooter` 透传 `div` 属性，`align` 为 `end`（默认）或 `between`。
+`DialogFrame` 的 props：`open`、`onOpenChange`、`title`、`description`、`toolbar`、`children`、`footer`、`layers`、`size`（`md` 为默认，另有 `lg`、`4xl`）、`closeDisabled`、`disablePointerDismissal`、`id`、`className`。`toolbar` 在标题栏与可滚动内容之间渲染固定工具栏（`data-slot="dialog-toolbar"`），不随 `DialogBody` 滚动；发现作业用它固定搜索与筛选条。`closeDisabled` 禁用标题栏关闭按钮，并拒绝 Escape、遮罩点击与关闭请求；保存或提交等待期间使用。`layers` 承载与对话框同一 Base UI root 的嵌套弹层（如发现作业中的详情抽屉），以保持 Escape 顺序与层级关系。`DialogBody` 是唯一可滚动内容区，透传原生 `div` 属性（如 `onScroll`）；`DialogFrameFooter` 透传 `div` 属性，`align` 为 `end`（默认）或 `between`。
 
 ---
 
