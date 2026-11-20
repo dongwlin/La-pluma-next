@@ -87,6 +87,7 @@ import type {
 } from '../types'
 import CombatCopilotTaskPanel from './CombatCopilotTaskPanel'
 import CombatExecutionProgressPanel from './CombatExecutionProgressPanel'
+import CombatExecutionStatusPanel from './CombatExecutionStatusPanel'
 import CombatModeTabs from './CombatModeTabs'
 import CombatSpecialTaskPanel from './CombatSpecialTaskPanel'
 import { getCombatTask } from './CombatTaskCatalog'
@@ -277,6 +278,7 @@ export default function CombatWorkspace() {
     setRun,
     queueRun,
     run: trackedRun,
+    terminalResult,
     submitTask,
     submitSet,
     submitQueue,
@@ -371,6 +373,23 @@ export default function CombatWorkspace() {
     () => deriveExecutionProgress(trackedRun, setRun, queueRun),
     [trackedRun, setRun, queueRun],
   )
+
+  const waitingEntry = setView.waitingEntry
+  const waiting = waitingEntry
+    ? {
+        kind: 'set' as const,
+        label: setView.waitingCopilot?.stage
+          || setView.waitingCopilot?.name
+          || waitingEntry.stage
+          || `作业 ${(setView.waitingEntryIndex ?? 0) + 1}`,
+      }
+    : queueRun?.waitingForNext
+      ? {
+          kind: 'queue' as const,
+          label: queueRun.nextEntry?.stage || queueRun.name || '',
+          canSkip: true,
+        }
+      : null
 
   const queueItemErrors = useMemo(() => {
     const run = setView.activeSetRun
@@ -1124,6 +1143,23 @@ export default function CombatWorkspace() {
           />
 
           <CombatExecutionProgressPanel progress={executionProgress} />
+
+          <CombatExecutionStatusPanel
+            waiting={waiting}
+            showWaiting={activeCombatMode !== 'copilot'}
+            isAutoStopping={isAutoStopping}
+            terminalResult={terminalResult}
+            isRunning={isRunning}
+            isContinuing={isContinuing}
+            isSkipping={isSkipping}
+            isStopping={isStopping}
+            automationAvailable={automationAvailable}
+            unavailableMessage={unavailableMessage}
+            onStartNext={() => void handleStartNextCopilot()}
+            onContinueQueue={() => void handleContinueQueue()}
+            onSkipQueueEntry={() => void handleSkipQueueEntry()}
+            onStop={() => void handleStopTask()}
+          />
 
           <div className="app-stack-section">
             <SegmentedTabPanel value="copilot" id="combat-mode-panel-copilot">

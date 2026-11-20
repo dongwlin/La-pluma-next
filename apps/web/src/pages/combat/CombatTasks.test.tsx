@@ -1493,6 +1493,123 @@ describe('CombatTasks execution', () => {
     expect(container.textContent).not.toContain('下一关')
     expect(buttonByText('终止执行')).toBeDefined()
     expect(container.textContent).not.toContain('执行中')
+
+    await click(modeTab('保全派驻')!)
+
+    expect(buttonByText('开始下一关')).toBeUndefined()
+    expect(container.textContent).not.toContain('下一关')
+  })
+
+  it('continues a waiting manual set from special task tabs without duplicating controls', async () => {
+    useIdentity({ runId: 'run-set-cross-tab', operationId: 'run_copilot_set', scope: 'combat' })
+    const waiting = setRun('run-set-cross-tab', 'waiting', {
+      progress: setProgress(
+        [planEntry(0, 'success'), planEntry(1, 'pending')],
+        { mode: 'manual', phase: 'waiting_for_next', nextEntry: planEntry(1, 'pending'), currentEntry: null },
+      ),
+    })
+    api.fetchSnapshot.mockResolvedValue(ok(runSnapshot({ activeRuns: [waiting] })))
+    api.fetchRun.mockResolvedValue(ok(waiting))
+    startController()
+    await flush()
+    await renderComponent()
+    await previewSet()
+    await flush()
+
+    expect(buttonsByText('开始下一关')).toHaveLength(1)
+
+    await click(modeTab('保全派驻')!)
+
+    expect(buttonsByText('开始下一关')).toHaveLength(1)
+    expect(container.textContent).toContain('等待继续下一关')
+
+    await click(modeTab('悖论模拟')!)
+
+    expect(buttonsByText('开始下一关')).toHaveLength(1)
+
+    await click(buttonByText('开始下一关')!)
+
+    expect(mocks.continueCopilotSet).toHaveBeenCalledWith('run-set-cross-tab', { waitForCompletion: false })
+
+    await click(modeTab('普通作业')!)
+
+    expect(buttonsByText('开始下一关')).toHaveLength(1)
+    expect(container.textContent).not.toContain('等待继续下一关')
+  })
+
+  it('continues or skips a waiting queue from a special task tab', async () => {
+    seedCopilotQueue([
+      { id: 'queue-a', source: 'link', uri: 'prts://101', title: '链接作业', addedAt: 1 },
+      { id: 'queue-b', source: 'link', uri: 'prts://102', title: '第二个作业', addedAt: 2 },
+    ])
+    useIdentity({ runId: 'run-queue-special', operationId: 'run_copilot_queue', scope: 'combat' })
+    const waiting = queueRun('run-queue-special', 'waiting', {
+      progress: queueProgress(
+        [queueEntry('queue-a', 0, 'success'), queueEntry('queue-b', 1, 'pending')],
+        {
+          mode: 'manual',
+          phase: 'waiting_for_next',
+          nextEntry: { clientId: 'queue-b', itemIndex: 1, stage: 'QUEUE-2', mode: 'normal' },
+        },
+      ),
+    })
+    api.fetchSnapshot.mockResolvedValue(ok(runSnapshot({ activeRuns: [waiting] })))
+    api.fetchRun.mockResolvedValue(ok(waiting))
+    startController()
+    await flush()
+    await renderComponent()
+
+    await click(modeTab('保全派驻')!)
+
+    expect(container.textContent).toContain('等待继续下一项')
+    expect(buttonsByText('开始下一项')).toHaveLength(1)
+
+    await click(buttonByText('跳过此项')!)
+    expect(mocks.skipCopilotQueueEntry).toHaveBeenCalledWith('run-queue-special')
+
+    await click(buttonByText('开始下一项')!)
+    expect(mocks.continueCopilotQueue).toHaveBeenCalledWith('run-queue-special', false)
+
+    await click(modeTab('普通作业')!)
+
+    expect(buttonsByText('开始下一项')).toHaveLength(1)
+    expect(container.textContent).not.toContain('等待继续下一项')
+  })
+
+  it('keeps the terminal result visible after switching to a special task tab', async () => {
+    useIdentity({ runId: 'run-set-result', operationId: 'run_copilot_set', scope: 'combat' })
+    const running = setRun('run-set-result', 'running', {
+      progress: setProgress([planEntry(0, 'running')]),
+    })
+    api.fetchSnapshot.mockResolvedValue(ok(runSnapshot({ activeRuns: [running] })))
+    api.fetchRun.mockResolvedValue(ok(running))
+    startController()
+    await flush()
+    await renderComponent()
+    await previewSet()
+    await flush()
+
+    const terminal = setRun('run-set-result', 'succeeded', {
+      result: setResult([planEntry(0, 'success')]),
+    })
+    api.fetchSnapshot.mockResolvedValue(ok(runSnapshot({ lastRun: terminal })))
+    api.fetchRun.mockResolvedValue(ok(terminal))
+    await refreshController()
+
+    const resultPanel = () => container.querySelector('[aria-label="本次执行结果"]')
+    expect(mocks.notify).toHaveBeenCalledWith(
+      '作业集执行完成 (1/1 成功)',
+      'success',
+      { id: 'execution' },
+    )
+    expect(resultPanel()?.getAttribute('role')).toBe('status')
+    expect(resultPanel()?.textContent).toContain('作业集执行完成 (1/1 成功)')
+
+    await click(modeTab('保全派驻')!)
+
+    expect(resultPanel()?.textContent).toContain('执行成功')
+    expect(resultPanel()?.textContent).toContain('作业集执行完成 (1/1 成功)')
+    expect(resultPanel()?.querySelectorAll('button')).toHaveLength(0)
   })
 
   it('runs a single task as a tracked run_task without waiting for completion', async () => {
