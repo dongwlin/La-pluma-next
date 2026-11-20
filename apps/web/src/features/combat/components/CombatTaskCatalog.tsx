@@ -3,7 +3,7 @@ import type { CombatMode, CombatTask } from '../types'
 export const COMBAT_TASKS: Record<CombatMode, CombatTask> = {
   copilot: {
     id: 'copilot',
-    name: '自动战斗作业',
+    name: '普通作业',
     command: 'copilot',
     placeholder: 'prts://1234、作业站链接或本地文件路径',
     hasAdvanced: true,
@@ -30,15 +30,15 @@ export const COMBAT_MODE_OPTIONS: ReadonlyArray<{
 }> = [
   {
     id: 'copilot',
-    title: '普通作业',
+    title: COMBAT_TASKS.copilot.name,
   },
   {
     id: 'ssscopilot',
-    title: '保全派驻',
+    title: COMBAT_TASKS.ssscopilot.name,
   },
   {
     id: 'paradoxcopilot',
-    title: '悖论模拟',
+    title: COMBAT_TASKS.paradoxcopilot.name,
   },
 ]
 

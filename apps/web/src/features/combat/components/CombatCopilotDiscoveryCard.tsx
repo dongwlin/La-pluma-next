@@ -6,6 +6,7 @@ import {
   COPILOT_DISCOVERY_OPERATOR_LIMIT,
   COPILOT_MATCH_MODE_LABELS,
   describeCopilotStage,
+  formatCopilotHotScore,
   formatCopilotUploadTime,
 } from './copilotDiscoveryPresentation'
 
@@ -96,7 +97,7 @@ export default function CombatCopilotDiscoveryCard({
         <span className="combat-copilot-discovery-card-meta">
           <span>作者 {item.uploader?.trim() || '未知'}</span>
           <span>浏览 {item.views}</span>
-          <span>热度 {item.hotScore}</span>
+          <span>热度 {formatCopilotHotScore(item.hotScore)}</span>
           {uploadedAt && <span>上传 {uploadedAt}</span>}
           {unrecognized && <span className="combat-copilot-discovery-card-unmatched">未识别</span>}
         </span>

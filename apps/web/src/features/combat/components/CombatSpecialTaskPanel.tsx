@@ -59,7 +59,7 @@ export default function CombatSpecialTaskPanel({
                 </svg>
                 <span>作业输入</span>
               </h5>
-              <span className={`shrink-0 rounded-md px-2 py-1 text-[11px] ${isSss && taskUris.length > 1 ? 'bg-rose-500/10 text-rose-500 dark:text-rose-300' : 'brand-chip'}`}>
+              <span className={`shrink-0 rounded-md px-2 py-1 text-[11px] ${isSss && taskUris.length > 1 ? 'bg-warning/10 text-warning' : 'brand-chip'}`}>
                 {isSss ? `${taskUris.length}/1 URI` : `${taskUris.length} 个 URI`}
               </span>
             </div>
@@ -84,7 +84,7 @@ export default function CombatSpecialTaskPanel({
               className="app-native-control w-full resize-none rounded-lg px-4 py-3 font-mono text-sm font-medium text-foreground control-surface focus:outline-hidden focus:ring-2 focus:ring-primary-soft"
             />
             {isSss && taskUris.length > 1 && (
-              <div className="mt-2 rounded-lg border border-rose-400/30 bg-rose-500/10 px-3 py-2 text-xs text-rose-500 dark:text-rose-300">
+              <div className="mt-2 rounded-lg border border-warning/30 bg-warning/10 px-3 py-2 text-xs text-warning">
                 保全派驻当前只会执行一个 SSS 作业 URI。
               </div>
             )}
@@ -111,7 +111,7 @@ export default function CombatSpecialTaskPanel({
               <div className="divide-y divide-border overflow-hidden rounded-lg border border-border bg-card text-xs">
                 <div className="flex items-center justify-between px-3 py-2">
                   <span className="text-tertiary">作业数量</span>
-                  <span className={taskUris.length > 1 ? 'text-rose-500 dark:text-rose-300' : 'text-foreground'}>{taskUris.length || 0}</span>
+                  <span className={taskUris.length > 1 ? 'text-warning' : 'text-foreground'}>{taskUris.length || 0}</span>
                 </div>
                 <div className="flex items-center justify-between px-3 py-2">
                   <span className="text-tertiary">循环次数</span>

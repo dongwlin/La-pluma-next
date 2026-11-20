@@ -774,6 +774,15 @@ describe('CombatTasks execution', () => {
     vi.restoreAllMocks()
   })
 
+  it('labels the copilot task and its tab as 普通作业', async () => {
+    await renderComponent()
+
+    expect(modeTab('普通作业')?.textContent).toBe('普通作业')
+    const headings = Array.from(container.querySelectorAll<HTMLElement>('h1, h2, h3, h4, h5, h6'))
+    expect(headings.some(heading => heading.textContent?.trim() === '普通作业')).toBe(true)
+    expect(container.textContent).not.toContain('自动战斗作业')
+  })
+
   it('submits one idempotent continuous set run for the default cli mode', async () => {
     const submission = deferred<ApiResponse>()
     mocks.executeCopilotSetPlan.mockReturnValueOnce(submission.promise)
@@ -1626,7 +1635,7 @@ describe('CombatTasks execution', () => {
       expect.arrayContaining(['prts://1234']),
       null,
       null,
-      '自动战斗作业',
+      '普通作业',
       'combat',
       false,
       { idempotencyKey: expect.stringMatching(/^run_task-/) },

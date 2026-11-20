@@ -110,6 +110,23 @@ describe('CombatCopilotDiscoveryCard', () => {
     await card.unmount()
   })
 
+  it('shows the formatted hot score in the card meta', async () => {
+    const card = await renderCard()
+
+    expect(card.container.textContent).toMatch(/热度 98(?!\d)/)
+    await card.unmount()
+
+    const decimalCard = await renderCard({ hotScore: 4.5 })
+
+    expect(decimalCard.container.textContent).toMatch(/热度 4\.5(?!\d)/)
+    await decimalCard.unmount()
+
+    const noisyCard = await renderCard({ hotScore: 16853.43055304006 })
+
+    expect(noisyCard.container.textContent).toMatch(/热度 16853\.4(?!\d)/)
+    await noisyCard.unmount()
+  })
+
   it('labels owned and missing operators in the card chips', async () => {
     const card = await renderCard()
 

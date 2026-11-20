@@ -18,14 +18,14 @@
 | --- | --- | --- |
 | 页面壳与工作区组合 | `pages/combat/CombatTasks.tsx` | 只渲染 `app-page`/`app-stack-section` 与工作区；不调用搜索/预览/执行 hook，不持有请求生命周期 |
 | 模式、配置订阅、预览/搜索入口、执行订阅、作业集选择、队列实例、同步反馈与重置弹层 | `features/combat/components/CombatWorkspace.tsx` | 跨面板唯一容器；`activeCombatMode`、`selectedCopilotIndexes`、`useCopilotQueue` 实例与面板会话存储在这里创建 |
-| 任务目录与模式展示项 | `features/combat/components/CombatTaskCatalog.tsx` | 任务条目的名称、命令、占位与高级字段标记，以及模式展示项的标题与图标；不读取配置/Query/执行状态 |
+| 任务目录与模式展示项 | `features/combat/components/CombatTaskCatalog.tsx` | 任务条目的名称、命令、占位与高级字段标记，以及模式展示项的标题与图标；模式标题由 `COMBAT_TASKS[id].name` 派生，普通作业的页签与卡片标题统一为「普通作业」；`taskName` 只是展示字符串，改名不迁移进行中/历史 Run 的旧文案；不读取配置/Query/执行状态 |
 | 模式分段控件的键盘与高亮 | `features/combat/components/CombatModeTabs.tsx` | 组合共享 `SegmentedTabNav`：tablist/tab 语义、方向键移动焦点、Enter/Space 激活与流体高亮 |
 | 执行设置、编队/突袭/作业集模式与高级字段 | `components/CombatSettingsPanel.tsx`、`components/CombatAdvancedFields.tsx` | 受控表单；选项表来自 `model/combatCommands.ts`。单作业且队列为空时隐藏只对队列/作业集生效的「执行方式」与「队列策略」，隐藏不改变配置值。 |
 | 作业来源栏（链接输入、预览、JSON 导入、识别方式、发现与说明） | `components/CombatCopilotSourceBar.tsx` + `components/CombatCopilotInputPanel.tsx` | 输入值来自配置草稿；JSON 导入按钮位于链接输入框内、识别方式下拉左侧，文件选择与从文件管理器复制后粘贴的 JSON 文件走同一上传通道；识别方式保存在面板会话存储；“发现”只打开独立弹窗，不在来源栏内嵌搜索 |
 | 发现作业弹窗（关键词、关卡、干员、排序、视图与结果卡片） | `components/CombatCopilotDiscoveryDialog.tsx` + `CombatCopilotSearchBar.tsx`、`CombatCopilotDiscoveryCard.tsx`、`CombatCopilotStageSelect.tsx` | 工作区在页面挂载时按已保存的干员偏好后台预取默认热度列表并缓存；打开弹窗先展示缓存，再在后台刷新，刷新不显示 loading、不阻塞输入；关键词/关卡/排序每次打开重置，干员包含/排除、匹配设置与视图按界面偏好恢复；请求统一经 `normalizeCopilotSearchRequest`，关卡/干员/排序变化立即重搜，视图与匹配模式只影响本地展示；关键词输入框在有关键词时显示右侧清除按钮，清空后焦点回到输入框；整张卡片可点击打开该条目的详情预览，不改写主输入，也不标记“已选中”；搜索在途优先显示搜索占位，显式搜索或默认列表读取失败时在弹窗内显示错误与「重试」，不再回退到旧结果、默认热度列表或「暂无作业」空态 |
 | 干员包含/排除与匹配设置 | `components/CombatCopilotOperatorFilterDialog.tsx`、`components/CombatCopilotMatchDialog.tsx` + `model/operatorFilter.ts` | 包含/排除互斥，选项来自识别快照的已拥有/未拥有干员并支持中文名、全拼与首字母；包含区按已拥有 + 练度降序、排除区按未拥有 + 练度升序（先精英等级再干员等级），选项区最多三行并随滚动自动追加；干员按钮内的电源开关可临时停用筛选而不清空选择；“记住筛选结果”决定下次是否恢复选择（关闭时只保留开关状态）；匹配是客户端过滤，服务端 `match` 缺失时保留卡片并标注未识别；持有快照读取中或失败时，结果卡片统一标记「拥有状态未知」而不是「未拥有」，匹配弹窗对应显示加载或读取失败与重试 |
 | 关卡目录与持有干员快照 | `model/queries.ts`（`copilotStageCatalogQueryOptions`）+ `game-data`（`operBoxQueryOptions`） | 工作区在发现弹窗首次打开时按需读取，弹窗只消费投影；不在弹窗内另建数据源；持有干员投影同时提供加载/失败状态，失败时卡片标记未知并可重试 |
-| 普通搜索与悖论搜索 | `hooks/useCopilotSearch.ts`、`components/CombatParadoxSearchPanel.tsx` | 普通搜索请求、代次与取消由工作区 hook 持有；悖论干员搜索词在面板侧；结果与推荐接线由工作区提供 |
+| 普通搜索与悖论搜索 | `hooks/useCopilotSearch.ts`、`components/CombatParadoxSearchPanel.tsx` | 普通搜索请求、代次与取消由工作区 hook 持有；悖论干员搜索词在面板侧；悖论结果一次渲染服务端返回的全部条目（最多 10 条），列表、标题与 Toast 数量一致，不再截断 6 条；结果与发现卡统一显示格式化后的「热度 X」，不换算星级；结果与推荐接线由工作区提供 |
 | 本次执行的条目位置、当前关卡、执行模式与已用时 | `components/CombatExecutionProgressPanel.tsx` | 只渲染 `deriveExecutionProgress`；不呈现运行状态、停止入口、逐项结果或计划计数 |
 | 页面级执行状态区（跨 tab 等待续跑与终态结果） | `components/CombatExecutionStatusPanel.tsx` | 只渲染工作区投影：等待区仅在保全派驻/悖论模拟 tab 提供继续/跳过/终止，普通作业 tab 仍由作业卡与队列面板提供；终态结果跨 tab 常驻，`role="status"`，不新建执行状态、Run 身份或终态契约 |
 | 作业队列（唯一列表：勾选、排序、删除、清空、等待续跑/跳过/重试入口） | `components/CombatCopilotQueuePanel.tsx` | 只渲染 `CombatCopilotQueueProjection`；行主体打开详情层；不持有第二份队列模型 |
@@ -33,7 +33,7 @@
 | 队列 Run 投影 | `model/copilotQueueRun.ts` | 从 `run.progress` 与 `run.result.summary` 读取 `clientId` 状态、下一项、失败原因与计数；不新建执行身份 |
 | 作业集摘要（续跑目标、下一关、计数与失败原因） | `components/CombatCopilotSetPanel.tsx`（内部 `CombatCopilotQueueSummary`） | 作业集预览时在详情层内渲染 |
 | 作业详情层 | `components/CombatCopilotDetailLayer.tsx` + `model/copilotDetail.ts` | 普通作业预览、作业集摘要和队列行共用详情层。桌面非模态抽屉，手机 Sheet；目标未就绪时先渲染抽屉壳与加载态 |
-| 保全派驻 / 悖论模拟卡片 | `components/CombatSpecialTaskPanel.tsx` | 输入、URI 计数、高级字段、搜索与概览；不创建执行状态 |
+| 保全派驻 / 悖论模拟卡片 | `components/CombatSpecialTaskPanel.tsx` | 输入、URI 计数、高级字段、搜索与概览；保全派驻只接受单 URI，多 URI 以 warning 语义提示，不按破坏性错误呈现；不创建执行状态 |
 | 卡片头部与运行/停止按钮 | `components/CombatTaskHeading.tsx` | 共享两种卡片的标题与执行投影；普通作业卡可在执行按钮下方显示队列执行目标提示 |
 | 作业集视图派生 | `model/copilotSetView.ts` | 纯模型：当前 Run 归属、按模式判定完成、待执行求差、续跑目标与下一关 |
 | 面板会话状态 | `model/panelState.ts` + `hooks/usePanelState.ts` | 工作区创建、面板订阅；页面卸载时销毁 |
