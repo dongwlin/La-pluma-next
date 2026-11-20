@@ -59,6 +59,8 @@ const mocks = vi.hoisted(() => ({
 
 const renderCounts = vi.hoisted(() => ({ setPanel: 0 }))
 
+const availability = vi.hoisted(() => ({ available: true, message: '' }))
+
 vi.mock('framer-motion', async () => {
   const React = await import('react')
   type MotionTestProps = Record<string, unknown> & { children?: ReactNode }
@@ -132,7 +134,10 @@ vi.mock('@/features/game-data/api', async () => {
 })
 
 vi.mock('@/features/runtime-status', () => ({
-  useAutomationAvailability: () => ({ isAvailable: true, unavailableMessage: '' }),
+  useAutomationAvailability: () => ({
+    isAvailable: availability.available,
+    unavailableMessage: availability.message,
+  }),
 }))
 
 vi.mock('@/shared/notifications', () => ({
@@ -707,8 +712,13 @@ const seedCopilotQueue = (entries: Array<Record<string, unknown>>) => {
 const buttonByAriaLabel = (label: string) => Array.from(document.querySelectorAll('button'))
   .find(button => button.getAttribute('aria-label') === label) as HTMLButtonElement | undefined
 
+const checkboxByAriaLabel = (label: string) => Array.from(document.querySelectorAll<HTMLElement>('[role="checkbox"]'))
+  .find(checkbox => checkbox.getAttribute('aria-label') === label)
+
 describe('CombatTasks execution', () => {
   beforeEach(() => {
+    availability.available = true
+    availability.message = ''
     window.matchMedia = vi.fn().mockImplementation((query: string) => ({
       matches: query === '(prefers-reduced-motion: reduce)',
       media: query,
@@ -781,6 +791,22 @@ describe('CombatTasks execution', () => {
     const headings = Array.from(container.querySelectorAll<HTMLElement>('h1, h2, h3, h4, h5, h6'))
     expect(headings.some(heading => heading.textContent?.trim() === '普通作业')).toBe(true)
     expect(container.textContent).not.toContain('自动战斗作业')
+  })
+
+  it('explains an unavailable execute action with a focusable tooltip', async () => {
+    availability.available = false
+    availability.message = '后端服务暂不可用'
+    await renderComponent()
+
+    const execute = buttonByText('立即执行')!
+    expect(execute.disabled).toBe(true)
+    const trigger = container.querySelector<HTMLElement>('[aria-label="立即执行：后端服务暂不可用"]')
+    expect(trigger).not.toBeNull()
+    expect(trigger?.tabIndex).toBe(0)
+    expect(document.querySelector('[role="tooltip"]')).toBeNull()
+
+    await focus(trigger!)
+    expect(document.querySelector('[role="tooltip"]')?.textContent).toBe('后端服务暂不可用')
   })
 
   it('starts the heading hierarchy at h2 and marks section icons decorative', async () => {
@@ -931,7 +957,7 @@ describe('CombatTasks execution', () => {
     ])
     await renderComponent()
 
-    await click(buttonByAriaLabel('取消选择队列第 1 项 链接作业')!)
+    await click(checkboxByAriaLabel('取消选择队列第 1 项 链接作业')!)
 
     expect(container.textContent).toContain('队列非空，请先勾选要执行的作业')
     expect(container.textContent).not.toContain('将执行已勾选队列')
@@ -1848,13 +1874,13 @@ describe('CombatTasks execution', () => {
     await setInputValue(container.querySelector<HTMLInputElement>('input[name="maa-copilot-uri"]')!, 'prts://s48990')
     await click(buttonByText('预览')!)
     await click(buttonByAriaLabel('上移第 2 项 TEST-2')!)
-    await click(buttonByAriaLabel('取消选择队列第 1 项 TEST-2')!)
+    await click(checkboxByAriaLabel('取消选择队列第 1 项 TEST-2')!)
     await click(buttonByAriaLabel('删除第 3 项 TEST-3')!)
 
     await selectDifficulty('both')
 
-    expect(buttonByAriaLabel('选择队列第 1 项 TEST-2')).toBeDefined()
-    expect(buttonByAriaLabel('取消选择队列第 2 项 TEST-1')).toBeDefined()
+    expect(checkboxByAriaLabel('选择队列第 1 项 TEST-2')).toBeDefined()
+    expect(checkboxByAriaLabel('取消选择队列第 2 项 TEST-1')).toBeDefined()
     expect(container.querySelectorAll('section[aria-label="作业队列"] [role="listitem"]')).toHaveLength(2)
   })
 
@@ -1865,7 +1891,7 @@ describe('CombatTasks execution', () => {
     await renderComponent()
     await setInputValue(container.querySelector<HTMLInputElement>('input[name="maa-copilot-uri"]')!, 'prts://102')
 
-    await click(buttonByAriaLabel('取消选择队列第 1 项 链接作业')!)
+    await click(checkboxByAriaLabel('取消选择队列第 1 项 链接作业')!)
     await flush()
     await click(buttonByText('立即执行')!)
 
@@ -1955,9 +1981,9 @@ describe('CombatTasks execution', () => {
       { clientId: 'queue-b', source: 'prts', copilotId: 102, mode: 'raid' },
       { clientId: 'queue-c', source: 'prts', copilotId: 103, mode: 'both' },
     ])
-    expect(buttonByAriaLabel('选择队列第 1 项 链接作业')?.getAttribute('aria-pressed')).toBe('false')
-    expect(buttonByAriaLabel('取消选择队列第 2 项 第三个作业')?.getAttribute('aria-pressed')).toBe('true')
-    expect(buttonByAriaLabel('取消选择队列第 3 项 第二个作业')?.getAttribute('aria-pressed')).toBe('true')
+    expect(checkboxByAriaLabel('选择队列第 1 项 链接作业')?.getAttribute('aria-checked')).toBe('false')
+    expect(checkboxByAriaLabel('取消选择队列第 2 项 第三个作业')?.getAttribute('aria-checked')).toBe('true')
+    expect(checkboxByAriaLabel('取消选择队列第 3 项 第二个作业')?.getAttribute('aria-checked')).toBe('true')
   })
 
   it('keeps the URI source and the discovery entry without an inline stage search', async () => {
@@ -2658,8 +2684,8 @@ describe('CombatTasks execution', () => {
     expect(container.querySelector('section[aria-label="作业集摘要"]')).toBeNull()
     expect(copilotDrawer()?.textContent).toContain('prts://s48990')
     expect(copilotDrawer()?.textContent).toContain('历史续跑进度')
-    expect(buttonByAriaLabel('选择队列第 1 项 TEST-1')?.getAttribute('aria-pressed')).toBe('false')
-    expect(buttonByAriaLabel('取消选择队列第 2 项 TEST-2')?.getAttribute('aria-pressed')).toBe('true')
+    expect(checkboxByAriaLabel('选择队列第 1 项 TEST-1')?.getAttribute('aria-checked')).toBe('false')
+    expect(checkboxByAriaLabel('取消选择队列第 2 项 TEST-2')?.getAttribute('aria-checked')).toBe('true')
     expect(container.textContent).toContain('共 3 项')
     expect(container.textContent).toContain('已勾选 2 / 3 项')
     const storedQueue = JSON.parse(localStorage.getItem('la-pluma-copilot-queue-v1') || '{}')
@@ -3232,7 +3258,7 @@ describe('CombatTasks execution', () => {
     await setRecognitionMode('single')
     expect(renderCounts.setPanel).toBe(0)
 
-    await click(buttonByAriaLabel('取消选择队列第 1 项 TEST-1')!)
+    await click(checkboxByAriaLabel('取消选择队列第 1 项 TEST-1')!)
     expect(renderCounts.setPanel).toBeGreaterThan(0)
   })
 

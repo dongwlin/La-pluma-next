@@ -1,3 +1,4 @@
+import { Progress } from '@/shared/ui/progress'
 import type { CopilotSetView } from '../model/copilotSetView'
 import type { CopilotSetInfo } from '../types'
 
@@ -46,12 +47,11 @@ export default function CombatCopilotQueueSummary({
         </div>
       </div>
 
-      <div className="combat-copilot-progress">
-        <div
-          className="combat-copilot-progress-bar"
-          style={{ width: `${total > 0 ? (completed / total) * 100 : 0}%` }}
-        />
-      </div>
+      <Progress
+        value={total > 0 ? (completed / total) * 100 : 0}
+        aria-label="作业集进度"
+        className="w-full"
+      />
 
       {failures.length > 0 && (
         <div className="combat-copilot-failures">
