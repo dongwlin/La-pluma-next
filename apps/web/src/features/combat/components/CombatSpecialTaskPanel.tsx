@@ -40,7 +40,6 @@ export default function CombatSpecialTaskPanel({
     >
       <CombatTaskHeading
         task={task}
-        buttonClassName="combat-task-run-button min-h-11 px-4 text-sm sm:px-5"
         automationAvailable={execution.automationAvailable}
         unavailableMessage={execution.unavailableMessage}
         isRunning={execution.isRunning}

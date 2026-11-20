@@ -89,7 +89,6 @@ export default function CombatCopilotTaskPanel({
     >
       <CombatTaskHeading
         task={task}
-        buttonClassName="combat-task-run-button min-h-11 px-4 text-sm sm:px-6"
         automationAvailable={execution.automationAvailable}
         unavailableMessage={execution.unavailableMessage}
         isRunning={execution.isRunning}

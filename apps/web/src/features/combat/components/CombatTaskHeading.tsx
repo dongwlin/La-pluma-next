@@ -1,6 +1,8 @@
-import { ChevronRight, LoaderCircle, Play, Square } from 'lucide-react'
+import { ChevronRight, LoaderCircle } from 'lucide-react'
 import { Button } from '@/shared/ui/button'
 import type { CombatTask } from '../types'
+
+const RUN_ACTION_BUTTON_CLASS = 'combat-task-run-button min-h-11 px-4 text-sm sm:px-5'
 
 export interface CombatRunActionProps {
   automationAvailable: boolean
@@ -13,8 +15,6 @@ export interface CombatRunActionProps {
   onExecute: () => void
   onStop: () => void
   onStartNext?: () => void
-  /** 迁移前两份卡片的按钮间距不同；保持原类名即可保持基线。 */
-  buttonClassName: string
 }
 
 export function CombatRunAction({
@@ -28,7 +28,6 @@ export function CombatRunAction({
   onExecute,
   onStop,
   onStartNext,
-  buttonClassName,
 }: CombatRunActionProps) {
   if (isWaitingForNext) {
     return (
@@ -38,7 +37,7 @@ export function CombatRunAction({
           disabled={!automationAvailable || isContinuing || isStopping}
           aria-busy={isContinuing || undefined}
           title={!automationAvailable ? unavailableMessage : undefined}
-          className={buttonClassName}
+          className={RUN_ACTION_BUTTON_CLASS}
         >
           {isContinuing
             ? <><LoaderCircle className="animate-spin" aria-hidden="true" />正在开始</>
@@ -54,7 +53,7 @@ export function CombatRunAction({
           disabled={isStopping}
           aria-busy={isStopping || undefined}
           variant="secondary"
-          className={buttonClassName}
+          className={RUN_ACTION_BUTTON_CLASS}
         >
           {isStopping
             ? <><LoaderCircle className="animate-spin" aria-hidden="true" />正在终止</>
@@ -70,16 +69,11 @@ export function CombatRunAction({
       disabled={isStopping}
       aria-busy={isStopping || undefined}
       variant="destructive"
-      className={buttonClassName}
+      className={RUN_ACTION_BUTTON_CLASS}
     >
       {isStopping
         ? <><LoaderCircle className="animate-spin" aria-hidden="true" />正在终止</>
-        : (
-          <>
-            <Square size={14} fill="currentColor" aria-hidden="true" />
-            终止执行
-          </>
-        )}
+        : '终止执行'}
     </Button>
   ) : (
     <Button
@@ -87,16 +81,11 @@ export function CombatRunAction({
       disabled={!automationAvailable || isSubmitting}
       aria-busy={isSubmitting || undefined}
       title={!automationAvailable ? unavailableMessage : undefined}
-      className={buttonClassName}
+      className={RUN_ACTION_BUTTON_CLASS}
     >
       {isSubmitting
         ? <><LoaderCircle className="animate-spin" aria-hidden="true" />正在启动</>
-        : (
-          <>
-            <Play size={15} fill="currentColor" aria-hidden="true" />
-            立即执行
-          </>
-        )}
+        : '立即执行'}
     </Button>
   )
 }
