@@ -1,6 +1,7 @@
 import { LoaderCircle } from 'lucide-react'
+import { Badge } from '@/shared/ui/badge'
 import { Button } from '@/shared/ui/button'
-import type { CopilotSearchItem } from '../types'
+import type { CopilotMatchMode, CopilotSearchItem } from '../types'
 import type { CombatCopilotDiscoveryView } from './combatPanelTypes'
 import {
   COPILOT_DISCOVERY_OPERATOR_LIMIT,
@@ -22,6 +23,14 @@ export interface CombatCopilotDiscoveryCardProps {
   onAddToQueue: (uri: string) => void
 }
 
+const MATCH_BADGE_TONES: Readonly<Record<CopilotMatchMode, string>> = {
+  ready: 'bg-success/10 text-success-text',
+  borrow: 'bg-primary-soft text-primary-strong',
+  train: 'bg-warning/15 text-warning',
+  check: 'bg-muted text-muted-foreground',
+  blocked: 'bg-destructive/10 text-destructive',
+}
+
 export default function CombatCopilotDiscoveryCard({
   item,
   view,
@@ -40,6 +49,7 @@ export default function CombatCopilotDiscoveryCard({
   const visibleOperators = operators.slice(0, COPILOT_DISCOVERY_OPERATOR_LIMIT)
   const hiddenOperatorCount = operators.length - visibleOperators.length
   const matchLabel = item.match ? COPILOT_MATCH_MODE_LABELS[item.match.mode] : null
+  const matchMode = item.match?.mode
   const unrecognized = matchEnabled && !item.match
   const hasBadges = recommended || Boolean(matchLabel)
 
@@ -50,11 +60,13 @@ export default function CombatCopilotDiscoveryCard({
     >
       {hasBadges && (
         <div className="combat-copilot-discovery-badges">
-          {recommended && <span className="combat-copilot-discovery-badge is-recommended">推荐</span>}
-          {matchLabel && (
-            <span className={`combat-copilot-discovery-badge is-match is-${item.match?.mode}`}>
+          {recommended && (
+            <Badge variant="secondary" className="bg-success/10 text-success-text">推荐</Badge>
+          )}
+          {matchLabel && matchMode && (
+            <Badge variant="secondary" className={MATCH_BADGE_TONES[matchMode]}>
               {matchLabel}
-            </span>
+            </Badge>
           )}
         </div>
       )}

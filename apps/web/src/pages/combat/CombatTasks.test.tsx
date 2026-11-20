@@ -1234,6 +1234,9 @@ describe('CombatTasks execution', () => {
     expect(drawer?.textContent).toContain('待重试')
     expect(drawer?.textContent).toContain('失败原因')
     expect(drawer?.textContent).toContain('作战失败')
+    const failureAlert = Array.from(drawer?.querySelectorAll('[role="alert"]') ?? [])
+      .find(alert => alert.textContent?.includes('作战失败'))
+    expect(failureAlert?.textContent).toContain('失败原因')
   })
 
   it('stops the tracked run and does not submit any further entry', async () => {
@@ -1737,7 +1740,10 @@ describe('CombatTasks execution', () => {
 
   it('links to the prts.plus copilot station', async () => {
     await renderComponent()
-    const link = container.querySelector<HTMLAnchorElement>('a[href="https://prts.plus/"]')
+    const helpTrigger = buttonByText('说明')
+    expect(helpTrigger).toBeDefined()
+    await click(helpTrigger!)
+    const link = document.querySelector<HTMLAnchorElement>('a[href="https://prts.plus/"]')
     expect(link?.textContent).toBe('prts.plus')
   })
 

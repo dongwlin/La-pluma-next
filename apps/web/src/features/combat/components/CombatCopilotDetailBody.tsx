@@ -1,5 +1,6 @@
 import { Copy } from 'lucide-react'
 import type { ReactNode } from 'react'
+import { Alert, AlertDescription, AlertTitle } from '@/shared/ui/alert'
 import { Button } from '@/shared/ui/button'
 import { Loading } from '@/shared/components'
 import { notify } from '@/shared/notifications'
@@ -117,9 +118,12 @@ export function DetailBody({ target, children }: { target: CopilotDetailTarget; 
       )}
 
       {target.error && (
-        <DetailSection title="失败原因">
-          <p role="alert" className="combat-copilot-detail-error">{target.error}</p>
-        </DetailSection>
+        <Alert variant="destructive">
+          <AlertTitle>失败原因</AlertTitle>
+          <AlertDescription className="whitespace-pre-wrap [overflow-wrap:anywhere]">
+            {target.error}
+          </AlertDescription>
+        </Alert>
       )}
 
       {operators.length > 0 && (

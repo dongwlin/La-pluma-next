@@ -1,3 +1,4 @@
+import { Badge } from '@/shared/ui/badge'
 import { Progress } from '@/shared/ui/progress'
 import type { CopilotSetView } from '../model/copilotSetView'
 import type { CopilotSetInfo } from '../types'
@@ -38,12 +39,23 @@ export default function CombatCopilotQueueSummary({
           </span>
         </div>
         <div className="combat-copilot-summary-chips">
-          <span className="combat-copilot-chip is-pending">待 {pending}</span>
-          <span className="combat-copilot-chip">本次成功 {runSuccess}</span>
-          <span className="combat-copilot-chip">历史已通关 {historyCompleted}</span>
-          <span className={`combat-copilot-chip${failed > 0 ? ' is-failed' : ''}`}>失败 {failed}</span>
-          {stopped > 0 && <span className="combat-copilot-chip">已终止 {stopped}</span>}
-          {skipped > 0 && <span className="combat-copilot-chip is-muted">跳过 {skipped}</span>}
+          <Badge variant="secondary" className="border-transparent bg-primary-soft text-primary-strong">
+            待 {pending}
+          </Badge>
+          <Badge variant="outline" className="text-muted-foreground">本次成功 {runSuccess}</Badge>
+          <Badge variant="outline" className="text-muted-foreground">历史已通关 {historyCompleted}</Badge>
+          <Badge
+            variant={failed > 0 ? 'destructive' : 'outline'}
+            className={failed > 0 ? 'border-destructive/30' : 'text-muted-foreground'}
+          >
+            失败 {failed}
+          </Badge>
+          {stopped > 0 && (
+            <Badge variant="outline" className="text-muted-foreground">已终止 {stopped}</Badge>
+          )}
+          {skipped > 0 && (
+            <Badge variant="outline" className="text-tertiary">跳过 {skipped}</Badge>
+          )}
         </div>
       </div>
 

@@ -1,5 +1,6 @@
 import { useState, type ReactNode } from 'react'
 import { ChevronDown, ChevronUp, ListChecks, LoaderCircle, RotateCcw, SkipForward, Trash2 } from 'lucide-react'
+import { Badge } from '@/shared/ui/badge'
 import { Button } from '@/shared/ui/button'
 import { Checkbox } from '@/shared/ui/checkbox'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/shared/ui/tooltip'
@@ -209,13 +210,15 @@ export default function CombatCopilotQueuePanel({ queue, detailEntryId, onOpenDe
                   >
                     <span className="combat-copilot-mine-title">{title}</span>
                     <span className="combat-copilot-mine-meta">
-                      <span className="combat-copilot-mine-tag">{describeQueueSource(entry)}</span>
+                      <Badge variant="secondary" className="bg-muted text-tertiary">
+                        {describeQueueSource(entry)}
+                      </Badge>
                       {entry.stage && <span>{entry.stage}</span>}
                       {entry.source === 'file' && entry.fileName && <span>{entry.fileName}</span>}
                       {entry.completedModes?.map(mode => (
-                        <span key={mode} className="combat-copilot-mine-tag is-complete">
+                        <Badge key={mode} variant="secondary" className="bg-muted text-success-text">
                           {mode === 'raid' ? '突袭已完成' : '普通已完成'}
-                        </span>
+                        </Badge>
                       ))}
                       {errorLine && <span className="form-error-text">{errorLine}</span>}
                     </span>
