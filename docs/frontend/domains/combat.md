@@ -99,6 +99,7 @@ CombatTasks（app-page > app-stack-section > CombatWorkspace）
 | 续跑/失败/下一关视图 | `deriveCopilotSetView` 每次渲染派生 | — | — | — |
 
 - **配置只有一个订阅。** 工作区调用一次 `useUserConfig(combatConfigAdapter)`，把草稿字段与更新回调传给卡片；面板不直接调用 `saveUserConfig`/`loadUserConfig` 或写配置 localStorage；队列持久化只由 `useCopilotQueue` 负责。
+- **配置读取门控。** 工作区消费 `loadState`/`loadError`/`reload`：`idle`/`loading` 渲染固定高度的加载面板，`failed` 且无本地草稿时渲染错误面板与「重新加载」按钮，重试走 `reload({ force: true })` 而不是保存重试 `retry`；只有 `loadState === 'ready'` 才渲染编辑器、执行入口与设备画面。未 ready 时配置更新与终态 reconciliation 不推进草稿 revision，避免把默认草稿当成可编辑或可执行配置。
 - **预览/搜索/执行各只有一个实例。** 工作区调用一次 `useCopilotPreview`、两个搜索 hook 与一次 `useCombatExecution`；卡片拿到的都是投影与动作，不创建第二份状态机。
 - **队列选择与作业集选择分开。** `useCopilotQueue` 持有队列条目与勾选，列表勾选、排序与执行都读它；`selectedCopilotIndexes` 只在预览作业集时恢复计划待执行项，并通过 `syncQueueSet` 同步到队列，不再直接驱动列表行。
 - **详情层不复制业务状态。** 打开项只记队列条目 id；详情目标每次由条目静态字段、`queueRun.statuses`/`queueRun.summaryErrors`、`itemStatuses` 与 `itemErrors` 派生，条目被删除或预览重建后找不到时关闭，不切换到同索引的其他作业。

@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { getErrorMessage } from '@/shared/api'
-import { LoaderCircle } from 'lucide-react'
+import { AlertTriangle, LoaderCircle } from 'lucide-react'
 import { Button } from '@/shared/ui/button'
+import { Card } from '@/shared/ui/card'
 import { ConfirmAlertDialog, SegmentedTabs, SegmentedTabPanel } from '@/shared/components'
 import {
   COMBAT_PARADOX_SEARCH_NOTICE_ID,
@@ -135,9 +136,12 @@ export default function CombatWorkspace() {
     draft: configDraft,
     syncState: configSyncState,
     error: configSyncError,
+    loadState: configLoadState,
+    loadError: configLoadError,
     update: updateConfig,
     channel: configChannel,
     retry: retryConfigSave,
+    reload: reloadConfig,
   } = useUserConfig(combatConfigAdapter)
   const {
     taskInputs,
@@ -285,7 +289,9 @@ export default function CombatWorkspace() {
 
   // 配置编辑始终以协调器中的最新草稿为基准，避免同一帧内连续更新互相覆盖。
   const updateCombatConfig = useCallback((update: (current: CombatConfigDraft) => CombatConfigDraft) => {
-    updateConfig(update(configChannel.getState().draft ?? DEFAULT_COMBAT_CONFIG))
+    const { draft, loadState } = configChannel.getState()
+    if (loadState !== 'ready' || draft === null) return
+    updateConfig(update(draft))
   }, [configChannel, updateConfig])
 
   const handleRetryConfigSave = async () => {
@@ -374,6 +380,7 @@ export default function CombatWorkspace() {
   // 失败的条目保留待重试；同步失败只影响展示，不把 run 结果解释成完成。
   const activeSetRun = setView.activeSetRun
   useEffect(() => {
+    if (configLoadState !== 'ready') return
     if (!activeSetPreview || !activeSetRun || activeSetRun.isActive) return
     if (!isTerminalRunState(activeSetRun.state)) return
     const setId = activeSetRun.setId
@@ -394,7 +401,7 @@ export default function CombatWorkspace() {
       )
       saveSelectedCopilotIndexes(selected, setId)
     })()
-  }, [activeSetPreview, activeSetRun, advancedParams.copilot?.raid, configChannel, refreshCopilotSet, saveSelectedCopilotIndexes, syncQueueSet])
+  }, [activeSetPreview, activeSetRun, advancedParams.copilot?.raid, configChannel, configLoadState, refreshCopilotSet, saveSelectedCopilotIndexes, syncQueueSet])
 
   const buildCommandArgs = (task: CombatTask): string[] => buildCombatCommandArgs(task.id, {
     input: taskInputs[task.id] || '',
@@ -1043,6 +1050,43 @@ export default function CombatWorkspace() {
     ...baseExecution,
     isWaitingForNext: setView.waitingEntry !== null,
     onStartNext: () => void handleStartNextCopilot(),
+  }
+
+  if (configLoadState !== 'ready') {
+    const loadFailed = configLoadState === 'failed'
+    return (
+      <Card
+        role={loadFailed ? 'alert' : 'status'}
+        aria-live={loadFailed ? 'assertive' : 'polite'}
+        className="h-40 gap-0 overflow-hidden p-0!"
+      >
+        <div className="flex h-full flex-col items-center justify-center gap-3 px-4 py-4 text-center">
+          {loadFailed
+            ? <AlertTriangle size={22} strokeWidth={1.9} className="text-destructive" aria-hidden="true" />
+            : <LoaderCircle size={22} strokeWidth={1.9} className="animate-spin" aria-hidden="true" />}
+          <div className="w-full min-w-0 space-y-1">
+            <p className="text-sm font-medium">
+              {loadFailed ? '作业配置暂时不可用' : '正在读取作业配置…'}
+            </p>
+            {loadFailed && (
+              <p className="line-clamp-2 wrap-break-word text-xs text-muted-foreground">
+                {configLoadError ?? '请稍后重新加载'}
+              </p>
+            )}
+          </div>
+          {loadFailed && (
+            <Button
+              type="button"
+              variant="secondary"
+              size="sm"
+              onClick={() => void reloadConfig({ force: true })}
+            >
+              重新加载
+            </Button>
+          )}
+        </div>
+      </Card>
+    )
   }
 
   return (

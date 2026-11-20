@@ -730,7 +730,7 @@ describe('CombatTasks execution', () => {
     mocks.executeCopilotQueue.mockReset().mockResolvedValue({ success: true })
     mocks.continueCopilotQueue.mockReset().mockResolvedValue({ success: true, data: { accepted: true } })
     mocks.skipCopilotQueueEntry.mockReset().mockResolvedValue({ success: true, data: { skippedClientId: 'queue-a' } })
-    mocks.loadUserConfig.mockReset().mockResolvedValue({ success: false })
+    mocks.loadUserConfig.mockReset().mockResolvedValue({ success: true, data: {} })
     mocks.saveUserConfig.mockReset().mockResolvedValue({ success: true })
     mocks.getCopilotInfo.mockReset()
     mocks.getCopilotSet.mockReset()
@@ -889,6 +889,7 @@ describe('CombatTasks execution', () => {
   })
 
   it('maps the app execution mode to a continuous server run', async () => {
+    mocks.loadUserConfig.mockResolvedValueOnce({ success: false })
     localStorage.setItem('combatCopilotSetExecutionMode', 'app')
     await renderComponent()
     await previewSet()
@@ -1442,6 +1443,7 @@ describe('CombatTasks execution', () => {
   })
 
   it('submits both difficulties for every eligible queue entry in queue order', async () => {
+    mocks.loadUserConfig.mockResolvedValueOnce({ success: false })
     localStorage.setItem('combatAdvancedParams', JSON.stringify({ copilot: { raid: 'both' } }))
     seedCopilotQueue([
       { id: 'queue-a', source: 'link', uri: 'prts://101', title: '链接作业', addedAt: 1 },
@@ -1476,6 +1478,7 @@ describe('CombatTasks execution', () => {
   })
 
   it('maps the stop execution strategy to the queue failure policy', async () => {
+    mocks.loadUserConfig.mockResolvedValueOnce({ success: false })
     localStorage.setItem('combatAdvancedParams', JSON.stringify({
       copilot: { executionStrategy: 'stop' },
     }))
@@ -1864,6 +1867,65 @@ describe('CombatTasks execution', () => {
     expect(secondModeButton.getAttribute('aria-selected')).toBe('true')
   })
 
+  it('keeps the config load gate without editable or executable controls until the read settles', async () => {
+    const serverLoad = deferred<ApiResponse>()
+    mocks.loadUserConfig.mockReturnValueOnce(serverLoad.promise)
+
+    await renderComponent()
+
+    expect(container.textContent).toContain('正在读取作业配置…')
+    expect(container.querySelector('[role="status"]')?.textContent).toContain('正在读取作业配置…')
+    expect(container.querySelector<HTMLInputElement>('input[name="maa-copilot-uri"]')).toBeNull()
+    expect(buttonByText('立即执行')).toBeUndefined()
+    expect(buttonByText('预览')).toBeUndefined()
+
+    await act(async () => serverLoad.resolve(ok({})))
+    await settleQueries()
+
+    expect(container.textContent).not.toContain('正在读取作业配置…')
+    expect(container.querySelector<HTMLInputElement>('input[name="maa-copilot-uri"]')).not.toBeNull()
+    expect(buttonByText('立即执行')).toBeDefined()
+  })
+
+  it('shows the config load failure gate and retries the read through a forced reload', async () => {
+    mocks.loadUserConfig
+      .mockResolvedValueOnce({ success: false, message: '配置读取失败' })
+      .mockResolvedValueOnce({ success: true, data: {} })
+
+    await renderComponent()
+
+    const gate = container.querySelector<HTMLElement>('[role="alert"]')
+    expect(gate?.textContent).toContain('作业配置暂时不可用')
+    expect(gate?.textContent).toContain('配置读取失败')
+    expect(container.querySelector<HTMLInputElement>('input[name="maa-copilot-uri"]')).toBeNull()
+    expect(buttonByText('立即执行')).toBeUndefined()
+    expect(mocks.executePredefinedTaskArgs).not.toHaveBeenCalled()
+    expect(mocks.executeCopilotSetPlan).not.toHaveBeenCalled()
+    expect(mocks.saveUserConfig).not.toHaveBeenCalled()
+
+    await click(buttonByText('重新加载')!)
+    await settleQueries()
+
+    expect(mocks.loadUserConfig).toHaveBeenCalledTimes(2)
+    expect(container.querySelector('[role="alert"]')).toBeNull()
+    expect(container.querySelector<HTMLInputElement>('input[name="maa-copilot-uri"]')).not.toBeNull()
+    expect(buttonByText('立即执行')).toBeDefined()
+  })
+
+  it('renders the workspace with the server draft after a successful config read', async () => {
+    mocks.loadUserConfig.mockResolvedValueOnce({
+      success: true,
+      data: { taskInputs: { copilot: 'prts://server' } },
+    })
+
+    await renderComponent()
+
+    expect(container.querySelector<HTMLInputElement>('input[name="maa-copilot-uri"]')?.value)
+      .toBe('prts://server')
+    expect(container.textContent).not.toContain('正在读取作业配置…')
+    expect(buttonByText('立即执行')).toBeDefined()
+  })
+
   it('keeps an unsynced local draft across remounts and retries the save', async () => {
     vi.useFakeTimers()
     mocks.saveUserConfig.mockResolvedValueOnce({ success: false, message: '配置存储暂不可用' })
@@ -1925,6 +1987,7 @@ describe('CombatTasks execution', () => {
   })
 
   it('migrates a local app set mode to cli and normalizes legacy raid values when the server copy is unavailable', async () => {
+    mocks.loadUserConfig.mockResolvedValueOnce({ success: false })
     localStorage.setItem('combatTaskInputs', JSON.stringify({ copilot: 'prts://local' }))
     localStorage.setItem('combatAdvancedParams', JSON.stringify({ copilot: { raid: '2' } }))
     localStorage.setItem('combatCopilotSetExecutionMode', 'app')
