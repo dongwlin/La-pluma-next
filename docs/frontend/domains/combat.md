@@ -18,7 +18,7 @@
 | --- | --- | --- |
 | 页面壳与工作区组合 | `pages/combat/CombatTasks.tsx` | 只渲染 `app-page`/`app-stack-section` 与工作区；不调用搜索/预览/执行 hook，不持有请求生命周期 |
 | 模式、配置订阅、预览/搜索入口、执行订阅、作业集选择、队列实例、同步反馈与重置弹层 | `features/combat/components/CombatWorkspace.tsx` | 跨面板唯一容器；`activeCombatMode`、`selectedCopilotIndexes`、`useCopilotQueue` 实例与面板会话存储在这里创建 |
-| 任务目录与模式展示项 | `features/combat/components/CombatTaskCatalog.tsx` | 名称、命令、图标、占位与描述；不读取配置/Query/执行状态 |
+| 任务目录与模式展示项 | `features/combat/components/CombatTaskCatalog.tsx` | 任务条目的名称、命令、占位与高级字段标记，以及模式展示项的标题与图标；不读取配置/Query/执行状态 |
 | 模式分段控件的键盘与高亮 | `features/combat/components/CombatModeTabs.tsx` | 组合共享 `SegmentedTabNav`：tablist/tab 语义、方向键移动焦点、Enter/Space 激活与流体高亮 |
 | 执行设置、编队/突袭/作业集模式与高级字段 | `components/CombatSettingsPanel.tsx`、`components/CombatAdvancedFields.tsx` | 受控表单；选项表来自 `model/combatCommands.ts` |
 | 作业来源栏（链接输入、预览、JSON 导入、识别方式、发现与说明） | `components/CombatCopilotSourceBar.tsx` + `components/CombatCopilotInputPanel.tsx` | 输入值来自配置草稿；JSON 导入按钮位于链接输入框内、识别方式下拉左侧，文件选择与从文件管理器复制后粘贴的 JSON 文件走同一上传通道；识别方式保存在面板会话存储；“发现”只打开独立弹窗，不在来源栏内嵌搜索 |
