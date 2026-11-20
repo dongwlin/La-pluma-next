@@ -33,12 +33,12 @@ export default function CombatParadoxSearchPanel({
 
   return (
     <div className="combat-workspace-section">
-      <h5 className="mb-3 flex items-center space-x-2 text-sm font-semibold text-foreground">
-        <svg className="h-4 w-4 brand-text" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <h3 className="mb-3 flex items-center space-x-2 text-sm font-semibold text-foreground">
+        <svg aria-hidden="true" className="h-4 w-4 brand-text" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
         </svg>
         <span>干员搜索</span>
-      </h5>
+      </h3>
       <div className="flex items-center gap-2">
         <label htmlFor="combat-paradox-operator" className="sr-only">搜索悖论模拟干员</label>
         <Input
@@ -83,7 +83,7 @@ export default function CombatParadoxSearchPanel({
               <button
                 key={copilot.id}
                 onClick={() => onSelectUri(copilot.uri)}
-                className="min-h-11 w-full px-3 py-2 text-left text-xs transition-colors hover:bg-muted focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary"
+                className="min-h-11 w-full px-3 py-2 text-left text-xs transition-colors hover:bg-muted focus-visible:outline-hidden focus-visible:ring-3 focus-visible:ring-inset focus-visible:ring-ring/50"
               >
                 <div className="flex min-w-0 items-center justify-between gap-2">
                   <span className="truncate font-mono brand-text">{copilot.uri}</span>

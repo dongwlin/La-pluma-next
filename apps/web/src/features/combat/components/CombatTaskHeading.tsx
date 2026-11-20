@@ -103,7 +103,7 @@ export default function CombatTaskHeading({
   return (
     <div className="combat-task-heading flex flex-col gap-3.5 md:flex-row md:items-center md:justify-between">
       <div className="min-w-0">
-        <h4 className="truncate text-lg font-semibold text-foreground">{task.name}</h4>
+        <h2 className="truncate text-lg font-semibold text-foreground">{task.name}</h2>
       </div>
 
       <div className="flex min-w-0 flex-col gap-1.5 md:items-end">

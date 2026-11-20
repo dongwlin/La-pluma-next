@@ -783,6 +783,36 @@ describe('CombatTasks execution', () => {
     expect(container.textContent).not.toContain('自动战斗作业')
   })
 
+  it('starts the heading hierarchy at h2 and marks section icons decorative', async () => {
+    await renderComponent()
+
+    const headings = Array.from(container.querySelectorAll<HTMLElement>('h1, h2, h3, h4, h5, h6'))
+    const heading = (tag: string, text: string) => headings.find(node => (
+      node.tagName.toLowerCase() === tag && node.textContent?.trim() === text
+    ))
+
+    expect(heading('h2', '普通作业')).toBeDefined()
+    expect(heading('h3', '作业队列')).toBeDefined()
+    expect(heading('h3', '执行设置')?.querySelector('svg')?.getAttribute('aria-hidden')).toBe('true')
+    expect(headings.some(node => ['H4', 'H5', 'H6'].includes(node.tagName))).toBe(false)
+  })
+
+  it('uses h3 section headings and hides decorative icons in special task modes', async () => {
+    await renderComponent()
+    await click(modeTab('悖论模拟')!)
+
+    const headings = Array.from(container.querySelectorAll<HTMLElement>('h2, h3'))
+    const heading = (tag: string, text: string) => headings.find(node => (
+      node.tagName.toLowerCase() === tag && node.textContent?.trim() === text
+    ))
+
+    expect(heading('h2', '悖论模拟')).toBeDefined()
+    expect(heading('h3', '作业输入')?.querySelector('svg')?.getAttribute('aria-hidden')).toBe('true')
+    expect(heading('h3', '干员搜索')?.querySelector('svg')?.getAttribute('aria-hidden')).toBe('true')
+    expect(heading('h3', '高级设置')).toBeDefined()
+    expect(heading('h3', '参数概览')).toBeDefined()
+  })
+
   it('submits one idempotent continuous set run for the default cli mode', async () => {
     const submission = deferred<ApiResponse>()
     mocks.executeCopilotSetPlan.mockReturnValueOnce(submission.promise)
@@ -1032,6 +1062,7 @@ describe('CombatTasks execution', () => {
 
     expect(container.querySelectorAll('[aria-label="本次执行进度"]')).toHaveLength(1)
     expect(container.querySelector('[aria-label="本次执行进度"]')?.textContent).toContain('本次执行进度')
+    expect(container.querySelector('[aria-label="本次执行进度"] h2')?.textContent).toBe('本次执行进度')
     expect(container.querySelector('[role="log"]')).toBeNull()
     expect(container.textContent).not.toContain('查看本次日志')
     expect(mocks.getRealtimeLogs).not.toHaveBeenCalled()

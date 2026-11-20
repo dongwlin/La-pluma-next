@@ -313,6 +313,36 @@ describe('CombatCopilotQueuePanel', () => {
     expect(rows()[2]?.textContent).toContain('待执行')
   })
 
+  it('maps row statuses to detail tones alongside the visible label', () => {
+    const target = (
+      entryOverrides: Partial<CopilotQueueEntry>,
+      queueOverrides: Partial<CombatCopilotQueueProjection>,
+    ) => buildQueueDetailTarget(entry(entryOverrides), queue(queueOverrides))
+    const setTarget = (status: 'pending' | 'running' | 'success' | 'failed' | 'skipped' | 'stopped') => (
+      target(
+        { setId: '48990', setItemIndex: 0 },
+        { setId: '48990', itemStatuses: new Map([[0, status]]) },
+      )
+    )
+
+    expect(target({}, {})).toMatchObject({ statusLabel: '待执行', statusTone: 'neutral' })
+    expect(setTarget('pending')).toMatchObject({ statusLabel: '待执行', statusTone: 'neutral' })
+    expect(setTarget('running')).toMatchObject({ statusLabel: '执行中', statusTone: 'active' })
+    expect(setTarget('success')).toMatchObject({ statusLabel: '已完成', statusTone: 'success' })
+    expect(setTarget('failed')).toMatchObject({ statusLabel: '待重试', statusTone: 'danger' })
+    expect(setTarget('skipped')).toMatchObject({ statusLabel: '已跳过', statusTone: 'neutral' })
+    expect(setTarget('stopped')).toMatchObject({ statusLabel: '已终止', statusTone: 'warning' })
+
+    expect(target(
+      { id: 'run-entry' },
+      { queueRun: runProjection({ statuses: new Map([['run-entry', { status: 'failed', error: '作战失败' }]]) }) },
+    )).toMatchObject({ statusLabel: '执行失败', statusTone: 'danger' })
+    expect(target(
+      { id: 'submitted-entry' },
+      { isRunning: true, submittedEntryIds: new Set(['submitted-entry']) },
+    )).toMatchObject({ statusLabel: '本次已提交', statusTone: 'active' })
+  })
+
   it('prefers queue run statuses over the set projection and shows the first failure line', async () => {
     const error = '缺少干员：桃金娘\n请检查 box 后重试'
     await renderPanel({

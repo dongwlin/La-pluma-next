@@ -51,7 +51,7 @@ export default function CombatCopilotQueuePanel({ queue, detailEntryId, onOpenDe
       <header className="combat-copilot-panel-head">
         <div className="combat-copilot-panel-title">
           <ListChecks size={16} className="brand-text" aria-hidden="true" />
-          <h5>作业队列</h5>
+          <h3>作业队列</h3>
           <span className="combat-copilot-kicker">共 {entries.length} 项</span>
         </div>
 
@@ -191,7 +191,7 @@ export default function CombatCopilotQueuePanel({ queue, detailEntryId, onOpenDe
                     </span>
                   </button>
 
-                  <span className="combat-copilot-mine-status">{state.label}</span>
+                  <span className={`combat-copilot-mine-status is-${state.tone}`}>{state.label}</span>
 
                   <div className="combat-copilot-mine-actions">
                     <Button

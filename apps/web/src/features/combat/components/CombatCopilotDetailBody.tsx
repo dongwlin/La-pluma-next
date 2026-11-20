@@ -50,7 +50,9 @@ export function DetailBody({ target, children }: { target: CopilotDetailTarget; 
   return (
     <div className="combat-copilot-detail-content">
       {target.statusLabel && (
-        <span className="combat-copilot-detail-state">{target.statusLabel}</span>
+        <span className={`combat-copilot-detail-state${target.statusTone ? ` is-${target.statusTone}` : ''}`}>
+          {target.statusLabel}
+        </span>
       )}
 
       <dl className="combat-copilot-detail-grid">
