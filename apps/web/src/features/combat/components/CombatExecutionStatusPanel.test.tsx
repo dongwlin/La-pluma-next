@@ -24,7 +24,6 @@ function createProps(overrides: Partial<CombatExecutionStatusPanelProps> = {}): 
     onStartNext: vi.fn(),
     onContinueQueue: vi.fn(),
     onSkipQueueEntry: vi.fn(),
-    onStop: vi.fn(),
     ...overrides,
   }
 }
@@ -58,26 +57,24 @@ describe('CombatExecutionStatusPanel', () => {
 
   const waitingPanel = () => container.querySelector('[aria-label="等待继续"]')
 
-  it('offers the next set entry and stop while a set waits on a special tab', async () => {
+  it('offers the next set entry while a set waits on a special tab', async () => {
     const props = createProps({
       waiting: { kind: 'set', label: 'TEST-2' },
       showWaiting: true,
     })
     await render(<CombatExecutionStatusPanel {...props} />)
 
-    expect(waitingPanel()?.textContent).toContain('等待继续下一关')
+    expect(waitingPanel()?.querySelector('h2')?.textContent).toBe('等待继续下一关')
     expect(waitingPanel()?.textContent).toContain('TEST-2')
 
     const start = buttonByText('开始下一关')
     expect(start?.disabled).toBe(false)
     await click(start!)
     expect(props.onStartNext).toHaveBeenCalledOnce()
-
-    await click(buttonByText('终止执行')!)
-    expect(props.onStop).toHaveBeenCalledOnce()
+    expect(buttonByText('终止执行')).toBeUndefined()
   })
 
-  it('offers continue, skip and stop while a queue waits on a special tab', async () => {
+  it('offers continue and skip while a queue waits on a special tab', async () => {
     const props = createProps({
       waiting: { kind: 'queue', label: 'QUEUE-2', canSkip: true },
       showWaiting: true,
@@ -92,9 +89,7 @@ describe('CombatExecutionStatusPanel', () => {
 
     await click(buttonByText('跳过此项')!)
     expect(props.onSkipQueueEntry).toHaveBeenCalledOnce()
-
-    await click(buttonByText('终止执行')!)
-    expect(props.onStop).toHaveBeenCalledOnce()
+    expect(buttonByText('终止执行')).toBeUndefined()
   })
 
   it('omits skip when the waiting queue cannot skip', async () => {
@@ -161,7 +156,7 @@ describe('CombatExecutionStatusPanel', () => {
       />,
     )
     expect(buttonByText('开始下一关')?.disabled).toBe(true)
-    expect(buttonByText('正在终止')?.disabled).toBe(true)
+    expect(buttonByText('终止执行')).toBeUndefined()
   })
 
   it('disables waiting actions with the unavailable message when automation is unavailable', async () => {

@@ -1035,7 +1035,6 @@ export default function CombatWorkspace() {
     isContinuing,
     isSkipping,
     isAdding: isAddingToQueue,
-    addingUri: addingQueueUri,
     automationAvailable,
     unavailableMessage,
     onToggle: queue.toggle,
@@ -1043,7 +1042,6 @@ export default function CombatWorkspace() {
     onMove: queue.move,
     onClear: queue.clear,
     onAddCurrent: () => void handleAddToQueue(),
-    onAddUri: uri => void handleAddSearchUriToQueue(uri),
     onContinueQueue: () => void handleContinueQueue(),
     onSkipEntry: () => void handleSkipQueueEntry(),
     onRetryFailed: () => void handleRetryFailedQueue(),
@@ -1158,7 +1156,6 @@ export default function CombatWorkspace() {
             onStartNext={() => void handleStartNextCopilot()}
             onContinueQueue={() => void handleContinueQueue()}
             onSkipQueueEntry={() => void handleSkipQueueEntry()}
-            onStop={() => void handleStopTask()}
           />
 
           <div className="app-stack-section">

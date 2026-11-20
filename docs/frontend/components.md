@@ -228,7 +228,7 @@ import { Progress, ProgressLabel, ProgressValue } from '@/shared/ui/progress'
 </Progress>
 ```
 
-`value` 传 `null` 时表示不确定进度；`max` 省略时按 100 计算。`Progress` 默认渲染 `ProgressTrack` 与 `ProgressIndicator`，只在需要覆盖轨道或填充样式时才单独导入这两个原语。`ProgressLabel` / `ProgressValue` 生成可见标签与格式化数值；没有可见标签时用 `aria-label` 提供可访问名称。测试用 `getByRole('progressbar')` 断言 `aria-valuenow`，不要断言内联宽度或 CSS 类名。
+`value` 传 `null` 时表示不确定进度；`max` 省略时按 100 计算。`Progress` 总会渲染默认的 `ProgressTrack` 与 `ProgressIndicator`，不要把它们作为 children 再传入（会重复渲染）；需要完全自定义轨道或填充结构时，改用 `@base-ui/react/progress` 的 Root 自行组合这两个原语，仅调整颜色或尺寸则在调用点用 `className` 覆盖（可配合 `data-slot` 选择器）。`ProgressLabel` / `ProgressValue` 生成可见标签与格式化数值；没有可见标签时用 `aria-label` 提供可访问名称。测试用 `getByRole('progressbar')` 断言 `aria-valuenow`，不要断言内联宽度或 CSS 类名。
 
 ---
 

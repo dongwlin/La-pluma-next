@@ -77,7 +77,7 @@ export function DialogFrame({
           className,
         )}
       >
-        <DialogHeader className="flex-row items-center justify-between gap-3 border-b px-4 py-3">
+        <DialogHeader className="flex-row items-center justify-between gap-3 border-b border-border px-4 py-3">
           <div className="min-w-0 space-y-1">
             <DialogTitle>{title}</DialogTitle>
             {description && (

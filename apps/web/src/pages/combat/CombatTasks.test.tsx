@@ -1047,6 +1047,18 @@ describe('CombatTasks execution', () => {
     expect(container.textContent).toContain('队列策略')
   })
 
+  it('keeps set execution controls after clearing the previewed set queue', async () => {
+    await renderComponent()
+    await previewSet()
+
+    await click(buttonByText('清空')!)
+    await click(buttonByText('确认清空')!)
+
+    expect(container.textContent).toContain('队列为空')
+    expect(pressedSegment('执行方式')).toEqual(['连续执行'])
+    expect(container.textContent).toContain('队列策略')
+  })
+
   it('keeps the hidden queue strategy in the saved config for a single task', async () => {
     vi.useFakeTimers()
     mocks.loadUserConfig.mockResolvedValueOnce({ success: false })
@@ -1590,11 +1602,13 @@ describe('CombatTasks execution', () => {
     await click(modeTab('保全派驻')!)
 
     expect(buttonsByText('开始下一关')).toHaveLength(1)
+    expect(buttonsByText('终止执行')).toHaveLength(1)
     expect(container.textContent).toContain('等待继续下一关')
 
     await click(modeTab('悖论模拟')!)
 
     expect(buttonsByText('开始下一关')).toHaveLength(1)
+    expect(buttonsByText('终止执行')).toHaveLength(1)
 
     await click(buttonByText('开始下一关')!)
 
@@ -1632,6 +1646,7 @@ describe('CombatTasks execution', () => {
 
     expect(container.textContent).toContain('等待继续下一项')
     expect(buttonsByText('开始下一项')).toHaveLength(1)
+    expect(buttonsByText('终止执行')).toHaveLength(1)
 
     await click(buttonByText('跳过此项')!)
     expect(mocks.skipCopilotQueueEntry).toHaveBeenCalledWith('run-queue-special')

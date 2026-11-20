@@ -65,7 +65,7 @@ export function CombatRunAction({
             onClick={onStartNext}
             disabled={!automationAvailable || isContinuing || isStopping}
             aria-busy={isContinuing || undefined}
-            className={RUN_ACTION_BUTTON_CLASS}
+            className={`${RUN_ACTION_BUTTON_CLASS} w-full`}
           >
             {isContinuing
               ? <><LoaderCircle className="animate-spin" aria-hidden="true" />正在开始</>

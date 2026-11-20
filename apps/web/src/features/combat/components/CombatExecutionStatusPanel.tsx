@@ -20,7 +20,6 @@ export interface CombatExecutionStatusPanelProps {
   onStartNext: () => void
   onContinueQueue: () => void
   onSkipQueueEntry: () => void
-  onStop: () => void
 }
 
 const TERMINAL_STATE_LABELS: Record<CombatTerminalResult['state'], string> = {
@@ -50,7 +49,6 @@ export default function CombatExecutionStatusPanel({
   onStartNext,
   onContinueQueue,
   onSkipQueueEntry,
-  onStop,
 }: CombatExecutionStatusPanelProps) {
   const waitingVisible = showWaiting && waiting !== null
   const terminalVisible = terminalResult !== null && !isRunning && waiting === null
@@ -65,9 +63,9 @@ export default function CombatExecutionStatusPanel({
         <section className="combat-workspace-section" aria-label="等待继续">
           <div className="flex flex-wrap items-center justify-between gap-3.5">
             <div className="min-w-0">
-              <h5 className="text-sm font-semibold text-foreground">
+              <h2 className="text-sm font-semibold text-foreground">
                 {waiting.kind === 'set' ? '等待继续下一关' : '等待继续下一项'}
-              </h5>
+              </h2>
               {waiting.label && (
                 <p className="mt-1 line-clamp-2 wrap-break-word text-xs text-muted-foreground">
                   {waiting.label}
@@ -128,17 +126,6 @@ export default function CombatExecutionStatusPanel({
                     )}
                   </>
                 )}
-                <Button
-                  size="sm"
-                  variant="secondary"
-                  onClick={onStop}
-                  disabled={isStopping}
-                  aria-busy={isStopping || undefined}
-                >
-                  {isStopping
-                    ? <><LoaderCircle className="animate-spin" aria-hidden="true" />正在终止</>
-                    : '终止执行'}
-                </Button>
               </div>
             )}
           </div>

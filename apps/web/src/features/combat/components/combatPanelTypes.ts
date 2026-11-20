@@ -96,7 +96,6 @@ export interface CombatCopilotQueueProjection {
   isContinuing: boolean
   isSkipping: boolean
   isAdding: boolean
-  addingUri: string | null
   automationAvailable: boolean
   unavailableMessage: string
   onToggle: (id: string) => void
@@ -104,7 +103,6 @@ export interface CombatCopilotQueueProjection {
   onMove: (id: string, direction: CopilotQueueMoveDirection) => void
   onClear: () => void
   onAddCurrent: () => void
-  onAddUri: (uri: string) => void
   onContinueQueue: () => void
   onSkipEntry: () => void
   onRetryFailed: () => void

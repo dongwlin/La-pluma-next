@@ -148,6 +148,9 @@ describe('formatCopilotHotScore', () => {
     [98, '98'],
     [16853.43055304006, '16853.4'],
     [Number.NaN, '0'],
+    [Number.POSITIVE_INFINITY, '0'],
+    [Number.NEGATIVE_INFINITY, '0'],
+    [-0, '0'],
     [-1, '0'],
   ])('formats %s as %s', (value, expected) => {
     expect(formatCopilotHotScore(value)).toBe(expected)

@@ -18,7 +18,7 @@
 | --- | --- | --- |
 | 页面壳与工作区组合 | `pages/combat/CombatTasks.tsx` | 只渲染 `app-page`/`app-stack-section` 与工作区；不调用搜索/预览/执行 hook，不持有请求生命周期 |
 | 模式、配置订阅、预览/搜索入口、执行订阅、作业集选择、队列实例、同步反馈与重置弹层 | `features/combat/components/CombatWorkspace.tsx` | 跨面板唯一容器；`activeCombatMode`、`selectedCopilotIndexes`、`useCopilotQueue` 实例与面板会话存储在这里创建 |
-| 任务目录与模式展示项 | `features/combat/components/CombatTaskCatalog.tsx` | 任务条目的名称、命令、占位与高级字段标记，以及模式展示项的标题与图标；模式标题由 `COMBAT_TASKS[id].name` 派生，普通作业的页签与卡片标题统一为「普通作业」；`taskName` 只是展示字符串，改名不迁移进行中/历史 Run 的旧文案；不读取配置/Query/执行状态 |
+| 任务目录与模式展示项 | `features/combat/components/CombatTaskCatalog.tsx` | 任务条目的名称、命令、占位与高级字段标记，以及模式展示项的标题；模式标题由 `COMBAT_TASKS[id].name` 派生，普通作业的页签与卡片标题统一为「普通作业」；`taskName` 只是展示字符串，改名不迁移进行中/历史 Run 的旧文案；不读取配置/Query/执行状态 |
 | 模式分段控件的键盘与高亮 | `features/combat/components/CombatModeTabs.tsx` | 组合共享 `SegmentedTabNav`：tablist/tab 语义、方向键移动焦点、Enter/Space 激活与流体高亮 |
 | 执行设置、编队/突袭/作业集模式与高级字段 | `components/CombatSettingsPanel.tsx`、`components/CombatAdvancedFields.tsx` | 受控表单；选项表来自 `model/combatCommands.ts`。单作业且队列为空时隐藏只对队列/作业集生效的「执行方式」与「队列策略」，隐藏不改变配置值。 |
 | 作业来源栏（链接输入、预览、JSON 导入、识别方式、发现与说明） | `components/CombatCopilotSourceBar.tsx` + `components/CombatCopilotInputPanel.tsx` | 输入值来自配置草稿；JSON 导入按钮位于链接输入框内、识别方式下拉左侧，文件选择与从文件管理器复制后粘贴的 JSON 文件走同一上传通道；识别方式保存在面板会话存储；“发现”只打开独立弹窗，不在来源栏内嵌搜索 |
@@ -27,7 +27,7 @@
 | 关卡目录与持有干员快照 | `model/queries.ts`（`copilotStageCatalogQueryOptions`）+ `game-data`（`operBoxQueryOptions`） | 工作区在发现弹窗首次打开时按需读取，弹窗只消费投影；不在弹窗内另建数据源；持有干员投影同时提供加载/失败状态，失败时卡片标记未知并可重试 |
 | 普通搜索与悖论搜索 | `hooks/useCopilotSearch.ts`、`components/CombatParadoxSearchPanel.tsx` | 普通搜索请求、代次与取消由工作区 hook 持有；悖论干员搜索词在面板侧；悖论结果一次渲染服务端返回的全部条目（最多 10 条），列表、标题与 Toast 数量一致，不再截断 6 条；结果与发现卡统一显示格式化后的「热度 X」，不换算星级；结果与推荐接线由工作区提供 |
 | 本次执行的条目位置、当前关卡、执行模式与已用时 | `components/CombatExecutionProgressPanel.tsx` | 只渲染 `deriveExecutionProgress`；不呈现运行状态、停止入口、逐项结果或计划计数 |
-| 页面级执行状态区（跨 tab 等待续跑与终态结果） | `components/CombatExecutionStatusPanel.tsx` | 只渲染工作区投影：等待区仅在保全派驻/悖论模拟 tab 提供继续/跳过/终止，普通作业 tab 仍由作业卡与队列面板提供；终态结果跨 tab 常驻，`role="status"`，不新建执行状态、Run 身份或终态契约 |
+| 页面级执行状态区（跨 tab 等待续跑与终态结果） | `components/CombatExecutionStatusPanel.tsx` | 只渲染工作区投影：等待区仅在保全派驻/悖论模拟 tab 提供继续/跳过，终止仍由当前卡片头部的执行按钮提供；普通作业 tab 仍由作业卡与队列面板提供；终态结果跨 tab 常驻，`role="status"`，不新建执行状态、Run 身份或终态契约 |
 | 作业队列（唯一列表：勾选、排序、删除、清空、等待续跑/跳过/重试入口） | `components/CombatCopilotQueuePanel.tsx` | 只渲染 `CombatCopilotQueueProjection`；行主体打开详情层；不持有第二份队列模型 |
 | 队列模型、本地持久化与操作 | `model/copilotQueue.ts`、`model/copilotQueueStorage.ts`、`hooks/useCopilotQueue.ts` | 条目构造、URI 去重、排序、上限与 `la-pluma-copilot-queue-v1` 读写；勾选为会话状态 |
 | 队列 Run 投影 | `model/copilotQueueRun.ts` | 从 `run.progress` 与 `run.result.summary` 读取 `clientId` 状态、下一项、失败原因与计数；不新建执行身份 |
@@ -166,7 +166,7 @@ CombatTasks（app-page > app-stack-section > CombatWorkspace）
 - **执行设置**：页面提供连续执行与手动逐关，旧配置的 `app` 与 `cli` 都映射到 `continuous`，`manual` 保留逐步等待。难度选择 `auto` 时，作业集计划与显式队列由服务端读取作业的 `difficulty`；预览和详情保留可用的标注。手动指定难度使用用户的选择。单作业且队列为空时，只对队列/作业集生效的「执行方式」与高级设置中的「队列策略」不渲染；队列非空或预览作业集带成员时恢复显示。隐藏只影响渲染，已保存的 `executionStrategy` 与执行方式仍随配置提交，不清空。
 - **队列执行**：只勾选当前预览作业集的成员，且其 `setItemIndex` 严格递增时，走作业集提交（`submitSet` → `run_copilot_set`）：连续模式一次提交整组，手动模式等待服务端 `nextEntry`；`selectedIndexes` 来自队列勾选。混合来源、重排后的集合成员或本地文件走 `submitQueue` → `run_copilot_queue`。客户端按队列顺序提交 `{ clientId, source, copilotId|filename, mode }`，每个作业的 `mode` 来自全局突袭设置，预设编队作业提交 `normal`。服务端将适用的 `both` 展开为普通和突袭两个步骤。`executionStrategy` 映射为 `failurePolicy`：`stop` 首败停止，其他值按 `continue`。队列非空时卡片头部「立即执行」仍执行已勾选队列，按钮下方提示「将执行已勾选队列（N 项）」；无勾选时提示先勾选；运行、等待下一项或提交在途时不显示该提示。
 - **停止/继续/跳过**：队列 Run 的停止复用 `stop()`；manual waiting 时「开始下一项」调用 `continueCopilotQueue`，「跳过此项」调用 `skipCopilotQueueEntry`，两者都只针对当前 `runId`，不新建 Run。重试按原 Run 的失败步骤确定作业和模式，已成功的模式不会随该作业重试。
-- **等待态跨 tab 继续**：manual 作业集或队列进入等待后，普通作业 tab 的「开始下一关」「开始下一项」「跳过此项」仍由 `CombatTaskHeading` 与 `CombatCopilotQueuePanel` 提供；切到保全派驻或悖论模拟时，由页面级 `CombatExecutionStatusPanel` 提供同一动作，动作仍经工作区 handler 调用 `continueSet`/`continueQueue`/`skipQueueEntry`，不新建 Run。作业集等待仍以 `deriveCopilotSetView().waitingEntry` 为准，保留预览归属、重置作废与 `isAutoStopping` 过滤；异集合等待不显示「开始下一关」或「下一关」。普通作业 tab 不渲染页面级等待区，避免与卡内/队列面板控件重复。
+- **等待态跨 tab 继续**：manual 作业集或队列进入等待后，普通作业 tab 的「开始下一关」「开始下一项」「跳过此项」仍由 `CombatTaskHeading` 与 `CombatCopilotQueuePanel` 提供；切到保全派驻或悖论模拟时，由页面级 `CombatExecutionStatusPanel` 提供同一动作，动作仍经工作区 handler 调用 `continueSet`/`continueQueue`/`skipQueueEntry`，不新建 Run。作业集等待仍以 `deriveCopilotSetView().waitingEntry` 为准，保留预览归属、重置作废与 `isAutoStopping` 过滤；异集合等待不显示「开始下一关」或「下一关」。页面级等待区只提供继续/跳过，不重复渲染「终止执行」（终止仍只由当前卡片头部提供）；普通作业 tab 不渲染页面级等待区，避免与卡内/队列面板控件重复。
 - **终态结果常驻**：`useCombatExecution` 在宣告本页观察到的终态 Run 时同步生成 `terminalResult`（`runId`/`state`/`message`/`type`），页面级状态区在所有 tab 显示，使用 `role="status"` 与 `aria-label="本次执行结果"`，不提供重新执行按钮；运行中或等待中不显示旧结果，新提交开始时清空。Toast 仍按原通知路径保留，Run 终态契约不变；`CombatExecutionProgressPanel` 仍只显示条目位置、关卡、模式与已用时，不承担等待或终态文案。
 - **逐项结果**：set-backed 执行读取 `CopilotSetView.itemStatuses`。队列 Run 读取 `CopilotQueueRunProjection.statuses`，优先于作业集投影。同一 `clientId` 的普通与突袭步骤归到同一队列行。队列 Run 的 `summary.taskResults` 是逐项状态的唯一来源，`summary.errors` 只用于补全缺失的失败原因。
 - **本次执行与续跑进度分工**：`CombatExecutionProgressPanel` 只显示本次执行队列中的条目位置（`progress.currentStep`/`totalSteps`）、当前关卡、执行模式与已用时，按“项”而不是“关”表述；both 展开的普通与突袭共用同一关卡名，模式取自当前执行条目的 `mode`（作业集读 `progress.currentEntry`，队列读该 `clientId` 的执行中逐项结果），等待下一项与单作业执行时不显示；运行状态与停止按钮留在执行卡片，逐项结果、历史通关与计划状态计数留在作业列表与续跑进度，不重复呈现。
