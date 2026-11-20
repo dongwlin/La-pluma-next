@@ -16,6 +16,7 @@ export interface CombatCopilotDiscoveryCardProps {
   adding: boolean
   matchEnabled: boolean
   ownedOperatorNames: ReadonlySet<string>
+  ownershipKnown?: boolean
   onPreview: (uri: string) => void
   onAddToQueue: (uri: string) => void
 }
@@ -27,6 +28,7 @@ export default function CombatCopilotDiscoveryCard({
   adding,
   matchEnabled,
   ownedOperatorNames,
+  ownershipKnown = true,
   onPreview,
   onAddToQueue,
 }: CombatCopilotDiscoveryCardProps) {
@@ -70,11 +72,17 @@ export default function CombatCopilotDiscoveryCard({
           <span className="combat-copilot-discovery-card-operators">
             {visibleOperators.map((name, index) => {
               const owned = ownedOperatorNames.has(name)
+              const ownershipClass = !ownershipKnown
+                ? 'is-unknown'
+                : owned ? 'is-owned' : 'is-missing'
+              const ownershipLabel = !ownershipKnown
+                ? '拥有状态未知'
+                : owned ? '已拥有' : '未拥有'
               return (
                 <span
                   key={`${name}-${index}`}
-                  className={`combat-copilot-discovery-operator-chip ${owned ? 'is-owned' : 'is-missing'}`}
-                  title={`${name}（${owned ? '已拥有' : '未拥有'}）`}
+                  className={`combat-copilot-discovery-operator-chip ${ownershipClass}`}
+                  title={`${name}（${ownershipLabel}）`}
                 >
                   {name}
                 </span>
