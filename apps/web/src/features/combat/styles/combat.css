@@ -3,12 +3,6 @@
     grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 
-  .combat-segment-active {
-    background: var(--primary-soft);
-    color: var(--primary-strong);
-    box-shadow: none;
-  }
-
   .combat-mode-shell {
     width: 100%;
   }

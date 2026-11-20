@@ -1,5 +1,3 @@
-import type { ReactNode } from 'react'
-import Icons from '@/shared/components/Icons'
 import type { CombatMode, CombatTask } from '../types'
 
 export const COMBAT_TASKS: Record<CombatMode, CombatTask> = {
@@ -29,22 +27,18 @@ export const COMBAT_TASKS: Record<CombatMode, CombatTask> = {
 export const COMBAT_MODE_OPTIONS: ReadonlyArray<{
   id: CombatMode
   title: string
-  icon: ReactNode
 }> = [
   {
     id: 'copilot',
     title: '普通作业',
-    icon: <Icons.Document />,
   },
   {
     id: 'ssscopilot',
     title: '保全派驻',
-    icon: <Icons.Shield />,
   },
   {
     id: 'paradoxcopilot',
     title: '悖论模拟',
-    icon: <Icons.Puzzle />,
   },
 ]
 
