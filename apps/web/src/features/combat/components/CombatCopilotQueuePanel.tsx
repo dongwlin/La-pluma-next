@@ -73,7 +73,13 @@ export default function CombatCopilotQueuePanel({ queue, detailEntryId, onOpenDe
           className="combat-copilot-empty"
           icon={<ListChecks size={24} strokeWidth={1.7} />}
           title="队列为空"
-          description="从作业链接、关卡搜索或本地文件加入作业；输入作业集链接会自动展开到队列。"
+          description={(
+            <>
+              从作业链接、关卡搜索或本地文件加入作业；
+              <br />
+              输入作业集链接会自动展开到队列。
+            </>
+          )}
         />
       ) : (
         <>
