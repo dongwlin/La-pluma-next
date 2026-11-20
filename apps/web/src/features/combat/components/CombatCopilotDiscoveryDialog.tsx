@@ -214,7 +214,7 @@ export default function CombatCopilotDiscoveryDialog({ search, children }: Comba
             onRetryData={search.onRetryData}
           />
 
-          {search.result && (
+          {search.result && !search.error && (
             <div className="combat-copilot-discovery-summary">
               <span>共 {total} 条</span>
               {total > copilots.length && <span>已加载 {copilots.length} 条</span>}
@@ -253,6 +253,9 @@ export default function CombatCopilotDiscoveryDialog({ search, children }: Comba
           isOpen={matchOpen}
           settings={match}
           ownedOperatorNames={search.ownedOperatorNames}
+          operatorsLoading={search.operatorsLoading}
+          operatorsError={search.operatorsError}
+          onRetryData={search.onRetryData}
           onChange={handleMatchChange}
           onClose={() => setMatchOpen(false)}
         />

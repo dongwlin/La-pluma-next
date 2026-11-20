@@ -22,9 +22,9 @@
 | 模式分段控件的键盘与高亮 | `features/combat/components/CombatModeTabs.tsx` | 组合共享 `SegmentedTabNav`：tablist/tab 语义、方向键移动焦点、Enter/Space 激活与流体高亮 |
 | 执行设置、编队/突袭/作业集模式与高级字段 | `components/CombatSettingsPanel.tsx`、`components/CombatAdvancedFields.tsx` | 受控表单；选项表来自 `model/combatCommands.ts` |
 | 作业来源栏（链接输入、预览、JSON 导入、识别方式、发现与说明） | `components/CombatCopilotSourceBar.tsx` + `components/CombatCopilotInputPanel.tsx` | 输入值来自配置草稿；JSON 导入按钮位于链接输入框内、识别方式下拉左侧，文件选择与从文件管理器复制后粘贴的 JSON 文件走同一上传通道；识别方式保存在面板会话存储；“发现”只打开独立弹窗，不在来源栏内嵌搜索 |
-| 发现作业弹窗（关键词、关卡、干员、排序、视图与结果卡片） | `components/CombatCopilotDiscoveryDialog.tsx` + `CombatCopilotSearchBar.tsx`、`CombatCopilotDiscoveryCard.tsx`、`CombatCopilotStageSelect.tsx` | 工作区在页面挂载时按已保存的干员偏好后台预取默认热度列表并缓存；打开弹窗先展示缓存，再在后台刷新，刷新不显示 loading、不阻塞输入；关键词/关卡/排序每次打开重置，干员包含/排除、匹配设置与视图按界面偏好恢复；请求统一经 `normalizeCopilotSearchRequest`，关卡/干员/排序变化立即重搜，视图与匹配模式只影响本地展示；关键词输入框在有关键词时显示右侧清除按钮，清空后焦点回到输入框；整张卡片可点击打开该条目的详情预览，不改写主输入，也不标记“已选中” |
-| 干员包含/排除与匹配设置 | `components/CombatCopilotOperatorFilterDialog.tsx`、`components/CombatCopilotMatchDialog.tsx` + `model/operatorFilter.ts` | 包含/排除互斥，选项来自识别快照的已拥有/未拥有干员并支持中文名、全拼与首字母；包含区按已拥有 + 练度降序、排除区按未拥有 + 练度升序（先精英等级再干员等级），选项区最多三行并随滚动自动追加；干员按钮内的电源开关可临时停用筛选而不清空选择；“记住筛选结果”决定下次是否恢复选择（关闭时只保留开关状态）；匹配是客户端过滤，服务端 `match` 缺失时保留卡片并标注未识别 |
-| 关卡目录与持有干员快照 | `model/queries.ts`（`copilotStageCatalogQueryOptions`）+ `game-data`（`operBoxQueryOptions`） | 工作区在发现弹窗首次打开时按需读取，弹窗只消费投影；不在弹窗内另建数据源 |
+| 发现作业弹窗（关键词、关卡、干员、排序、视图与结果卡片） | `components/CombatCopilotDiscoveryDialog.tsx` + `CombatCopilotSearchBar.tsx`、`CombatCopilotDiscoveryCard.tsx`、`CombatCopilotStageSelect.tsx` | 工作区在页面挂载时按已保存的干员偏好后台预取默认热度列表并缓存；打开弹窗先展示缓存，再在后台刷新，刷新不显示 loading、不阻塞输入；关键词/关卡/排序每次打开重置，干员包含/排除、匹配设置与视图按界面偏好恢复；请求统一经 `normalizeCopilotSearchRequest`，关卡/干员/排序变化立即重搜，视图与匹配模式只影响本地展示；关键词输入框在有关键词时显示右侧清除按钮，清空后焦点回到输入框；整张卡片可点击打开该条目的详情预览，不改写主输入，也不标记“已选中”；搜索在途优先显示搜索占位，显式搜索或默认列表读取失败时在弹窗内显示错误与「重试」，不再回退到旧结果、默认热度列表或「暂无作业」空态 |
+| 干员包含/排除与匹配设置 | `components/CombatCopilotOperatorFilterDialog.tsx`、`components/CombatCopilotMatchDialog.tsx` + `model/operatorFilter.ts` | 包含/排除互斥，选项来自识别快照的已拥有/未拥有干员并支持中文名、全拼与首字母；包含区按已拥有 + 练度降序、排除区按未拥有 + 练度升序（先精英等级再干员等级），选项区最多三行并随滚动自动追加；干员按钮内的电源开关可临时停用筛选而不清空选择；“记住筛选结果”决定下次是否恢复选择（关闭时只保留开关状态）；匹配是客户端过滤，服务端 `match` 缺失时保留卡片并标注未识别；持有快照读取中或失败时，结果卡片统一标记「拥有状态未知」而不是「未拥有」，匹配弹窗对应显示加载或读取失败与重试 |
+| 关卡目录与持有干员快照 | `model/queries.ts`（`copilotStageCatalogQueryOptions`）+ `game-data`（`operBoxQueryOptions`） | 工作区在发现弹窗首次打开时按需读取，弹窗只消费投影；不在弹窗内另建数据源；持有干员投影同时提供加载/失败状态，失败时卡片标记未知并可重试 |
 | 普通搜索与悖论搜索 | `hooks/useCopilotSearch.ts`、`components/CombatParadoxSearchPanel.tsx` | 普通搜索请求、代次与取消由工作区 hook 持有；悖论干员搜索词在面板侧；结果与推荐接线由工作区提供 |
 | 本次执行的条目位置、当前关卡、执行模式与已用时 | `components/CombatExecutionProgressPanel.tsx` | 只渲染 `deriveExecutionProgress`；不呈现运行状态、停止入口、逐项结果或计划计数 |
 | 作业队列（唯一列表：勾选、排序、删除、清空、等待续跑/跳过/重试入口） | `components/CombatCopilotQueuePanel.tsx` | 只渲染 `CombatCopilotQueueProjection`；行主体打开详情层；不持有第二份队列模型 |
@@ -87,8 +87,8 @@ CombatTasks（app-page > app-stack-section > CombatWorkspace）
 | 干员包含/排除与启用状态、匹配模式、视图 | 工作区 store + `la-pluma-copilot-operator-filter-v1` / `la-pluma-copilot-operator-match-v1` / `la-pluma-copilot-discovery-view-v1` | 保留 | 保留 | 从界面偏好恢复 |
 | 关卡目录与持有干员快照 | `copilotStageCatalogQueryOptions` / `operBoxQueryOptions`（工作区订阅） | 保留缓存 | 保留；不自动重放 | 重新读取 |
 | 本地作业文件导入（选择文件或粘贴 JSON 文件）在途 | `CombatWorkspace` 本地状态 + ref | 保留 | 保留 | 重置 |
-| 显式搜索结果、loading、取消代次 | `useCopilotSearch`/`useParadoxSearch`（工作区实例） | 关闭发现弹窗时清空显式结果 | 清理取消在途搜索；恢复不自动重放 | 重置 |
-| 默认发现列表缓存与后台刷新 | `useCopilotSearch` 的默认 Query（工作区实例） | 保留 | 清理取消在途刷新；恢复不自动重放 | 页面挂载时重新预取 |
+| 显式搜索结果、loading、失败原因、取消代次 | `useCopilotSearch`/`useParadoxSearch`（工作区实例） | 关闭发现弹窗时清空显式结果与失败原因 | 清理取消在途搜索；恢复不自动重放 | 重置 |
+| 默认发现列表缓存、后台刷新与失败原因 | `useCopilotSearch` 的默认 Query（工作区实例） | 保留 | 清理取消在途刷新；恢复不自动重放 | 页面挂载时重新预取 |
 | 作业队列条目与勾选 | `useCopilotQueue`（工作区实例）+ `localStorage['la-pluma-copilot-queue-v1']` | 保留 | 保留；条目已持久化，勾选为会话状态 | 从本地存储恢复条目并全选 |
 | 详情层打开项 | `CombatCopilotQueuePanel` 局部状态（按队列条目 id） | 重置 | 保留 | 重置 |
 | 作业集待执行索引 | `CombatWorkspace` 本地状态 + `copilotSetSelections` 配置 | 保留 | 保留 | 重置；预览成功后按计划进度恢复并同步到作业队列 |
@@ -157,7 +157,7 @@ CombatTasks（app-page > app-stack-section > CombatWorkspace）
 
 ### 5. 搜索、执行与页面路径
 
-- **默认列表**：进入作业页后由默认 Query 在后台预取热度列表并缓存；打开发现先渲染缓存，再后台刷新同一请求 key，刷新期间不显示 loading、不阻塞输入，失败时保留缓存。关键词、关卡与排序在打开时重置，干员包含/排除、匹配模式与视图按界面偏好恢复。
+- **默认列表**：进入作业页后由默认 Query 在后台预取热度列表并缓存；打开发现先渲染缓存，再后台刷新同一请求 key，刷新期间不显示 loading、不阻塞输入，失败时保留缓存但显示弹窗内错误与重试，不把旧缓存当作当前结果。关键词、关卡与排序在打开时重置，干员包含/排除、匹配模式与视图按界面偏好恢复。
 - **搜索选择**：发现弹窗以关键词（`document`）、关卡（`level`）、干员包含/排除（`operator`，排除项 `~` 前缀）与排序（`hot`/`latest`/`views`）请求作业站；关键词输入框右侧的清除按钮只在有关键词时出现，点击即清空关键词、取消在途搜索并保持焦点在输入框，不自动重搜；点击卡片只打开该条目的详情预览，`copilot.uri` 保持用户输入的原值，推荐标记帮助定位结果。列表条目已带说明、干员练度与分组，点击即以条目数据打开抽屉，随后的详情读取用于校验与补齐；详情未回来前抽屉先出壳与加载态，不用空白等待。卡片不再持有选中态，因此也没有“已选中”标记或高亮；重复点开同一条目只是重新读取详情。弹窗保持打开，详情抽屉以 Sheet 叠在其上（React 嵌套 Dialog，Base UI 管理焦点层序与 Escape 层级）；关闭抽屉后仍停留在原结果列表。结果的「加入队列」动作按 URI 读取作业信息后加入队列。匹配模式只过滤当前已加载结果，不改变服务端排序或结果总数。结果按 `page`/`limit` 分页：首屏请求 30 条，正文滚动近底且 `hasNext` 为真时追加下一页并按 URI 去重合并；新的关键词、关卡、干员或排序搜索丢弃已追加页，「已加载」显示合并后的数量。
 - **JSON 作业导入**：链接输入框内的 JSON 导入按钮读取本地 JSON 文件；从文件管理器复制 JSON 文件后在输入框粘贴，文件交给同一导入通道。两条路径都提交 `POST /api/copilot-files`，成功后清空旧预览，并把 `doc.title`、`opers`、`groups` 解析成队列条目的标题与干员信息，关卡优先使用上传响应里的 `stage`/`stageId`（服务端按资源解析出的代号与原始标识），缺失时才回退文件里的 `stage_name`；解析失败仍按导入文件名入队，上传接口拒绝非法 JSON 时提示错误且不加入队列。本地文件与从作业站加入的单条作业都按与服务端一致的规则判定预设编队（无 `opers`/`groups` 且 `stage_name` 匹配 `_s<数字>` 结尾），命中时队列条目带 `presetFormation`，全局突袭设置下仍按普通模式提交。输入框只承载作业链接与 JSON 文件粘贴，不再接受服务端可见的文件路径。队列 Run 提交 `source: 'file'` 与服务端受管路径，由服务端重新读取受管文件并写入队列计划目录；受管路径不参与 PRTS 预览。
 - **执行设置**：页面提供连续执行与手动逐关，旧配置的 `app` 与 `cli` 都映射到 `continuous`，`manual` 保留逐步等待。难度选择 `auto` 时，作业集计划与显式队列由服务端读取作业的 `difficulty`；预览和详情保留可用的标注。手动指定难度使用用户的选择。
@@ -211,7 +211,7 @@ CombatTasks（app-page > app-stack-section > CombatWorkspace）
 
 | 资源 | 端点与参数语义 | 域内读取策略 |
 | --- | --- | --- |
-| 普通搜索 | `GET /agent/copilot/search?document=&level=&operator=&orderBy=&page=&limit=`；`operator` 以逗号分隔、`~名称` 表示排除，服务端透传作业站 | 默认请求在进入作战页时预取并缓存 5 分钟；打开发现后台刷新且不进入显式 loading；每次显式搜索重读，关键词变化取消，失败时保留上次成功结果；筛选/排序变化也会重读 |
+| 普通搜索 | `GET /agent/copilot/search?document=&level=&operator=&orderBy=&page=&limit=`；`operator` 以逗号分隔、`~名称` 表示排除，服务端透传作业站 | 默认请求在进入作战页时预取并缓存 5 分钟；打开发现后台刷新且不进入显式 loading；每次显式搜索重读，关键词变化取消，失败时在弹窗内显示错误与重试（Query 缓存保留，但错误期间不渲染旧结果）；筛选/排序变化也会重读 |
 | 关卡目录 | `GET /agent/copilot/stages`，服务端缓存的作业站关卡目录 | 发现弹窗首次打开时读取，30 分钟内复用；失败可重试 |
 | 悖论搜索 | `GET /agent/paradox/search?name=`，已提交的干员搜索词 | 同上 |
 | 单作业详情 | `GET /agent/copilots/:id`，PRTS 作业 id | 预览按钮复用新鲜缓存 |
@@ -243,7 +243,7 @@ CombatTasks（app-page > app-stack-section > CombatWorkspace）
 - `transport` 或未知错误：展示 `搜索失败: <message>`。
 - `AbortError`/取消：不展示为失败。
 
-同一提交词再次搜索失败时，Query 保留上一次成功结果并提示错误。切换提交词时新 key 没有旧数据，列表清空。默认列表的后台刷新失败只保留旧缓存，不覆盖显式结果，也不在弹窗内显示错误。普通作业搜索的推荐项显示在结果中，点击结果才修改输入并打开预览。
+同一提交词再次搜索失败时，Query 保留上一次成功结果，但弹窗不再把它当作当前结果展示，而是在结果区显示错误与「重试」；重试重跑最后一次显式搜索，没有显式搜索时重试默认列表。切换提交词时新 key 没有旧数据，列表清空，同样以错误态代替「暂无作业」。默认列表的后台刷新失败也设置错误并保留旧缓存，重试成功后恢复展示；失败不会覆盖显式搜索结果。错误在取消、重置与成功读取后清空；搜索中优先于旧错误显示占位，避免错误闪回。普通作业搜索的推荐项显示在结果中，点击结果才修改输入并打开预览。
 
 关卡筛选由发现弹窗的关卡目录 Popover 完成：客户端从 `/agent/copilot/stages` 读取服务端缓存的作业站目录（30 分钟 TTL，失败可重试），选中条目后以内部 `stageId` 请求 `/agent/copilot/search?level=`。Popover 是非模态的（`role="dialog"`、`aria-label="选择关卡"`），打开后焦点进入搜索框；外部点击或 Escape 关闭并把焦点还给触发器，Escape 先关 Popover 再关发现弹窗。面板经 Base UI portal 挂到 `document.body`，不受 Dialog 滚动体裁剪，宽度与视口碰撞留白由原语处理。选项对 `code`/`name`/`zone` 去重后展示，首次渲染 50 条并在滚动近底时继续追加，直到全部过滤结果都可访问；客户端不再维护本地关卡表，也不在结果上方展示候选关卡。服务端仍保留 `level` 的 code/name 解析与 400 `AGENT_COPILOT_STAGE_AMBIGUOUS`（`details.candidates`）、404 `AGENT_COPILOT_STAGE_NOT_FOUND`、502 `AGENT_COPILOT_STAGE_CATALOG_UNAVAILABLE`，供其他调用方使用；目录只参与展示投影：服务端用已缓存快照同步返回搜索结果，目录刷新在后台完成，因此冷缓存的首次搜索可能缺少 `stageCode`/`stageLabel`，后续搜索补全；目录查不到时搜索结果仍成功返回。
 
@@ -323,7 +323,7 @@ CombatTasks（app-page > app-stack-section > CombatWorkspace）
 
 关键不变量：
 
-- 搜索/预览旧响应裁决：代次与 request id 不匹配一律静默返回 `cancelled`，取消经 tracked key 精确中止在途 fetch；请求/服务端失败显示网络或服务端消息，不再伪装成“作业不存在”。
+- 搜索/预览旧响应裁决：代次与 request id 不匹配一律静默返回 `cancelled`，取消经 tracked key 精确中止在途 fetch；请求/服务端失败显示网络或服务端消息，不再伪装成“作业不存在”。搜索失败在弹窗内显示错误与重试，不回落旧结果、默认列表或空态；持有干员读取中或失败时卡片标记「拥有状态未知」，匹配弹窗显示加载或失败与重试。
 - 预览读取顺序：作业集计划优先、失败回退成员列表；`empty` 只用于成功但为空的真实内容。
 - 作业集视图：Run 归属与重置作废、待执行求差、`failed`/`stopped` 计入失败、续跑目标与当前项回退；`app`/`cli` 映射服务端 `continuous`。
 - 作业队列：URI 去重、50 项上限、上移/下移与删除只改顺序或成员；作业集同步按 `setItemIndex` 复用既有 id 与位置，历史已通关成员保留但不勾选；本地存储版本不符或损坏时回到空队列。

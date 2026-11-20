@@ -2540,7 +2540,7 @@ describe('CombatTasks execution', () => {
     expect(mocks.getCopilotInfo).not.toHaveBeenCalled()
   })
 
-  it('shows the server message for a failed search and keeps the last results', async () => {
+  it('shows a failed search inline with retry and hides the previous results', async () => {
     await renderComponent()
     await openDiscovery()
     mocks.searchCopilot.mockResolvedValueOnce(ok({
@@ -2555,7 +2555,100 @@ describe('CombatTasks execution', () => {
     await flush()
 
     expect(mocks.notify).toHaveBeenCalledWith('未找到关卡"1-7"的作业')
-    expect(discoveryDialog()?.textContent).toContain('旧作业')
+    expect(discoveryDialog()?.textContent).toContain('搜索失败')
+    expect(discoveryDialog()?.textContent).toContain('未找到关卡"1-7"的作业')
+    expect(discoveryDialog()?.textContent).not.toContain('旧作业')
+    expect(discoveryDialog()?.textContent).not.toContain('共 1 条')
+    expect(discoveryDialog()?.textContent).not.toContain('暂无作业')
+
+    mocks.searchCopilot.mockResolvedValueOnce(ok({
+      stage: '1-7',
+      copilots: [{ id: 2, uri: 'prts://2', title: '重试作业' }],
+    }))
+    await click(buttonByText('重试')!)
+    await flush()
+
+    expect(discoveryDialog()?.textContent).toContain('重试作业')
+    expect(discoveryDialog()?.textContent).not.toContain('搜索失败')
+  })
+
+  it('marks discovery ownership unknown while the operator box is loading', async () => {
+    const operBox = deferred<ApiResponse>()
+    mocks.getOperBoxData.mockReturnValueOnce(operBox.promise)
+    await renderComponent()
+    await openDiscovery()
+    mocks.searchCopilot.mockResolvedValueOnce(ok({
+      stage: '1-7',
+      copilots: [{ id: 1, uri: 'prts://1', title: '持有状态作业', operators: ['阿米娅'] }],
+    }))
+    await submitDiscoverySearch('1-7')
+
+    expect(discoveryDialog()?.querySelector('[title="阿米娅（拥有状态未知）"]')).not.toBeNull()
+    expect(discoveryDialog()?.querySelector('[title="阿米娅（未拥有）"]')).toBeNull()
+
+    await click(buttonByText('匹配')!)
+    expect(document.body.textContent).toContain('正在识别持有干员…')
+
+    await act(async () => operBox.resolve(ok({
+      operCount: 1,
+      data: [{
+        id: 'char_002_amiya',
+        name: '阿米娅',
+        rarity: 5,
+        profession: 'CASTER',
+        position: 'RANGED',
+        level: 1,
+        elite: 0,
+        potential: 0,
+      }],
+      allOpers: [{ id: 'char_002_amiya', name: '阿米娅', rarity: 5, owned: true }],
+      timestamp: '2026-11-20T00:00:00.000Z',
+    })))
+    await settleQueries()
+
+    expect(discoveryDialog()?.querySelector('[title="阿米娅（已拥有）"]')).not.toBeNull()
+    expect(discoveryDialog()?.querySelector('[title="阿米娅（拥有状态未知）"]')).toBeNull()
+    expect(document.body.textContent).not.toContain('正在识别持有干员')
+  })
+
+  it('marks discovery ownership unknown and retries when the operator box fails', async () => {
+    mocks.getOperBoxData
+      .mockRejectedValueOnce(new Error('持有干员读取失败'))
+      .mockResolvedValueOnce(ok({
+        operCount: 1,
+        data: [{
+          id: 'char_002_amiya',
+          name: '阿米娅',
+          rarity: 5,
+          profession: 'CASTER',
+          position: 'RANGED',
+          level: 1,
+          elite: 0,
+          potential: 0,
+        }],
+        allOpers: [{ id: 'char_002_amiya', name: '阿米娅', rarity: 5, owned: true }],
+        timestamp: '2026-11-20T00:00:00.000Z',
+      }))
+    await renderComponent()
+    await openDiscovery()
+    mocks.searchCopilot.mockResolvedValueOnce(ok({
+      stage: '1-7',
+      copilots: [{ id: 1, uri: 'prts://1', title: '持有状态作业', operators: ['阿米娅'] }],
+    }))
+    await submitDiscoverySearch('1-7')
+
+    expect(discoveryDialog()?.querySelector('[title="阿米娅（拥有状态未知）"]')).not.toBeNull()
+    expect(discoveryDialog()?.querySelector('[title="阿米娅（未拥有）"]')).toBeNull()
+
+    await click(buttonByText('匹配')!)
+    expect(document.body.textContent).toContain('持有干员读取失败')
+
+    await click(buttonByText('重试')!)
+    await settleQueries()
+
+    expect(mocks.getOperBoxData).toHaveBeenCalledTimes(2)
+    expect(discoveryDialog()?.querySelector('[title="阿米娅（已拥有）"]')).not.toBeNull()
+    expect(document.body.textContent).not.toContain('持有干员读取失败')
   })
 
   it('prefetches the hot list on mount and shows the cache as soon as discovery opens', async () => {
