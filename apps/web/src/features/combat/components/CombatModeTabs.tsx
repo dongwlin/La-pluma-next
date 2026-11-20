@@ -9,12 +9,10 @@ interface CombatModeTabsProps {
 const options: readonly SegmentedTabOption<CombatMode>[] = COMBAT_MODE_OPTIONS.map(({
   id,
   title,
-  desc,
   icon,
 }) => ({
   value: id,
   label: title,
-  description: desc,
   icon,
 }))
 

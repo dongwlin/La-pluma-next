@@ -33,26 +33,6 @@
     background: transparent;
   }
 
-  .combat-task-icon {
-    display: flex;
-    width: 2.25rem;
-    height: 2.25rem;
-    flex: none;
-    align-items: center;
-    justify-content: center;
-    border-radius: 0.75rem;
-    background: var(--primary-soft);
-    color: var(--primary-strong);
-    box-shadow: none;
-  }
-
-  .combat-task-icon > * {
-    width: 2.25rem;
-    height: 2.25rem;
-    background: transparent;
-    box-shadow: none;
-  }
-
   .combat-task-run-button {
     min-width: 7.5rem;
     flex: none;
@@ -1108,12 +1088,6 @@
 
   .combat-copilot-check:enabled:hover {
     background: var(--primary-soft);
-  }
-
-  .combat-task-icon svg {
-    /* S3: 图标尺寸随任务图标容器缩放，需要压过图标上的 w-* / h-* utilities。 */
-    width: 1.125rem !important;
-    height: 1.125rem !important;
   }
 
   .combat-copilot-discovery {
