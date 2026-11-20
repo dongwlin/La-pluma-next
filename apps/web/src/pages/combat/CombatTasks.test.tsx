@@ -847,22 +847,169 @@ describe('CombatTasks execution', () => {
     )
   })
 
-  it('keeps the setting controls accessible', async () => {
+  it('keeps the setting controls accessible for a single task', async () => {
     await renderComponent()
 
-    for (const [label, count] of [['编队', 3], ['执行方式', 2]] as const) {
-      const group = segmentedGroup(label)
-      const buttons = Array.from(group.querySelectorAll<HTMLButtonElement>('button'))
-      expect(buttons).toHaveLength(count)
-      expect(buttons.filter(button => button.getAttribute('aria-pressed') === 'true')).toHaveLength(1)
-      buttons.forEach(button => {
-        expect(button.disabled).toBe(false)
-      })
-    }
+    const formation = segmentedGroup('编队')
+    const formationButtons = Array.from(formation.querySelectorAll<HTMLButtonElement>('button'))
+    expect(formationButtons).toHaveLength(3)
+    expect(formationButtons.filter(button => button.getAttribute('aria-pressed') === 'true')).toHaveLength(1)
+    formationButtons.forEach(button => {
+      expect(button.disabled).toBe(false)
+    })
+
+    expect(container.querySelector('[role="group"][aria-label="执行方式"]')).toBeNull()
+    expect(container.textContent).not.toContain('执行方式')
+    expect(container.textContent).not.toContain('队列策略')
+    expect(container.textContent).toContain('忽略干员要求')
 
     const difficulty = difficultySelect()
     expect(await selectOptionLabels(difficulty)).toHaveLength(4)
     expect(difficulty.getAttribute('aria-disabled')).toBeNull()
+  })
+
+  it('does not announce a queue target for a single task without queue entries', async () => {
+    await renderComponent()
+
+    expect(container.textContent).not.toContain('将执行已勾选队列')
+    expect(container.textContent).not.toContain('队列非空')
+  })
+
+  it('announces the checked queue as the header execute target', async () => {
+    seedCopilotQueue([
+      { id: 'queue-a', source: 'link', uri: 'prts://101', title: '链接作业', addedAt: 1 },
+      { id: 'queue-b', source: 'file', uri: '/data/my job.json', title: '本地作业', fileName: 'my job.json', addedAt: 2 },
+    ])
+    await renderComponent()
+
+    expect(container.textContent).toContain('将执行已勾选队列（2 项）')
+    expect(container.textContent).not.toContain('队列非空，请先勾选要执行的作业')
+  })
+
+  it('asks to check a queue entry when the non-empty queue has no checked rows', async () => {
+    seedCopilotQueue([
+      { id: 'queue-a', source: 'link', uri: 'prts://101', title: '链接作业', addedAt: 1 },
+    ])
+    await renderComponent()
+
+    await click(buttonByAriaLabel('取消选择队列第 1 项 链接作业')!)
+
+    expect(container.textContent).toContain('队列非空，请先勾选要执行的作业')
+    expect(container.textContent).not.toContain('将执行已勾选队列')
+  })
+
+  it('hides the queue target hint while a run is active', async () => {
+    seedCopilotQueue([
+      { id: 'queue-a', source: 'link', uri: 'prts://101', title: '链接作业', addedAt: 1 },
+    ])
+    useIdentity({ runId: 'run-hint', operationId: 'run_task', scope: 'combat' })
+    api.fetchSnapshot.mockResolvedValue(ok(runSnapshot({
+      activeRuns: [activeRun('run-hint', 'running')],
+    })))
+    api.fetchRun.mockResolvedValue(ok(activeRun('run-hint', 'running')))
+    startController()
+    await flush()
+
+    await renderComponent()
+
+    expect(buttonByText('终止执行')).toBeDefined()
+    expect(container.textContent).not.toContain('将执行已勾选队列')
+  })
+
+  it('hides the queue target hint while the queue submission is in flight', async () => {
+    const submission = deferred<ApiResponse>()
+    mocks.executeCopilotQueue.mockReturnValueOnce(submission.promise)
+    seedCopilotQueue([
+      { id: 'queue-a', source: 'link', uri: 'prts://101', title: '链接作业', addedAt: 1 },
+    ])
+    await renderComponent()
+    expect(container.textContent).toContain('将执行已勾选队列（1 项）')
+
+    await click(buttonByText('立即执行')!)
+
+    expect(buttonByText('正在启动')).toBeDefined()
+    expect(container.textContent).not.toContain('将执行已勾选队列')
+
+    await act(async () => submission.resolve(ok({ success: true })))
+    await flush()
+  })
+
+  it('hides the queue target hint while the set waits for the next entry', async () => {
+    seedCopilotQueue([
+      { id: 'queue-a', source: 'link', uri: 'prts://101', title: '链接作业', addedAt: 1 },
+    ])
+    useIdentity({ runId: 'run-set-hint', operationId: 'run_copilot_set', scope: 'combat' })
+    const waiting = setRun('run-set-hint', 'waiting', {
+      progress: setProgress(
+        [planEntry(0, 'success'), planEntry(1, 'pending')],
+        {
+          mode: 'manual',
+          phase: 'waiting_for_next',
+          nextEntry: planEntry(1, 'pending'),
+          currentEntry: null,
+        },
+      ),
+    })
+    api.fetchSnapshot.mockResolvedValue(ok(runSnapshot({ activeRuns: [waiting] })))
+    api.fetchRun.mockResolvedValue(ok(waiting))
+    startController()
+    await flush()
+
+    await renderComponent()
+    await previewSet()
+    await flush()
+
+    expect(buttonByText('开始下一关')).toBeDefined()
+    expect(container.textContent).not.toContain('将执行已勾选队列')
+  })
+
+  it('shows set execution mode and queue strategy when the queue participates', async () => {
+    seedCopilotQueue([
+      { id: 'queue-a', source: 'link', uri: 'prts://101', title: '链接作业', addedAt: 1 },
+    ])
+    await renderComponent()
+
+    expect(pressedSegment('执行方式')).toEqual(['连续执行'])
+    expect(container.textContent).toContain('队列策略')
+    expectDifficulty('auto')
+  })
+
+  it('shows set execution mode and queue strategy for a previewed set', async () => {
+    await renderComponent()
+    await previewSet()
+
+    expect(pressedSegment('执行方式')).toEqual(['连续执行'])
+    expect(container.textContent).toContain('队列策略')
+  })
+
+  it('keeps the hidden queue strategy in the saved config for a single task', async () => {
+    vi.useFakeTimers()
+    mocks.loadUserConfig.mockResolvedValueOnce({ success: false })
+    localStorage.setItem('combatAdvancedParams', JSON.stringify({
+      copilot: { executionStrategy: 'stop' },
+    }))
+    await renderComponent()
+
+    expect(container.querySelector('[role="group"][aria-label="执行方式"]')).toBeNull()
+    expect(container.textContent).not.toContain('队列策略')
+
+    await clickSegment('编队', '保留当前编队')
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(300)
+    })
+    await flush()
+
+    expect(JSON.parse(localStorage.getItem('combatAdvancedParams') || '{}')).toMatchObject({
+      copilot: { executionStrategy: 'stop' },
+    })
+    expect(mocks.saveUserConfig).toHaveBeenCalledWith(
+      'combat-tasks',
+      expect.objectContaining({
+        advancedParams: expect.objectContaining({
+          copilot: expect.objectContaining({ executionStrategy: 'stop' }),
+        }),
+      }),
+    )
   })
 
   it('keeps execution progress without a separate log observer or entry', async () => {
@@ -1975,6 +2122,9 @@ describe('CombatTasks execution', () => {
         copilotSetExecutionMode: 'app',
       },
     })
+    seedCopilotQueue([
+      { id: 'queue-a', source: 'link', uri: 'prts://101', title: '链接作业', addedAt: 1 },
+    ])
 
     await renderComponent()
 
@@ -1991,6 +2141,9 @@ describe('CombatTasks execution', () => {
     localStorage.setItem('combatTaskInputs', JSON.stringify({ copilot: 'prts://local' }))
     localStorage.setItem('combatAdvancedParams', JSON.stringify({ copilot: { raid: '2' } }))
     localStorage.setItem('combatCopilotSetExecutionMode', 'app')
+    seedCopilotQueue([
+      { id: 'queue-a', source: 'link', uri: 'prts://101', title: '链接作业', addedAt: 1 },
+    ])
 
     await renderComponent()
 
@@ -2014,6 +2167,9 @@ describe('CombatTasks execution', () => {
       success: true,
       data: { taskInputs: { copilot: 'prts://server' } },
     })
+    seedCopilotQueue([
+      { id: 'queue-a', source: 'link', uri: 'prts://101', title: '链接作业', addedAt: 1 },
+    ])
 
     await renderComponent()
 

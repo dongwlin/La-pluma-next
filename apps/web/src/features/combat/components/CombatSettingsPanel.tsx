@@ -15,6 +15,7 @@ interface CombatSettingsPanelProps {
   raid: CopilotRaid
   setExecutionMode: CopilotSetExecutionMode
   advanced: AdvancedValues
+  showSetExecutionMode?: boolean
   onFormationChange: (mode: FormationMode) => void
   onRaidChange: (raid: CopilotRaid) => void
   onSetExecutionModeChange: (mode: CopilotSetExecutionMode) => void
@@ -39,12 +40,15 @@ const SET_EXECUTION_MODE_OPTIONS: readonly SegmentedControlOption<CopilotSetExec
   { value: 'manual', label: '手动逐关' },
 ]
 
+const SINGLE_TASK_HIDDEN_ADVANCED_KEYS = ['executionStrategy'] as const
+
 export default function CombatSettingsPanel({
   task,
   formationMode,
   raid,
   setExecutionMode,
   advanced,
+  showSetExecutionMode = true,
   onFormationChange,
   onRaidChange,
   onSetExecutionModeChange,
@@ -97,23 +101,25 @@ export default function CombatSettingsPanel({
         </Select>
       </div>
 
-      <div>
-        <div className="mb-1.5 flex items-center gap-1">
-          <span className="text-xs text-muted-foreground">执行方式</span>
-          <FieldHint
-            id="combat-copilot-set-mode-hint"
-            label="执行方式"
-            hint="连续执行会自动开始下一项。手动逐关需要在每个执行步骤后确认。"
+      {showSetExecutionMode && (
+        <div>
+          <div className="mb-1.5 flex items-center gap-1">
+            <span className="text-xs text-muted-foreground">执行方式</span>
+            <FieldHint
+              id="combat-copilot-set-mode-hint"
+              label="执行方式"
+              hint="连续执行会自动开始下一项。手动逐关需要在每个执行步骤后确认。"
+            />
+          </div>
+          <SegmentedControl
+            ariaLabel="执行方式"
+            value={setExecutionMode === 'app' ? 'cli' : setExecutionMode}
+            options={SET_EXECUTION_MODE_OPTIONS}
+            onChange={onSetExecutionModeChange}
+            fullWidth
           />
         </div>
-        <SegmentedControl
-          ariaLabel="执行方式"
-          value={setExecutionMode === 'app' ? 'cli' : setExecutionMode}
-          options={SET_EXECUTION_MODE_OPTIONS}
-          onChange={onSetExecutionModeChange}
-          fullWidth
-        />
-      </div>
+      )}
 
       {task.hasAdvanced && (
         <details className="combat-advanced-disclosure mt-4">
@@ -123,6 +129,7 @@ export default function CombatSettingsPanel({
           <CombatAdvancedFields
             taskId={task.id}
             advanced={advanced}
+            hiddenKeys={showSetExecutionMode ? undefined : SINGLE_TASK_HIDDEN_ADVANCED_KEYS}
             onChange={onAdvancedChange}
           />
         </details>

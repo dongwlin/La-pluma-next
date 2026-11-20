@@ -92,10 +92,12 @@ export function CombatRunAction({
 
 interface CombatTaskHeadingProps extends CombatRunActionProps {
   task: CombatTask
+  executeHint?: string
 }
 
 export default function CombatTaskHeading({
   task,
+  executeHint,
   ...run
 }: CombatTaskHeadingProps) {
   return (
@@ -104,7 +106,12 @@ export default function CombatTaskHeading({
         <h4 className="truncate text-lg font-semibold text-foreground">{task.name}</h4>
       </div>
 
-      <CombatRunAction {...run} />
+      <div className="flex min-w-0 flex-col gap-1.5 md:items-end">
+        <CombatRunAction {...run} />
+        {executeHint && (
+          <p className="max-w-full text-xs leading-4 text-muted-foreground md:text-right">{executeHint}</p>
+        )}
+      </div>
     </div>
   )
 }
