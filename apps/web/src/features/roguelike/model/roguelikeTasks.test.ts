@@ -100,6 +100,19 @@ describe('roguelike task catalog', () => {
     ])
   })
 
+  it('moves the reclamation guidance into label tooltips', () => {
+    const tooltipOptions = getRoguelikeAdvancedOptions('reclamation')
+      .filter(entry => entry.hintPlacement === 'tooltip')
+    expect(tooltipOptions.map(entry => entry.key))
+      .toEqual(['mode', 'toolsToCraft', 'incrementMode', 'numBatches'])
+    expect(tooltipOptions.map(entry => entry.hint)).toEqual([
+      expect.stringContaining('沙洲遗闻：模式 0'),
+      expect.stringContaining('必填，不能留空'),
+      expect.stringContaining('增加组装数量时'),
+      expect.stringContaining('必填，每批 99 个'),
+    ])
+  })
+
   it('names the roguelike mode options after their MaaCore behavior', () => {
     const mode = option('mode')
     expect(getRoguelikeOptionChoices(mode, 'Phantom')).toEqual([

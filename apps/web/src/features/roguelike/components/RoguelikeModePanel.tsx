@@ -13,7 +13,6 @@ const options: readonly SegmentedTabOption<RoguelikeMode>[] = ROGUELIKE_TASKS.ma
   return {
     value: task.id,
     label: task.name,
-    description: task.description,
     icon: IconComponent ? <IconComponent /> : undefined,
   }
 })

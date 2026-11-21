@@ -11,7 +11,10 @@ import {
   normalizeRoguelikeModeForKnownTheme,
 } from '../model/roguelikeTasks'
 import { buildRoguelikeExecutionPlan } from '../model/roguelikeExecution'
-import { validateRoguelikeTaskInput } from '../model/roguelikeValidation'
+import {
+  validateRoguelikeTaskInputError,
+  type RoguelikeFieldError,
+} from '../model/roguelikeValidation'
 import { useRoguelikeExecution } from '../hooks/useRoguelikeExecution'
 import RoguelikeModePanel from './RoguelikeModePanel'
 import RoguelikeResultPanel from './RoguelikeResultPanel'
@@ -38,6 +41,7 @@ export default function RoguelikeWorkspace() {
     pendingStopMode,
     isSubmitting,
     trackedRun,
+    trackedRunLabel,
     execute,
     stop,
   } = useRoguelikeExecution({ notify })
@@ -56,6 +60,9 @@ export default function RoguelikeWorkspace() {
   const isRetryingConfigSave = configSyncState === 'saving'
   const configReady = configLoadState === 'ready'
   const [activeMode, setActiveMode] = useState<RoguelikeMode>(DEFAULT_ROGUELIKE_MODE)
+  const [fieldError, setFieldError] = useState<RoguelikeFieldError | null>(null)
+  const isLocked = isRunning || isSubmitting
+  const editable = configReady && !isLocked
 
   const activeTask = ROGUELIKE_TASKS.find(task => task.id === activeMode) ?? ROGUELIKE_TASKS[0]
 
@@ -86,12 +93,22 @@ export default function RoguelikeWorkspace() {
     })
   }, [configSyncError])
 
+  useEffect(() => {
+    if (!fieldError) return
+    const fieldId = fieldError.key === 'theme'
+      ? `roguelike-${activeTask?.id}-theme`
+      : `roguelike-${activeTask?.id}-${fieldError.key}`
+    document.getElementById(fieldId)?.focus()
+  }, [activeTask?.id, fieldError])
+
   if (!activeTask) return null
 
   const activeAdvanced = advancedParams[activeTask.id] ?? EMPTY_ADVANCED_VALUES
   const activeTheme = taskInputs[activeTask.id] || ''
 
   const handleThemeChange = (value: string) => {
+    if (!editable) return
+    setFieldError(previous => previous?.key === 'theme' ? null : previous)
     updateConfig({
       taskInputs: { ...taskInputs, [activeTask.id]: value },
       advancedParams: normalizeRoguelikeModeForKnownTheme(activeTask.id, value, advancedParams),
@@ -99,6 +116,8 @@ export default function RoguelikeWorkspace() {
   }
 
   const handleAdvancedChange = (key: string, value: string | number | boolean) => {
+    if (!editable) return
+    setFieldError(previous => previous?.key === key ? null : previous)
     updateConfig({
       taskInputs,
       advancedParams: {
@@ -112,6 +131,7 @@ export default function RoguelikeWorkspace() {
   }
 
   const handleExecute = async () => {
+    if (!editable) return
     if (!automationAvailable) {
       notify(unavailableMessage, 'error')
       return
@@ -122,11 +142,12 @@ export default function RoguelikeWorkspace() {
       activeTheme,
       advancedParams,
     )
-    const inputError = validateRoguelikeTaskInput(activeTask.id, taskInputs, normalizedAdvanced)
+    const inputError = validateRoguelikeTaskInputError(activeTask.id, taskInputs, normalizedAdvanced)
     if (inputError) {
-      notify(inputError)
+      setFieldError(inputError)
       return
     }
+    setFieldError(null)
 
     if (normalizedAdvanced !== advancedParams) {
       updateConfig({ taskInputs, advancedParams: normalizedAdvanced })
@@ -146,7 +167,8 @@ export default function RoguelikeWorkspace() {
       <SegmentedTabs
         value={activeMode}
         onValueChange={(next) => {
-          if (!configReady) return
+          if (!editable) return
+          setFieldError(null)
           setActiveMode(next)
         }}
       >
@@ -155,7 +177,7 @@ export default function RoguelikeWorkspace() {
           mode={(
             <RoguelikeModePanel
               activeMode={activeMode}
-              disabled={!configReady}
+              disabled={!editable}
             />
           )}
           content={(
@@ -164,17 +186,20 @@ export default function RoguelikeWorkspace() {
                 <RoguelikeThemePanel
                   task={activeTask}
                   theme={activeTheme}
-                  disabled={!configReady}
+                  disabled={!editable}
+                  error={fieldError?.key === 'theme' ? fieldError.message : undefined}
                   onThemeChange={handleThemeChange}
                 />
 
-                <RoguelikeResultPanel run={trackedRun} command={activeTask.command} />
+                <RoguelikeResultPanel run={trackedRun} taskName={trackedRunLabel} />
               </div>
 
               <RoguelikeSettingsPanel
                 task={activeTask}
                 theme={activeTheme}
                 advanced={activeAdvanced}
+                editable={editable}
+                fieldError={fieldError}
                 configReady={configReady}
                 configLoadState={configLoadState}
                 configLoadError={configLoadError}

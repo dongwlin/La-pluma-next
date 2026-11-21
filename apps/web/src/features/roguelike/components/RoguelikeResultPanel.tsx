@@ -5,7 +5,6 @@ import { Card } from '@/shared/ui/card'
 import { Separator } from '@/shared/ui/separator'
 import { EmptyState } from '@/shared/components'
 import { isActiveRunState, isTerminalRunState, type AgentRun } from '@/features/task-execution'
-import { RuntimeDiagnosticsPanel } from '@/features/runtime-status'
 import {
   describeRoguelikeRunSummary,
   readRoguelikeRunSummary,
@@ -14,7 +13,6 @@ import {
 
 interface RoguelikeResultPanelProps {
   run: AgentRun | null
-  command?: string
   taskName?: string | null
 }
 
@@ -108,7 +106,7 @@ function SummaryContent({
   )
 }
 
-export default function RoguelikeResultPanel({ run, command, taskName }: RoguelikeResultPanelProps) {
+export default function RoguelikeResultPanel({ run, taskName }: RoguelikeResultPanelProps) {
   const [retained, setRetained] = useState<RetainedResult | null>(null)
   const active = Boolean(run && isActiveRunState(run.state))
   const terminalRun = run && isTerminalRunState(run.state) ? run : null
@@ -164,13 +162,7 @@ export default function RoguelikeResultPanel({ run, command, taskName }: Rogueli
       aria-label="执行结果"
     >
       <div className="roguelike-panel-heading">
-        <div>
-          <h3>执行结果</h3>
-          <p>
-            {active ? '本次执行进行中' : run ? '最近一次执行' : '执行后查看结算'}
-            {ownership ? ` · ${ownership}` : null}
-          </p>
-        </div>
+        <h3>执行结果</h3>
         <div className="flex shrink-0 items-center">
           <Badge variant="ghost" className={`${BADGE_SURFACE[badge.tone]} pointer-events-none`}>
             {badge.label}
@@ -179,6 +171,8 @@ export default function RoguelikeResultPanel({ run, command, taskName }: Rogueli
       </div>
 
       <div className="roguelike-panel-body roguelike-result-body">
+        {ownership && <p className="text-xs text-muted-foreground">{ownership}</p>}
+
         {!run && (
           <EmptyState
             className="roguelike-result-empty"
@@ -214,9 +208,6 @@ export default function RoguelikeResultPanel({ run, command, taskName }: Rogueli
         {terminalRun && !currentSummary && (
           <p className="roguelike-result-missing">本次执行没有可用的结构化结果</p>
         )}
-
-        <Separator aria-hidden="true" />
-        <RuntimeDiagnosticsPanel command={command} />
       </div>
     </Card>
   )

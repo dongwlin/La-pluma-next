@@ -9,12 +9,6 @@ import RoguelikeResultPanel from './RoguelikeResultPanel'
 
 ;(globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true
 
-vi.mock('@/features/runtime-status', () => ({
-  RuntimeDiagnosticsPanel: ({ command }: { command?: string }) => (
-    <div data-testid="runtime-diagnostics" data-command={command ?? ''} />
-  ),
-}))
-
 function summary(overrides: Partial<RoguelikeRunSummary> = {}): RoguelikeRunSummary {
   return {
     command: 'roguelike',
@@ -81,11 +75,10 @@ const flush = async () => {
 
 const renderPanel = async (
   panelRun: AgentRun | null,
-  command?: string,
   taskName?: string | null,
 ) => {
   await act(async () => root.render(
-    <RoguelikeResultPanel run={panelRun} command={command} taskName={taskName} />,
+    <RoguelikeResultPanel run={panelRun} taskName={taskName} />,
   ))
   await flush()
 }
@@ -105,34 +98,33 @@ describe('RoguelikeResultPanel', () => {
     vi.restoreAllMocks()
   })
 
-  it('shows an empty state before the first run and still embeds diagnostics', async () => {
-    await renderPanel(null, 'reclamation')
+  it('shows an empty state before the first run without diagnostics or ownership', async () => {
+    await renderPanel(null)
 
     const text = panel()?.textContent ?? ''
     expect(text).toContain('执行结果')
     expect(text).toContain('还没有执行记录')
     expect(text).not.toContain('本次执行没有可用的结构化结果')
-    expect(container.querySelector('[data-testid="runtime-diagnostics"]')?.getAttribute('data-command'))
-      .toBe('reclamation')
+    expect(text).not.toContain('任务归属')
+    expect(text).not.toContain('执行后查看结算')
   })
 
   it('shows the progress of an active run without claiming success', async () => {
-    await renderPanel(activeRun('run-2', '正在执行：第 3 层'), 'roguelike')
+    await renderPanel(activeRun('run-2', '正在执行：第 3 层'))
 
     const text = panel()?.textContent ?? ''
     expect(text).toContain('执行中')
     expect(text).toContain('正在执行：第 3 层')
     expect(text).not.toContain('成功')
     expect(text).not.toContain('上次执行结果')
-    expect(container.querySelector('[data-testid="runtime-diagnostics"]')?.getAttribute('data-command'))
-      .toBe('roguelike')
+    expect(text).not.toContain('本次执行进行中')
   })
 
   it('renders the terminal summary with message, metrics, events and notes', async () => {
-    await renderPanel(run(), 'roguelike')
+    await renderPanel(run())
 
     const text = panel()?.textContent ?? ''
-    expect(text).toContain('最近一次执行')
+    expect(text).not.toContain('最近一次执行')
     expect(text).toContain('成功')
     expect(text).toContain('肉鸽结算：第 5 层 · 得分 1200')
     expect(text).toContain('耗时')
@@ -233,20 +225,22 @@ describe('RoguelikeResultPanel', () => {
     expect(nextText).not.toContain('上一次执行没有可用的结构化结果')
   })
 
-  it('shows the task that owns the current run', async () => {
-    await renderPanel(activeRun('run-2', '正在执行：第 3 层'), 'roguelike', '集成战略')
+  it('shows the owning task in the body instead of the heading', async () => {
+    await renderPanel(activeRun('run-2', '正在执行：第 3 层'), '集成战略')
 
     const text = panel()?.textContent ?? ''
     expect(text).toContain('执行中')
-    expect(text).toContain('集成战略')
+    expect(text).toContain('任务：集成战略')
     expect(text).not.toContain('任务归属未知')
+    expect(panel()?.querySelector('.roguelike-panel-heading')?.textContent).not.toContain('集成战略')
+    expect(panel()?.querySelector('.roguelike-panel-body')?.textContent).toContain('任务：集成战略')
   })
 
   it('states unknown task ownership instead of guessing from the page mode', async () => {
-    await renderPanel(run(), 'roguelike', null)
+    await renderPanel(run(), null)
 
     const text = panel()?.textContent ?? ''
-    expect(text).toContain('最近一次执行')
+    expect(text).not.toContain('最近一次执行')
     expect(text).toContain('任务归属未知（刷新前发起）')
   })
 
@@ -259,12 +253,13 @@ describe('RoguelikeResultPanel', () => {
     expect(badge?.closest('button')).toBeNull()
   })
 
-  it('separates the retained result and diagnostics with decorative separators', async () => {
+  it('separates only the retained result with a decorative separator', async () => {
     await renderPanel(run())
     await renderPanel(activeRun('run-2', '正在执行：第 1 层'))
 
     const separators = [...(panel()?.querySelectorAll('[data-slot="separator"]') ?? [])]
-    expect(separators).toHaveLength(2)
+    expect(separators).toHaveLength(1)
     expect(separators.every(separator => separator.getAttribute('aria-hidden') === 'true')).toBe(true)
+    expect(panel()?.querySelector('[data-testid="runtime-diagnostics"]')).toBeNull()
   })
 })
