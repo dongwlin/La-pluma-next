@@ -20,6 +20,7 @@ import {
   selectBlackFlowAction,
   selectRoguelikeProgressView,
   type BlackFlowFreshness,
+  type RoguelikeBlackFlowActionPoints,
   type RoguelikeBlackFlowMilestone,
   type RoguelikeBlackFlowNode,
   type RoguelikeBlackFlowProgress,
@@ -178,54 +179,87 @@ function formatBlackFlowNode(node: RoguelikeBlackFlowNode): string {
   return name || type || ''
 }
 
+function describeBlackFlowFloor(
+  floor: number,
+  at: string | null,
+  freshness: BlackFlowFreshness,
+  now: number,
+  terminal: boolean,
+): string {
+  const label = `第 ${floor} 层`
+  if (terminal) return `最后记录${label}`
+  if (freshness === 'current') return label
+  if (freshness === 'recent') return `最近已知${label}`
+  if (freshness === 'stale') return `可能已过期${label}`
+  const atMs = parseTimestamp(at)
+  return atMs !== null && now >= atMs ? `最近已知${label}` : label
+}
+
+function describeBlackFlowNodeStatus(
+  node: RoguelikeBlackFlowNode,
+  freshness: BlackFlowFreshness,
+): string | null {
+  if (freshness === 'unknown') return null
+  const identity = formatBlackFlowNode(node)
+  if (freshness === 'terminal') {
+    return identity ? `最后记录节点 ${identity}` : '最后记录节点未知'
+  }
+  if (freshness === 'stale') {
+    return identity ? `可能已过期节点 ${identity}` : '可能已过期节点未知'
+  }
+  if (freshness === 'recent') {
+    return identity ? `最近已知节点 ${identity}` : '最近已知节点未知'
+  }
+  return identity ? `当前节点 ${identity}` : '当前节点未知'
+}
+
+function describeBlackFlowActionPointsStatus(
+  actionPoints: RoguelikeBlackFlowActionPoints,
+  freshness: BlackFlowFreshness,
+): string | null {
+  if (freshness === 'unknown') return null
+  const value = actionPoints.before
+  if (value === null) return null
+  if (freshness === 'terminal') return `最后记录行动力 ${value}`
+  if (freshness === 'stale') return `可能已过期行动力 ${value}`
+  if (freshness === 'recent') return `最近决策时行动力 ${value}`
+  return `行动力 ${value}`
+}
+
 function describeBlackFlowStatus(
   blackflow: RoguelikeBlackFlowProgress,
   now: number,
   terminal: boolean,
 ): string | null {
-  const floorFreshness = describeBlackFlowFreshness(blackflow.floorAt, now, terminal)
-  const nodeFreshness = describeBlackFlowFreshness(blackflow.currentNodeAt, now, terminal)
-  const actionPointsFreshness = describeBlackFlowFreshness(
-    blackflow.actionPoints?.at ?? null,
-    now,
-    terminal,
-  )
   const parts: string[] = []
-  const levels: BlackFlowFreshness[] = []
 
   if (blackflow.floor !== null) {
-    parts.push(`第 ${blackflow.floor} 层`)
-    levels.push(floorFreshness)
+    parts.push(describeBlackFlowFloor(
+      blackflow.floor,
+      blackflow.floorAt,
+      describeBlackFlowFreshness(blackflow.floorAt, now, terminal),
+      now,
+      terminal,
+    ))
   }
 
-  if (blackflow.currentNode && nodeFreshness !== 'unknown') {
-    const identity = formatBlackFlowNode(blackflow.currentNode)
-    if (!identity) {
-      parts.push(!terminal && nodeFreshness === 'current' ? '当前节点未知' : '节点未知')
-    } else {
-      parts.push(
-        !terminal && nodeFreshness === 'current'
-          ? `当前节点 ${identity}`
-          : `节点 ${identity}`,
-      )
-    }
-    levels.push(nodeFreshness)
+  if (blackflow.currentNode) {
+    const node = describeBlackFlowNodeStatus(
+      blackflow.currentNode,
+      describeBlackFlowFreshness(blackflow.currentNodeAt, now, terminal),
+    )
+    if (node !== null) parts.push(node)
   }
 
-  const actionPoints = blackflow.actionPoints?.before ?? null
-  if (actionPoints !== null && actionPointsFreshness !== 'unknown') {
-    parts.push(`行动力 ${actionPoints}`)
-    levels.push(actionPointsFreshness)
+  if (blackflow.actionPoints) {
+    const actionPoints = describeBlackFlowActionPointsStatus(
+      blackflow.actionPoints,
+      describeBlackFlowFreshness(blackflow.actionPoints.at, now, terminal),
+    )
+    if (actionPoints !== null) parts.push(actionPoints)
   }
 
-  if (parts.length === 0) return null
-  if (terminal) return `最后记录：${parts.join(' · ')}`
-  const prefix = levels.includes('stale')
-    ? '可能已过期：'
-    : levels.includes('recent') || levels.includes('unknown')
-      ? '最近已知：'
-      : ''
-  return `${prefix}${parts.join(' · ')}`
+  return parts.length > 0 ? parts.join(' · ') : null
 }
 
 function describeBlackFlowAction(blackflow: RoguelikeBlackFlowProgress): string | null {
@@ -284,6 +318,9 @@ function describeBlackFlowStrategy(strategy: RoguelikeBlackFlowStrategy | null):
     reason ? `原因：${reason}` : null,
     nextAction ? `建议：${nextAction}` : null,
   ].filter((part): part is string => part !== null)
+  if (resultParts.length === 0 && strategy.succeeded === true) {
+    resultParts.push('策略目标已达成')
+  }
   return {
     profile: profile ? `黑流策略：${profile}` : null,
     result: resultParts.length > 0 ? `策略结果：${resultParts.join(' · ')}` : null,
@@ -323,6 +360,7 @@ function BlackFlowProgress({
     || (blackflow.actionPoints?.after ?? null) !== null
     || blackflow.lastRoute !== null
     || blackflow.lastNodeResolution !== null
+  const showEmptyState = status === null && action === null && milestones.length === 0
 
   return (
     <section className="roguelike-progress-blackflow">
@@ -330,9 +368,13 @@ function BlackFlowProgress({
       {status ? (
         <p className="roguelike-progress-action">{status}</p>
       ) : (
-        !hasMapData && (
+        showEmptyState && (
           <p className="roguelike-progress-note">
-            {terminal ? '未记录到黑流进度' : '等待黑流地图数据…'}
+            {terminal
+              ? '未记录到黑流进度'
+              : hasMapData
+                ? '节点未知（最近记录已过期）'
+                : '等待黑流地图数据…'}
           </p>
         )
       )}

@@ -581,6 +581,24 @@ describe('black flow progress reducer', () => {
     assert.equal(buildBlackFlowProgressSnapshot(stale)?.updatedAt, iso(resetTime));
   });
 
+  it('drops lower run revisions for map, milestone and resolution events', () => {
+    const state = applyBlackFlowProgressEvents(createBlackFlowProgressState(), [
+      mapSummary({ run_revision: 3, floor: 1, current_node: NODE_A }, BASE_TIME)
+    ]);
+    const stale = applyBlackFlowProgressEvents(state, [
+      mapSummary({ run_revision: 2, observation_id: 'BF-O2', current_node: NODE_B }, BASE_TIME + 1_000),
+      milestoneChanged({ run_revision: 2, milestone_id: 'stale-milestone' }, BASE_TIME + 2_000),
+      nodeResolution({ run_revision: 2, transaction_id: 'BF-T2-9', node: NODE_C }, BASE_TIME + 3_000)
+    ]);
+    const snapshot = buildBlackFlowProgressSnapshot(stale);
+
+    assert.equal(snapshot?.floor, 1);
+    assert.deepEqual(snapshot?.currentNode, { id: String(NODE_A), name: null, type: null });
+    assert.deepEqual(snapshot?.milestones, []);
+    assert.equal(snapshot?.lastNodeResolution, null);
+    assert.equal(snapshot?.updatedAt, iso(BASE_TIME));
+  });
+
   it('clears current node identity and action points when the floor changes', () => {
     const routeTime = BASE_TIME + 1_000;
     const floorTwoTime = BASE_TIME + 2_000;
@@ -729,6 +747,31 @@ describe('black flow progress reducer', () => {
     assert.equal(duplicate?.updatedAt, iso(BASE_TIME + 7_000));
   });
 
+  it('keeps lower-floor milestones without lowering the current floor', () => {
+    const milestoneTime = BASE_TIME + 1_000;
+    const snapshot = snapshotOf([
+      mapSummary({ floor: 2, current_node: NODE_A }, BASE_TIME),
+      milestoneChanged({
+        floor: 1,
+        milestone_id: 'burn_floor1_final',
+        status: 'satisfied',
+        progress: 0
+      }, milestoneTime)
+    ]);
+
+    assert.equal(snapshot?.floor, 2);
+    assert.equal(snapshot?.floorAt, iso(BASE_TIME));
+    assert.deepEqual(snapshot?.currentNode, { id: String(NODE_A), name: null, type: null });
+    assert.deepEqual(snapshot?.milestones, [{
+      id: 'burn_floor1_final',
+      floor: 1,
+      progress: 0,
+      status: 'satisfied',
+      at: iso(milestoneTime)
+    }]);
+    assert.equal(snapshot?.updatedAt, iso(milestoneTime));
+  });
+
   it('resets on strategy started and exposes the profile', () => {
     const startedTime = BASE_TIME + 3_000;
     const state = applyBlackFlowProgressEvents(createBlackFlowProgressState(), [
@@ -753,6 +796,33 @@ describe('black flow progress reducer', () => {
       nextAction: null,
       succeeded: null
     });
+    assert.equal(snapshot?.updatedAt, iso(startedTime));
+  });
+
+  it('resets on strategy started even without a usable profile', () => {
+    const startedTime = BASE_TIME + 3_000;
+    const state = applyBlackFlowProgressEvents(createBlackFlowProgressState(), [
+      mapSummary({ floor: 2, current_node: NODE_A }, BASE_TIME),
+      routingDecision({ floor: 2 }, BASE_TIME + 1_000),
+      milestoneChanged({ floor: 2 }, BASE_TIME + 2_000),
+      strategyStarted(null, startedTime)
+    ]);
+    const snapshot = buildBlackFlowProgressSnapshot(state);
+
+    assert.equal(state.observed, true);
+    assert.equal(state.profile, null);
+    assert.equal(state.floor, null);
+    assert.equal(state.currentNode, null);
+    assert.equal(state.actionPoints, null);
+    assert.equal(state.lastRoute, null);
+    assert.deepEqual(state.milestones, []);
+    assert.equal(state.strategy, null);
+    assert.equal(snapshot?.floor, null);
+    assert.equal(snapshot?.currentNode, null);
+    assert.equal(snapshot?.actionPoints, null);
+    assert.equal(snapshot?.lastRoute, null);
+    assert.deepEqual(snapshot?.milestones, []);
+    assert.equal(snapshot?.strategy, null);
     assert.equal(snapshot?.updatedAt, iso(startedTime));
   });
 
@@ -832,6 +902,25 @@ describe('black flow progress reducer', () => {
     ]);
 
     assert.equal(buildBlackFlowProgressSnapshot(state)?.updatedAt, iso(routeTime));
+  });
+
+  it('clears updatedAt when a parsed event carries no timestamp', () => {
+    const timed = applyBlackFlowProgressEvents(createBlackFlowProgressState(), [
+      mapSummary({}, BASE_TIME)
+    ]);
+    assert.equal(buildBlackFlowProgressSnapshot(timed)?.updatedAt, iso(BASE_TIME));
+
+    const next = applyBlackFlowProgressEvents(timed, [
+      routingDecision({ decision_id: 'BF-D2-2', transaction_id: 'BF-T2-2' }, null)
+    ]);
+    const snapshot = buildBlackFlowProgressSnapshot(next);
+
+    assert.deepEqual(snapshot?.lastRoute?.target, {
+      id: String(NODE_B),
+      name: '作战',
+      type: 'battle_normal'
+    });
+    assert.equal(snapshot?.updatedAt, null);
   });
 
   it('leaves timestamps null when events carry no atMs', () => {

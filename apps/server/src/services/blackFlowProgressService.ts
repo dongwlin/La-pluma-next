@@ -190,7 +190,7 @@ function parseDecisionSequence(decisionId: string | null): number | null {
 }
 
 function withUpdatedAt(state: BlackFlowProgressState, atMs: number | null): BlackFlowProgressState {
-  return atMs === null ? state : { ...state, updatedAtMs: atMs };
+  return { ...state, updatedAtMs: atMs };
 }
 
 function resetRunState(
@@ -409,7 +409,7 @@ function applyRoutingDecision(
     ),
     lastRoute: route,
     actionPoints,
-    updatedAtMs: atMs ?? next.updatedAtMs
+    updatedAtMs: atMs
   };
 
   return next;
@@ -464,7 +464,7 @@ function applyNodeResolution(
       eventName: resolution.eventName,
       progress: resolution.progress
     },
-    updatedAtMs: atMs ?? next.updatedAtMs
+    updatedAtMs: atMs
   };
 }
 
@@ -477,8 +477,6 @@ function applyMilestone(
 
   let next = applyRunRevision(state, milestone.runRevision);
   if (next === null) return state;
-
-  if (milestone.floor !== null && next.floor !== null && milestone.floor < next.floor) return next;
 
   const existing = next.milestones.find(item => item.id === milestone.milestoneId);
   if (existing && existing.status === milestone.status) return next;
@@ -508,10 +506,16 @@ function applyStrategyStarted(
   event: MaaCallbackEvent
 ): BlackFlowProgressState {
   const profile = readBlackFlowStrategyStarted(event);
-  if (profile === null) return state;
-
   const atMs = eventTime(event);
   const reset = resetRunState(state, null);
+
+  if (profile === null) {
+    return {
+      ...reset,
+      profile: null,
+      updatedAtMs: atMs
+    };
+  }
 
   return {
     ...reset,
@@ -525,7 +529,7 @@ function applyStrategyStarted(
       succeeded: null
     },
     strategyAtMs: atMs,
-    updatedAtMs: atMs ?? reset.updatedAtMs
+    updatedAtMs: atMs
   };
 }
 
@@ -553,7 +557,7 @@ function applyStrategyResult(
     strategy,
     strategyAtMs: strategy.atMs,
     strategyEnded: true,
-    updatedAtMs: atMs ?? state.updatedAtMs
+    updatedAtMs: atMs
   };
 }
 

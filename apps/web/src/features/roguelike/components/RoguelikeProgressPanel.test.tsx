@@ -1043,6 +1043,124 @@ describe('RoguelikeProgressPanel', () => {
     expect(text).not.toContain('行动力 7')
   })
 
+  it('applies freshness prefixes per field instead of one shared row prefix', async () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date('2026-11-21T12:04:12.000Z'))
+
+    await renderPanel({
+      run: activeRun({
+        progress: {
+          roguelike: snapshot({
+            blackflow: blackflow({
+              floorAt: '2026-11-21T12:00:12.000Z',
+              currentNodeAt: '2026-11-21T12:04:05.000Z',
+              actionPoints: null,
+              lastRoute: null,
+              lastNodeResolution: null,
+              milestones: [],
+              strategy: null,
+              updatedAt: '2026-11-21T12:04:05.000Z',
+            }),
+          }),
+        },
+      }),
+    })
+
+    const lines = [...(panel()?.querySelectorAll('section.roguelike-progress-blackflow p') ?? [])]
+      .map(line => line.textContent)
+    expect(lines[0]).toBe('可能已过期第 3 层 · 当前节点 不期而遇（事件）')
+    expect(lines[0]).not.toContain('可能已过期：')
+    expect(lines[0]).not.toContain('最近已知：')
+  })
+
+  it('uses per-field recent wording for floor, node and action points', async () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date('2026-11-21T12:01:30.000Z'))
+
+    await renderPanel({
+      run: activeRun({
+        progress: {
+          roguelike: snapshot({
+            blackflow: blackflow({
+              lastRoute: null,
+              lastNodeResolution: null,
+              milestones: [],
+              strategy: null,
+              updatedAt: '2026-11-21T12:00:12.000Z',
+            }),
+          }),
+        },
+      }),
+    })
+
+    const lines = [...(panel()?.querySelectorAll('section.roguelike-progress-blackflow p') ?? [])]
+      .map(line => line.textContent)
+    expect(lines[0]).toBe(
+      '最近已知第 3 层 · 最近已知节点 不期而遇（事件） · 最近决策时行动力 7',
+    )
+  })
+
+  it('shows an expired-record fallback when only the current node is stale', async () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date('2026-11-21T12:05:20.000Z'))
+
+    await renderPanel({
+      run: activeRun({
+        progress: {
+          roguelike: snapshot({
+            blackflow: blackflow({
+              floor: null,
+              floorAt: null,
+              currentNodeAt: '2026-11-21T12:00:12.000Z',
+              actionPoints: null,
+              lastRoute: null,
+              lastNodeResolution: null,
+              milestones: [],
+              strategy: null,
+              updatedAt: null,
+            }),
+          }),
+        },
+      }),
+    })
+
+    const text = panelText()
+    expect(text).toContain('黑流进度')
+    expect(text).toContain('节点未知（最近记录已过期）')
+    expect(text).not.toContain('不期而遇')
+    expect(text).not.toContain('当前节点')
+    expect(text).not.toContain('等待黑流地图数据')
+
+    await renderPanel({
+      run: terminalRun('roguelike', {
+        result: {
+          summary: {
+            ...summary('roguelike'),
+            progress: snapshot({
+              phase: 'ended',
+              currentRound: null,
+              recentRounds: [],
+              blackflow: blackflow({
+                floor: null,
+                floorAt: null,
+                currentNode: null,
+                currentNodeAt: null,
+                actionPoints: null,
+                lastRoute: null,
+                lastNodeResolution: null,
+                milestones: [],
+                strategy: null,
+                updatedAt: '2026-11-21T12:00:12.000Z',
+              }),
+            }),
+          },
+        },
+      }),
+    })
+
+    expect(panelText()).toContain('未记录到黑流进度')
+  })
+
   it('uses last-record wording for terminal blackflow and keeps it before the last round result', async () => {
     vi.useFakeTimers()
     vi.setSystemTime(new Date('2026-11-21T12:00:20.000Z'))
@@ -1121,6 +1239,49 @@ describe('RoguelikeProgressPanel', () => {
     expect(text).toContain('未记录到黑流进度')
     expect(text).toContain('黑流策略：速通到第三层')
     expect(text).not.toContain('等待黑流地图数据')
+  })
+
+  it('shows a neutral strategy goal message when only succeeded is reported', async () => {
+    await renderPanel({
+      run: terminalRun('roguelike', {
+        result: {
+          summary: {
+            ...summary('roguelike'),
+            progress: snapshot({
+              phase: 'ended',
+              currentRound: null,
+              recentRounds: [],
+              blackflow: blackflow({
+                floor: null,
+                floorAt: null,
+                currentNode: null,
+                currentNodeAt: null,
+                actionPoints: null,
+                lastRoute: null,
+                lastNodeResolution: null,
+                milestones: [],
+                updatedAt: null,
+                strategy: {
+                  at: null,
+                  profile: 'burn',
+                  outcome: null,
+                  terminationReason: null,
+                  nextAction: null,
+                  succeeded: true,
+                },
+              }),
+            }),
+          },
+        },
+      }),
+    })
+
+    const text = panelText()
+    const sectionText = panel()?.querySelector('section.roguelike-progress-blackflow')?.textContent ?? ''
+    expect(text).toContain('策略结果：策略目标已达成')
+    expect(text).toContain('黑流策略：速通到第三层')
+    expect(sectionText).not.toContain('任务成功')
+    expect(sectionText).not.toContain('通关')
   })
 
   it('keeps a failed task badge when the blackflow strategy reports success', async () => {
