@@ -1,6 +1,8 @@
 import { useState } from 'react'
 import { FileText } from 'lucide-react'
+import { Badge } from '@/shared/ui/badge'
 import { Card } from '@/shared/ui/card'
+import { Separator } from '@/shared/ui/separator'
 import { EmptyState } from '@/shared/components'
 import { isActiveRunState, isTerminalRunState, type AgentRun } from '@/features/task-execution'
 import { RuntimeDiagnosticsPanel } from '@/features/runtime-status'
@@ -13,6 +15,7 @@ import {
 interface RoguelikeResultPanelProps {
   run: AgentRun | null
   command?: string
+  taskName?: string | null
 }
 
 interface RetainedResult {
@@ -21,14 +24,29 @@ interface RetainedResult {
   durationMs: number | null
 }
 
-type ResultBadgeTone = 'success' | 'warning' | 'danger' | 'info' | 'neutral'
+type ResultBadgeTone = 'success' | 'warning' | 'danger' | 'running' | 'neutral'
 
 const BADGE_SURFACE: Record<ResultBadgeTone, string> = {
   success: 'status-success',
   warning: 'status-warning',
   danger: 'status-danger',
-  info: 'status-info',
+  running: 'brand-chip',
   neutral: 'surface-soft text-muted-foreground',
+}
+
+function describeTerminalStateBadge(state: AgentRun['state']): { label: string; tone: ResultBadgeTone } {
+  switch (state) {
+    case 'succeeded':
+      return { label: '成功', tone: 'success' }
+    case 'failed':
+      return { label: '失败', tone: 'danger' }
+    case 'stopped':
+      return { label: '已停止', tone: 'warning' }
+    case 'interrupted':
+      return { label: '已中断', tone: 'warning' }
+    default:
+      return { label: '无结果', tone: 'neutral' }
+  }
 }
 
 function formatRunDuration(durationMs: number | null): string | null {
@@ -90,7 +108,7 @@ function SummaryContent({
   )
 }
 
-export default function RoguelikeResultPanel({ run, command }: RoguelikeResultPanelProps) {
+export default function RoguelikeResultPanel({ run, command, taskName }: RoguelikeResultPanelProps) {
   const [retained, setRetained] = useState<RetainedResult | null>(null)
   const active = Boolean(run && isActiveRunState(run.state))
   const terminalRun = run && isTerminalRunState(run.state) ? run : null
@@ -99,8 +117,24 @@ export default function RoguelikeResultPanel({ run, command }: RoguelikeResultPa
     ? terminalRun.durationMs
     : null
 
-  if (terminalRun && retained?.runId !== terminalRun.runId) {
-    setRetained({ runId: terminalRun.runId, summary: currentSummary, durationMs: currentDuration })
+  const shouldUpdateRetained = terminalRun !== null && (
+    retained === null
+    || retained.runId !== terminalRun.runId
+    || (retained.summary === null && currentSummary !== null)
+    || (retained.durationMs === null && currentDuration !== null)
+  )
+
+  if (terminalRun && shouldUpdateRetained) {
+    const runId = terminalRun.runId
+    setRetained(prior => {
+      if (!prior || prior.runId !== runId) {
+        return { runId, summary: currentSummary, durationMs: currentDuration }
+      }
+      const summary = prior.summary ?? currentSummary
+      const durationMs = prior.durationMs ?? currentDuration
+      if (summary === prior.summary && durationMs === prior.durationMs) return prior
+      return { runId: prior.runId, summary, durationMs }
+    })
   }
 
   const description = currentSummary ? describeRoguelikeRunSummary(currentSummary) : null
@@ -108,14 +142,20 @@ export default function RoguelikeResultPanel({ run, command }: RoguelikeResultPa
   const progressMessage = typeof run?.progress?.message === 'string' && run.progress.message.trim()
     ? run.progress.message.trim()
     : null
+  const runTaskName = typeof taskName === 'string' ? taskName.trim() : ''
+  const ownership = run
+    ? runTaskName
+      ? `任务：${runTaskName}`
+      : '任务归属未知（刷新前发起）'
+    : null
 
   const badge: { label: string; tone: ResultBadgeTone } = !run
     ? { label: '未执行', tone: 'neutral' }
     : active
-      ? { label: '执行中', tone: 'info' }
+      ? { label: '执行中', tone: 'running' }
       : description
         ? { label: description.statusLabel, tone: description.tone }
-        : { label: '无结果', tone: 'neutral' }
+        : describeTerminalStateBadge(run.state)
 
   return (
     <Card
@@ -126,12 +166,15 @@ export default function RoguelikeResultPanel({ run, command }: RoguelikeResultPa
       <div className="roguelike-panel-heading">
         <div>
           <h3>执行结果</h3>
-          <p>{active ? '本次执行进行中' : run ? '最近一次执行' : '执行后查看结算'}</p>
+          <p>
+            {active ? '本次执行进行中' : run ? '最近一次执行' : '执行后查看结算'}
+            {ownership ? ` · ${ownership}` : null}
+          </p>
         </div>
         <div className="flex shrink-0 items-center">
-          <span className={`inline-flex min-h-7 items-center rounded-full px-2.5 text-xs font-bold ${BADGE_SURFACE[badge.tone]}`}>
+          <Badge variant="ghost" className={`${BADGE_SURFACE[badge.tone]} pointer-events-none`}>
             {badge.label}
-          </span>
+          </Badge>
         </div>
       </div>
 
@@ -156,6 +199,7 @@ export default function RoguelikeResultPanel({ run, command }: RoguelikeResultPa
         {previous && (
           previous.summary ? (
             <section className="roguelike-result-previous" aria-label="上次执行结果">
+              <Separator aria-hidden="true" className="mb-3.5" />
               <h4>上次执行结果</h4>
               <SummaryContent summary={previous.summary} durationMs={previous.durationMs} />
             </section>
@@ -171,7 +215,8 @@ export default function RoguelikeResultPanel({ run, command }: RoguelikeResultPa
           <p className="roguelike-result-missing">本次执行没有可用的结构化结果</p>
         )}
 
-        <RuntimeDiagnosticsPanel command={command} className="roguelike-result-diagnostics" />
+        <Separator aria-hidden="true" />
+        <RuntimeDiagnosticsPanel command={command} />
       </div>
     </Card>
   )

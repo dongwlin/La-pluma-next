@@ -79,8 +79,14 @@ const flush = async () => {
   })
 }
 
-const renderPanel = async (panelRun: AgentRun | null, command?: string) => {
-  await act(async () => root.render(<RoguelikeResultPanel run={panelRun} command={command} />))
+const renderPanel = async (
+  panelRun: AgentRun | null,
+  command?: string,
+  taskName?: string | null,
+) => {
+  await act(async () => root.render(
+    <RoguelikeResultPanel run={panelRun} command={command} taskName={taskName} />,
+  ))
   await flush()
 }
 
@@ -186,5 +192,79 @@ describe('RoguelikeResultPanel', () => {
     expect(text).toContain('本次执行没有可用的结构化结果')
     expect(text).not.toContain('肉鸽结算：第 5 层 · 得分 1200')
     expect(text).not.toContain('上次执行结果')
+  })
+
+  it.each([
+    ['failed', '失败'],
+    ['stopped', '已停止'],
+    ['interrupted', '已中断'],
+  ] as const)('keeps the %s terminal state visible without a summary', async (state, label) => {
+    await renderPanel(run({ runId: `run-${state}`, state, durationMs: null, result: undefined }))
+
+    const text = panel()?.textContent ?? ''
+    expect(text).toContain(label)
+    expect(text).toContain('本次执行没有可用的结构化结果')
+    expect(text).not.toContain('成功')
+  })
+
+  it('labels a succeeded run without a summary as success', async () => {
+    await renderPanel(run({ result: undefined, durationMs: null }))
+
+    const text = panel()?.textContent ?? ''
+    expect(text).toContain('成功')
+    expect(text).toContain('本次执行没有可用的结构化结果')
+  })
+
+  it('upgrades the retained summary when it arrives after the terminal state', async () => {
+    await renderPanel(run({ runId: 'run-late', state: 'failed', result: undefined, durationMs: null }))
+    expect(panel()?.textContent).toContain('本次执行没有可用的结构化结果')
+    expect(panel()?.textContent).not.toContain('肉鸽结算：第 5 层 · 得分 1200')
+
+    await renderPanel(run({ runId: 'run-late', state: 'failed', result: { summary: summary() } }))
+    const text = panel()?.textContent ?? ''
+    expect(text).toContain('肉鸽结算：第 5 层 · 得分 1200')
+    expect(text).toContain('耗时')
+    expect(text).not.toContain('本次执行没有可用的结构化结果')
+
+    await renderPanel(activeRun('run-next', '正在执行：第 1 层'))
+    const nextText = panel()?.textContent ?? ''
+    expect(nextText).toContain('上次执行结果')
+    expect(nextText).toContain('肉鸽结算：第 5 层 · 得分 1200')
+    expect(nextText).not.toContain('上一次执行没有可用的结构化结果')
+  })
+
+  it('shows the task that owns the current run', async () => {
+    await renderPanel(activeRun('run-2', '正在执行：第 3 层'), 'roguelike', '集成战略')
+
+    const text = panel()?.textContent ?? ''
+    expect(text).toContain('执行中')
+    expect(text).toContain('集成战略')
+    expect(text).not.toContain('任务归属未知')
+  })
+
+  it('states unknown task ownership instead of guessing from the page mode', async () => {
+    await renderPanel(run(), 'roguelike', null)
+
+    const text = panel()?.textContent ?? ''
+    expect(text).toContain('最近一次执行')
+    expect(text).toContain('任务归属未知（刷新前发起）')
+  })
+
+  it('renders the status as a non-interactive badge', async () => {
+    await renderPanel(run())
+
+    const badge = container.querySelector('[data-slot="badge"]')
+    expect(badge?.textContent).toBe('成功')
+    expect(badge?.tagName).not.toBe('BUTTON')
+    expect(badge?.closest('button')).toBeNull()
+  })
+
+  it('separates the retained result and diagnostics with decorative separators', async () => {
+    await renderPanel(run())
+    await renderPanel(activeRun('run-2', '正在执行：第 1 层'))
+
+    const separators = [...(panel()?.querySelectorAll('[data-slot="separator"]') ?? [])]
+    expect(separators).toHaveLength(2)
+    expect(separators.every(separator => separator.getAttribute('aria-hidden') === 'true')).toBe(true)
   })
 })
