@@ -12,7 +12,6 @@ export const RECLAMATION_OPTIONS: readonly RoguelikeAdvancedOption[] = [
     choices: 'modes',
     defaultValue: DEFAULT_RECLAMATION_MODE,
     hint: '沙洲遗闻：模式 0 仅在没有存档时使用（有存档可能丢失进度），需在主界面右下角出现「开始演算」后启动；模式 1 需要已有存档，需在能看到驻扎地的页面启动。重启锚点：16 为 RA-1 精耕细作循环，32 为 RA-15 六十杀任务，48 为 RA-4 解锁区域并击杀 Boss。',
-    hintPlacement: 'tooltip',
   },
   {
     key: 'toolsToCraft',
@@ -24,7 +23,6 @@ export const RECLAMATION_OPTIONS: readonly RoguelikeAdvancedOption[] = [
     placeholder: '荧光棒',
     modes: ['1'],
     hint: '必填，不能留空：maa-cli 在省略 -C 时会默认制作 16 批荧光棒，避免误消耗资源。多个工具用逗号分隔；仅在沙洲遗闻模式 1 生效。',
-    hintPlacement: 'tooltip',
   },
   {
     key: 'incrementMode',
@@ -39,7 +37,6 @@ export const RECLAMATION_OPTIONS: readonly RoguelikeAdvancedOption[] = [
     ],
     modes: ['1'],
     hint: '增加组装数量时与加号按钮的交互方式：连点逐次点击，长按按住连续增加。仅在沙洲遗闻模式 1 生效。',
-    hintPlacement: 'tooltip',
   },
   {
     key: 'numBatches',
@@ -52,7 +49,6 @@ export const RECLAMATION_OPTIONS: readonly RoguelikeAdvancedOption[] = [
     modes: ['1'],
     numberRange: { min: 1, max: MAA_CLI_I32_MAX },
     hint: '必填，每批 99 个；maa-cli 在省略时默认 16 批。仅在沙洲遗闻模式 1 生效。',
-    hintPlacement: 'tooltip',
   },
   {
     key: 'clearStore',

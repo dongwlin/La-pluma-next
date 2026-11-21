@@ -45,7 +45,6 @@ interface RoguelikeSelectProps {
   items: ReadonlyArray<{ value: string; label: string }>
   value: string
   hint?: string
-  hintPlacement?: 'below' | 'tooltip'
   error?: string
   disabled?: boolean
   onValueChange: (value: string) => void
@@ -58,7 +57,6 @@ function RoguelikeSelect({
   items,
   value,
   hint,
-  hintPlacement = 'below',
   error,
   disabled,
   onValueChange,
@@ -69,9 +67,7 @@ function RoguelikeSelect({
     <div>
       <div className="mb-2 flex items-center gap-1">
         <label htmlFor={id} className="text-sm font-medium text-muted-foreground">{label}</label>
-        {hintPlacement === 'tooltip' && hint && (
-          <FieldHint id={hintId} label={label} hint={hint} />
-        )}
+        {hint && <FieldHint id={hintId} label={label} hint={hint} />}
       </div>
       <Select
         name={name}
@@ -87,7 +83,6 @@ function RoguelikeSelect({
           id={id}
           aria-invalid={error ? true : undefined}
           aria-errormessage={error ? errorId : undefined}
-          aria-describedby={hint && hintPlacement === 'below' ? hintId : undefined}
           className="w-full"
         >
           <SelectValue />
@@ -98,7 +93,6 @@ function RoguelikeSelect({
           ))}
         </SelectContent>
       </Select>
-      {hint && hintPlacement === 'below' && <p id={hintId} className="mt-2 text-xs text-tertiary">{hint}</p>}
       {error && <p id={errorId} className="mt-2 text-xs form-error-text">{error}</p>}
     </div>
   )
@@ -108,7 +102,6 @@ interface RoguelikeFieldInputProps {
   id: string
   label: string
   hint?: string
-  hintPlacement?: 'below' | 'tooltip'
   error?: string
   className?: string
 }
@@ -117,7 +110,6 @@ function RoguelikeFieldInput({
   id,
   label,
   hint,
-  hintPlacement = 'below',
   error,
   className,
   ...inputProps
@@ -128,19 +120,15 @@ function RoguelikeFieldInput({
     <div className={className}>
       <div className="mb-2 flex items-center gap-1">
         <label htmlFor={id} className="text-sm font-medium text-muted-foreground">{label}</label>
-        {hintPlacement === 'tooltip' && hint && (
-          <FieldHint id={hintId} label={label} hint={hint} />
-        )}
+        {hint && <FieldHint id={hintId} label={label} hint={hint} />}
       </div>
       <Input
         id={id}
         autoComplete="off"
         aria-invalid={error ? true : undefined}
         aria-errormessage={error ? errorId : undefined}
-        aria-describedby={hint && hintPlacement === 'below' ? hintId : undefined}
         {...inputProps}
       />
-      {hint && hintPlacement === 'below' && <p id={hintId} className="mt-2 text-xs text-tertiary">{hint}</p>}
       {error && <p id={errorId} className="mt-2 text-xs form-error-text">{error}</p>}
     </div>
   )
@@ -272,7 +260,6 @@ export default function RoguelikeSettingsPanel({
                         onValueChange={value => handleFieldChange(option.key, value)}
                         items={selectOptionsFor(option, theme, displayValue, task.id)}
                         hint={option.hint}
-                        hintPlacement={option.hintPlacement}
                         error={errorFor(option.key)}
                         disabled={!editable}
                       />
@@ -298,7 +285,6 @@ export default function RoguelikeSettingsPanel({
                         onChange={event => handleFieldChange(option.key, event.target.value)}
                         placeholder={option.placeholder}
                         hint={option.hint}
-                        hintPlacement={option.hintPlacement}
                         error={errorFor(option.key)}
                         disabled={!editable}
                       />

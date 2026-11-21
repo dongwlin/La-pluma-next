@@ -23,7 +23,7 @@
 | 核心干员单选字段 | `features/roguelike/components/RoguelikeCoreOperatorField.tsx` | 复用 `features/training` 的 `OperatorSelectModal`；字段值仍是单个中文干员名，只读目录用于回显头像 |
 | 配置 key、本地草稿、pending 与 300ms 提交 | `features/roguelike/model/roguelikeConfig.ts` + `features/user-config` | 配置适配器维持 key、本地键和 wire 协议 |
 | 主题、模式、分队、职业组、难度与黑流树海枚举 | `features/roguelike/model/roguelikeOptionCatalog.ts` | 纯数据与候选项解析；生息演算默认模式也定义在这里 |
-| 两个任务的策略字段表 | `features/roguelike/model/roguelikeOptionTables.ts`、`reclamationOptionTables.ts` | CLI 参数名、Core 参数名、默认值、适用主题/模式、字段依赖、说明位置与栅格跨度 |
+| 两个任务的策略字段表 | `features/roguelike/model/roguelikeOptionTables.ts`、`reclamationOptionTables.ts` | CLI 参数名、Core 参数名、默认值、适用主题/模式、字段依赖、说明文案与栅格跨度 |
 | 字段表查询与下拉项解析 | `features/roguelike/model/roguelikeOptions.ts` | 只组装字段表与主题候选，不含 React 或执行状态 |
 | 任务目录、主题快捷项、可见性、默认值、命令拼接、模式归一化与草稿归一化 | `features/roguelike/model/roguelikeTasks.ts` | 纯模型，不访问 React、Query、配置通道或网络 |
 | 执行进度面板、模式过滤与任务归属 | `features/roguelike/components/RoguelikeProgressPanel.tsx` | 只消费 `mode`、`trackedRun`、`lastRun`、`hasSnapshot`、`resolvingIdentity` 与 `taskName` 标签，不创建执行状态 |
@@ -66,7 +66,7 @@ RoguelikeTasks（app-page > app-stack-section > RoguelikeWorkspace）
 - **主题归一化**：主题输入是自由文本，输入过程中的 `S`、`Sark` 等未知中间态不触发模式归一化，草稿中的模式保持不变；只有确认主题属于当前任务目录时，编辑才按新主题重置不支持的模式。执行前再做一次归一化，避免旧草稿或绕过编辑的取值把越界模式带进命令。
 - **执行进度与焦点**：执行进度面板按当前模式只读本页 owned run 与匹配的 `lastRun`；首屏快照未到达或身份恢复尚未取回详情时显示加载态，活动期展示 `progress.roguelike`，终态展示 `summary.progress` 或摘要回退；徽章只表达任务状态，通关结果单独成行。模式切换时面板以 `key={mode}` 重建，旧模式结果不会串入。点击立即执行后记录意图，run 进入活动态时聚焦「立即终止」；点击停止后，run 离开活动态时焦点回到「立即执行」。等待战斗结束期间 run 仍活动，焦点不回到「立即执行」。
 - 模式面板使用共享 `SegmentedTabNav`，不持有测量或键盘状态。工作区网格由 `DeviceMonitorLayout(mode)` 持有：模式面板与 `display: contents` 的 `SegmentedTabPanel` 直接作为网格项，主题/执行进度列与设置面板分别输出 `data-monitor-area="main"` / `"settings"`，设备画面位于 monitor 列并在宽屏跨两行；monitor 列输出 `data-monitor-area="monitor"` 与 `device-monitor-column`，面板输出 `device-monitor-panel`；页面网格仍定义 mode/main/settings/monitor 四个具名区域，monitor 的画面样式由 device-mirror 持有。宽屏下 mode 行高度由模式控件内容决定（`grid-template-rows: max-content auto`），不用固定行高复刻模式 tab 壳的 padding 与边框。所有模式 tab 的 `aria-controls` 指向稳定的 `roguelike-mode-panel`，`aria-labelledby` 指向当前 tab。方向键/Home/End 只移动 roving focus，Enter/Space 或点击才切换模式。
-- **界面文案**：模式 tab 只保留图标与名称；主题与策略设置标题只渲染 `h2`，不再有说明段落或字段计数，主题标题保留「N 个可用」徽标。集成战略的难度、开局职业组与生息演算的模式、制作工具名称、加号点击方式、批次数把说明放到标签旁的 `FieldHint`；开关说明同样使用 `FieldHint`，并把同一文案作为常驻 `sr-only` 描述关联到 `aria-describedby`。
+- **界面文案**：模式 tab 只保留图标与名称；主题与策略设置标题只渲染 `h2`，不再有说明段落或字段计数，主题标题保留「N 个可用」徽标。字段说明统一放到标签旁的 `FieldHint`；开关说明同样使用 `FieldHint`，并把同一文案作为常驻 `sr-only` 描述关联到 `aria-describedby`。
 
 ### 3. 纯命令模型
 
@@ -77,7 +77,7 @@ RoguelikeTasks（app-page > app-stack-section > RoguelikeWorkspace）
 | `ROGUELIKE_TASKS` | 集成战略/生息演算的任务名、命令、图标与占位 |
 | `ROGUELIKE_THEME_PRESETS` | 各模式的主题快捷项；只影响界面，不进入 wire |
 | `DEFAULT_RECLAMATION_MODE` | 生息演算默认模式 `'1'`，与 CLI 的 `-m` 缺省一致；定义在 `roguelikeOptionCatalog.ts`，`roguelikeTasks.ts` 只 re-export |
-| `getRoguelikeAdvancedOptions(taskId)` | 策略字段表及其 CLI 参数名 `param` 与 Core 参数名 `coreParam`，含 `defaultValue`、`hint`、`hintPlacement`、`themes`、`modes`、`requires`、`listChoices` 与栅格跨度 `span`；未知任务返回空表 |
+| `getRoguelikeAdvancedOptions(taskId)` | 策略字段表及其 CLI 参数名 `param` 与 Core 参数名 `coreParam`，含 `defaultValue`、`hint`、`themes`、`modes`、`requires`、`listChoices` 与栅格跨度 `span`；未知任务返回空表 |
 | `getRoguelikeOptionChoices(option, theme, taskId)` | 下拉项：模式、难度、分队与职业组按主题与任务返回候选，其余字段用静态 `options` |
 | `resolveRoguelikeAdvancedValue(option, advanced, theme, taskId)` | 字段显示值：显式值优先，其次默认值，select 最后回落到当前主题的首项；默认值不属于当前主题时同样回落到首项（重启锚点没有模式 `1`） |
 | `isRoguelikeOptionVisible(option, taskId, theme, advanced)` | 字段在当前主题、模式与依赖字段下是否生效；隐藏字段既不下发也不显示 |
@@ -94,7 +94,7 @@ RoguelikeTasks（app-page > app-stack-section > RoguelikeWorkspace）
 | `validateRoguelikeTaskInputError(taskId, taskInputs, advancedParams)` | `roguelikeValidation.ts`：返回首个无效字段的 `{ key, message }` 或 `null`。校验顺序为主题是否已知、生效下拉/数字/列表字段是否合法，再检查模式专属必填项；主题错误归 `theme`，其余错误归对应字段 key |
 | `validateRoguelikeTaskInput(taskId, taskInputs, advancedParams)` | 兼容入口：返回 `validateRoguelikeTaskInputError` 的消息或 `null`，不改变命令构造 |
 
-字段表用 `hintPlacement` 决定说明位置：集成战略的难度与开局职业组、生息演算的模式/制作工具名称/加号点击方式/批次数声明 `'tooltip'`，面板在标签旁渲染 `FieldHint`；未声明的说明仍以控件下方常驻文本呈现。checkbox 的说明统一走标签旁 `FieldHint`，同时把同一文案作为 `sr-only` 常驻描述关联到开关。具体参数名、默认值与适用条件以字段表源码为准，不在文档复制参数表。
+字段表只维护 `hint` 文案，面板统一在标签旁渲染 `FieldHint`，不再输出控件下方的常驻说明。checkbox 的说明同样走标签旁 `FieldHint`，同时把同一文案作为 `sr-only` 常驻描述关联到开关。具体参数名、默认值与适用条件以字段表源码为准，不在文档复制参数表。
 
 命令拼接规则：
 

@@ -1795,6 +1795,36 @@ describe('RoguelikeTasks layout and config recovery', () => {
     for (const { hint } of cases) expect(paragraphs).not.toContain(hint)
   })
 
+  it('renders theme-specific field guidance as label tooltips', async () => {
+    await renderPage()
+
+    const cases = [
+      {
+        theme: 'Sami',
+        label: '第一层期望密文板',
+        hint: '填写希望在第一层远见阶段得到的密文板；成功凹到后停止任务。',
+      },
+      {
+        theme: 'BlackFlow',
+        label: '黑流策略',
+        hint: '刷等级模式的路线与结束目标；留空时按投资开关推导速通策略。',
+      },
+    ]
+
+    for (const { theme, label, hint } of cases) {
+      await setTheme(theme)
+      const trigger = container.querySelector<HTMLButtonElement>(`button[aria-label="${label}说明"]`)
+      expect(trigger, `${label} hint trigger`).not.toBeNull()
+      await focus(trigger!)
+      expect(tooltipText()).toBe(hint)
+      await act(async () => trigger!.blur())
+    }
+
+    const paragraphs = Array.from(container.querySelectorAll('p'))
+      .map(paragraph => paragraph.textContent)
+    for (const { hint } of cases) expect(paragraphs).not.toContain(hint)
+  })
+
   it('keeps mode selection and its configuration panel in sync', async () => {
     await renderPage()
 

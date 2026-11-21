@@ -339,7 +339,7 @@
     display: flex;
     min-height: 2.75rem;
     min-width: 0;
-    flex: 1;
+    flex: none;
     cursor: pointer;
     align-items: center;
     color: var(--muted-foreground);
