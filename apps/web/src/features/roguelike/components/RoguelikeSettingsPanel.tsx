@@ -1,5 +1,5 @@
 import { useEffect, useRef, type ComponentProps, type ReactNode } from 'react'
-import { AlertTriangle, LoaderCircle, Play, Square } from 'lucide-react'
+import { AlertTriangle, LoaderCircle } from 'lucide-react'
 import { Button } from '@/shared/ui/button'
 import { Card } from '@/shared/ui/card'
 import { FieldHint } from '@/shared/components'
@@ -226,12 +226,7 @@ export default function RoguelikeSettingsPanel({
     >
       {execution.isSubmitting
         ? <><LoaderCircle className="animate-spin" aria-hidden="true" />正在启动</>
-        : (
-          <>
-            <Play size={15} fill="currentColor" aria-hidden="true" />
-            立即执行
-          </>
-        )}
+        : '开始'}
     </Button>
   )
 
@@ -364,14 +359,7 @@ export default function RoguelikeSettingsPanel({
             >
               {execution.pendingStopMode === 'now' || (execution.isStopping && execution.pendingStopMode !== 'after-combat')
                 ? <><LoaderCircle className="animate-spin" aria-hidden="true" />正在终止</>
-                : (
-                  <>
-                    {execution.isStopping
-                      ? null
-                      : <Square size={14} fill="currentColor" aria-hidden="true" />}
-                    立即终止
-                  </>
-                )}
+                : '终止'}
             </Button>
             {execution.isWaitingForCombat ? (
               <UnavailableAction action="等待战斗结束" reason="最多等待 10 分钟">
@@ -399,7 +387,7 @@ export default function RoguelikeSettingsPanel({
         ) : execution.automationAvailable ? (
           executeButton
         ) : (
-          <UnavailableAction action="立即执行" reason={execution.unavailableMessage}>
+          <UnavailableAction action="开始" reason={execution.unavailableMessage}>
             {executeButton}
           </UnavailableAction>
         )}

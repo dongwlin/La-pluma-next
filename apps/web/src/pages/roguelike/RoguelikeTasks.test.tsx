@@ -623,7 +623,8 @@ describe('RoguelikeTasks execution', () => {
     await flush()
     await renderPage()
 
-    expect(buttonByText('立即终止')).toBeDefined()
+    expect(buttonByText('终止')).toBeDefined()
+    expect(buttonByText('终止')?.querySelector('svg')).toBeNull()
     expect(buttonByText('等待战斗结束')).toBeDefined()
     expect(buttonByText('终止执行')).toBeUndefined()
     expect(container.querySelector('[role="log"]')).toBeNull()
@@ -641,7 +642,8 @@ describe('RoguelikeTasks execution', () => {
     await renderPage()
     await setTheme('Phantom')
 
-    await click(buttonByText('立即执行')!)
+    expect(buttonByText('开始')?.querySelector('svg')).toBeNull()
+    await click(buttonByText('开始')!)
 
     expect(mocks.executePredefinedTask).toHaveBeenCalledOnce()
     expect(mocks.executePredefinedTask).toHaveBeenCalledWith(
@@ -671,7 +673,7 @@ describe('RoguelikeTasks execution', () => {
     await flush()
 
     expect(mocks.executePredefinedTask).toHaveBeenCalledOnce()
-    expect(buttonByText('立即终止')).toBeDefined()
+    expect(buttonByText('终止')).toBeDefined()
   })
 
   it('replaces the execution progress when a submitted run finishes while hidden', async () => {
@@ -693,7 +695,7 @@ describe('RoguelikeTasks execution', () => {
     await renderActivity('visible')
     await setTheme('Phantom')
 
-    await click(buttonByText('立即执行')!)
+    await click(buttonByText('开始')!)
     expect(mocks.notifyProgress).toHaveBeenCalledWith('正在执行命令...', 'execution')
 
     await renderActivity('hidden')
@@ -722,7 +724,7 @@ describe('RoguelikeTasks execution', () => {
     await chooseSelectOption('maa-roguelike-squad', '指挥分队')
     await toggleSwitchByName('maa-roguelike-useSupport')
 
-    await click(buttonByText('立即执行')!)
+    await click(buttonByText('开始')!)
 
     expect(mocks.executePredefinedTask).toHaveBeenCalledWith(
       'roguelike',
@@ -744,7 +746,7 @@ describe('RoguelikeTasks execution', () => {
     expect(roles.textContent).toContain('稳扎稳打')
     await chooseSelectOption('maa-roguelike-roles', '先手必胜（先锋、狙击、特种）')
 
-    await click(buttonByText('立即执行')!)
+    await click(buttonByText('开始')!)
 
     expect(mocks.executePredefinedTask).toHaveBeenCalledWith(
       'roguelike',
@@ -794,7 +796,7 @@ describe('RoguelikeTasks execution', () => {
     await chooseSelectOption('maa-roguelike-squad', '点刺成锭分队')
     await setControlValue('input[name="maa-roguelike-startWithSeed"]', '2b3c4d,rogue_1,120')
 
-    await click(buttonByText('立即执行')!)
+    await click(buttonByText('开始')!)
 
     expect(mocks.executePredefinedTask).toHaveBeenCalledWith(
       'roguelike',
@@ -818,7 +820,7 @@ describe('RoguelikeTasks execution', () => {
     const squad = () => controlForName('maa-roguelike-squad')
     expect(squad().textContent).toContain('蓝图测绘分队（不适用于当前主题）')
 
-    await click(buttonByText('立即执行')!)
+    await click(buttonByText('开始')!)
     expect(mocks.executePredefinedTask).not.toHaveBeenCalled()
     const message = '起始分队「蓝图测绘分队」不在当前主题的可选范围内，请重新选择'
     expect(squad().getAttribute('aria-invalid')).toBe('true')
@@ -831,7 +833,7 @@ describe('RoguelikeTasks execution', () => {
     expect(squad().getAttribute('aria-invalid')).toBeNull()
     expect(fieldError('roguelike-roguelike-squad')).toBeNull()
 
-    await click(buttonByText('立即执行')!)
+    await click(buttonByText('开始')!)
 
     expect(mocks.executePredefinedTask).toHaveBeenCalledWith(
       'roguelike',
@@ -851,7 +853,7 @@ describe('RoguelikeTasks execution', () => {
     await setControlValue('input[name="maa-roguelike-startCount"]', '1.5')
 
     const countInput = () => container.querySelector<HTMLInputElement>('input[name="maa-roguelike-startCount"]')!
-    await click(buttonByText('立即执行')!)
+    await click(buttonByText('开始')!)
     expect(mocks.executePredefinedTask).not.toHaveBeenCalled()
     expect(countInput().getAttribute('aria-invalid')).toBe('true')
     expect(fieldError('roguelike-roguelike-startCount')?.textContent).toBe('运行次数需为整数')
@@ -861,7 +863,7 @@ describe('RoguelikeTasks execution', () => {
     await setControlValue('input[name="maa-roguelike-startCount"]', '3')
     expect(countInput().getAttribute('aria-invalid')).toBeNull()
     expect(fieldError('roguelike-roguelike-startCount')).toBeNull()
-    await click(buttonByText('立即执行')!)
+    await click(buttonByText('开始')!)
 
     expect(mocks.executePredefinedTask).toHaveBeenCalledWith(
       'roguelike',
@@ -882,7 +884,7 @@ describe('RoguelikeTasks execution', () => {
 
     expect(container.querySelector('input[name="maa-roguelike-expectedCollapsalParadigms"]')).not.toBeNull()
 
-    await click(buttonByText('立即执行')!)
+    await click(buttonByText('开始')!)
     expect(mocks.executePredefinedTask).not.toHaveBeenCalled()
     const paradigms = () => container.querySelector<HTMLInputElement>(
       'input[name="maa-roguelike-expectedCollapsalParadigms"]',
@@ -895,7 +897,7 @@ describe('RoguelikeTasks execution', () => {
 
     await setControlValue('input[name="maa-roguelike-expectedCollapsalParadigms"]', '目空一些，图像损坏')
     expect(fieldError('roguelike-roguelike-expectedCollapsalParadigms')).toBeNull()
-    await click(buttonByText('立即执行')!)
+    await click(buttonByText('开始')!)
     expect(mocks.executePredefinedTask).toHaveBeenCalledWith(
       'roguelike',
       'Sami --mode 5 --roles 稳扎稳打 --expected-collapsal-paradigms 目空一些 --expected-collapsal-paradigms 图像损坏',
@@ -918,7 +920,7 @@ describe('RoguelikeTasks execution', () => {
     await setControlValue('input[name="maa-reclamation-theme"]', 'Tales')
     await setReclamationCraftValues()
 
-    await click(buttonByText('立即执行')!)
+    await click(buttonByText('开始')!)
 
     expect(mocks.executePredefinedTask).toHaveBeenCalledWith(
       'reclamation',
@@ -937,7 +939,7 @@ describe('RoguelikeTasks execution', () => {
     await click(findModeButton('生息演算')!)
     await setControlValue('input[name="maa-reclamation-theme"]', 'Tales')
 
-    await click(buttonByText('立即执行')!)
+    await click(buttonByText('开始')!)
 
     expect(mocks.executePredefinedTask).not.toHaveBeenCalled()
     const tools = () => container.querySelector<HTMLInputElement>('input[name="maa-reclamation-toolsToCraft"]')!
@@ -949,7 +951,7 @@ describe('RoguelikeTasks execution', () => {
 
     await setReclamationCraftValues()
     expect(fieldError('roguelike-reclamation-toolsToCraft')).toBeNull()
-    await click(buttonByText('立即执行')!)
+    await click(buttonByText('开始')!)
 
     expect(mocks.executePredefinedTask).toHaveBeenCalledWith(
       'reclamation',
@@ -971,7 +973,7 @@ describe('RoguelikeTasks execution', () => {
 
     await setControlValue('input[name="maa-reclamation-theme"]', 'Tales')
     await setReclamationCraftValues()
-    await click(buttonByText('立即执行')!)
+    await click(buttonByText('开始')!)
 
     expect(mocks.executePredefinedTask).toHaveBeenLastCalledWith(
       'reclamation',
@@ -985,7 +987,7 @@ describe('RoguelikeTasks execution', () => {
     )
 
     await chooseSelectOption('maa-reclamation-mode', '刷繁荣度（无存档）')
-    await click(buttonByText('立即执行')!)
+    await click(buttonByText('开始')!)
 
     expect(mocks.executePredefinedTask).toHaveBeenLastCalledWith(
       'reclamation',
@@ -1025,7 +1027,7 @@ describe('RoguelikeTasks execution', () => {
     expect(mocks.saveUserConfig).not.toHaveBeenCalled()
 
     await setReclamationCraftValues()
-    await click(buttonByText('立即执行')!)
+    await click(buttonByText('开始')!)
 
     expect(mocks.executePredefinedTask).toHaveBeenCalledWith(
       'reclamation',
@@ -1067,7 +1069,7 @@ describe('RoguelikeTasks execution', () => {
   it('rejects an empty theme with a focused field error before creating a run', async () => {
     await renderPage()
 
-    await click(buttonByText('立即执行')!)
+    await click(buttonByText('开始')!)
 
     expect(mocks.executePredefinedTask).not.toHaveBeenCalled()
     const themeInput = () => container.querySelector<HTMLInputElement>('input[name="maa-roguelike-theme"]')!
@@ -1089,7 +1091,7 @@ describe('RoguelikeTasks execution', () => {
     startController()
     await flush()
     await renderPage()
-    expect(buttonByText('立即终止')).toBeDefined()
+    expect(buttonByText('终止')).toBeDefined()
 
     await act(async () => root.unmount())
     root = createRoot(document.createElement('div'))
@@ -1110,13 +1112,13 @@ describe('RoguelikeTasks execution', () => {
     await flush()
     await renderPage()
 
-    expect(buttonByText('立即终止')).toBeDefined()
+    expect(buttonByText('终止')).toBeDefined()
     expect(mocks.executePredefinedTask).not.toHaveBeenCalled()
 
     api.fetchSnapshot.mockResolvedValue(ok(runSnapshot({ lastRun: activeRun('run-7', 'succeeded') })))
     await refreshController()
 
-    expect(buttonByText('立即执行')).toBeDefined()
+    expect(buttonByText('开始')).toBeDefined()
     expect(mocks.notify).toHaveBeenCalledWith('肉鸽任务执行成功', 'success', { id: 'execution' })
   })
 
@@ -1239,8 +1241,8 @@ describe('RoguelikeTasks execution', () => {
     await flush()
     await renderPage()
 
-    expect(buttonByText('立即执行')).toBeDefined()
-    expect(buttonByText('立即终止')).toBeUndefined()
+    expect(buttonByText('开始')).toBeDefined()
+    expect(buttonByText('终止')).toBeUndefined()
     expect(buttonByText('等待战斗结束')).toBeUndefined()
   })
 
@@ -1251,7 +1253,7 @@ describe('RoguelikeTasks execution', () => {
     await flush()
     await renderPage()
 
-    await click(buttonByText('立即终止')!)
+    await click(buttonByText('终止')!)
 
     expect(api.stopRun).toHaveBeenCalledOnce()
     expect(api.stopRun).toHaveBeenCalledWith('run-1', { mode: 'now' })
@@ -1265,7 +1267,7 @@ describe('RoguelikeTasks execution', () => {
     api.fetchSnapshot.mockResolvedValue(ok(runSnapshot({ lastRun: activeRun('run-1', 'stopped') })))
     await refreshController()
 
-    expect(buttonByText('立即执行')).toBeDefined()
+    expect(buttonByText('开始')).toBeDefined()
     expect(mocks.notify).toHaveBeenCalledWith('肉鸽任务已终止', 'warning', { id: 'execution' })
   })
 
@@ -1288,7 +1290,7 @@ describe('RoguelikeTasks execution', () => {
       deviceStopRequested: true,
       run: activeRun('run-1', 'running'),
     }))
-    await click(buttonByText('立即终止')!)
+    await click(buttonByText('终止')!)
     expect(buttonByText('正在终止')?.disabled).toBe(true)
 
     const renderMode = async (mode: 'visible' | 'hidden') => {
@@ -1309,7 +1311,7 @@ describe('RoguelikeTasks execution', () => {
     api.fetchSnapshot.mockResolvedValue(ok(runSnapshot({ lastRun: activeRun('run-1', 'stopped') })))
     await refreshController()
 
-    expect(buttonByText('立即执行')?.disabled).toBe(false)
+    expect(buttonByText('开始')?.disabled).toBe(false)
     expect(buttonByText('正在终止')).toBeUndefined()
   })
 
@@ -1326,7 +1328,7 @@ describe('RoguelikeTasks execution', () => {
       deviceStopRequested: true,
       run: activeRun('run-1', 'running'),
     }))
-    await click(buttonByText('立即终止')!)
+    await click(buttonByText('终止')!)
     expect(buttonByText('正在终止')?.disabled).toBe(true)
 
     await act(async () => {
@@ -1339,9 +1341,9 @@ describe('RoguelikeTasks execution', () => {
       'error',
       { id: 'execution' },
     )
-    expect(buttonByText('立即终止')?.disabled).toBe(false)
+    expect(buttonByText('终止')?.disabled).toBe(false)
 
-    await click(buttonByText('立即终止')!)
+    await click(buttonByText('终止')!)
     expect(api.stopRun).toHaveBeenCalledTimes(2)
   })
 
@@ -1353,10 +1355,10 @@ describe('RoguelikeTasks execution', () => {
     await flush()
     await renderPage()
 
-    await click(buttonByText('立即终止')!)
+    await click(buttonByText('终止')!)
 
     expect(mocks.notify).toHaveBeenCalledWith('终止失败: 目标运行已不是当前运行', 'error', { id: 'execution' })
-    expect(buttonByText('立即终止')?.disabled).toBe(false)
+    expect(buttonByText('终止')?.disabled).toBe(false)
   })
 
   it('requests the wait-for-combat stop and keeps the immediate stop available', async () => {
@@ -1386,7 +1388,7 @@ describe('RoguelikeTasks execution', () => {
     expect(waitTrigger?.tabIndex).toBe(0)
     await focus(waitTrigger!)
     expect(tooltipText()).toBe('最多等待 10 分钟')
-    expect(buttonByText('立即终止')?.disabled).toBe(false)
+    expect(buttonByText('终止')?.disabled).toBe(false)
     expect(buttonByText('正在终止')).toBeUndefined()
   })
 
@@ -1403,7 +1405,7 @@ describe('RoguelikeTasks execution', () => {
     expect(waitTrigger?.tabIndex).toBe(0)
     await focus(waitTrigger!)
     expect(tooltipText()).toBe('最多等待 10 分钟')
-    expect(buttonByText('立即终止')?.disabled).toBe(false)
+    expect(buttonByText('终止')?.disabled).toBe(false)
     expect(api.stopRun).not.toHaveBeenCalled()
 
     await act(async () => {
@@ -1417,7 +1419,7 @@ describe('RoguelikeTasks execution', () => {
       { id: 'execution' },
     )
     expect(buttonByText('等待战斗结束')?.disabled).toBe(true)
-    expect(buttonByText('立即终止')?.disabled).toBe(false)
+    expect(buttonByText('终止')?.disabled).toBe(false)
   })
 
   it('cancels the wait by sending an immediate stop from the left action', async () => {
@@ -1427,7 +1429,7 @@ describe('RoguelikeTasks execution', () => {
     await flush()
     await renderPage()
 
-    await click(buttonByText('立即终止')!)
+    await click(buttonByText('终止')!)
 
     expect(api.stopRun).toHaveBeenCalledWith('run-1', { mode: 'now' })
     expect(mocks.notifyProgress).toHaveBeenCalledWith('正在终止肉鸽任务...', 'execution')
@@ -1493,7 +1495,7 @@ describe('RoguelikeTasks execution', () => {
     await refreshController()
 
     expect(mocks.notify).toHaveBeenCalledWith('执行失败: 设备连接中断', 'error', { id: 'execution' })
-    expect(buttonByText('立即执行')).toBeDefined()
+    expect(buttonByText('开始')).toBeDefined()
   })
 
   it('keeps the stop action while observation is disconnected', async () => {
@@ -1510,7 +1512,7 @@ describe('RoguelikeTasks execution', () => {
     })
     await flush()
 
-    expect(buttonByText('立即终止')).toBeDefined()
+    expect(buttonByText('终止')).toBeDefined()
     expect(mocks.notify).not.toHaveBeenCalledWith('肉鸽任务已终止', 'warning', { id: 'execution' })
   })
 
@@ -1519,14 +1521,14 @@ describe('RoguelikeTasks execution', () => {
     await renderPage()
     await setTheme('Phantom')
 
-    await click(buttonByText('立即执行')!)
+    await click(buttonByText('开始')!)
 
     expect(mocks.notify).toHaveBeenCalledWith(
       '无法确认执行状态: 无法连接后端服务',
       'warning',
       { id: 'execution' },
     )
-    expect(buttonByText('立即执行')?.disabled).toBe(false)
+    expect(buttonByText('开始')?.disabled).toBe(false)
   })
 
   it('warns without a run identity and leaves the execute action available', async () => {
@@ -1534,15 +1536,15 @@ describe('RoguelikeTasks execution', () => {
     await renderPage()
     await setTheme('Phantom')
 
-    await click(buttonByText('立即执行')!)
+    await click(buttonByText('开始')!)
 
     expect(mocks.notify).toHaveBeenCalledWith(
       '服务端未返回运行身份，无法确认本次执行状态',
       'warning',
       { id: 'execution' },
     )
-    expect(buttonByText('立即执行')?.disabled).toBe(false)
-    expect(buttonByText('立即终止')).toBeUndefined()
+    expect(buttonByText('开始')?.disabled).toBe(false)
+    expect(buttonByText('终止')).toBeUndefined()
   })
 
   it('moves focus from the execute action to stop and back at the terminal state', async () => {
@@ -1554,22 +1556,22 @@ describe('RoguelikeTasks execution', () => {
     await renderPage()
     await setTheme('Phantom')
 
-    await click(buttonByText('立即执行')!)
+    await click(buttonByText('开始')!)
     await act(async () => submission.resolve(ok({
       runId: 'run-1',
       run: activeRun('run-1', 'accepted'),
     })))
     await flush()
 
-    expect(document.activeElement).toBe(buttonByText('立即终止'))
+    expect(document.activeElement).toBe(buttonByText('终止'))
 
-    await click(buttonByText('立即终止')!)
+    await click(buttonByText('终止')!)
     expect(api.stopRun).toHaveBeenCalledWith('run-1', { mode: 'now' })
 
     api.fetchSnapshot.mockResolvedValue(ok(runSnapshot({ lastRun: activeRun('run-1', 'stopped') })))
     await refreshController()
 
-    expect(document.activeElement).toBe(buttonByText('立即执行'))
+    expect(document.activeElement).toBe(buttonByText('开始'))
   })
 
   it('keeps the mode panel through the submitted run and its terminal state', async () => {
@@ -1584,7 +1586,7 @@ describe('RoguelikeTasks execution', () => {
     await setTheme('Phantom')
 
     const progressPanel = () => container.querySelector<HTMLElement>('[aria-label="执行进度"]')
-    await click(buttonByText('立即执行')!)
+    await click(buttonByText('开始')!)
     expect(progressPanel()?.textContent).toContain('集成战略进度')
     expect(progressPanel()?.textContent).toContain('启动中')
     expect(progressPanel()?.textContent).toContain('任务：集成战略')
@@ -1608,7 +1610,7 @@ describe('RoguelikeTasks execution', () => {
     await flush()
     await renderPage()
 
-    expect(buttonByText('立即终止')?.disabled).toBe(false)
+    expect(buttonByText('终止')?.disabled).toBe(false)
     expect(findModeButton('生息演算')?.getAttribute('aria-disabled')).toBe('true')
     expect(container.querySelector<HTMLInputElement>('input[name="maa-roguelike-theme"]')?.disabled).toBe(true)
     expect(container.querySelector<HTMLInputElement>('input[name="maa-roguelike-startCount"]')?.disabled).toBe(true)
@@ -1635,9 +1637,9 @@ describe('RoguelikeTasks execution', () => {
     mocks.availability.message = '后端服务暂不可用'
     await renderPage()
 
-    const execute = buttonByText('立即执行')!
+    const execute = buttonByText('开始')!
     expect(execute.disabled).toBe(true)
-    const trigger = container.querySelector<HTMLElement>('[aria-label="立即执行：后端服务暂不可用"]')
+    const trigger = container.querySelector<HTMLElement>('[aria-label="开始：后端服务暂不可用"]')
     expect(trigger?.tabIndex).toBe(0)
     expect(tooltipText()).toBeNull()
 
@@ -2120,7 +2122,7 @@ describe('RoguelikeTasks layout and config recovery', () => {
     const modeButtons = Array.from(container.querySelectorAll<HTMLButtonElement>('[role="tab"]'))
     expect(modeButtons.length).toBeGreaterThan(0)
     expect(modeButtons.every(button => button.getAttribute('aria-disabled') === 'true')).toBe(true)
-    expect(buttonByText('立即执行')?.disabled).toBe(true)
+    expect(buttonByText('开始')?.disabled).toBe(true)
 
     await act(async () => pendingLoad.resolve(ok({ taskInputs: {}, advancedParams: {} })))
     await flush()
@@ -2129,7 +2131,7 @@ describe('RoguelikeTasks layout and config recovery', () => {
     expect(container.querySelector<HTMLInputElement>('input[name="maa-roguelike-theme"]')?.disabled).toBe(false)
     expect(container.querySelector('input[name="maa-roguelike-mode"]')).not.toBeNull()
     expect(modeButtons.every(button => button.getAttribute('aria-disabled') !== 'true')).toBe(true)
-    expect(buttonByText('立即执行')?.disabled).toBe(false)
+    expect(buttonByText('开始')?.disabled).toBe(false)
   })
 
   it('reloads a failed roguelike config before re-enabling editing', async () => {
@@ -2145,7 +2147,7 @@ describe('RoguelikeTasks layout and config recovery', () => {
     expect(alert?.textContent).toContain('读取肉鸽配置失败')
     expect(container.querySelector<HTMLInputElement>('input[name="maa-roguelike-theme"]')?.disabled).toBe(true)
     expect(container.querySelector('input[name="maa-roguelike-mode"]')).toBeNull()
-    expect(buttonByText('立即执行')?.disabled).toBe(true)
+    expect(buttonByText('开始')?.disabled).toBe(true)
     expect(mocks.executePredefinedTask).not.toHaveBeenCalled()
 
     await click(buttonByText('重新加载')!)
@@ -2172,9 +2174,9 @@ describe('RoguelikeTasks layout and config recovery', () => {
     expect(container.querySelector('[role="alert"]')?.textContent).toContain('肉鸽配置暂时不可用')
     expect(container.querySelector<HTMLInputElement>('input[name="maa-roguelike-theme"]')?.disabled).toBe(true)
     expect(container.querySelector('input[name="maa-roguelike-theme"]')).not.toBeNull()
-    expect(buttonByText('立即终止')).toBeDefined()
+    expect(buttonByText('终止')).toBeDefined()
 
-    await click(buttonByText('立即终止')!)
+    await click(buttonByText('终止')!)
 
     expect(api.stopRun).toHaveBeenCalledOnce()
     expect(api.stopRun).toHaveBeenCalledWith('run-1', { mode: 'now' })
@@ -2193,7 +2195,7 @@ describe('RoguelikeTasks layout and config recovery', () => {
     await setTheme('Sarkaz')
     expect(selectValueFor('maa-roguelike-mode')).toBe('0')
 
-    await click(buttonByText('立即执行')!)
+    await click(buttonByText('开始')!)
 
     expect(mocks.executePredefinedTask).toHaveBeenCalledWith(
       'roguelike',
@@ -2215,7 +2217,7 @@ describe('RoguelikeTasks layout and config recovery', () => {
     }))
 
     await renderPage()
-    await click(buttonByText('立即执行')!)
+    await click(buttonByText('开始')!)
 
     expect(mocks.executePredefinedTask).toHaveBeenCalledWith(
       'roguelike',
@@ -2295,7 +2297,7 @@ describe('RoguelikeTasks layout and config recovery', () => {
     await chooseSelectOption('maa-reclamation-mode', '刷繁荣度（无存档）')
     expect(container.querySelector('input[name="maa-reclamation-incrementMode"]')).toBeNull()
     await toggleSwitchByName('maa-reclamation-clearStore')
-    await click(buttonByText('立即执行')!)
+    await click(buttonByText('开始')!)
 
     expect(mocks.executePredefinedTask).toHaveBeenLastCalledWith(
       'run',
@@ -2320,7 +2322,7 @@ describe('RoguelikeTasks layout and config recovery', () => {
     expect(await selectOptionLabels('maa-reclamation-mode')).toEqual(['RA-1（精耕细作循环）', 'RA-15（60 杀任务）', 'RA-4（解锁区域并击杀 Boss）'])
 
     await chooseSelectOption('maa-reclamation-mode', 'RA-15（60 杀任务）')
-    await click(buttonByText('立即执行')!)
+    await click(buttonByText('开始')!)
 
     expect(mocks.executePredefinedTask).toHaveBeenLastCalledWith(
       'run',
@@ -2339,7 +2341,7 @@ describe('RoguelikeTasks layout and config recovery', () => {
   it('submits core-only roguelike selections as a dynamic task', async () => {
     await renderPage()
     await setTheme('BlackFlow')
-    await click(buttonByText('立即执行')!)
+    await click(buttonByText('开始')!)
 
     expect(mocks.executePredefinedTask).toHaveBeenLastCalledWith(
       'run',
@@ -2364,7 +2366,7 @@ describe('RoguelikeTasks layout and config recovery', () => {
   it('rejects an unknown theme with an inline field error before creating a run', async () => {
     await renderPage()
     await setTheme('UnknownTheme')
-    await click(buttonByText('立即执行')!)
+    await click(buttonByText('开始')!)
 
     expect(mocks.executePredefinedTask).not.toHaveBeenCalled()
     const themeInput = () => container.querySelector<HTMLInputElement>('input[name="maa-roguelike-theme"]')!
@@ -2418,7 +2420,7 @@ describe('RoguelikeTasks layout and config recovery', () => {
       }),
     })
 
-    await click(buttonByText('立即执行')!)
+    await click(buttonByText('开始')!)
     expect(mocks.executePredefinedTask).toHaveBeenCalledWith(
       'roguelike',
       'Phantom --roles 稳扎稳打 --core-char 阿米娅',
@@ -2461,7 +2463,7 @@ describe('RoguelikeTasks layout and config recovery', () => {
     expect(container.querySelector('img[src="/avatars/char_4135_wisdel.png"]')).not.toBeNull()
     expect(container.textContent).not.toContain('填写单个干员中文名')
 
-    await click(buttonByText('立即执行')!)
+    await click(buttonByText('开始')!)
     expect(mocks.executePredefinedTask).toHaveBeenCalledWith(
       'roguelike',
       'Phantom --roles 稳扎稳打 --core-char 维什戴尔',

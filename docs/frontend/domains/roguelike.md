@@ -60,11 +60,11 @@ RoguelikeTasks（app-page > app-stack-section > RoguelikeWorkspace）
 - **配置读取门控**：工作区以 `loadState === 'ready'` 判定配置就绪，并以 `isRunning || isSubmitting` 判定执行锁定；只有 `configReady && !isLocked` 时可编辑。未就绪时外壳、执行进度面板与底部操作区仍渲染；模式 tab 与主题预设/输入禁用，设置面板主体改为读取中 `role="status"` 占位或失败时 `role="alert"` 加 `loadError` 与「重新加载」，高级字段、开关与核心干员区不渲染，执行按钮禁用。失败态的「重新加载」调用 `reload({ force: true })`。已有活动 run 时停止入口不因门控丢失。
 - **配置同步反馈**：失败只通过固定 id `roguelike-config-save` 的 error toast 展示，附带「重新同步」action；action 调用 `retry()`，`syncState === 'saving'` 期间忽略重复触发。错误清空时关闭同 id toast；手动重试返回 true 后才提示「肉鸽配置已同步」。页面不再渲染页内 `role="alert"` 同步错误或重试按钮，也不显示同步中按钮文案。
 - **执行**只由工作区的一次 `useRoguelikeExecution` 订阅。设置面板拿到的是 `isRunning`/`isStopping`/`isWaitingForCombat`/`pendingStopMode`/`isSubmitting` 与 `onExecute`/`onStop(mode)` 投影；停止确认、等待意图、终态提示和 run 身份仍由 hook/控制器持有，面板没有第二份状态机。执行进度面板另取同一次订阅返回的 `trackedRun`、`lastRun`、`hasSnapshot` 与 `resolvingIdentity`，按当前模式过滤后渲染，不新建观察者。
-- **运行期锁定**：运行或提交在途时 `editable=false`，模式 tab 输出 `aria-disabled`，主题预设与输入、高级字段、开关、核心干员的更换与清除全部禁用，立即执行按钮禁用；提交中按钮以 `aria-busy` 显示「正在启动」。停止按钮不受配置门控或字段锁定影响，运行中始终可达。
-- **停止**分两种意图：运行中左「立即终止」发 `mode: 'now'`，右「等待战斗结束」发 `mode: 'after-combat'`；空闲态仍是单个「立即执行」。`after-combat` 被受理后 run 仍是 `running`，等待态由 `trackedRun.progress.stopIntent`（或刚收到的 `pendingStop`）派生，右侧按钮禁用并提示最多等待 10 分钟，左侧保持可点用于取消等待并立即停止；响应没有 `pendingStop` 表示服务端退化为立即停止，页面提示“未在战斗中，已立即终止”而不进入等待态。等待态不属于停止确认，不触发 15s 确认超时。
+- **运行期锁定**：运行或提交在途时 `editable=false`，模式 tab 输出 `aria-disabled`，主题预设与输入、高级字段、开关、核心干员的更换与清除全部禁用，开始按钮禁用；提交中按钮以 `aria-busy` 显示「正在启动」。停止按钮不受配置门控或字段锁定影响，运行中始终可达。
+- **停止**分两种意图：运行中左「终止」发 `mode: 'now'`，右「等待战斗结束」发 `mode: 'after-combat'`；空闲态仍是单个「开始」。`after-combat` 被受理后 run 仍是 `running`，等待态由 `trackedRun.progress.stopIntent`（或刚收到的 `pendingStop`）派生，右侧按钮禁用并提示最多等待 10 分钟，左侧保持可点用于取消等待并立即停止；响应没有 `pendingStop` 表示服务端退化为立即停止，页面提示“未在战斗中，已立即终止”而不进入等待态。等待态不属于停止确认，不触发 15s 确认超时。
 - **字段校验**：执行前校验返回首个无效字段的 `{ key, message }`；工作区把错误交给设置面板与主题面板，在对应控件上设置 `aria-invalid` 与指向 `<字段 id>-error` 的 `aria-errormessage`，并在控件下方显示 `form-error-text`。设置错误后聚焦首个无效字段，主题字段聚焦 `roguelike-<taskId>-theme`，其余字段聚焦 `roguelike-<taskId>-<key>`；编辑该字段时立即清除对应错误。全局 toast 只保留执行与全局错误，不再重复字段校验文案。
 - **主题归一化**：主题输入是自由文本，输入过程中的 `S`、`Sark` 等未知中间态不触发模式归一化，草稿中的模式保持不变；只有确认主题属于当前任务目录时，编辑才按新主题重置不支持的模式。执行前再做一次归一化，避免旧草稿或绕过编辑的取值把越界模式带进命令。
-- **执行进度与焦点**：执行进度面板按当前模式只读本页 owned run 与匹配的 `lastRun`；首屏快照未到达或身份恢复尚未取回详情时显示加载态，活动期展示 `progress.roguelike`，终态展示 `summary.progress` 或摘要回退；徽章只表达任务状态，通关结果单独成行。模式切换时面板以 `key={mode}` 重建，旧模式结果不会串入。点击立即执行后记录意图，run 进入活动态时聚焦「立即终止」；点击停止后，run 离开活动态时焦点回到「立即执行」。等待战斗结束期间 run 仍活动，焦点不回到「立即执行」。
+- **执行进度与焦点**：执行进度面板按当前模式只读本页 owned run 与匹配的 `lastRun`；首屏快照未到达或身份恢复尚未取回详情时显示加载态，活动期展示 `progress.roguelike`，终态展示 `summary.progress` 或摘要回退；徽章只表达任务状态，通关结果单独成行。模式切换时面板以 `key={mode}` 重建，旧模式结果不会串入。点击开始后记录意图，run 进入活动态时聚焦「终止」；点击停止后，run 离开活动态时焦点回到「开始」。等待战斗结束期间 run 仍活动，焦点不回到「开始」。
 - 模式面板使用共享 `SegmentedTabNav`，不持有测量或键盘状态。工作区网格由 `DeviceMonitorLayout(mode)` 持有：模式面板与 `display: contents` 的 `SegmentedTabPanel` 直接作为网格项，主题/执行进度列与设置面板分别输出 `data-monitor-area="main"` / `"settings"`，设备画面位于 monitor 列并在宽屏跨两行；monitor 列输出 `data-monitor-area="monitor"` 与 `device-monitor-column`，面板输出 `device-monitor-panel`；页面网格仍定义 mode/main/settings/monitor 四个具名区域，monitor 的画面样式由 device-mirror 持有。宽屏下 mode 行高度由模式控件内容决定（`grid-template-rows: max-content auto`），不用固定行高复刻模式 tab 壳的 padding 与边框。所有模式 tab 的 `aria-controls` 指向稳定的 `roguelike-mode-panel`，`aria-labelledby` 指向当前 tab。方向键/Home/End 只移动 roving focus，Enter/Space 或点击才切换模式。
 - **界面文案**：模式 tab 只保留图标与名称；主题与策略设置标题只渲染 `h2`，不再有说明段落或字段计数，主题标题保留「N 个可用」徽标。字段说明统一放到标签旁的 `FieldHint`；开关说明同样使用 `FieldHint`，并把同一文案作为常驻 `sr-only` 描述关联到 `aria-describedby`。
 
@@ -193,7 +193,7 @@ maa-cli 0.7.8 只认识部分主题、模式与参数；MaaCore 新增的黑流�
 - 字段错误：结构化校验返回首个错误字段；控件带 `aria-invalid` 与指向错误文本的 `aria-errormessage`，错误文本可见且聚焦该字段，编辑后清除；全局 toast 不重复字段错误。
 - 配置同步：失败只出现一个固定 id `roguelike-config-save` 的 error toast 与「重新同步」action，不渲染页内同步 alert 或重试按钮；重试成功后关闭同 id toast，仅在 `retry()` 返回 true 后提示成功。
 - 执行进度：活动 Run 展示当前局、结束/结算/通关计数、成功率、当前动作、计时、目标与最近 5 局；统计项按 `mode` 控制可见性，投资单独成组且 `deposit` 只称“投资存款”；终态复用 `summary.progress` 或摘要回退；徽章只表达任务状态，失败/停止/中断即使没有结构化摘要也保留终态；`degraded` 为 true 时提示进度可能不完整；模式不匹配的进度、摘要或 `lastRun` 不展示，`lastRun` 回退不带 tracked run 任务标签。
-- 焦点移交：执行后焦点到「立即终止」，停止并进入终态后回到「立即执行」；等待战斗结束期间焦点不被抢走。
+- 焦点移交：执行后焦点到「终止」，停止并进入终态后回到「开始」；等待战斗结束期间焦点不被抢走。
 - 可访问语义：模式 tab 无描述，主题与策略设置标题无描述，策略设置无字段计数而主题保留计数；难度/职业组与生息演算四项说明走 `FieldHint`；开关有常驻 `sr-only` 描述；执行进度面板为 `role="region" aria-label="执行进度"`，标题为 `h2`，徽章为非交互 `Badge`，`role="status"` 只包状态文本而不包每秒变化的计时，最近局使用列表语义。
 - 旧草稿：没有新字段的 wire 与本地草稿仍可读，未知扩展字段与显式值原样往返。
 - 模式是局部状态：不进入配置 wire，跨模式草稿合并、空主题拒绝，Activity 隐藏保留而真正卸载回到 `roguelike`。
