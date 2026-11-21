@@ -9,6 +9,75 @@ export type RoguelikeCommand = 'roguelike' | 'reclamation'
 export type RoguelikeRoundOutcome = 'passed' | 'not_passed' | 'unknown'
 export type RoguelikeProgressPhase = 'starting' | 'exploring' | 'ended' | 'unknown'
 export type RoguelikeLastEventKind = 'round' | 'combat' | 'event' | 'investment' | 'task'
+export type RoguelikeBlackFlowNodeType = string
+export type BlackFlowFreshness = 'current' | 'recent' | 'stale' | 'unknown' | 'terminal'
+
+export interface RoguelikeBlackFlowNode {
+  id: string
+  name: string | null
+  type: RoguelikeBlackFlowNodeType | null
+}
+
+export interface RoguelikeBlackFlowActionPoints {
+  before: number | null
+  after: number | null
+  at: string | null
+}
+
+export interface RoguelikeBlackFlowRoute {
+  at: string | null
+  floor: number | null
+  target: RoguelikeBlackFlowNode | null
+  landing: RoguelikeBlackFlowNode | null
+  movement: string | null
+  actionPointsBefore: number | null
+  actionPointsAfter: number | null
+  exactCost: number | null
+  predictedCost: number | null
+  arrived: boolean
+}
+
+export interface RoguelikeBlackFlowNodeResolution {
+  at: string | null
+  floor: number | null
+  node: RoguelikeBlackFlowNode | null
+  eventName: string | null
+  progress: 'active' | 'completed' | 'removed' | null
+}
+
+export interface RoguelikeBlackFlowMilestone {
+  id: string
+  floor: number | null
+  progress: number | null
+  status: string
+  at: string | null
+}
+
+export interface RoguelikeBlackFlowStrategy {
+  at: string | null
+  profile: string | null
+  outcome: string | null
+  terminationReason: string | null
+  nextAction: string | null
+  succeeded: boolean | null
+}
+
+export interface RoguelikeBlackFlowProgress {
+  floor: number | null
+  floorAt: string | null
+  currentNode: RoguelikeBlackFlowNode | null
+  currentNodeAt: string | null
+  actionPoints: RoguelikeBlackFlowActionPoints | null
+  lastRoute: RoguelikeBlackFlowRoute | null
+  lastNodeResolution: RoguelikeBlackFlowNodeResolution | null
+  milestones: RoguelikeBlackFlowMilestone[]
+  strategy: RoguelikeBlackFlowStrategy | null
+  updatedAt: string | null
+}
+
+export type BlackFlowLastAction =
+  | { kind: 'route'; route: RoguelikeBlackFlowRoute }
+  | { kind: 'node'; resolution: RoguelikeBlackFlowNodeResolution }
 
 export interface RoguelikeProgressRound {
   index: number | null
@@ -46,6 +115,7 @@ export interface RoguelikeProgressSnapshot {
   combatCount: number
   investment: RoguelikeProgressInvestment | null
   recentRounds: RoguelikeProgressRound[]
+  blackflow?: RoguelikeBlackFlowProgress | null
   updatedAt: string
   degraded: boolean
   observed: boolean
@@ -84,6 +154,13 @@ const MAX_RECENT_ROUNDS = 5
 const JUST_NOW_MS = 5_000
 const MINUTE_MS = 60_000
 const HOUR_MS = 3_600_000
+const MAX_BLACKFLOW_MILESTONES = 5
+const BLACKFLOW_CURRENT_MS = 60_000
+const BLACKFLOW_RECENT_MS = 180_000
+const BLACKFLOW_STALE_MS = 300_000
+const MAX_SAFE_NODE_ID_TEXT = '9007199254740991'
+const NODE_ID_PATTERN = /^[0-9]+$/
+const NODE_RESOLUTION_PROGRESS_SET: ReadonlySet<string> = new Set(['active', 'completed', 'removed'])
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   Boolean(value) && typeof value === 'object' && !Array.isArray(value)
@@ -96,6 +173,34 @@ const readBoolean = (value: unknown): boolean | null =>
 
 const readText = (value: unknown): string | null =>
   typeof value === 'string' ? value : null
+
+const readNonEmptyText = (value: unknown): string | null =>
+  typeof value === 'string' && value.trim() ? value : null
+
+const parseTimestamp = (value: string | null): number | null => {
+  if (typeof value !== 'string') return null
+  const parsed = Date.parse(value)
+  return Number.isFinite(parsed) ? parsed : null
+}
+
+const readNodeId = (value: unknown): string | null => {
+  if (typeof value === 'string') {
+    if (!NODE_ID_PATTERN.test(value)) return null
+    const significant = value.replace(/^0+(?=\d)/, '')
+    if (significant.length > MAX_SAFE_NODE_ID_TEXT.length) return null
+    if (
+      significant.length === MAX_SAFE_NODE_ID_TEXT.length
+      && significant > MAX_SAFE_NODE_ID_TEXT
+    ) {
+      return null
+    }
+    return value
+  }
+  if (typeof value === 'number' && Number.isSafeInteger(value) && value >= 0) {
+    return String(value)
+  }
+  return null
+}
 
 const readMode = (value: unknown): number | null =>
   typeof value === 'number' && Number.isInteger(value) ? value : null
@@ -157,6 +262,167 @@ function parseInvestment(value: unknown): RoguelikeProgressInvestment | null {
   }
 }
 
+function parseBlackFlowNode(value: unknown): RoguelikeBlackFlowNode | null {
+  if (!isRecord(value)) return null
+  const id = readNodeId(value.id)
+  if (id === null) return null
+  return {
+    id,
+    name: readText(value.name),
+    type: readText(value.type),
+  }
+}
+
+function parseBlackFlowActionPoints(value: unknown): RoguelikeBlackFlowActionPoints | null {
+  if (!isRecord(value)) return null
+  const before = readFiniteNumber(value.before)
+  const after = readFiniteNumber(value.after)
+  const at = readText(value.at)
+  if (before === null && after === null && at === null) return null
+  return { before, after, at }
+}
+
+function parseBlackFlowRoute(value: unknown): RoguelikeBlackFlowRoute | null {
+  if (!isRecord(value)) return null
+  const at = readText(value.at)
+  const floor = readFiniteNumber(value.floor)
+  const target = parseBlackFlowNode(value.target)
+  const landing = parseBlackFlowNode(value.landing)
+  const movement = readText(value.movement)
+  const actionPointsBefore = readFiniteNumber(value.actionPointsBefore)
+  const actionPointsAfter = readFiniteNumber(value.actionPointsAfter)
+  const exactCost = readFiniteNumber(value.exactCost)
+  const predictedCost = readFiniteNumber(value.predictedCost)
+  const arrived = readBoolean(value.arrived) ?? false
+  if (
+    at === null
+    && floor === null
+    && target === null
+    && landing === null
+    && movement === null
+    && actionPointsBefore === null
+    && actionPointsAfter === null
+    && exactCost === null
+    && predictedCost === null
+  ) {
+    return null
+  }
+  return {
+    at,
+    floor,
+    target,
+    landing,
+    movement,
+    actionPointsBefore,
+    actionPointsAfter,
+    exactCost,
+    predictedCost,
+    arrived,
+  }
+}
+
+function readNodeResolutionProgress(value: unknown): RoguelikeBlackFlowNodeResolution['progress'] {
+  return typeof value === 'string' && NODE_RESOLUTION_PROGRESS_SET.has(value)
+    ? value as RoguelikeBlackFlowNodeResolution['progress']
+    : null
+}
+
+function parseBlackFlowNodeResolution(value: unknown): RoguelikeBlackFlowNodeResolution | null {
+  if (!isRecord(value)) return null
+  const at = readText(value.at)
+  const floor = readFiniteNumber(value.floor)
+  const node = parseBlackFlowNode(value.node)
+  const eventName = readText(value.eventName)
+  const progress = readNodeResolutionProgress(value.progress)
+  if (at === null && floor === null && node === null && eventName === null && progress === null) {
+    return null
+  }
+  return { at, floor, node, eventName, progress }
+}
+
+function readBlackFlowMilestones(value: unknown): RoguelikeBlackFlowMilestone[] {
+  if (!Array.isArray(value)) return []
+  const milestones: RoguelikeBlackFlowMilestone[] = []
+  const seen = new Set<string>()
+  for (const entry of value) {
+    if (!isRecord(entry)) continue
+    const id = readNonEmptyText(entry.id)
+    const status = readNonEmptyText(entry.status)
+    if (id === null || status === null || seen.has(id)) continue
+    seen.add(id)
+    milestones.push({
+      id,
+      floor: readFiniteNumber(entry.floor),
+      progress: readFiniteNumber(entry.progress),
+      status,
+      at: readText(entry.at),
+    })
+    if (milestones.length === MAX_BLACKFLOW_MILESTONES) break
+  }
+  return milestones
+}
+
+function parseBlackFlowStrategy(value: unknown): RoguelikeBlackFlowStrategy | null {
+  if (!isRecord(value)) return null
+  const at = readText(value.at)
+  const profile = readText(value.profile)
+  const outcome = readText(value.outcome)
+  const terminationReason = readText(value.terminationReason)
+  const nextAction = readText(value.nextAction)
+  const succeeded = readBoolean(value.succeeded)
+  if (
+    at === null
+    && profile === null
+    && outcome === null
+    && terminationReason === null
+    && nextAction === null
+    && succeeded === null
+  ) {
+    return null
+  }
+  return { at, profile, outcome, terminationReason, nextAction, succeeded }
+}
+
+function parseBlackFlowProgress(value: unknown): RoguelikeBlackFlowProgress | null {
+  if (!isRecord(value)) return null
+  const floor = readFiniteNumber(value.floor)
+  const floorAt = readText(value.floorAt)
+  const currentNode = parseBlackFlowNode(value.currentNode)
+  const currentNodeAt = readText(value.currentNodeAt)
+  const actionPoints = parseBlackFlowActionPoints(value.actionPoints)
+  const lastRoute = parseBlackFlowRoute(value.lastRoute)
+  const lastNodeResolution = parseBlackFlowNodeResolution(value.lastNodeResolution)
+  const milestones = readBlackFlowMilestones(value.milestones)
+  const strategy = parseBlackFlowStrategy(value.strategy)
+  const updatedAt = readText(value.updatedAt)
+  if (
+    floor === null
+    && floorAt === null
+    && currentNode === null
+    && currentNodeAt === null
+    && actionPoints === null
+    && lastRoute === null
+    && lastNodeResolution === null
+    && milestones.length === 0
+    && strategy === null
+    && updatedAt === null
+  ) {
+    return null
+  }
+  return {
+    floor,
+    floorAt,
+    currentNode,
+    currentNodeAt,
+    actionPoints,
+    lastRoute,
+    lastNodeResolution,
+    milestones,
+    strategy,
+    updatedAt,
+  }
+}
+
 function parseSnapshot(value: unknown): RoguelikeProgressSnapshot | null {
   if (!isRecord(value) || !isCommand(value.command)) return null
 
@@ -203,6 +469,7 @@ function parseSnapshot(value: unknown): RoguelikeProgressSnapshot | null {
     combatCount,
     investment: parseInvestment(value.investment),
     recentRounds: readRecentRounds(value.recentRounds),
+    blackflow: parseBlackFlowProgress(value.blackflow),
     updatedAt,
     degraded,
     observed,
@@ -349,4 +616,129 @@ export function calculateRoguelikeSuccessRate(passed: number, ended: number): nu
 
 export function describeRoguelikeRoundOutcome(outcome: RoguelikeRoundOutcome): string {
   return OUTCOME_LABELS[outcome]
+}
+
+export function describeBlackFlowFreshness(
+  at: string | null,
+  nowMs: number,
+  terminal: boolean,
+): BlackFlowFreshness {
+  if (terminal) return 'terminal'
+  if (!Number.isFinite(nowMs)) return 'unknown'
+  const atMs = parseTimestamp(at)
+  if (atMs === null) return 'unknown'
+  const elapsed = nowMs - atMs
+  if (elapsed < 0) return 'unknown'
+  if (elapsed <= BLACKFLOW_CURRENT_MS) return 'current'
+  if (elapsed <= BLACKFLOW_RECENT_MS) return 'recent'
+  if (elapsed <= BLACKFLOW_STALE_MS) return 'stale'
+  return 'unknown'
+}
+
+export function selectBlackFlowAction(
+  progress: RoguelikeBlackFlowProgress | null,
+): BlackFlowLastAction | null {
+  if (!progress) return null
+  const route = progress.lastRoute
+  const resolution = progress.lastNodeResolution
+  if (!route) return resolution ? { kind: 'node', resolution } : null
+  if (!resolution) return { kind: 'route', route }
+  const routeAtMs = parseTimestamp(route.at)
+  const resolutionAtMs = parseTimestamp(resolution.at)
+  if (routeAtMs !== null && resolutionAtMs !== null && resolutionAtMs > routeAtMs) {
+    return { kind: 'node', resolution }
+  }
+  return { kind: 'route', route }
+}
+
+const BLACKFLOW_NODE_TYPE_LABELS: Record<string, string> = {
+  battle_elite: '精英作战',
+  battle_normal: '作战',
+  battle_savage: '紧急作战',
+  battle_boss: 'Boss',
+  duel: '决斗',
+  door: '通道',
+  employ: '招募',
+  expedition: '探险',
+  incident: '事件',
+  shop: '商店',
+  scrap_shop: '废品商店',
+  rest: '休整',
+  sacrifice: '献祭',
+  wish: '许愿',
+  final: '终点',
+  empty: '空节点',
+  evacuate: '撤离',
+  hide_battle: '隐藏作战',
+  hide_invisible: '隐藏作战',
+}
+
+const BLACKFLOW_MILESTONE_STATUS_LABELS: Record<string, string> = {
+  available: '可达成',
+  satisfied: '已达成',
+  missed: '已错过',
+  impossible: '无法达成',
+  inactive: '未激活',
+}
+
+const BLACKFLOW_STRATEGY_PROFILE_LABELS: Record<string, string> = {
+  baby_animal: '培育襁褓动物',
+  investment: '第一层投资后速通',
+  burn_with_investment: '投资后速通到第三层',
+  burn: '速通到第三层',
+  ending1: '第一结局刷等级',
+  ending2: '第二结局刷等级',
+  ending3: '第三结局刷等级',
+}
+
+const BLACKFLOW_STRATEGY_OUTCOME_LABELS: Record<string, string> = {
+  burn_completed: '速通完成',
+}
+
+const BLACKFLOW_TERMINATION_REASON_LABELS: Record<string, string> = {
+  third_floor_reached: '抵达第三层',
+}
+
+const BLACKFLOW_NEXT_ACTION_LABELS: Record<string, string> = {
+  restart_current_run: '重新开始本局',
+  stop_run: '停止运行',
+}
+
+const BLACKFLOW_SCRAP_MOVEMENT_PATTERN = /^rogue_6_scrap_M_(?:0[1-9]|1[0-6])$/
+
+const readLabel = (labels: Record<string, string>, value: string | null): string | null =>
+  typeof value === 'string' ? labels[value] ?? null : null
+
+export function describeBlackFlowNodeType(
+  type: RoguelikeBlackFlowNodeType | null,
+): string | null {
+  return readLabel(BLACKFLOW_NODE_TYPE_LABELS, type)
+}
+
+export function describeBlackFlowMovement(movement: string | null): string | null {
+  if (movement === 'walk') return '步行'
+  if (typeof movement === 'string' && BLACKFLOW_SCRAP_MOVEMENT_PATTERN.test(movement)) {
+    return '加工品移动'
+  }
+  return null
+}
+
+export function describeBlackFlowMilestoneStatus(status: string | null): string | null {
+  return readLabel(BLACKFLOW_MILESTONE_STATUS_LABELS, status)
+}
+
+export function describeBlackFlowStrategyProfile(profile: string | null): string | null {
+  return readLabel(BLACKFLOW_STRATEGY_PROFILE_LABELS, profile)
+}
+
+export function describeBlackFlowStrategyOutcome(outcome: string | null): string | null {
+  return readLabel(BLACKFLOW_STRATEGY_OUTCOME_LABELS, outcome)
+}
+
+export function describeBlackFlowTerminationReason(reason: string | null): string | null {
+  return readLabel(BLACKFLOW_TERMINATION_REASON_LABELS, reason)
+}
+
+export function describeBlackFlowNextAction(action: string | null): string | null {
+  return readLabel(BLACKFLOW_NEXT_ACTION_LABELS, action)
 }

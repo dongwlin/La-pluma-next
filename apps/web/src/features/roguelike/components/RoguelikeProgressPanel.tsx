@@ -6,10 +6,24 @@ import { EmptyState } from '@/shared/components'
 import type { AgentRun } from '@/features/task-execution'
 import {
   calculateRoguelikeSuccessRate,
+  describeBlackFlowFreshness,
+  describeBlackFlowMilestoneStatus,
+  describeBlackFlowMovement,
+  describeBlackFlowNextAction,
+  describeBlackFlowNodeType,
+  describeBlackFlowStrategyOutcome,
+  describeBlackFlowStrategyProfile,
+  describeBlackFlowTerminationReason,
   describeRoguelikeRoundOutcome,
   formatRoguelikeElapsed,
   formatRoguelikeRelativeTime,
+  selectBlackFlowAction,
   selectRoguelikeProgressView,
+  type BlackFlowFreshness,
+  type RoguelikeBlackFlowMilestone,
+  type RoguelikeBlackFlowNode,
+  type RoguelikeBlackFlowProgress,
+  type RoguelikeBlackFlowStrategy,
   type RoguelikeCommand,
   type RoguelikeProgressInvestment,
   type RoguelikeProgressRound,
@@ -157,6 +171,186 @@ function describeCurrentAction(progress: RoguelikeProgressSnapshot): string {
   return ACTION_LABELS[action] ?? '任务执行中'
 }
 
+function formatBlackFlowNode(node: RoguelikeBlackFlowNode): string {
+  const name = node.name?.trim() ?? ''
+  const type = describeBlackFlowNodeType(node.type)
+  if (name && type) return `${name}（${type}）`
+  return name || type || ''
+}
+
+function describeBlackFlowStatus(
+  blackflow: RoguelikeBlackFlowProgress,
+  now: number,
+  terminal: boolean,
+): string | null {
+  const floorFreshness = describeBlackFlowFreshness(blackflow.floorAt, now, terminal)
+  const nodeFreshness = describeBlackFlowFreshness(blackflow.currentNodeAt, now, terminal)
+  const actionPointsFreshness = describeBlackFlowFreshness(
+    blackflow.actionPoints?.at ?? null,
+    now,
+    terminal,
+  )
+  const parts: string[] = []
+  const levels: BlackFlowFreshness[] = []
+
+  if (blackflow.floor !== null) {
+    parts.push(`第 ${blackflow.floor} 层`)
+    levels.push(floorFreshness)
+  }
+
+  if (blackflow.currentNode && nodeFreshness !== 'unknown') {
+    const identity = formatBlackFlowNode(blackflow.currentNode)
+    if (!identity) {
+      parts.push(!terminal && nodeFreshness === 'current' ? '当前节点未知' : '节点未知')
+    } else {
+      parts.push(
+        !terminal && nodeFreshness === 'current'
+          ? `当前节点 ${identity}`
+          : `节点 ${identity}`,
+      )
+    }
+    levels.push(nodeFreshness)
+  }
+
+  const actionPoints = blackflow.actionPoints?.before ?? null
+  if (actionPoints !== null && actionPointsFreshness !== 'unknown') {
+    parts.push(`行动力 ${actionPoints}`)
+    levels.push(actionPointsFreshness)
+  }
+
+  if (parts.length === 0) return null
+  if (terminal) return `最后记录：${parts.join(' · ')}`
+  const prefix = levels.includes('stale')
+    ? '可能已过期：'
+    : levels.includes('recent') || levels.includes('unknown')
+      ? '最近已知：'
+      : ''
+  return `${prefix}${parts.join(' · ')}`
+}
+
+function describeBlackFlowAction(blackflow: RoguelikeBlackFlowProgress): string | null {
+  const action = selectBlackFlowAction(blackflow)
+  if (!action) return null
+  if (action.kind === 'route') {
+    const route = action.route
+    const destination = route.target ?? route.landing
+    const parts: string[] = []
+    if (destination) {
+      const name = destination.name?.trim()
+        || describeBlackFlowNodeType(destination.type)
+        || '未知节点'
+      const movement = describeBlackFlowMovement(route.movement)
+      parts.push(`移动：前往 ${name}${movement ? `（${movement}）` : ''}`)
+    }
+    if (route.actionPointsBefore !== null && route.actionPointsAfter !== null) {
+      parts.push(`行动力 ${route.actionPointsBefore}→${route.actionPointsAfter}`)
+    }
+    if (route.arrived) parts.push('已到达')
+    return parts.length > 0 ? parts.join(' · ') : null
+  }
+  const resolution = action.resolution
+  const label = resolution.eventName?.trim()
+    || describeBlackFlowNodeType(resolution.node?.type ?? null)
+    || '事件节点'
+  const parts = [`最近完成：${label}`]
+  if (resolution.progress === 'active') parts.push('进行中')
+  if (resolution.progress === 'removed') parts.push('已移除')
+  return parts.join(' · ')
+}
+
+function describeBlackFlowMilestone(milestone: RoguelikeBlackFlowMilestone): string | null {
+  const status = describeBlackFlowMilestoneStatus(milestone.status)
+  const parts: string[] = []
+  if (milestone.floor !== null) parts.push(`第 ${milestone.floor} 层目标`)
+  if (status) parts.push(status)
+  if (parts.length === 0) return null
+  if (milestone.progress !== null && milestone.progress > 0) {
+    parts.push(`进度 ${milestone.progress}`)
+  }
+  return parts.join(' · ')
+}
+
+function describeBlackFlowStrategy(strategy: RoguelikeBlackFlowStrategy | null): {
+  profile: string | null
+  result: string | null
+} {
+  if (!strategy) return { profile: null, result: null }
+  const profile = describeBlackFlowStrategyProfile(strategy.profile)
+  const outcome = describeBlackFlowStrategyOutcome(strategy.outcome)
+  const reason = describeBlackFlowTerminationReason(strategy.terminationReason)
+  const nextAction = describeBlackFlowNextAction(strategy.nextAction)
+  const resultParts = [
+    outcome,
+    reason ? `原因：${reason}` : null,
+    nextAction ? `建议：${nextAction}` : null,
+  ].filter((part): part is string => part !== null)
+  return {
+    profile: profile ? `黑流策略：${profile}` : null,
+    result: resultParts.length > 0 ? `策略结果：${resultParts.join(' · ')}` : null,
+  }
+}
+
+function describeBlackFlowUpdatedAt(
+  updatedAt: string | null,
+  now: number,
+  terminal: boolean,
+): string | null {
+  const relative = formatRoguelikeRelativeTime(parseTimestamp(updatedAt), now)
+  if (!relative) return null
+  return terminal ? `最后记录于 ${relative}` : `黑流更新于 ${relative}`
+}
+
+function BlackFlowProgress({
+  blackflow,
+  now,
+  terminal,
+}: {
+  blackflow: RoguelikeBlackFlowProgress
+  now: number
+  terminal: boolean
+}) {
+  const status = describeBlackFlowStatus(blackflow, now, terminal)
+  const action = describeBlackFlowAction(blackflow)
+  const milestones = blackflow.milestones
+    .map(milestone => ({ id: milestone.id, text: describeBlackFlowMilestone(milestone) }))
+    .filter((milestone): milestone is { id: string; text: string } => milestone.text !== null)
+    .slice(0, 3)
+  const strategy = describeBlackFlowStrategy(blackflow.strategy)
+  const updatedAt = describeBlackFlowUpdatedAt(blackflow.updatedAt, now, terminal)
+  const hasMapData = blackflow.floor !== null
+    || blackflow.currentNode !== null
+    || (blackflow.actionPoints?.before ?? null) !== null
+    || (blackflow.actionPoints?.after ?? null) !== null
+    || blackflow.lastRoute !== null
+    || blackflow.lastNodeResolution !== null
+
+  return (
+    <section className="roguelike-progress-blackflow">
+      <h3>黑流进度</h3>
+      {status ? (
+        <p className="roguelike-progress-action">{status}</p>
+      ) : (
+        !hasMapData && (
+          <p className="roguelike-progress-note">
+            {terminal ? '未记录到黑流进度' : '等待黑流地图数据…'}
+          </p>
+        )
+      )}
+      {action && <p className="roguelike-progress-action">{action}</p>}
+      {milestones.length > 0 && (
+        <ul className="grid gap-1 text-xs text-muted-foreground">
+          {milestones.map(milestone => <li key={milestone.id}>{milestone.text}</li>)}
+        </ul>
+      )}
+      {strategy.profile && <p className="roguelike-progress-note">{strategy.profile}</p>}
+      {strategy.result && <p className="roguelike-progress-note">{strategy.result}</p>}
+      {updatedAt && (
+        <p className="text-[11px] leading-normal text-muted-foreground">{updatedAt}</p>
+      )}
+    </section>
+  )
+}
+
 function ActiveTiming({
   mode,
   startedAtMs,
@@ -292,6 +486,7 @@ export default function RoguelikeProgressPanel({
   const status = run === null && resolvingIdentity ? 'loading' : view.status
   const [now, setNow] = useState(() => Date.now())
   const progress = view.progress
+  const blackflow = progress?.blackflow ?? null
   const startedAtMs = parseTimestamp(view.run?.startedAt)
   const roundStartedAtMs = parseTimestamp(progress?.roundStartedAt)
   const lastEventAtMs = parseTimestamp(progress?.lastEventAt)
@@ -365,8 +560,13 @@ export default function RoguelikeProgressPanel({
             />
             {mode === 'roguelike' && progress && (
               <>
+                {blackflow && (
+                  <BlackFlowProgress blackflow={blackflow} now={now} terminal={false} />
+                )}
                 <ProgressStats progress={progress} />
-                <p className="roguelike-progress-action">{describeCurrentAction(progress)}</p>
+                {!(blackflow && selectBlackFlowAction(blackflow)) && (
+                  <p className="roguelike-progress-action">{describeCurrentAction(progress)}</p>
+                )}
                 <RecentRounds rounds={progress.recentRounds} />
                 {progress.degraded && <p className="roguelike-progress-note">进度数据可能不完整</p>}
               </>
@@ -380,6 +580,7 @@ export default function RoguelikeProgressPanel({
             {mode === 'roguelike' ? (
               progress ? (
                 <>
+                  {blackflow && <BlackFlowProgress blackflow={blackflow} now={now} terminal />}
                   <LastRoundResult progress={progress} />
                   <ProgressStats progress={progress} />
                   <RecentRounds rounds={progress.recentRounds} />

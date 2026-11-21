@@ -202,10 +202,27 @@ function progressSnapshot(
     combatCount: 0,
     investment: null,
     recentRounds: [],
+    blackflow: null,
     updatedAt: '2026-10-25T00:00:10.000Z',
     degraded: false,
     observed: true,
     ...overrides,
+  }
+}
+
+function blackflowProgress(): Record<string, unknown> {
+  const observedAt = new Date(Date.now() - 10_000).toISOString()
+  return {
+    floor: 3,
+    floorAt: new Date(Date.now() - 15_000).toISOString(),
+    currentNode: { id: '281475010265088', name: '不期而遇', type: 'incident' },
+    currentNodeAt: observedAt,
+    actionPoints: { before: 7, after: 6, at: observedAt },
+    lastRoute: null,
+    lastNodeResolution: null,
+    milestones: [],
+    strategy: null,
+    updatedAt: observedAt,
   }
 }
 
@@ -253,6 +270,25 @@ function terminalRunWithSummary(
           roundsEnded: 2,
           roundsPassed: 1,
           roundsSettled: 1,
+        }),
+      },
+    },
+  }
+}
+
+function terminalRunWithBlackflow(runId: string): AgentRun {
+  return {
+    ...activeRun(runId, 'succeeded'),
+    result: {
+      summary: {
+        ...roguelikeSummary('roguelike'),
+        progress: progressSnapshot('roguelike', {
+          phase: 'ended',
+          currentRound: null,
+          roundsEnded: 2,
+          roundsPassed: 1,
+          roundsSettled: 1,
+          blackflow: blackflowProgress(),
         }),
       },
     },
@@ -1095,6 +1131,46 @@ describe('RoguelikeTasks execution', () => {
     expect(progressPanel()?.textContent).toContain('集成战略进度')
     expect(progressPanel()?.textContent).toContain('运行中')
     expect(progressPanel()?.textContent).toContain('正在启动')
+  })
+
+  it('feeds an active blackflow snapshot into the progress panel', async () => {
+    useIdentity({ runId: 'run-1', operationId: 'run_task', scope: 'roguelike' })
+    const run = runWithProgress('run-1')
+    run.progress = {
+      ...run.progress,
+      roguelike: {
+        ...progressSnapshot(),
+        blackflow: blackflowProgress(),
+      },
+    }
+    api.fetchSnapshot.mockResolvedValue(ok(runSnapshot({ activeRuns: [run] })))
+    startController()
+    await flush()
+    await renderPage()
+
+    const progressPanel = () => container.querySelector<HTMLElement>('[aria-label="执行进度"]')
+    expect(progressPanel()?.textContent).toContain('黑流进度')
+    expect(progressPanel()?.textContent).toContain('第 3 层')
+    expect(progressPanel()?.textContent).toContain('行动力 7')
+  })
+
+  it('does not carry a roguelike blackflow result into the reclamation panel', async () => {
+    useIdentity(null)
+    api.fetchSnapshot.mockResolvedValue(ok(runSnapshot({
+      lastRun: terminalRunWithBlackflow('run-1'),
+    })))
+    startController()
+    await flush()
+    await renderPage()
+
+    const progressPanel = () => container.querySelector<HTMLElement>('[aria-label="执行进度"]')
+    expect(progressPanel()?.textContent).toContain('黑流进度')
+
+    await click(findModeButton('生息演算')!)
+
+    expect(progressPanel()?.textContent).toContain('生息演算进度')
+    expect(progressPanel()?.textContent).not.toContain('黑流进度')
+    expect(progressPanel()?.textContent).not.toContain('第 3 层')
   })
 
   it('keeps the progress panel loading while the restored run identity is being resolved', async () => {

@@ -77,6 +77,20 @@
     gap: 0.875rem;
   }
 
+  .roguelike-progress-blackflow {
+    display: grid;
+    gap: 0.5rem;
+    border-top: 1px solid var(--border);
+    padding-top: 0.875rem;
+  }
+
+  .roguelike-progress-blackflow h3 {
+    color: var(--foreground);
+    font-size: 0.875rem;
+    font-weight: 600;
+    line-height: 1.5;
+  }
+
   .roguelike-progress-owner,
   .roguelike-progress-loading,
   .roguelike-progress-note {

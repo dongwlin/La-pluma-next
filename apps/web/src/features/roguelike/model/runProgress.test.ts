@@ -4,12 +4,22 @@ import { describe, expect, it } from 'vitest'
 import type { AgentRun } from '@/features/task-execution'
 import {
   calculateRoguelikeSuccessRate,
+  describeBlackFlowFreshness,
+  describeBlackFlowMilestoneStatus,
+  describeBlackFlowMovement,
+  describeBlackFlowNextAction,
+  describeBlackFlowNodeType,
+  describeBlackFlowStrategyOutcome,
+  describeBlackFlowStrategyProfile,
+  describeBlackFlowTerminationReason,
   describeRoguelikeRoundOutcome,
   formatRoguelikeElapsed,
   formatRoguelikeRelativeTime,
   readRoguelikeRunProgress,
   readRoguelikeSummaryProgress,
+  selectBlackFlowAction,
   selectRoguelikeProgressView,
+  type RoguelikeBlackFlowProgress,
   type RoguelikeCommand,
   type RoguelikeProgressSnapshot,
 } from './runProgress'
@@ -45,9 +55,58 @@ function snapshot(overrides: Partial<RoguelikeProgressSnapshot> = {}): Roguelike
         endedAt: '2026-11-21T10:04:00.000Z',
       },
     ],
+    blackflow: null,
     updatedAt: '2026-11-21T10:05:01.000Z',
     degraded: false,
     observed: true,
+    ...overrides,
+  }
+}
+
+function blackflow(overrides: Partial<RoguelikeBlackFlowProgress> = {}): RoguelikeBlackFlowProgress {
+  return {
+    floor: 2,
+    floorAt: '2026-11-21T10:05:00.000Z',
+    currentNode: { id: '281475010265088', name: '丛林商店', type: 'shop' },
+    currentNodeAt: '2026-11-21T10:05:10.000Z',
+    actionPoints: { before: 6, after: 3, at: '2026-11-21T10:05:20.000Z' },
+    lastRoute: {
+      at: '2026-11-21T10:05:20.000Z',
+      floor: 2,
+      target: { id: '281475010265092', name: '丛林商店', type: 'shop' },
+      landing: { id: '281475010265092', name: '丛林商店', type: 'shop' },
+      movement: 'rogue_6_scrap_M_05',
+      actionPointsBefore: 6,
+      actionPointsAfter: 3,
+      exactCost: 2,
+      predictedCost: 3,
+      arrived: true,
+    },
+    lastNodeResolution: {
+      at: '2026-11-21T10:05:30.000Z',
+      floor: 2,
+      node: { id: '281475010265092', name: '丛林商店', type: 'shop' },
+      eventName: '丛林商店',
+      progress: 'completed',
+    },
+    milestones: [
+      {
+        id: 'reach_floor_3',
+        floor: 3,
+        progress: 0,
+        status: 'satisfied',
+        at: '2026-11-21T10:05:40.000Z',
+      },
+    ],
+    strategy: {
+      at: '2026-11-21T10:06:00.000Z',
+      profile: 'burn_with_investment',
+      outcome: 'burn_completed',
+      terminationReason: 'third_floor_reached',
+      nextAction: 'restart_current_run',
+      succeeded: true,
+    },
+    updatedAt: '2026-11-21T10:06:00.000Z',
     ...overrides,
   }
 }
@@ -814,5 +873,524 @@ describe('describeRoguelikeRoundOutcome', () => {
     expect(describeRoguelikeRoundOutcome('passed')).toBe('通关')
     expect(describeRoguelikeRoundOutcome('not_passed')).toBe('未通关')
     expect(describeRoguelikeRoundOutcome('unknown')).toBe('未确认')
+  })
+})
+
+describe('blackflow snapshot parsing', () => {
+  it('keeps blackflow null when the field is absent, null or malformed', () => {
+    const { blackflow: _blackflow, ...withoutBlackflow } = raw()
+
+    expect(readRoguelikeRunProgress(runWithProgress(withoutBlackflow))?.blackflow).toBeNull()
+    expect(readRoguelikeRunProgress(runWithProgress(raw({ blackflow: null })))?.blackflow).toBeNull()
+    expect(readRoguelikeRunProgress(runWithProgress(raw({ blackflow: 'blackflow' })))?.blackflow).toBeNull()
+    expect(readRoguelikeRunProgress(runWithProgress(raw({ blackflow: [] })))?.blackflow).toBeNull()
+    expect(readRoguelikeRunProgress(runWithProgress(raw({ blackflow: {} })))?.blackflow).toBeNull()
+    expect(readRoguelikeRunProgress(runWithProgress(raw({
+      blackflow: {
+        floor: null,
+        floorAt: 1,
+        currentNode: { id: 'invalid' },
+        actionPoints: {},
+        lastRoute: {},
+        lastNodeResolution: {},
+        milestones: [null, { id: 1, status: 2 }],
+        strategy: {},
+        updatedAt: 3,
+      },
+    })))?.blackflow).toBeNull()
+  })
+
+  it('parses a complete blackflow block', () => {
+    const parsed = readRoguelikeRunProgress(runWithProgress(raw({ blackflow: blackflow() })))
+
+    expect(parsed?.blackflow).toEqual(blackflow())
+  })
+
+  it('keeps partial blackflow data and normalizes invalid fields individually', () => {
+    const parsed = readRoguelikeRunProgress(runWithProgress(raw({
+      blackflow: {
+        floor: 2,
+        floorAt: 42,
+        currentNode: { id: 281475010265088, name: 7, type: 'shop' },
+        currentNodeAt: null,
+        actionPoints: { before: '6', after: 3, at: 123 },
+        lastRoute: {
+          at: '2026-11-21T10:05:20.000Z',
+          floor: 2,
+          target: { id: 281475010265092, name: {}, type: [] },
+          landing: { id: -1, name: '丛林商店', type: 'shop' },
+          movement: 7,
+          actionPointsBefore: 6,
+          actionPointsAfter: '3',
+          exactCost: 2,
+          predictedCost: Number.NaN,
+          arrived: 'yes',
+        },
+        lastNodeResolution: {
+          at: '2026-11-21T10:05:30.000Z',
+          floor: '2',
+          node: { id: null, name: '丛林商店', type: 'shop' },
+          eventName: 5,
+          progress: 'done',
+        },
+        milestones: 'milestones',
+        strategy: { profile: 1, outcome: 'burn_completed', succeeded: 'yes' },
+        updatedAt: 99,
+      },
+    })))
+
+    expect(parsed?.blackflow).toEqual({
+      floor: 2,
+      floorAt: null,
+      currentNode: { id: '281475010265088', name: null, type: 'shop' },
+      currentNodeAt: null,
+      actionPoints: { before: null, after: 3, at: null },
+      lastRoute: {
+        at: '2026-11-21T10:05:20.000Z',
+        floor: 2,
+        target: { id: '281475010265092', name: null, type: null },
+        landing: null,
+        movement: null,
+        actionPointsBefore: 6,
+        actionPointsAfter: null,
+        exactCost: 2,
+        predictedCost: null,
+        arrived: false,
+      },
+      lastNodeResolution: {
+        at: '2026-11-21T10:05:30.000Z',
+        floor: null,
+        node: null,
+        eventName: null,
+        progress: null,
+      },
+      milestones: [],
+      strategy: {
+        at: null,
+        profile: null,
+        outcome: 'burn_completed',
+        terminationReason: null,
+        nextAction: null,
+        succeeded: null,
+      },
+      updatedAt: null,
+    })
+  })
+
+  it('drops empty nested objects from a kept blackflow block', () => {
+    const parsed = readRoguelikeRunProgress(runWithProgress(raw({
+      blackflow: {
+        floor: 2,
+        floorAt: null,
+        currentNode: null,
+        currentNodeAt: null,
+        actionPoints: {},
+        lastRoute: {
+          at: null,
+          floor: null,
+          target: null,
+          landing: null,
+          movement: null,
+          actionPointsBefore: null,
+          actionPointsAfter: null,
+          exactCost: null,
+          predictedCost: null,
+          arrived: false,
+        },
+        lastNodeResolution: {},
+        milestones: [],
+        strategy: {},
+        updatedAt: '2026-11-21T10:06:00.000Z',
+      },
+    })))
+
+    expect(parsed?.blackflow).toEqual({
+      floor: 2,
+      floorAt: null,
+      currentNode: null,
+      currentNodeAt: null,
+      actionPoints: null,
+      lastRoute: null,
+      lastNodeResolution: null,
+      milestones: [],
+      strategy: null,
+      updatedAt: '2026-11-21T10:06:00.000Z',
+    })
+  })
+
+  it('keeps a partial block without inventing an untimestamped empty one', () => {
+    const timestamped = readRoguelikeRunProgress(runWithProgress(raw({
+      blackflow: { updatedAt: '2026-11-21T10:06:00.000Z' },
+    })))
+    const partial = readRoguelikeRunProgress(runWithProgress(raw({
+      blackflow: { floor: 1, milestones: [] },
+    })))
+
+    expect(timestamped?.blackflow).toEqual({
+      floor: null,
+      floorAt: null,
+      currentNode: null,
+      currentNodeAt: null,
+      actionPoints: null,
+      lastRoute: null,
+      lastNodeResolution: null,
+      milestones: [],
+      strategy: null,
+      updatedAt: '2026-11-21T10:06:00.000Z',
+    })
+    expect(partial?.blackflow?.floor).toBe(1)
+    expect(partial?.blackflow?.updatedAt).toBeNull()
+  })
+})
+
+describe('blackflow node ids', () => {
+  const cases: ReadonlyArray<readonly [unknown, string | null]> = [
+    ['281475010265088', '281475010265088'],
+    [281475010265088, '281475010265088'],
+    [0, '0'],
+    [18446744073709552000, null],
+    [-1, null],
+    [1.5, null],
+    [Number.NaN, null],
+    [Number.POSITIVE_INFINITY, null],
+    ['', null],
+    ['abc', null],
+    ['-1', null],
+    ['1.5', null],
+    ['18446744073709552000', null],
+    ['9007199254740992', null],
+    [null, null],
+    [undefined, null],
+    [{}, null],
+  ]
+
+  it.each(cases)('normalizes currentNode id %p to %p', (id, expected) => {
+    const parsed = readRoguelikeRunProgress(runWithProgress(raw({
+      blackflow: {
+        currentNode: { id, name: '丛林商店', type: 'shop' },
+        updatedAt: '2026-11-21T10:06:00.000Z',
+      },
+    })))
+
+    expect(parsed?.blackflow?.currentNode?.id ?? null).toBe(expected)
+  })
+
+  it('normalizes numeric node ids in route targets, landings and resolutions', () => {
+    const parsed = readRoguelikeRunProgress(runWithProgress(raw({
+      blackflow: {
+        lastRoute: {
+          at: '2026-11-21T10:05:20.000Z',
+          target: { id: 281475010265092, name: '丛林商店', type: 'shop' },
+          landing: { id: '281475010265093', name: null, type: 'empty' },
+          movement: 'walk',
+        },
+        lastNodeResolution: {
+          at: '2026-11-21T10:05:30.000Z',
+          node: { id: 281475010265094, name: '丛林事件', type: 'incident' },
+          eventName: '丛林事件',
+          progress: 'active',
+        },
+        updatedAt: '2026-11-21T10:05:30.000Z',
+      },
+    })))
+
+    expect(parsed?.blackflow?.lastRoute?.target?.id).toBe('281475010265092')
+    expect(parsed?.blackflow?.lastRoute?.landing?.id).toBe('281475010265093')
+    expect(parsed?.blackflow?.lastNodeResolution?.node?.id).toBe('281475010265094')
+  })
+})
+
+describe('blackflow milestones', () => {
+  it('keeps at most five milestones in order', () => {
+    const parsed = readRoguelikeRunProgress(runWithProgress(raw({
+      blackflow: {
+        milestones: Array.from({ length: 6 }, (_, index) => ({
+          id: `m-${index}`,
+          floor: index + 1,
+          progress: 0,
+          status: 'available',
+          at: `2026-11-21T10:0${index}:00.000Z`,
+        })),
+        updatedAt: '2026-11-21T10:06:00.000Z',
+      },
+    })))
+
+    expect(parsed?.blackflow?.milestones).toHaveLength(5)
+    expect(parsed?.blackflow?.milestones.map(milestone => milestone.id))
+      .toEqual(['m-0', 'm-1', 'm-2', 'm-3', 'm-4'])
+  })
+
+  it('drops malformed entries and normalizes invalid optional fields', () => {
+    const parsed = readRoguelikeRunProgress(runWithProgress(raw({
+      blackflow: {
+        milestones: [
+          null,
+          'milestone',
+          { id: 'missing-status' },
+          { id: 7, status: 'available' },
+          { id: 'numeric-status', status: 5 },
+          { id: 'valid-partial', status: 'satisfied', floor: '3', progress: Number.NaN, at: 5 },
+          {
+            id: 'valid-full',
+            status: 'missed',
+            floor: 2,
+            progress: 1,
+            at: '2026-11-21T10:05:40.000Z',
+          },
+        ],
+        updatedAt: '2026-11-21T10:06:00.000Z',
+      },
+    })))
+
+    expect(parsed?.blackflow?.milestones).toEqual([
+      { id: 'valid-partial', floor: null, progress: null, status: 'satisfied', at: null },
+      {
+        id: 'valid-full',
+        floor: 2,
+        progress: 1,
+        status: 'missed',
+        at: '2026-11-21T10:05:40.000Z',
+      },
+    ])
+  })
+
+  it('deduplicates milestones by id and keeps the first occurrence', () => {
+    const parsed = readRoguelikeRunProgress(runWithProgress(raw({
+      blackflow: {
+        milestones: [
+          { id: 'dup', status: 'available', floor: 1 },
+          { id: 'other', status: 'satisfied', floor: 2 },
+          { id: 'dup', status: 'missed', floor: 3 },
+        ],
+        updatedAt: '2026-11-21T10:06:00.000Z',
+      },
+    })))
+
+    expect(parsed?.blackflow?.milestones.map(milestone => milestone.id)).toEqual(['dup', 'other'])
+    expect(parsed?.blackflow?.milestones[0]?.status).toBe('available')
+  })
+})
+
+describe('describeBlackFlowFreshness', () => {
+  const now = Date.parse('2026-11-21T12:00:00.000Z')
+  const at = (elapsedMs: number): string => new Date(now - elapsedMs).toISOString()
+
+  it('classifies timestamps by the 60/180/300 second bands', () => {
+    expect(describeBlackFlowFreshness(at(0), now, false)).toBe('current')
+    expect(describeBlackFlowFreshness(at(59_999), now, false)).toBe('current')
+    expect(describeBlackFlowFreshness(at(60_000), now, false)).toBe('current')
+    expect(describeBlackFlowFreshness(at(60_001), now, false)).toBe('recent')
+    expect(describeBlackFlowFreshness(at(179_999), now, false)).toBe('recent')
+    expect(describeBlackFlowFreshness(at(180_000), now, false)).toBe('recent')
+    expect(describeBlackFlowFreshness(at(180_001), now, false)).toBe('stale')
+    expect(describeBlackFlowFreshness(at(299_999), now, false)).toBe('stale')
+    expect(describeBlackFlowFreshness(at(300_000), now, false)).toBe('stale')
+    expect(describeBlackFlowFreshness(at(300_001), now, false)).toBe('unknown')
+  })
+
+  it('returns unknown for missing, invalid or future timestamps', () => {
+    expect(describeBlackFlowFreshness(null, now, false)).toBe('unknown')
+    expect(describeBlackFlowFreshness('', now, false)).toBe('unknown')
+    expect(describeBlackFlowFreshness('not-a-time', now, false)).toBe('unknown')
+    expect(describeBlackFlowFreshness(at(-1), now, false)).toBe('unknown')
+    expect(describeBlackFlowFreshness(at(0), Number.NaN, false)).toBe('unknown')
+    expect(describeBlackFlowFreshness(at(0), Number.POSITIVE_INFINITY, false)).toBe('unknown')
+  })
+
+  it('always reports terminal regardless of the timestamp', () => {
+    expect(describeBlackFlowFreshness(at(0), now, true)).toBe('terminal')
+    expect(describeBlackFlowFreshness(null, now, true)).toBe('terminal')
+    expect(describeBlackFlowFreshness('not-a-time', now, true)).toBe('terminal')
+    expect(describeBlackFlowFreshness(at(-1), now, true)).toBe('terminal')
+  })
+})
+
+describe('selectBlackFlowAction', () => {
+  const route = blackflow().lastRoute
+  const resolution = blackflow().lastNodeResolution
+  if (!route || !resolution) throw new Error('blackflow fixture is incomplete')
+
+  it('returns null without a blackflow block or any action', () => {
+    expect(selectBlackFlowAction(null)).toBeNull()
+    expect(selectBlackFlowAction(blackflow({ lastRoute: null, lastNodeResolution: null }))).toBeNull()
+  })
+
+  it('returns the only available action', () => {
+    expect(selectBlackFlowAction(blackflow({ lastRoute: route, lastNodeResolution: null })))
+      .toEqual({ kind: 'route', route })
+    expect(selectBlackFlowAction(blackflow({ lastRoute: null, lastNodeResolution: resolution })))
+      .toEqual({ kind: 'node', resolution })
+  })
+
+  it('prefers the more recently timestamped action', () => {
+    const newerRoute = blackflow({
+      lastRoute: { ...route, at: '2026-11-21T10:05:40.000Z' },
+      lastNodeResolution: { ...resolution, at: '2026-11-21T10:05:30.000Z' },
+    })
+    const newerResolution = blackflow({
+      lastRoute: { ...route, at: '2026-11-21T10:05:20.000Z' },
+      lastNodeResolution: { ...resolution, at: '2026-11-21T10:05:30.000Z' },
+    })
+
+    expect(selectBlackFlowAction(newerRoute)?.kind).toBe('route')
+    expect(selectBlackFlowAction(newerResolution)?.kind).toBe('node')
+  })
+
+  it('falls back to the route when timestamps are missing, invalid or equal', () => {
+    const missingTimes = blackflow({
+      lastRoute: { ...route, at: null },
+      lastNodeResolution: { ...resolution, at: null },
+    })
+    const invalidRouteTime = blackflow({
+      lastRoute: { ...route, at: 'not-a-time' },
+      lastNodeResolution: { ...resolution, at: '2026-11-21T10:05:30.000Z' },
+    })
+    const missingNodeTime = blackflow({
+      lastRoute: { ...route, at: '2026-11-21T10:05:20.000Z' },
+      lastNodeResolution: { ...resolution, at: null },
+    })
+    const equalTimes = blackflow({
+      lastRoute: { ...route, at: '2026-11-21T10:05:30.000Z' },
+      lastNodeResolution: { ...resolution, at: '2026-11-21T10:05:30.000Z' },
+    })
+
+    expect(selectBlackFlowAction(missingTimes)?.kind).toBe('route')
+    expect(selectBlackFlowAction(invalidRouteTime)?.kind).toBe('route')
+    expect(selectBlackFlowAction(missingNodeTime)?.kind).toBe('route')
+    expect(selectBlackFlowAction(equalTimes)?.kind).toBe('route')
+  })
+})
+
+describe('blackflow labels', () => {
+  it.each([
+    ['battle_elite', '精英作战'],
+    ['battle_normal', '作战'],
+    ['battle_savage', '紧急作战'],
+    ['battle_boss', 'Boss'],
+    ['duel', '决斗'],
+    ['door', '通道'],
+    ['employ', '招募'],
+    ['expedition', '探险'],
+    ['incident', '事件'],
+    ['shop', '商店'],
+    ['scrap_shop', '废品商店'],
+    ['rest', '休整'],
+    ['sacrifice', '献祭'],
+    ['wish', '许愿'],
+    ['final', '终点'],
+    ['empty', '空节点'],
+    ['evacuate', '撤离'],
+    ['hide_battle', '隐藏作战'],
+    ['hide_invisible', '隐藏作战'],
+  ])('maps node type %s to %s', (value, label) => {
+    expect(describeBlackFlowNodeType(value)).toBe(label)
+  })
+
+  it('hides unknown or undisplayed node types instead of leaking raw values', () => {
+    for (const value of ['light', 'portal', 'unclassified', 'mystery', '', null]) {
+      expect(describeBlackFlowNodeType(value)).toBeNull()
+    }
+  })
+
+  it('maps walk and scrap movements without exposing their internal ids', () => {
+    expect(describeBlackFlowMovement('walk')).toBe('步行')
+    for (const movement of ['rogue_6_scrap_M_01', 'rogue_6_scrap_M_05', 'rogue_6_scrap_M_16']) {
+      expect(describeBlackFlowMovement(movement)).toBe('加工品移动')
+    }
+    for (const movement of ['rogue_6_scrap_M_00', 'rogue_6_scrap_M_17', 'rogue_6_scrap_M_05 ', 'walk_fast', null]) {
+      expect(describeBlackFlowMovement(movement)).toBeNull()
+    }
+  })
+
+  it.each([
+    ['available', '可达成'],
+    ['satisfied', '已达成'],
+    ['missed', '已错过'],
+    ['impossible', '无法达成'],
+    ['inactive', '未激活'],
+  ])('maps milestone status %s to %s', (value, label) => {
+    expect(describeBlackFlowMilestoneStatus(value)).toBe(label)
+  })
+
+  it('maps known strategy values and hides unknown ones', () => {
+    expect(describeBlackFlowStrategyProfile('burn_with_investment')).toBe('投资后速通到第三层')
+    expect(describeBlackFlowStrategyProfile('burn')).toBe('速通到第三层')
+    expect(describeBlackFlowStrategyProfile('investment')).toBe('第一层投资后速通')
+    expect(describeBlackFlowStrategyProfile('baby_animal')).toBe('培育襁褓动物')
+    expect(describeBlackFlowStrategyProfile('mystery_profile')).toBeNull()
+    expect(describeBlackFlowStrategyOutcome('burn_completed')).toBe('速通完成')
+    expect(describeBlackFlowStrategyOutcome('mystery_outcome')).toBeNull()
+    expect(describeBlackFlowTerminationReason('third_floor_reached')).toBe('抵达第三层')
+    expect(describeBlackFlowTerminationReason('mystery_reason')).toBeNull()
+    expect(describeBlackFlowNextAction('restart_current_run')).toBe('重新开始本局')
+    expect(describeBlackFlowNextAction('stop_run')).toBe('停止运行')
+    expect(describeBlackFlowNextAction('mystery_action')).toBeNull()
+  })
+
+  it('returns null instead of the raw enum for any unknown label', () => {
+    const lookups = [
+      () => describeBlackFlowNodeType('mystery'),
+      () => describeBlackFlowMovement('mystery'),
+      () => describeBlackFlowMilestoneStatus('mystery'),
+      () => describeBlackFlowStrategyProfile('mystery'),
+      () => describeBlackFlowStrategyOutcome('mystery'),
+      () => describeBlackFlowTerminationReason('mystery'),
+      () => describeBlackFlowNextAction('mystery'),
+    ]
+
+    for (const lookup of lookups) {
+      expect(lookup()).toBeNull()
+    }
+  })
+})
+
+describe('blackflow isolation', () => {
+  it('does not change rounds, settlement, investment or success-rate inputs', () => {
+    const base = snapshot()
+    const withBlackflow = readRoguelikeRunProgress(runWithProgress(raw({
+      blackflow: blackflow({ floor: 9, updatedAt: '2026-11-21T10:09:00.000Z' }),
+    })))
+    const withoutBlackflow = readRoguelikeRunProgress(runWithProgress(raw({ blackflow: null })))
+
+    expect(withBlackflow).toMatchObject({
+      currentRound: 3,
+      roundsStarted: 3,
+      roundsEnded: 2,
+      roundsSettled: 2,
+      roundsPassed: 1,
+      investment: { rounds: 1, count: 10, total: 300, deposit: 100 },
+      recentRounds: base.recentRounds,
+    })
+    expect(withBlackflow).not.toBeNull()
+    expect(withoutBlackflow).not.toBeNull()
+    expect(calculateRoguelikeSuccessRate(withBlackflow!.roundsPassed, withBlackflow!.roundsEnded)).toBe(50)
+    expect({ ...withBlackflow!, blackflow: null }).toEqual(withoutBlackflow)
+  })
+
+  it('carries blackflow through active and terminal view selection', () => {
+    const active = selectRoguelikeProgressView({
+      mode: 'roguelike',
+      run: runWithProgress(raw({ blackflow: blackflow() })),
+      lastRun: null,
+      hasSnapshot: true,
+    })
+    const terminal = selectRoguelikeProgressView({
+      mode: 'roguelike',
+      run: terminalRunWithProgress(raw({ blackflow: blackflow() })),
+      lastRun: null,
+      hasSnapshot: true,
+    })
+
+    expect(active.progress?.blackflow).toEqual(blackflow())
+    expect(terminal.progress?.blackflow).toEqual(blackflow())
+  })
+
+  it('reads blackflow from the final summary progress', () => {
+    const finalProgress = raw({ phase: 'ended', currentRound: null, blackflow: blackflow() })
+    const parsed = readRoguelikeSummaryProgress(run({
+      result: { summary: { ...summary(), progress: finalProgress } },
+    }))
+
+    expect(parsed?.blackflow).toEqual(blackflow())
   })
 })
