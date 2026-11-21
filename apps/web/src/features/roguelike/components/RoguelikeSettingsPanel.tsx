@@ -250,9 +250,9 @@ export default function RoguelikeSettingsPanel({
   return (
     <Card className="roguelike-panel roguelike-settings-panel gap-0 p-0!" data-monitor-area="settings">
       <div className="roguelike-panel-heading">
-        <h3>策略设置</h3>
+        <h2>策略设置</h2>
       </div>
-      <div className="roguelike-panel-body roguelike-settings-body">
+      <div className="roguelike-panel-body">
         {configReady ? (
           <>
             <div className="roguelike-field-grid">
@@ -316,7 +316,10 @@ export default function RoguelikeSettingsPanel({
                       <div className="flex min-w-0 flex-1 items-center gap-1">
                         <label htmlFor={switchId} className="roguelike-toggle-label min-h-11">{option.label}</label>
                         {option.hint && (
-                          <FieldHint id={`${switchId}-hint`} label={option.label} hint={option.hint} />
+                          <>
+                            <span id={`${switchId}-description`} className="sr-only">{option.hint}</span>
+                            <FieldHint id={`${switchId}-hint`} label={option.label} hint={option.hint} />
+                          </>
                         )}
                       </div>
                       <Switch
@@ -326,7 +329,7 @@ export default function RoguelikeSettingsPanel({
                         onCheckedChange={checked => handleFieldChange(option.key, checked)}
                         disabled={!editable}
                         aria-label={option.label}
-                        aria-describedby={option.hint ? `${switchId}-hint` : undefined}
+                        aria-describedby={option.hint ? `${switchId}-description` : undefined}
                       />
                     </div>
                   )

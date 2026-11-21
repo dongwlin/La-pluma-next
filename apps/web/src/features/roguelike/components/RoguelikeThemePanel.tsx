@@ -1,4 +1,5 @@
 import { Check } from 'lucide-react'
+import { Badge } from '@/shared/ui/badge'
 import { Card } from '@/shared/ui/card'
 import { Input } from '@/shared/ui/input'
 import { ROGUELIKE_THEME_PRESETS } from '../model/roguelikeTasks'
@@ -28,13 +29,15 @@ export default function RoguelikeThemePanel({
   }
 
   return (
-    <Card className="roguelike-panel roguelike-theme-panel gap-0 p-0!">
+    <Card className="roguelike-panel gap-0 p-0!">
       <div className="roguelike-panel-heading">
-        <h3>主题</h3>
-        <span>{presets.length} 个可用</span>
+        <h2>主题</h2>
+        <Badge variant="ghost" className="surface-soft text-tertiary pointer-events-none">
+          {presets.length} 个可用
+        </Badge>
       </div>
       <div className="roguelike-panel-body">
-        <div className="roguelike-theme-grid">
+        <div className="roguelike-theme-grid" role="group" aria-label="主题预设">
           {presets.map(preset => {
             const selected = theme === preset.value
             return (
@@ -44,7 +47,7 @@ export default function RoguelikeThemePanel({
                 onClick={() => handleThemeChange(preset.value)}
                 disabled={disabled}
                 aria-pressed={selected}
-                className={`roguelike-theme-option min-h-11 disabled:cursor-not-allowed disabled:opacity-50 ${selected ? 'is-active' : ''}`}
+                className="roguelike-theme-option min-h-11 disabled:cursor-not-allowed disabled:opacity-50"
               >
                 <span className="roguelike-theme-copy">
                   <strong>{preset.label}</strong>

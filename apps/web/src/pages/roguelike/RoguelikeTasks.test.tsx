@@ -1013,7 +1013,7 @@ describe('RoguelikeTasks execution', () => {
     const resultPanel = () => container.querySelector<HTMLElement>('[aria-label="执行结果"]')
     expect(resultPanel()?.textContent).toContain('执行中')
     expect(resultPanel()?.textContent).toContain('任务归属未知（刷新前发起）')
-    expect(container.querySelector('[data-testid="runtime-diagnostics"]')).toBeNull()
+    expect(resultPanel()?.querySelector('[aria-label="辅助诊断"]')).toBeNull()
 
     api.fetchSnapshot.mockResolvedValue(ok(runSnapshot({ lastRun: activeRun('run-1', 'succeeded') })))
     await refreshController()
@@ -2202,31 +2202,45 @@ describe('RoguelikeTasks layout and config recovery', () => {
     expect(container.textContent).not.toMatch(/\d+ 项/)
     expect(container.textContent).toMatch(/\d+ 个可用/)
 
-    const heading = (text: string) => Array.from(container.querySelectorAll('h3'))
+    const heading = (text: string) => Array.from(container.querySelectorAll<HTMLElement>('h2'))
       .find(candidate => candidate.textContent === text)!
     expect(heading('策略设置')).toBeDefined()
     expect(heading('主题')).toBeDefined()
-    expect(heading('策略设置').closest('.roguelike-panel-heading')?.querySelector('p')).toBeNull()
-    expect(heading('主题').closest('.roguelike-panel-heading')?.querySelector('p')).toBeNull()
+    expect(heading('执行结果')).toBeDefined()
+    expect(container.querySelectorAll('h3')).toHaveLength(0)
+
+    const themeHeadingRow = heading('主题').parentElement
+    expect(themeHeadingRow?.textContent).toMatch(/\d+ 个可用/)
+    expect(themeHeadingRow?.querySelector('button')).toBeNull()
+    expect(themeHeadingRow?.querySelector('p')).toBeNull()
+    expect(heading('策略设置').parentElement?.querySelector('p')).toBeNull()
 
     const modeTabs = container.querySelector('[role="tablist"][aria-label="肉鸽模式"]')!
     expect(modeTabs.querySelectorAll('small')).toHaveLength(0)
   })
 
-  it('moves toggle guidance into a field hint tooltip and keeps the label clickable', async () => {
+  it('describes each toggle through a persistent accessible description', async () => {
     await renderPage()
 
     const hint = '只作用于核心干员；需要好友提供该干员。'
-    expect(container.textContent).not.toContain(hint)
+    expect(tooltipText()).toBeNull()
+    expect(Array.from(container.querySelectorAll('p')).map(paragraph => paragraph.textContent))
+      .not.toContain(hint)
 
     const toggle = container.querySelector<HTMLElement>('[role="switch"][aria-label="使用助战"]')!
-    expect(toggle.getAttribute('aria-describedby')).toBe('roguelike-roguelike-useSupport-hint')
+    const describedBy = toggle.getAttribute('aria-describedby')
+    expect(describedBy).toBe('roguelike-roguelike-useSupport-description')
+    const description = describedBy ? document.getElementById(describedBy) : null
+    expect(description?.textContent).toBe(hint)
+    expect(description?.closest('[role="tooltip"]')).toBeNull()
     expect(toggle.getAttribute('aria-checked')).toBe('false')
 
     const info = container.querySelector<HTMLButtonElement>('button[aria-label="使用助战说明"]')!
     expect(info).not.toBeNull()
     await focus(info)
     expect(tooltipText()).toBe(hint)
+    expect(document.getElementById('roguelike-roguelike-useSupport-hint')?.getAttribute('role'))
+      .toBe('tooltip')
     await act(async () => info.blur())
 
     const label = container.querySelector<HTMLLabelElement>(

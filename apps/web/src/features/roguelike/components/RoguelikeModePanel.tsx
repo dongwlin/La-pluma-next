@@ -26,11 +26,7 @@ export default function RoguelikeModePanel({ activeMode, disabled }: RoguelikeMo
         options={options}
         disabled={disabled}
         className="roguelike-mode-shell"
-        listClassName="roguelike-mode-tabs"
-        indicatorClassName="roguelike-mode-highlight"
-        indicatorTestId="roguelike-mode-highlight"
-        tabClassName="roguelike-mode-button min-h-11"
-        iconClassName="roguelike-mode-icon"
+        tabClassName="min-h-11"
         tabId={id => `roguelike-mode-tab-${id}`}
         panelId={() => 'roguelike-mode-panel'}
       />

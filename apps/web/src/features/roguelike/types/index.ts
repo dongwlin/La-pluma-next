@@ -7,8 +7,6 @@ export interface RoguelikeTask {
   command: string
   placeholder: string
   icon: string
-  hasAdvanced: boolean
-  description: string
 }
 
 /** 下拉项：value 是写入命令的原始值，label 是界面文案。 */

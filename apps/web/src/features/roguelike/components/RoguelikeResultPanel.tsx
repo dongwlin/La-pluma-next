@@ -84,7 +84,7 @@ function SummaryContent({
       )}
       {description.events.length > 0 && (
         <div className="roguelike-result-list">
-          <h4>事件</h4>
+          <h3>事件</h3>
           <ul>
             {description.events.map((event, index) => (
               <li key={`${event}-${index}`}>{event}</li>
@@ -94,7 +94,7 @@ function SummaryContent({
       )}
       {description.notes.length > 0 && (
         <div className="roguelike-result-list">
-          <h4>备注</h4>
+          <h3>备注</h3>
           <ul>
             {description.notes.map((note, index) => (
               <li key={`${note}-${index}`}>{note}</li>
@@ -162,7 +162,7 @@ export default function RoguelikeResultPanel({ run, taskName }: RoguelikeResultP
       aria-label="执行结果"
     >
       <div className="roguelike-panel-heading">
-        <h3>执行结果</h3>
+        <h2>执行结果</h2>
         <div className="flex shrink-0 items-center">
           <Badge variant="ghost" className={`${BADGE_SURFACE[badge.tone]} pointer-events-none`}>
             {badge.label}
@@ -175,7 +175,6 @@ export default function RoguelikeResultPanel({ run, taskName }: RoguelikeResultP
 
         {!run && (
           <EmptyState
-            className="roguelike-result-empty"
             compact
             icon={<FileText size={20} strokeWidth={1.8} />}
             title="还没有执行记录"
@@ -194,7 +193,7 @@ export default function RoguelikeResultPanel({ run, taskName }: RoguelikeResultP
           previous.summary ? (
             <section className="roguelike-result-previous" aria-label="上次执行结果">
               <Separator aria-hidden="true" className="mb-3.5" />
-              <h4>上次执行结果</h4>
+              <h3>上次执行结果</h3>
               <SummaryContent summary={previous.summary} durationMs={previous.durationMs} />
             </section>
           ) : (

@@ -84,6 +84,8 @@ const renderPanel = async (
 }
 
 const panel = () => container.querySelector<HTMLElement>('[aria-label="执行结果"]')
+const headingTexts = (level: number) => [...(panel()?.querySelectorAll(`h${level}`) ?? [])]
+  .map(heading => heading.textContent?.trim())
 
 describe('RoguelikeResultPanel', () => {
   beforeEach(() => {
@@ -131,6 +133,8 @@ describe('RoguelikeResultPanel', () => {
     expect(text).toContain('1 分 5 秒')
     expect(text).toContain('事件')
     expect(text).toContain('备注')
+    expect(headingTexts(2)).toEqual(['执行结果'])
+    expect(headingTexts(3)).toEqual(['事件', '备注'])
   })
 
   it('reads a failed run summary from the error details', async () => {
@@ -173,6 +177,8 @@ describe('RoguelikeResultPanel', () => {
     expect(text).toContain('上次执行结果')
     expect(text).toContain('肉鸽结算：第 5 层 · 得分 1200')
     expect(text).not.toContain('最近一次执行')
+    expect(headingTexts(2)).toEqual(['执行结果'])
+    expect(headingTexts(3)).toContain('上次执行结果')
   })
 
   it('replaces the retained summary once the new run finishes without a usable summary', async () => {
@@ -232,8 +238,7 @@ describe('RoguelikeResultPanel', () => {
     expect(text).toContain('执行中')
     expect(text).toContain('任务：集成战略')
     expect(text).not.toContain('任务归属未知')
-    expect(panel()?.querySelector('.roguelike-panel-heading')?.textContent).not.toContain('集成战略')
-    expect(panel()?.querySelector('.roguelike-panel-body')?.textContent).toContain('任务：集成战略')
+    expect(headingTexts(2)).toEqual(['执行结果'])
   })
 
   it('states unknown task ownership instead of guessing from the page mode', async () => {
@@ -260,6 +265,6 @@ describe('RoguelikeResultPanel', () => {
     const separators = [...(panel()?.querySelectorAll('[data-slot="separator"]') ?? [])]
     expect(separators).toHaveLength(1)
     expect(separators.every(separator => separator.getAttribute('aria-hidden') === 'true')).toBe(true)
-    expect(panel()?.querySelector('[data-testid="runtime-diagnostics"]')).toBeNull()
+    expect(panel()?.querySelector('[aria-label="辅助诊断"]')).toBeNull()
   })
 })
