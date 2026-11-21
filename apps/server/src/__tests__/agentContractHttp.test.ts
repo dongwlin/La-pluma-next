@@ -725,3 +725,82 @@ describe('advertised operations over real HTTP', () => {
     assertMatchesSchema(responseSchema(currentRunOperation, 200), snapshotBody, 'run snapshot response');
   });
 });
+
+describe('roguelike progress contract', () => {
+  const progressFixture = {
+    command: 'roguelike',
+    theme: 'JieGarden',
+    mode: 0,
+    phase: 'exploring',
+    currentRound: 1,
+    roundStartedAt: '2026-11-06T09:00:00.000Z',
+    targetRounds: 3,
+    roundsStarted: 1,
+    roundsEnded: 0,
+    roundsSettled: 0,
+    roundsPassed: 0,
+    settlementSupported: true,
+    currentAction: 'StartExplore',
+    lastEventKind: 'round',
+    lastEventName: null,
+    lastEventAt: '2026-11-06T09:00:00.000Z',
+    combatCount: 0,
+    investment: null,
+    recentRounds: [],
+    updatedAt: '2026-11-06T09:00:00.000Z',
+    degraded: false,
+    observed: true
+  };
+
+  it('publishes the live roguelike progress schema on RunProgress', () => {
+    const runProgressRef: JsonSchema = { $ref: '#/components/schemas/RunProgress' };
+    const roguelike = openApiSpec.components.schemas.RoguelikeProgress;
+    assert.ok(roguelike);
+
+    assertMatchesSchema(roguelike, progressFixture, 'roguelike progress');
+    assertMatchesSchema(runProgressRef, {
+      currentStep: null,
+      totalSteps: null,
+      currentTask: 'StartExplore',
+      message: '集成战略执行中',
+      roguelike: progressFixture
+    }, 'run progress with roguelike');
+    assertMatchesSchema(roguelike, { ...progressFixture, mode: null }, 'unknown roguelike mode');
+    assertMatchesSchema(roguelike, {
+      ...progressFixture,
+      command: 'reclamation',
+      settlementSupported: null,
+      investment: { rounds: 1, count: 2, total: 3, deposit: 4 },
+      recentRounds: [{
+        index: 1,
+        outcome: 'not_passed',
+        settled: true,
+        floor: 2,
+        score: 10,
+        endedAt: '2026-11-06T09:10:00.000Z'
+      }]
+    }, 'reclamation progress with investment and recent rounds');
+  });
+
+  it('rejects unknown fields, invalid enums and missing required counters', () => {
+    const roguelike = openApiSpec.components.schemas.RoguelikeProgress;
+    assert.ok(roguelike);
+
+    assertViolatesSchema(roguelike, { ...progressFixture, command: 'fight' }, 'unknown command');
+    assertViolatesSchema(roguelike, { ...progressFixture, phase: 'running' }, 'unknown phase');
+    assertViolatesSchema(roguelike, { ...progressFixture, mode: '0' }, 'non-integer mode');
+    assertViolatesSchema(roguelike, { ...progressFixture, unexpected: true }, 'unknown field');
+    assertViolatesSchema(roguelike, {
+      ...progressFixture,
+      recentRounds: [{ index: 1, outcome: 'maybe', settled: false, floor: 1, score: 2, endedAt: null }]
+    }, 'unknown round outcome');
+
+    const { mode, ...missingMode } = progressFixture;
+    assert.equal(mode, 0);
+    assertViolatesSchema(roguelike, missingMode, 'missing required mode');
+
+    const { currentRound, ...missingCounter } = progressFixture;
+    assert.equal(currentRound, 1);
+    assertViolatesSchema(roguelike, missingCounter, 'missing required counter');
+  });
+});

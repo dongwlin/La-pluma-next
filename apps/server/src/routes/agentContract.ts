@@ -601,7 +601,7 @@ export const AGENT_OPERATIONS: readonly RegisteredAgentOperation[] = Object.free
     id: 'get_current_run',
     method: 'GET',
     path: '/api/agent/runs/current',
-    description: 'Return the current run, all active run identities, the latest terminal run, device occupancy (run, external, pending, idle or unknown), schedule execution state, and recent logs for polling.',
+    description: 'Return the current run, all active run identities, the latest terminal run, device occupancy (run, external, pending, idle or unknown), schedule execution state, and recent logs for polling. An active Roguelike/Reclamation run_task carries a live progress snapshot in run.progress.roguelike (MaaCore mode, rounds started/ended/settled/passed, current round and action, recent events, settlement support, degraded/observed flags); stopping runs still expose it. The final snapshot is copied into result.summary.progress or error.details.summary.progress of the terminal run; lastRun never carries progress.',
     tags: ['Status'],
     responseKind: 'run-snapshot',
     query_schema: {
@@ -1080,6 +1080,92 @@ export function buildOpenApiSpec(defaults: AgentRuntimeDefaults = {}): OpenApiDo
           },
           additionalProperties: false
         },
+        RoguelikeProgress: {
+          type: 'object',
+          required: [
+            'command',
+            'theme',
+            'mode',
+            'phase',
+            'currentRound',
+            'roundStartedAt',
+            'targetRounds',
+            'roundsStarted',
+            'roundsEnded',
+            'roundsSettled',
+            'roundsPassed',
+            'settlementSupported',
+            'currentAction',
+            'lastEventKind',
+            'lastEventName',
+            'lastEventAt',
+            'combatCount',
+            'investment',
+            'recentRounds',
+            'updatedAt',
+            'degraded',
+            'observed'
+          ],
+          properties: {
+            command: { type: 'string', enum: ['roguelike', 'reclamation'] },
+            theme: { type: 'string' },
+            mode: { type: ['integer', 'null'] },
+            phase: { type: 'string', enum: ['starting', 'exploring', 'ended', 'unknown'] },
+            currentRound: { type: ['integer', 'null'], minimum: 1 },
+            roundStartedAt: { type: ['string', 'null'], format: 'date-time' },
+            targetRounds: { type: ['integer', 'null'], minimum: 1 },
+            roundsStarted: { type: 'integer', minimum: 0 },
+            roundsEnded: { type: 'integer', minimum: 0 },
+            roundsSettled: { type: 'integer', minimum: 0 },
+            roundsPassed: { type: 'integer', minimum: 0 },
+            settlementSupported: { type: ['boolean', 'null'] },
+            currentAction: { type: ['string', 'null'] },
+            lastEventKind: {
+              type: ['string', 'null'],
+              enum: ['round', 'combat', 'event', 'investment', 'task', null]
+            },
+            lastEventName: { type: ['string', 'null'] },
+            lastEventAt: { type: ['string', 'null'], format: 'date-time' },
+            combatCount: { type: 'integer', minimum: 0 },
+            investment: {
+              oneOf: [
+                {
+                  type: 'object',
+                  required: ['rounds', 'count', 'total', 'deposit'],
+                  properties: {
+                    rounds: { type: 'integer', minimum: 0 },
+                    count: { type: 'integer', minimum: 0 },
+                    total: { type: ['integer', 'null'] },
+                    deposit: { type: ['integer', 'null'] }
+                  },
+                  additionalProperties: false
+                },
+                { type: 'null' }
+              ]
+            },
+            recentRounds: {
+              type: 'array',
+              description: 'Closed rounds newest first; the server keeps at most 5 entries.',
+              items: {
+                type: 'object',
+                required: ['index', 'outcome', 'settled', 'floor', 'score', 'endedAt'],
+                properties: {
+                  index: { type: ['integer', 'null'], minimum: 1 },
+                  outcome: { type: 'string', enum: ['passed', 'not_passed', 'unknown'] },
+                  settled: { type: 'boolean' },
+                  floor: { type: ['integer', 'null'] },
+                  score: { type: ['integer', 'null'] },
+                  endedAt: { type: ['string', 'null'], format: 'date-time' }
+                },
+                additionalProperties: false
+              }
+            },
+            updatedAt: { type: 'string', format: 'date-time' },
+            degraded: { type: 'boolean' },
+            observed: { type: 'boolean' }
+          },
+          additionalProperties: false
+        },
         RunProgress: {
           type: 'object',
           properties: {
@@ -1089,6 +1175,7 @@ export function buildOpenApiSpec(defaults: AgentRuntimeDefaults = {}): OpenApiDo
             currentTask: {},
             shouldStop: { type: 'boolean' },
             message: { type: ['string', 'null'] },
+            roguelike: { $ref: '#/components/schemas/RoguelikeProgress' },
             stopIntent: {
               type: 'object',
               required: ['mode', 'requestedAt', 'deadline', 'combat'],
