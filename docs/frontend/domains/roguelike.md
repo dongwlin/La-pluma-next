@@ -145,6 +145,7 @@ maa-cli 0.7.8 只认识部分主题、模式与参数；MaaCore 新增的黑流�
 | 首屏与身份解析 | `hasSnapshot = false` 时显示“正在确认执行状态…”；本页身份已恢复但 run 详情尚未取回时（`resolvingIdentity`）继续显示加载态，不冒充空闲，也不展示旧结果 |
 | 活动期 | 展示当前局、已结束/已结算/通关局数、成功率、当前动作、本次任务与本局耗时、最近事件相对时间、目标局数与剩余局数、最近 5 局以及 `degraded` 提示；`targetRounds` 未知时不显示目标行，成功率分母为 0 时不显示成功率 |
 | 终态 | 有 `summary.progress` 时复用活动期统计与最近 5 局；没有时用现有摘要的 message 与 settlement 关键字段做最小回退；再没有摘要时明确“本次执行没有可用的结构化结果” |
+| 黑流子区块（Phase 2B） | 仅 `mode === 'roguelike'` 且 `progress.blackflow` 非空时渲染：活动期位于计时之后、统计之前，终态位于状态行之后、本局结果之前。首屏展示楼层、当前节点名/类型（节点存在但身份未知时显示“当前节点未知”）、`actionPoints.before` 观测行动力、最近一次路由或节点完成、最多 3 条里程碑、策略 profile/结果/建议与相对更新时间。新鲜度按字段时间分 60/180/300 秒三档：60 秒内用当前语义，60–180 秒标“最近已知”，180–300 秒标“可能已过期”，超过 300 秒隐藏当前节点与行动力、楼层保留并标“最近已知”；终态统一用“最后记录”，缺失时间不显示相对时间。策略结果与任务 Badge 分离，不得写成“任务成功/通关”；不展示地图、节点边、候选/runners-up、OCR 或搜索耗时、revision/observation/decision/transaction ID、原始节点 ID 与原因细节；里程碑最多 3 条且不显示原始 id。该区块不改变 Phase 1/2A 计数、不改执行状态机，本轮不更新视觉基线 |
 | 徽章 | 只表达任务状态：未开始 / 启动中 / 运行中 / 正在停止 / 已完成 / 失败 / 已停止 / 已中断；通关/未通关放在独立结果行，不出现“成功 + 通关：否”的歧义 |
 | 刷新回退 | `lastRun` 是全局最近终态，只在 `operationId === 'run_task'` 且摘要 `command` 等于当前模式时展示；command 未知、其他 operation 或其他模式的 lastRun 不展示。lastRun 回退不继承当前 tracked run 的任务标签，避免跨模式串用 |
 | 模式空态 | 空闲态按模式显示“还没有开始探索”或“还没有开始演算”，无图标、无执行入口 |
@@ -176,7 +177,7 @@ maa-cli 0.7.8 只认识部分主题、模式与参数；MaaCore 新增的黑流�
 
 以下路径相对于 `apps/web/src/`：领域回归在 `features/roguelike` 与 `pages/roguelike`；入口命令见[验证命令](#验证命令)。
 
-旧结果面板测试已删除；执行进度回归由 `features/roguelike/model/runProgress.test.ts`、`features/roguelike/components/RoguelikeProgressPanel.test.tsx` 与更新后的 `pages/roguelike/RoguelikeTasks.test.tsx` 覆盖。模型测试验证快照解析、`mode` 缺失/非法归一、模式过滤、最近 5 局截断、`lastRun` 选择与旧服务端回退；面板测试验证加载态、两种模式的空闲/活动/终态、按 `mode` 控制的统计可见性、投资字段与措辞、最近 5 局、计时与可访问语义；模型与面板测试还验证 `lastRun` 回退不继承 tracked run 任务标签；页面测试验证 `lastRun` 回退、模式切换不串台与身份解析窗口。
+旧结果面板测试已删除；执行进度回归由 `features/roguelike/model/runProgress.test.ts`、`features/roguelike/components/RoguelikeProgressPanel.test.tsx` 与更新后的 `pages/roguelike/RoguelikeTasks.test.tsx` 覆盖。模型测试验证快照解析、`mode` 缺失/非法归一、模式过滤、最近 5 局截断、`lastRun` 选择与旧服务端回退；面板测试验证加载态、两种模式的空闲/活动/终态、按 `mode` 控制的统计可见性、投资字段与措辞、最近 5 局、计时与可访问语义；模型与面板测试还验证 `lastRun` 回退不继承 tracked run 任务标签；面板与页面测试另验证黑流子区块的门控、首屏字段、里程碑与策略、60/180/300 秒降级、终态“最后记录”、策略与任务状态分离，以及跨模式不串台；页面测试验证 `lastRun` 回退、模式切换不串台与身份解析窗口。
 
 关键不变量：
 
