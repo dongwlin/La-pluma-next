@@ -10,6 +10,7 @@ import {
   getRoguelikeOptionChoices,
   isRoguelikeOptionVisible,
   normalizeRoguelikeAdvancedParams,
+  normalizeRoguelikeModeForKnownTheme,
   normalizeRoguelikeModeForTheme,
   resolveRoguelikeAdvancedValue,
   splitRoguelikeListValue,
@@ -625,6 +626,45 @@ describe('normalizeRoguelikeModeForTheme', () => {
       expect(draft).toEqual({ [taskId]: { ...retained, mode } })
     },
   )
+})
+
+describe('normalizeRoguelikeModeForKnownTheme', () => {
+  it('leaves the draft untouched while the theme is unknown or still being typed', () => {
+    const roguelikeDraft: RoguelikeAdvancedParams = {
+      roguelike: { mode: '5', expectedCollapsalParadigms: '目空一些' },
+    }
+    for (const theme of ['', '   ', 'S', 'Sark']) {
+      expect(normalizeRoguelikeModeForKnownTheme('roguelike', theme, roguelikeDraft))
+        .toBe(roguelikeDraft)
+    }
+
+    const reclamationDraft: RoguelikeAdvancedParams = { reclamation: { mode: '1' } }
+    expect(normalizeRoguelikeModeForKnownTheme('reclamation', 'Relaunch', reclamationDraft))
+      .toBe(reclamationDraft)
+  })
+
+  it('normalizes the mode once the theme is known', () => {
+    const draft: RoguelikeAdvancedParams = {
+      roguelike: { mode: '5', expectedCollapsalParadigms: '目空一些' },
+    }
+    expect(normalizeRoguelikeModeForKnownTheme('roguelike', 'Sarkaz', draft)).toEqual({
+      roguelike: { mode: '0', expectedCollapsalParadigms: '目空一些' },
+    })
+    expect(draft).toEqual({ roguelike: { mode: '5', expectedCollapsalParadigms: '目空一些' } })
+
+    const relaunch: RoguelikeAdvancedParams = { reclamation: { mode: '1' } }
+    expect(normalizeRoguelikeModeForKnownTheme('reclamation', 'RelaunchAnchor', relaunch))
+      .toEqual({ reclamation: { mode: '16' } })
+    expect(relaunch).toEqual({ reclamation: { mode: '1' } })
+  })
+
+  it('keeps a supported mode and untouched drafts by reference', () => {
+    const supported: RoguelikeAdvancedParams = { roguelike: { mode: '5' } }
+    expect(normalizeRoguelikeModeForKnownTheme('roguelike', 'Sami', supported)).toBe(supported)
+
+    const untouched: RoguelikeAdvancedParams = { roguelike: { mode: '4' } }
+    expect(normalizeRoguelikeModeForKnownTheme('reclamation', 'Tales', untouched)).toBe(untouched)
+  })
 })
 
 describe('validateRoguelikeTaskInput', () => {

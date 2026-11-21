@@ -49,6 +49,8 @@ export interface RoguelikeExecution {
   isSubmitting: boolean
   /** 本页 owned 的 run（活动或终态），供结果面板读取结构化摘要。 */
   trackedRun: AgentRun | null
+  /** 本页发起该 run 时记录的任务名；刷新后无法恢复时为 null。 */
+  trackedRunLabel: string | null
   execute: (request: RoguelikeExecutionRequest) => Promise<void>
   stop: (mode?: StopMode) => Promise<void>
 }
@@ -80,6 +82,9 @@ export function useRoguelikeExecution({
   const observedActiveRunRef = useRef<string | null>(null)
   const announcedRunRef = useRef<string | null>(null)
   const runLabelsRef = useRef(new Map<string, string>())
+  const trackedRunLabel = trackedRun
+    ? runLabelsRef.current.get(trackedRun.runId) ?? null
+    : null
 
   const isLeaving = trackedRun?.state === 'stopping'
   const { isWaitingForCombat, isStopping } = projectRoguelikeStopState({
@@ -166,7 +171,7 @@ export function useRoguelikeExecution({
         runLabelsRef.current.set(runId, taskName)
         observedActiveRunRef.current = runId
       } else {
-        notify(`${taskName} 已提交`, 'info', { id: EXECUTION_NOTICE_ID })
+        notify('服务端未返回运行身份，无法确认本次执行状态', 'warning', { id: EXECUTION_NOTICE_ID })
       }
     } catch (error) {
       // 传输失败时服务端可能已经接受执行，不能宣称失败或自动重提。
@@ -223,6 +228,7 @@ export function useRoguelikeExecution({
     pendingStopMode,
     isSubmitting,
     trackedRun,
+    trackedRunLabel,
     execute,
     stop,
   }

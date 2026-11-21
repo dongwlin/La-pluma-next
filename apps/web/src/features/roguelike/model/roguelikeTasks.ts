@@ -214,6 +214,19 @@ export function readActiveRoguelikeOptions(
 }
 
 /**
+ * 主题输入是自由文本，输入过程中会经过 `S`、`Sark` 等未知中间态。
+ * 只有确认主题属于当前任务的目录时才归一化模式，否则保留草稿并在执行前由校验拒绝。
+ */
+export function normalizeRoguelikeModeForKnownTheme(
+  taskId: string,
+  theme: string,
+  advancedParams: RoguelikeAdvancedParams,
+): RoguelikeAdvancedParams {
+  if (!isKnownRoguelikeTheme(taskId, theme)) return advancedParams
+  return normalizeRoguelikeModeForTheme(taskId, theme, advancedParams)
+}
+
+/**
  * 主题切换后把当前主题不再支持的模式重置为该主题声明的默认模式；没有默认值时才回落到首项
  * （集成战略的刷坍缩范式只对萨米开放，沙洲遗闻的默认模式是 `1` 而首项是 `0`）。
  * 其余字段保留原值；仍生效但越界的下拉值交由执行前校验拒绝。
