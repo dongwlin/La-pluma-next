@@ -178,6 +178,87 @@ function waitingForCombatRun(runId: string): AgentRun {
   }
 }
 
+function progressSnapshot(
+  command: 'roguelike' | 'reclamation' = 'roguelike',
+  overrides: Record<string, unknown> = {},
+): Record<string, unknown> {
+  return {
+    command,
+    theme: command === 'roguelike' ? 'Phantom' : 'Tales',
+    mode: 0,
+    phase: 'exploring',
+    currentRound: 1,
+    roundStartedAt: '2026-10-25T00:00:10.000Z',
+    targetRounds: 2,
+    roundsStarted: 1,
+    roundsEnded: 0,
+    roundsSettled: 0,
+    roundsPassed: 0,
+    settlementSupported: true,
+    currentAction: 'StartExplore',
+    lastEventKind: 'round',
+    lastEventName: null,
+    lastEventAt: '2026-10-25T00:00:10.000Z',
+    combatCount: 0,
+    investment: null,
+    recentRounds: [],
+    updatedAt: '2026-10-25T00:00:10.000Z',
+    degraded: false,
+    observed: true,
+    ...overrides,
+  }
+}
+
+function runWithProgress(
+  runId: string,
+  command: 'roguelike' | 'reclamation' = 'roguelike',
+): AgentRun {
+  return {
+    ...activeRun(runId),
+    progress: { roguelike: progressSnapshot(command) },
+  }
+}
+
+function roguelikeSummary(command: 'roguelike' | 'reclamation' = 'roguelike'): Record<string, unknown> {
+  return {
+    command,
+    theme: command === 'roguelike' ? 'Phantom' : 'Tales',
+    status: 'success',
+    observed: true,
+    message: command === 'roguelike' ? '肉鸽结算：第 5 层 · 得分 1200' : '生息演算执行完成',
+    settlement: null,
+    investment: null,
+    events: [],
+    coppers: [],
+    milestones: [],
+    warnings: [],
+    strategy: null,
+    combats: 0,
+    taskChain: { started: true, completed: true, failed: false, stopped: false },
+  }
+}
+
+function terminalRunWithSummary(
+  runId: string,
+  command: 'roguelike' | 'reclamation' = 'roguelike',
+): AgentRun {
+  return {
+    ...activeRun(runId, 'succeeded'),
+    result: {
+      summary: {
+        ...roguelikeSummary(command),
+        progress: progressSnapshot(command, {
+          phase: 'ended',
+          currentRound: null,
+          roundsEnded: 2,
+          roundsPassed: 1,
+          roundsSettled: 1,
+        }),
+      },
+    },
+  }
+}
+
 function runSnapshot(overrides: Partial<RunSnapshot> = {}): RunSnapshot {
   const activeRuns = overrides.activeRuns ?? []
   const run = overrides.run ?? activeRuns[0] ?? null
@@ -1003,23 +1084,76 @@ describe('RoguelikeTasks execution', () => {
     expect(mocks.notify).toHaveBeenCalledWith('肉鸽任务执行成功', 'success', { id: 'execution' })
   })
 
-  it('feeds the page-owned run into the result panel and states unknown ownership after a refresh', async () => {
+  it('feeds the page-owned active run into the progress panel', async () => {
     useIdentity({ runId: 'run-1', operationId: 'run_task', scope: 'roguelike' })
     api.fetchSnapshot.mockResolvedValue(ok(runSnapshot({ activeRuns: [activeRun('run-1')] })))
     startController()
     await flush()
     await renderPage()
 
-    const resultPanel = () => container.querySelector<HTMLElement>('[aria-label="执行结果"]')
-    expect(resultPanel()?.textContent).toContain('执行中')
-    expect(resultPanel()?.textContent).toContain('任务归属未知（刷新前发起）')
-    expect(resultPanel()?.querySelector('[aria-label="辅助诊断"]')).toBeNull()
+    const progressPanel = () => container.querySelector<HTMLElement>('[aria-label="执行进度"]')
+    expect(progressPanel()?.textContent).toContain('集成战略进度')
+    expect(progressPanel()?.textContent).toContain('运行中')
+    expect(progressPanel()?.textContent).toContain('正在启动')
+  })
 
-    api.fetchSnapshot.mockResolvedValue(ok(runSnapshot({ lastRun: activeRun('run-1', 'succeeded') })))
+  it('keeps the progress panel loading while the restored run identity is being resolved', async () => {
+    const runResponse = deferred<ApiResponse<AgentRun>>()
+    useIdentity({ runId: 'run-1', operationId: 'run_task', scope: 'roguelike' })
+    api.fetchSnapshot.mockResolvedValue(ok(runSnapshot({ lastRun: terminalRunWithSummary('run-old') })))
+    api.fetchRun.mockReturnValueOnce(runResponse.promise)
+    startController()
+    await flush()
+    await renderPage()
+
+    const progressPanel = () => container.querySelector<HTMLElement>('[aria-label="执行进度"]')
+    expect(progressPanel()?.textContent).toContain('正在确认执行状态…')
+    expect(progressPanel()?.textContent).not.toContain('最近一次执行')
+    expect(progressPanel()?.textContent).not.toContain('还没有开始探索')
+
+    await act(async () => runResponse.resolve(ok(activeRun('run-1'))))
+    await flush()
+
+    expect(progressPanel()?.textContent).toContain('运行中')
+  })
+
+  it('shows a matching terminal lastRun after a refresh without page-owned identity', async () => {
+    useIdentity(null)
+    api.fetchSnapshot.mockResolvedValue(ok(runSnapshot({ lastRun: terminalRunWithSummary('run-1') })))
+    startController()
+    await flush()
+    await renderPage()
+
+    const progressPanel = () => container.querySelector<HTMLElement>('[aria-label="执行进度"]')
+    expect(progressPanel()?.textContent).toContain('集成战略进度')
+    expect(progressPanel()?.textContent).toContain('已完成')
+    expect(progressPanel()?.textContent).toContain('最近一次执行已结束')
+    expect(progressPanel()?.textContent).not.toContain('正在确认执行状态')
+  })
+
+  it('does not show another mode or another operation lastRun in the roguelike panel', async () => {
+    useIdentity(null)
+    api.fetchSnapshot.mockResolvedValue(ok(runSnapshot({
+      lastRun: terminalRunWithSummary('run-reclamation', 'reclamation'),
+    })))
+    startController()
+    await flush()
+    await renderPage()
+
+    const progressPanel = () => container.querySelector<HTMLElement>('[aria-label="执行进度"]')
+    expect(progressPanel()?.textContent).toContain('还没有开始探索')
+    expect(progressPanel()?.textContent).not.toContain('已完成')
+
+    api.fetchSnapshot.mockResolvedValue(ok(runSnapshot({
+      lastRun: {
+        ...terminalRunWithSummary('run-copilot'),
+        operationId: 'run_copilot_set',
+      },
+    })))
     await refreshController()
 
-    expect(resultPanel()?.textContent).not.toContain('执行中')
-    expect(resultPanel()?.textContent).toContain('任务归属未知（刷新前发起）')
+    expect(progressPanel()?.textContent).toContain('还没有开始探索')
+    expect(progressPanel()?.textContent).not.toContain('已完成')
   })
 
   it('does not present another domain run as a roguelike execution', async () => {
@@ -1362,7 +1496,7 @@ describe('RoguelikeTasks execution', () => {
     expect(document.activeElement).toBe(buttonByText('立即执行'))
   })
 
-  it('shows the owning task from the submitted run in active and terminal states', async () => {
+  it('keeps the mode panel through the submitted run and its terminal state', async () => {
     mocks.executePredefinedTask.mockResolvedValueOnce(ok({
       runId: 'run-1',
       run: activeRun('run-1', 'accepted'),
@@ -1373,14 +1507,18 @@ describe('RoguelikeTasks execution', () => {
     await renderPage()
     await setTheme('Phantom')
 
-    const resultPanel = () => container.querySelector<HTMLElement>('[aria-label="执行结果"]')
+    const progressPanel = () => container.querySelector<HTMLElement>('[aria-label="执行进度"]')
     await click(buttonByText('立即执行')!)
-    expect(resultPanel()?.textContent).toContain('任务：集成战略')
+    expect(progressPanel()?.textContent).toContain('集成战略进度')
+    expect(progressPanel()?.textContent).toContain('启动中')
+    expect(progressPanel()?.textContent).toContain('任务：集成战略')
 
-    api.fetchSnapshot.mockResolvedValue(ok(runSnapshot({ lastRun: activeRun('run-1', 'succeeded') })))
+    api.fetchSnapshot.mockResolvedValue(ok(runSnapshot({ lastRun: terminalRunWithSummary('run-1') })))
     await refreshController()
 
-    expect(resultPanel()?.textContent).toContain('任务：集成战略')
+    expect(progressPanel()?.textContent).toContain('任务：集成战略')
+    expect(progressPanel()?.textContent).toContain('已完成')
+    expect(progressPanel()?.textContent).toContain('本次探索已结束 · 共 2 局')
   })
 
   it('locks every editing entry while a run is active and keeps stop reachable', async () => {
@@ -1596,6 +1734,41 @@ describe('RoguelikeTasks layout and config recovery', () => {
     expect(container.querySelector('input[name="maa-reclamation-theme"]')).not.toBeNull()
     expect(Array.from(container.querySelectorAll('button[aria-pressed]'))
       .some(option => option.textContent?.includes('沙洲遗闻'))).toBe(true)
+  })
+
+  it('does not carry a roguelike result into the reclamation panel when switching modes', async () => {
+    useIdentity(null)
+    api.fetchSnapshot.mockResolvedValue(ok(runSnapshot({ lastRun: terminalRunWithSummary('run-1') })))
+    startController()
+    await flush()
+    await renderPage()
+
+    const progressPanel = () => container.querySelector<HTMLElement>('[aria-label="执行进度"]')
+    expect(progressPanel()?.textContent).toContain('集成战略进度')
+    expect(progressPanel()?.textContent).toContain('已完成')
+
+    await click(findModeButton('生息演算')!)
+
+    expect(progressPanel()?.textContent).toContain('生息演算进度')
+    expect(progressPanel()?.textContent).toContain('还没有开始演算')
+    expect(progressPanel()?.textContent).not.toContain('已完成')
+    expect(progressPanel()?.textContent).not.toContain('本次探索已结束')
+  })
+
+  it('aligns the visible mode to the running command after a refresh', async () => {
+    useIdentity({ runId: 'run-reclamation', operationId: 'run_task', scope: 'roguelike' })
+    api.fetchSnapshot.mockResolvedValue(ok(runSnapshot({
+      activeRuns: [runWithProgress('run-reclamation', 'reclamation')],
+    })))
+    startController()
+    await flush()
+    await renderPage()
+
+    const progressPanel = () => container.querySelector<HTMLElement>('[aria-label="执行进度"]')
+    expect(findModeButton('生息演算')?.getAttribute('aria-selected')).toBe('true')
+    expect(container.querySelector('input[name="maa-reclamation-theme"]')).not.toBeNull()
+    expect(progressPanel()?.textContent).toContain('生息演算进度')
+    expect(progressPanel()?.textContent).toContain('本次演算进行中')
   })
 
   it('keeps per-mode drafts while switching modes', async () => {
@@ -1830,7 +2003,9 @@ describe('RoguelikeTasks layout and config recovery', () => {
 
     await renderPage()
 
-    expect(container.querySelector('[role="status"]')?.textContent).toContain('正在读取肉鸽配置…')
+    const configStatus = () => Array.from(container.querySelectorAll<HTMLElement>('[role="status"]'))
+      .find(status => status.textContent?.includes('正在读取肉鸽配置…'))
+    expect(configStatus()).not.toBeNull()
     expect(container.querySelector<HTMLInputElement>('input[name="maa-roguelike-theme"]')?.disabled).toBe(true)
     expect(container.querySelector('input[name="maa-roguelike-mode"]')).toBeNull()
     const presetButtons = Array.from(container.querySelectorAll<HTMLButtonElement>('button[aria-pressed]'))
@@ -1844,7 +2019,7 @@ describe('RoguelikeTasks layout and config recovery', () => {
     await act(async () => pendingLoad.resolve(ok({ taskInputs: {}, advancedParams: {} })))
     await flush()
 
-    expect(container.querySelector('[role="status"]')).toBeNull()
+    expect(configStatus()).toBeUndefined()
     expect(container.querySelector<HTMLInputElement>('input[name="maa-roguelike-theme"]')?.disabled).toBe(false)
     expect(container.querySelector('input[name="maa-roguelike-mode"]')).not.toBeNull()
     expect(modeButtons.every(button => button.getAttribute('aria-disabled') !== 'true')).toBe(true)
@@ -2206,7 +2381,7 @@ describe('RoguelikeTasks layout and config recovery', () => {
       .find(candidate => candidate.textContent === text)!
     expect(heading('策略设置')).toBeDefined()
     expect(heading('主题')).toBeDefined()
-    expect(heading('执行结果')).toBeDefined()
+    expect(heading('集成战略进度')).toBeDefined()
     expect(container.querySelectorAll('h3')).toHaveLength(0)
 
     const themeHeadingRow = heading('主题').parentElement

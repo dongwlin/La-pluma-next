@@ -17,7 +17,7 @@ import {
 } from '../model/roguelikeValidation'
 import { useRoguelikeExecution } from '../hooks/useRoguelikeExecution'
 import RoguelikeModePanel from './RoguelikeModePanel'
-import RoguelikeResultPanel from './RoguelikeResultPanel'
+import RoguelikeProgressPanel from './RoguelikeProgressPanel'
 import RoguelikeSettingsPanel from './RoguelikeSettingsPanel'
 import RoguelikeThemePanel from './RoguelikeThemePanel'
 import type {
@@ -42,6 +42,10 @@ export default function RoguelikeWorkspace() {
     isSubmitting,
     trackedRun,
     trackedRunLabel,
+    lastRun,
+    hasSnapshot,
+    resolvingIdentity,
+    trackedCommand,
     execute,
     stop,
   } = useRoguelikeExecution({ notify })
@@ -100,6 +104,12 @@ export default function RoguelikeWorkspace() {
       : `roguelike-${activeTask?.id}-${fieldError.key}`
     document.getElementById(fieldId)?.focus()
   }, [activeTask?.id, fieldError])
+
+  useEffect(() => {
+    if (!trackedCommand || trackedCommand === activeMode) return
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- 运行锁定期间仅对齐模式，不会与用户操作冲突
+    setActiveMode(trackedCommand)
+  }, [activeMode, trackedCommand])
 
   if (!activeTask) return null
 
@@ -191,7 +201,15 @@ export default function RoguelikeWorkspace() {
                   onThemeChange={handleThemeChange}
                 />
 
-                <RoguelikeResultPanel run={trackedRun} taskName={trackedRunLabel} />
+                <RoguelikeProgressPanel
+                  key={activeMode}
+                  mode={activeMode}
+                  run={trackedRun}
+                  lastRun={lastRun}
+                  hasSnapshot={hasSnapshot}
+                  resolvingIdentity={resolvingIdentity}
+                  taskName={trackedRunLabel}
+                />
               </div>
 
               <RoguelikeSettingsPanel
