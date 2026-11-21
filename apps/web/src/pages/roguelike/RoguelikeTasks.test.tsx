@@ -432,6 +432,10 @@ const findModeButton = (name: string) => Array.from(
   container.querySelectorAll<HTMLButtonElement>('[role="tab"]'),
 ).find(button => button.textContent?.includes(name))
 
+const findConfigSaveErrorNotice = () => [...mocks.notify.mock.calls].reverse().find(
+  ([, type, options]) => type === 'error' && options?.id === 'roguelike-config-save',
+)
+
 describe('RoguelikeTasks execution', () => {
   beforeEach(() => {
     window.matchMedia = vi.fn().mockImplementation((query: string) => ({
@@ -448,7 +452,10 @@ describe('RoguelikeTasks execution', () => {
     userConfigCoordinator.dispose()
     localStorage.clear()
     mocks.executePredefinedTask.mockReset()
-    mocks.loadUserConfig.mockReset().mockResolvedValue({ success: false })
+    mocks.loadUserConfig.mockReset().mockResolvedValue({
+      success: true,
+      data: { taskInputs: {}, advancedParams: {} },
+    })
     mocks.saveUserConfig.mockReset().mockResolvedValue({ success: true })
     mocks.getRealtimeLogs.mockReset()
     mocks.notify.mockReset()
@@ -1246,7 +1253,10 @@ describe('RoguelikeTasks layout and config recovery', () => {
     userConfigCoordinator.dispose()
     localStorage.clear()
     mocks.executePredefinedTask.mockReset()
-    mocks.loadUserConfig.mockReset().mockResolvedValue({ success: false })
+    mocks.loadUserConfig.mockReset().mockResolvedValue({
+      success: true,
+      data: { taskInputs: {}, advancedParams: {} },
+    })
     mocks.saveUserConfig.mockReset().mockResolvedValue({ success: true })
     mocks.getRealtimeLogs.mockReset()
     mocks.notify.mockReset()
@@ -1478,7 +1488,10 @@ describe('RoguelikeTasks layout and config recovery', () => {
 
     expect(localStorage.getItem('roguelikeConfigSyncPending')).not.toBeNull()
     expect(JSON.parse(localStorage.getItem('roguelikeTaskInputs') || '{}')).toMatchObject({ roguelike: 'Phantom' })
-    expect(container.querySelector('[role="alert"]')?.textContent).toContain('网络连接中断')
+    expect(container.querySelector('[role="alert"]')).toBeNull()
+    const failedNotice = findConfigSaveErrorNotice()
+    expect(failedNotice?.[0]).toContain('网络连接中断')
+    expect(failedNotice?.[2]?.action).toMatchObject({ label: '重新同步' })
 
     await act(async () => root.unmount())
     root = createRoot(container)
@@ -1488,13 +1501,16 @@ describe('RoguelikeTasks layout and config recovery', () => {
 
     expect(mocks.loadUserConfig).not.toHaveBeenCalled()
     expect(container.querySelector<HTMLInputElement>('input[name="maa-roguelike-theme"]')?.value).toBe('Phantom')
-    expect(container.querySelector('[role="alert"]')?.textContent).toContain('尚未同步到服务器')
+    const restoredNotice = findConfigSaveErrorNotice()
+    expect(restoredNotice?.[0]).toContain('尚未同步到服务器')
+    expect(restoredNotice?.[2]?.action).toMatchObject({ label: '重新同步' })
 
-    await click(buttonByText('重新同步')!)
+    await act(async () => restoredNotice?.[2]?.action?.onClick())
+    await flush()
 
     expect(mocks.saveUserConfig).toHaveBeenCalledTimes(2)
     expect(localStorage.getItem('roguelikeConfigSyncPending')).toBeNull()
-    expect(container.querySelector('[role="alert"]')).toBeNull()
+    expect(mocks.dismissNotice).toHaveBeenCalledWith('roguelike-config-save')
     expect(mocks.notify).toHaveBeenCalledWith('肉鸽配置已同步', 'success')
   })
 
@@ -1512,25 +1528,29 @@ describe('RoguelikeTasks layout and config recovery', () => {
     })
     await flush()
 
-    expect(container.querySelector('[role="alert"]')?.textContent).toContain('网络连接中断')
+    expect(container.querySelector('[role="alert"]')).toBeNull()
     expect(mocks.saveUserConfig).toHaveBeenCalledOnce()
     expect(mocks.notify).not.toHaveBeenCalledWith('肉鸽配置已同步', 'success')
+    const retryAction = findConfigSaveErrorNotice()?.[2]?.action
+    expect(retryAction?.label).toBe('重新同步')
 
     const retrySave = deferred<{ success: boolean }>()
     mocks.saveUserConfig.mockReturnValueOnce(retrySave.promise)
-    await click(buttonByText('重新同步')!)
-    expect(buttonByText('同步中')?.disabled).toBe(true)
+    await act(async () => retryAction?.onClick())
+    await flush()
+    expect(mocks.saveUserConfig).toHaveBeenCalledTimes(2)
 
-    // 重试请求在途时再次点击不会产生第二个提交。
-    await click(buttonByText('同步中')!)
+    await act(async () => retryAction?.onClick())
     expect(mocks.saveUserConfig).toHaveBeenCalledTimes(2)
     expect(mocks.notify).not.toHaveBeenCalledWith('肉鸽配置已同步', 'success')
+    expect(buttonByText('同步中')).toBeUndefined()
 
     await act(async () => retrySave.resolve({ success: true }))
     await flush()
 
     expect(localStorage.getItem('roguelikeConfigSyncPending')).toBeNull()
     expect(container.querySelector('[role="alert"]')).toBeNull()
+    expect(mocks.dismissNotice).toHaveBeenCalledWith('roguelike-config-save')
     expect(mocks.notify).toHaveBeenCalledWith('肉鸽配置已同步', 'success')
   })
 
@@ -1549,7 +1569,8 @@ describe('RoguelikeTasks layout and config recovery', () => {
     expect(mocks.saveUserConfig).not.toHaveBeenCalled()
     expect(container.querySelector<HTMLInputElement>('input[name="maa-roguelike-theme"]')?.value).toBe('Sarkaz')
     expect(selectValueFor('maa-roguelike-mode')).toBe('1')
-    expect(container.querySelector('[role="alert"]')?.textContent).toContain('尚未同步到服务器')
+    expect(container.querySelector('[role="alert"]')).toBeNull()
+    expect(findConfigSaveErrorNotice()?.[0]).toContain('尚未同步到服务器')
   })
 
   it('drops a pending marker whose local draft is unreadable and falls back to the server', async () => {
@@ -1606,6 +1627,185 @@ describe('RoguelikeTasks layout and config recovery', () => {
     await act(async () => vi.advanceTimersByTimeAsync(300))
     await flush()
     expect(mocks.saveUserConfig).toHaveBeenCalledOnce()
+  })
+
+  it('keeps the shell and stops editing while the roguelike config is loading', async () => {
+    const pendingLoad = deferred<ApiResponse>()
+    mocks.loadUserConfig.mockReturnValueOnce(pendingLoad.promise)
+
+    await renderPage()
+
+    expect(container.querySelector('[role="status"]')?.textContent).toContain('正在读取肉鸽配置…')
+    expect(container.querySelector<HTMLInputElement>('input[name="maa-roguelike-theme"]')?.disabled).toBe(true)
+    expect(container.querySelector('input[name="maa-roguelike-mode"]')).toBeNull()
+    const presetButtons = Array.from(container.querySelectorAll<HTMLButtonElement>('button[aria-pressed]'))
+    expect(presetButtons.length).toBeGreaterThan(0)
+    expect(presetButtons.every(button => button.disabled)).toBe(true)
+    const modeButtons = Array.from(container.querySelectorAll<HTMLButtonElement>('[role="tab"]'))
+    expect(modeButtons.length).toBeGreaterThan(0)
+    expect(modeButtons.every(button => button.getAttribute('aria-disabled') === 'true')).toBe(true)
+    expect(buttonByText('立即执行')?.disabled).toBe(true)
+
+    await act(async () => pendingLoad.resolve(ok({ taskInputs: {}, advancedParams: {} })))
+    await flush()
+
+    expect(container.querySelector('[role="status"]')).toBeNull()
+    expect(container.querySelector<HTMLInputElement>('input[name="maa-roguelike-theme"]')?.disabled).toBe(false)
+    expect(container.querySelector('input[name="maa-roguelike-mode"]')).not.toBeNull()
+    expect(modeButtons.every(button => button.getAttribute('aria-disabled') !== 'true')).toBe(true)
+    expect(buttonByText('立即执行')?.disabled).toBe(false)
+  })
+
+  it('reloads a failed roguelike config before re-enabling editing', async () => {
+    mocks.loadUserConfig
+      .mockReset()
+      .mockResolvedValueOnce(failed('ROGUELIKE_CONFIG_LOAD_FAILED', '读取肉鸽配置失败'))
+      .mockResolvedValueOnce(ok({ taskInputs: {}, advancedParams: {} }))
+
+    await renderPage()
+
+    const alert = container.querySelector<HTMLElement>('[role="alert"]')
+    expect(alert?.textContent).toContain('肉鸽配置暂时不可用')
+    expect(alert?.textContent).toContain('读取肉鸽配置失败')
+    expect(container.querySelector<HTMLInputElement>('input[name="maa-roguelike-theme"]')?.disabled).toBe(true)
+    expect(container.querySelector('input[name="maa-roguelike-mode"]')).toBeNull()
+    expect(buttonByText('立即执行')?.disabled).toBe(true)
+    expect(mocks.executePredefinedTask).not.toHaveBeenCalled()
+
+    await click(buttonByText('重新加载')!)
+    await flush()
+
+    expect(mocks.loadUserConfig).toHaveBeenCalledTimes(2)
+    expect(container.querySelector('[role="alert"]')).toBeNull()
+    expect(container.querySelector<HTMLInputElement>('input[name="maa-roguelike-theme"]')?.disabled).toBe(false)
+    expect(container.querySelector('input[name="maa-roguelike-mode"]')).not.toBeNull()
+    await setTheme('Phantom')
+    expect(container.querySelector<HTMLInputElement>('input[name="maa-roguelike-theme"]')?.value).toBe('Phantom')
+  })
+
+  it('keeps an active run stoppable while the roguelike config is unavailable', async () => {
+    mocks.loadUserConfig.mockReset().mockResolvedValueOnce(
+      failed('ROGUELIKE_CONFIG_LOAD_FAILED', '读取肉鸽配置失败'),
+    )
+    useIdentity({ runId: 'run-1', operationId: 'run_task', scope: 'roguelike' })
+    api.fetchSnapshot.mockResolvedValue(ok(runSnapshot({ activeRuns: [activeRun('run-1')] })))
+    startController()
+    await flush()
+    await renderPage()
+
+    expect(container.querySelector('[role="alert"]')?.textContent).toContain('肉鸽配置暂时不可用')
+    expect(container.querySelector<HTMLInputElement>('input[name="maa-roguelike-theme"]')?.disabled).toBe(true)
+    expect(container.querySelector('input[name="maa-roguelike-theme"]')).not.toBeNull()
+    expect(buttonByText('立即终止')).toBeDefined()
+
+    await click(buttonByText('立即终止')!)
+
+    expect(api.stopRun).toHaveBeenCalledOnce()
+    expect(api.stopRun).toHaveBeenCalledWith('run-1', { mode: 'now' })
+  })
+
+  it('keeps an unknown intermediate theme mode and normalizes it before submission', async () => {
+    await renderPage()
+    await setTheme('Sami')
+    await chooseSelectOption('maa-roguelike-mode', '刷坍缩范式')
+    expect(selectValueFor('maa-roguelike-mode')).toBe('5')
+
+    for (const prefix of ['S', 'Sa', 'Sar', 'Sark', 'Sarka']) {
+      await setTheme(prefix)
+      expect(selectValueFor('maa-roguelike-mode'), prefix).toBe('5')
+    }
+    await setTheme('Sarkaz')
+    expect(selectValueFor('maa-roguelike-mode')).toBe('0')
+
+    await click(buttonByText('立即执行')!)
+
+    expect(mocks.executePredefinedTask).toHaveBeenCalledWith(
+      'roguelike',
+      'Sarkaz --mode 0 --roles 稳扎稳打',
+      null,
+      null,
+      '集成战略',
+      'roguelike',
+      false,
+      { idempotencyKey: expect.stringMatching(/^run_task-/) },
+    )
+    expect(mocks.notify).not.toHaveBeenCalledWith('刷坍缩范式模式需要填写期望坍缩范式')
+  })
+
+  it('persists and submits the normalized mode for a known theme before validation', async () => {
+    mocks.loadUserConfig.mockResolvedValue(ok({
+      taskInputs: { roguelike: 'Sarkaz' },
+      advancedParams: { roguelike: { mode: '5' } },
+    }))
+
+    await renderPage()
+    await click(buttonByText('立即执行')!)
+
+    expect(mocks.executePredefinedTask).toHaveBeenCalledWith(
+      'roguelike',
+      'Sarkaz --mode 0 --roles 稳扎稳打',
+      null,
+      null,
+      '集成战略',
+      'roguelike',
+      false,
+      { idempotencyKey: expect.stringMatching(/^run_task-/) },
+    )
+    expect(mocks.notify).not.toHaveBeenCalledWith('刷坍缩范式模式需要填写期望坍缩范式')
+    expect(mocks.notify).not.toHaveBeenCalledWith(expect.stringContaining('不在当前主题的可选范围内'))
+
+    await waitForConfigCommit()
+
+    expect(mocks.saveUserConfig).toHaveBeenLastCalledWith('roguelike-tasks', {
+      taskInputs: { roguelike: 'Sarkaz' },
+      advancedParams: expect.objectContaining({
+        roguelike: { mode: '0', roles: '稳扎稳打' },
+      }),
+    })
+  })
+
+  it('surfaces config save failures as one fixed-id toast with a retry action', async () => {
+    vi.useFakeTimers()
+    mocks.saveUserConfig.mockRejectedValueOnce(new Error('网络连接中断'))
+    await renderPage()
+
+    const themeInput = container.querySelector<HTMLInputElement>('input[name="maa-roguelike-theme"]')!
+    await act(async () => {
+      const valueSetter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set
+      valueSetter?.call(themeInput, 'Phantom')
+      themeInput.dispatchEvent(new Event('input', { bubbles: true }))
+      await vi.advanceTimersByTimeAsync(300)
+    })
+    await flush()
+
+    const errorNotice = findConfigSaveErrorNotice()
+    expect(errorNotice?.[0]).toContain('网络连接中断')
+    expect(errorNotice?.[1]).toBe('error')
+    expect(errorNotice?.[2]?.id).toBe('roguelike-config-save')
+    expect(errorNotice?.[2]?.action).toMatchObject({ label: '重新同步' })
+    expect(container.querySelector('[role="alert"]')).toBeNull()
+    expect(buttonByText('重新同步')).toBeUndefined()
+    expect(buttonByText('同步中')).toBeUndefined()
+    expect(mocks.saveUserConfig).toHaveBeenCalledOnce()
+
+    const retrySave = deferred<{ success: boolean }>()
+    mocks.saveUserConfig.mockReturnValueOnce(retrySave.promise)
+    await act(async () => errorNotice?.[2]?.action?.onClick())
+    await flush()
+
+    expect(mocks.saveUserConfig).toHaveBeenCalledTimes(2)
+    expect(container.querySelector('[role="alert"]')).toBeNull()
+    expect(buttonByText('同步中')).toBeUndefined()
+
+    const dismissalsBeforeSuccess = mocks.dismissNotice.mock.calls
+      .filter(([id]) => id === 'roguelike-config-save').length
+    await act(async () => retrySave.resolve({ success: true }))
+    await flush()
+
+    expect(mocks.dismissNotice.mock.calls
+      .filter(([id]) => id === 'roguelike-config-save').length).toBeGreaterThan(dismissalsBeforeSuccess)
+    expect(mocks.notify).toHaveBeenCalledWith('肉鸽配置已同步', 'success')
+    expect(container.querySelector('[role="alert"]')).toBeNull()
   })
 
   it('adds the reclamation increment mode and clear-store controls', async () => {

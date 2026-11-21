@@ -7,12 +7,14 @@ import type { RoguelikeTask } from '../types'
 interface RoguelikeThemePanelProps {
   task: RoguelikeTask
   theme: string
+  disabled?: boolean
   onThemeChange: (value: string) => void
 }
 
 export default function RoguelikeThemePanel({
   task,
   theme,
+  disabled,
   onThemeChange,
 }: RoguelikeThemePanelProps) {
   const presets = ROGUELIKE_THEME_PRESETS[task.id]
@@ -35,6 +37,7 @@ export default function RoguelikeThemePanel({
                 key={preset.value}
                 type="button"
                 onClick={() => onThemeChange(preset.value)}
+                disabled={disabled}
                 aria-pressed={selected}
                 className={`roguelike-theme-option min-h-11 ${selected ? 'is-active' : ''}`}
               >
@@ -58,6 +61,7 @@ export default function RoguelikeThemePanel({
             autoComplete="off"
             placeholder={task.placeholder}
             value={theme}
+            disabled={disabled}
             onChange={event => onThemeChange(event.target.value)}
           />
         </div>

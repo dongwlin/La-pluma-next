@@ -5,6 +5,7 @@ import type { RoguelikeMode } from '../types'
 
 interface RoguelikeModePanelProps {
   activeMode: RoguelikeMode
+  disabled?: boolean
 }
 
 const options: readonly SegmentedTabOption<RoguelikeMode>[] = ROGUELIKE_TASKS.map((task) => {
@@ -17,13 +18,14 @@ const options: readonly SegmentedTabOption<RoguelikeMode>[] = ROGUELIKE_TASKS.ma
   }
 })
 
-export default function RoguelikeModePanel({ activeMode }: RoguelikeModePanelProps) {
+export default function RoguelikeModePanel({ activeMode, disabled }: RoguelikeModePanelProps) {
   return (
     <div className="roguelike-mode-area" data-monitor-area="mode">
       <SegmentedTabNav
         ariaLabel="肉鸽模式"
         value={activeMode}
         options={options}
+        disabled={disabled}
         className="roguelike-mode-shell"
         listClassName="roguelike-mode-tabs"
         indicatorClassName="roguelike-mode-highlight"

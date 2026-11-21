@@ -1,11 +1,12 @@
 import type { ComponentProps } from 'react'
-import { LoaderCircle, Play, Square } from 'lucide-react'
+import { AlertTriangle, LoaderCircle, Play, Square } from 'lucide-react'
 import { Button } from '@/shared/ui/button'
 import { Card } from '@/shared/ui/card'
 import { FieldHint } from '@/shared/components'
 import { Input } from '@/shared/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/shared/ui/select'
 import { Switch } from '@/shared/ui/switch'
+import type { ConfigLoadState } from '@/features/user-config'
 import type { StopMode } from '@/features/task-execution'
 import {
   getRoguelikeAdvancedOptions,
@@ -116,6 +117,10 @@ interface RoguelikeSettingsPanelProps {
   task: RoguelikeTask
   theme: string
   advanced: RoguelikeAdvancedValues
+  configReady: boolean
+  configLoadState: ConfigLoadState
+  configLoadError: string | null
+  onReloadConfig: () => void
   onAdvancedChange: (key: string, value: string | number | boolean) => void
   execution: RoguelikeExecutionControls
 }
@@ -124,6 +129,10 @@ export default function RoguelikeSettingsPanel({
   task,
   theme,
   advanced,
+  configReady,
+  configLoadState,
+  configLoadError,
+  onReloadConfig,
   onAdvancedChange,
   execution,
 }: RoguelikeSettingsPanelProps) {
@@ -142,76 +151,106 @@ export default function RoguelikeSettingsPanel({
         <span>{options.length} 项</span>
       </div>
       <div className="roguelike-panel-body roguelike-settings-body">
-        <div className="roguelike-field-grid">
-          {fieldOptions.map(option => {
-            const displayValue = String(resolveRoguelikeAdvancedValue(option, advanced, theme, task.id) ?? '')
-            return (
-              <div
-                key={option.key}
-                className={option.span === 'full' ? 'roguelike-field-span-full' : undefined}
-              >
-                {option.type === 'select' ? (
-                  <RoguelikeSelect
-                    id={`roguelike-${task.id}-${option.key}`}
-                    label={option.label}
-                    name={`maa-${task.id}-${option.key}`}
-                    value={displayValue}
-                    onValueChange={value => onAdvancedChange(option.key, value)}
-                    items={selectOptionsFor(option, theme, displayValue, task.id)}
-                    hint={option.hint}
-                    hintPlacement={option.hintPlacement}
-                  />
-                ) : option.type === 'operator' ? (
-                  <RoguelikeCoreOperatorField
-                    id={`roguelike-${task.id}-${option.key}`}
-                    label={option.label}
-                    value={displayValue}
-                    onChange={(value: string) => onAdvancedChange(option.key, value)}
-                  />
-                ) : (
-                  <RoguelikeFieldInput
-                    id={`roguelike-${task.id}-${option.key}`}
-                    name={`maa-${task.id}-${option.key}`}
-                    type={option.type === 'number' ? 'number' : 'text'}
-                    min={option.type === 'number' ? option.numberRange?.min : undefined}
-                    max={option.type === 'number' ? option.numberRange?.max : undefined}
-                    step={option.type === 'number' ? 1 : undefined}
-                    label={option.label}
-                    value={displayValue}
-                    onChange={event => onAdvancedChange(option.key, event.target.value)}
-                    placeholder={option.placeholder}
-                    hint={option.hint}
-                    hintPlacement={option.hintPlacement}
-                  />
-                )}
-              </div>
-            )
-          })}
-        </div>
-        {toggleOptions.length > 0 && (
-          <div className="roguelike-toggle-list">
-            {toggleOptions.map(option => (
-              <label key={option.key} className="roguelike-toggle-row">
-                <span className="min-w-0 flex-1">
-                  <span className="roguelike-toggle-label min-h-11">{option.label}</span>
-                  {option.hint && (
-                    <span
-                      id={`roguelike-${task.id}-${option.key}-hint`}
-                      className="block pb-2 pr-2 text-xs leading-5 text-tertiary"
-                    >
-                      {option.hint}
+        {configLoadState === 'ready' ? (
+          <>
+            <div className="roguelike-field-grid">
+              {fieldOptions.map(option => {
+                const displayValue = String(resolveRoguelikeAdvancedValue(option, advanced, theme, task.id) ?? '')
+                return (
+                  <div
+                    key={option.key}
+                    className={option.span === 'full' ? 'roguelike-field-span-full' : undefined}
+                  >
+                    {option.type === 'select' ? (
+                      <RoguelikeSelect
+                        id={`roguelike-${task.id}-${option.key}`}
+                        label={option.label}
+                        name={`maa-${task.id}-${option.key}`}
+                        value={displayValue}
+                        onValueChange={value => onAdvancedChange(option.key, value)}
+                        items={selectOptionsFor(option, theme, displayValue, task.id)}
+                        hint={option.hint}
+                        hintPlacement={option.hintPlacement}
+                      />
+                    ) : option.type === 'operator' ? (
+                      <RoguelikeCoreOperatorField
+                        id={`roguelike-${task.id}-${option.key}`}
+                        label={option.label}
+                        value={displayValue}
+                        onChange={(value: string) => onAdvancedChange(option.key, value)}
+                      />
+                    ) : (
+                      <RoguelikeFieldInput
+                        id={`roguelike-${task.id}-${option.key}`}
+                        name={`maa-${task.id}-${option.key}`}
+                        type={option.type === 'number' ? 'number' : 'text'}
+                        min={option.type === 'number' ? option.numberRange?.min : undefined}
+                        max={option.type === 'number' ? option.numberRange?.max : undefined}
+                        step={option.type === 'number' ? 1 : undefined}
+                        label={option.label}
+                        value={displayValue}
+                        onChange={event => onAdvancedChange(option.key, event.target.value)}
+                        placeholder={option.placeholder}
+                        hint={option.hint}
+                        hintPlacement={option.hintPlacement}
+                      />
+                    )}
+                  </div>
+                )
+              })}
+            </div>
+            {toggleOptions.length > 0 && (
+              <div className="roguelike-toggle-list">
+                {toggleOptions.map(option => (
+                  <label key={option.key} className="roguelike-toggle-row">
+                    <span className="min-w-0 flex-1">
+                      <span className="roguelike-toggle-label min-h-11">{option.label}</span>
+                      {option.hint && (
+                        <span
+                          id={`roguelike-${task.id}-${option.key}-hint`}
+                          className="block pb-2 pr-2 text-xs leading-5 text-tertiary"
+                        >
+                          {option.hint}
+                        </span>
+                      )}
                     </span>
-                  )}
-                </span>
-                <Switch
-                  name={`maa-${task.id}-${option.key}`}
-                  checked={resolveRoguelikeAdvancedValue(option, advanced, theme, task.id) === true}
-                  onCheckedChange={checked => onAdvancedChange(option.key, checked)}
-                  aria-label={option.label}
-                  aria-describedby={option.hint ? `roguelike-${task.id}-${option.key}-hint` : undefined}
-                />
-              </label>
-            ))}
+                    <Switch
+                      name={`maa-${task.id}-${option.key}`}
+                      checked={resolveRoguelikeAdvancedValue(option, advanced, theme, task.id) === true}
+                      onCheckedChange={checked => onAdvancedChange(option.key, checked)}
+                      aria-label={option.label}
+                      aria-describedby={option.hint ? `roguelike-${task.id}-${option.key}-hint` : undefined}
+                    />
+                  </label>
+                ))}
+              </div>
+            )}
+          </>
+        ) : configLoadState === 'failed' ? (
+          <div
+            role="alert"
+            aria-live="assertive"
+            className="flex min-h-40 flex-col items-center justify-center gap-3 px-4 py-4 text-center"
+          >
+            <AlertTriangle size={22} strokeWidth={1.9} className="text-destructive" aria-hidden="true" />
+            <div className="w-full min-w-0 space-y-1">
+              <p className="text-sm font-medium">肉鸽配置暂时不可用</p>
+              <p className="line-clamp-2 wrap-break-word text-xs text-muted-foreground">
+                {configLoadError ?? '请稍后重新加载'}
+              </p>
+            </div>
+            <Button type="button" variant="secondary" size="sm" onClick={onReloadConfig}>
+              重新加载
+            </Button>
+          </div>
+        ) : (
+          <div
+            role="status"
+            aria-live="polite"
+            className="flex min-h-40 flex-col items-center justify-center gap-3 px-4 py-4 text-center"
+          >
+            <LoaderCircle size={22} strokeWidth={1.9} className="animate-spin" aria-hidden="true" />
+            <p className="text-sm font-medium">正在读取肉鸽配置…</p>
           </div>
         )}
       </div>
@@ -252,7 +291,7 @@ export default function RoguelikeSettingsPanel({
         ) : (
           <Button
             onClick={execution.onExecute}
-            disabled={!execution.automationAvailable || execution.isSubmitting}
+            disabled={!configReady || !execution.automationAvailable || execution.isSubmitting}
             aria-busy={execution.isSubmitting || undefined}
             title={!execution.automationAvailable ? execution.unavailableMessage : undefined}
             className="roguelike-run-button"
