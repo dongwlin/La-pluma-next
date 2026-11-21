@@ -222,7 +222,7 @@ function CombatWorkspace() {
 | 完整提交 | `saveUserConfig('roguelike-tasks', wire)` 成功即完成；失败或传输异常保留 pending 与重试入口 |
 | 页面派生 | `taskInputs`/`advancedParams` 从 `draft` 派生；错误文案只经固定 id `roguelike-config-save` 的 error toast 展示，「重新同步」action 调用 `retry()`，`syncState === 'saving'` 期间忽略重复触发；错误清空时关闭同 id toast，仅手动 `retry()` 返回 true 时提示“肉鸽配置已同步”。页面不再派生页内同步 alert 或重试按钮的 loading |
 
-配置未 `ready`（读取中或失败）时，工作区仍渲染外壳、结果面板与停止 footer，只门控可编辑区；`loadState === 'failed'` 时以页内 `role="alert"` 展示 `loadError` 并提供「重新加载」，重试调用 `reload({ force: true })`。
+配置未 `ready`（读取中或失败）时，工作区仍渲染外壳、执行进度面板与停止 footer，只门控可编辑区；`loadState === 'failed'` 时以页内 `role="alert"` 展示 `loadError` 并提供「重新加载」，重试调用 `reload({ force: true })`。
 
 兼容约束：保留配置 key、本地键、pending 键与 wire 形状；迟到加载须由协调器按 revision/pending 裁决，不得覆盖当前编辑。默认值补齐只增加 `reclamation.mode` 与集成战略的 `roles`，显式值与未知扩展字段原样保留；只使用集成战略的草稿在提交时也会携带 `reclamation.mode`。新增高级字段（如 `incrementMode`、`clearStore`、黑流树海参数）不需要迁移：旧草稿缺失时按未设置处理，不触发额外保存。
 

@@ -248,7 +248,7 @@ import { Badge } from '@/shared/ui/badge'
 <Badge variant="outline" className="border-success/30 bg-success/10 text-success-text">已完成</Badge>
 ```
 
-`variant` 为 `default`、`secondary`、`destructive`、`outline`、`ghost`、`link`；不提供 success/warning 等业务变体。状态色由调用点通过 `className` 覆盖（或搭配无背景冲突的 variant 复用 `status-*` 语义类），不要向共享原语添加 tone prop。Badge 默认作为非交互状态 pill 使用；确需链接语义时用 `render={<a href="..." />}` 渲染为链接，不要用 `onClick` 模拟按钮。图标作为 children 直接渲染，装饰图标加 `aria-hidden="true"`。肉鸽结果面板用非交互 `Badge` 展示未执行、执行中、成功、失败、已停止、已中断与未完成。
+`variant` 为 `default`、`secondary`、`destructive`、`outline`、`ghost`、`link`；不提供 success/warning 等业务变体。状态色由调用点通过 `className` 覆盖（或搭配无背景冲突的 variant 复用 `status-*` 语义类），不要向共享原语添加 tone prop。Badge 默认作为非交互状态 pill 使用；确需链接语义时用 `render={<a href="..." />}` 渲染为链接，不要用 `onClick` 模拟按钮。图标作为 children 直接渲染，装饰图标加 `aria-hidden="true"`。肉鸽执行进度面板用非交互 `Badge` 展示未开始、启动中、运行中、正在停止、已完成、失败、已停止与已中断；通关/未通关放在独立结果行，不与任务状态混在同一个徽章里。
 
 ---
 
@@ -264,7 +264,7 @@ import { Separator } from '@/shared/ui/separator'
 <Separator aria-hidden="true" className="mb-3.5" />
 ```
 
-`orientation` 默认为 `horizontal`；垂直分隔传 `vertical`，并用 `className` 约束高度。肉鸽结果面板只在“上次执行结果”区块上方使用装饰性分隔。
+`orientation` 默认为 `horizontal`；垂直分隔传 `vertical`，并用 `className` 约束高度。肉鸽执行进度面板不再使用装饰性分隔。
 
 ---
 
