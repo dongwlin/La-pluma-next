@@ -208,6 +208,7 @@ describe('roguelike progress tracker start', () => {
       combatCount: 0,
       investment: null,
       recentRounds: [],
+      blackflow: null,
       updatedAt: iso(START_MS),
       degraded: false,
       observed: false
@@ -302,6 +303,65 @@ describe('roguelike progress tracker polling', () => {
     }]);
     assert.equal(harness.pendingTimers().length, 1);
     assert.equal(harness.pendingTimers()[0].delayMs, 1_000);
+  });
+
+  it('applies black flow events from the same chunk to the cached snapshot', async () => {
+    const harness = createHarness({
+      chunks: [makeChunk([
+        extra('BlackFlowStrategyStarted', { profile: 'burn_with_investment' }, START_MS),
+        subtaskStart('StartExplore', { exec_times: 1 }, START_MS + 1_000),
+        extra('BlackFlowMapSummary', {
+          run_revision: 2,
+          map_revision: 1,
+          observation_id: 'BF-O1',
+          floor: 1,
+          current_node: 281475010265088
+        }, START_MS + 2_000),
+        extra('BlackFlowRoutingDecision', {
+          run_revision: 2,
+          map_revision: 1,
+          observation_id: 'BF-O1',
+          floor: 1,
+          decision_id: 'BF-D2-1',
+          transaction_id: 'BF-T2-1',
+          profile: 'burn_with_investment',
+          source: 281475010265088,
+          target: 281475010265090,
+          landing: 281475010265090,
+          node_name: '作战',
+          node_type: 'battle_normal',
+          movement: 'walk',
+          exact_cost: 1,
+          predicted_cost: 1,
+          action_points_before: 5,
+          action_points_after: 4
+        }, START_MS + 3_000)
+      ].join('\n'), 100, { caughtUp: true })]
+    });
+    startRoguelikeProgressTracker(trackerInput());
+
+    await harness.fire();
+
+    const snapshot = getRoguelikeProgress('run-1');
+    assert.equal(snapshot?.blackflow?.floor, 1);
+    assert.deepEqual(snapshot?.blackflow?.currentNode, {
+      id: '281475010265088',
+      name: null,
+      type: null
+    });
+    assert.deepEqual(snapshot?.blackflow?.actionPoints, {
+      before: 5,
+      after: 4,
+      at: iso(START_MS + 3_000)
+    });
+    assert.deepEqual(snapshot?.blackflow?.lastRoute?.target, {
+      id: '281475010265090',
+      name: '作战',
+      type: 'battle_normal'
+    });
+    assert.equal(snapshot?.blackflow?.strategy?.profile, 'burn_with_investment');
+    assert.equal(snapshot?.roundsStarted, 1);
+    assert.equal(snapshot?.currentRound, 1);
   });
 
   it('stops reading once caught up and resumes from the saved checkpoint on the next tick', async () => {

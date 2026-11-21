@@ -1,6 +1,15 @@
 import { getCallbackDetails } from './maaCallbackService.ts';
 import type { MaaCallbackEvent } from './maaCallbackService.ts';
 import {
+  applyBlackFlowProgressEvents,
+  buildBlackFlowProgressSnapshot,
+  createBlackFlowProgressState
+} from './blackFlowProgressService.ts';
+import type {
+  BlackFlowProgressState,
+  RoguelikeBlackFlowProgress
+} from './blackFlowProgressService.ts';
+import {
   readRoguelikeEvent,
   readRoguelikeInvestment,
   readRoguelikeSettlement,
@@ -52,6 +61,7 @@ export interface RoguelikeProgressSnapshot {
   combatCount: number;
   investment: RoguelikeProgressInvestment | null;
   recentRounds: RoguelikeProgressRound[];
+  blackflow: RoguelikeBlackFlowProgress | null;
   updatedAt: string;
   degraded: boolean;
   observed: boolean;
@@ -99,6 +109,7 @@ export interface RoguelikeProgressState {
   lastEventAtMs: number | null;
   combatCount: number;
   investment: RoguelikeInvestmentSummary | null;
+  blackflow: BlackFlowProgressState;
   updatedAtMs: number | null;
   degraded: boolean;
   observed: boolean;
@@ -525,6 +536,7 @@ export function createRoguelikeProgressState(seed: RoguelikeProgressSeed): Rogue
     lastEventAtMs: null,
     combatCount: 0,
     investment: null,
+    blackflow: createBlackFlowProgressState(),
     updatedAtMs: null,
     degraded: false,
     observed: false
@@ -538,6 +550,10 @@ export function applyRoguelikeProgressEvents(
   let next = state;
   for (const event of events) {
     next = applyEvent(next, event);
+    if (next.command === 'roguelike') {
+      const blackflow = applyBlackFlowProgressEvents(next.blackflow, [event]);
+      if (blackflow !== next.blackflow) next = { ...next, blackflow };
+    }
   }
   return next;
 }
@@ -584,6 +600,7 @@ export function buildRoguelikeProgressSnapshot(
       score: round.score,
       endedAt: toIso(round.endedAtMs)
     })),
+    blackflow: buildBlackFlowProgressSnapshot(state.blackflow),
     updatedAt: new Date(updatedAtMs).toISOString(),
     degraded: state.degraded,
     observed: state.observed

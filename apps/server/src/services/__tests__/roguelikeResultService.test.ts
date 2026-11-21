@@ -7,6 +7,7 @@ import {
   isRoguelikeCommand
 } from '../roguelikeResultService.ts';
 import type { RoguelikeProgressSnapshot } from '../roguelikeProgressService.ts';
+import type { RoguelikeBlackFlowProgress } from '../blackFlowProgressService.ts';
 
 function callback(taskchain: string, type: string, payload: Record<string, unknown> = {}): string {
   return `[2026-11-06 09:00:00.000][INF] Assistant::append_callback | ${type} ${JSON.stringify({
@@ -40,6 +41,7 @@ function progressSnapshot(overrides: Partial<RoguelikeProgressSnapshot> = {}): R
     combatCount: 0,
     investment: null,
     recentRounds: [],
+    blackflow: null,
     updatedAt: new Date(0).toISOString(),
     degraded: false,
     observed: true,
@@ -284,6 +286,34 @@ describe('roguelike result summary', () => {
     assert.equal(summary.observed, true);
     assert.equal(summary.status, 'incomplete');
     assert.equal(summary.settlement, null);
+  });
+
+  it('keeps the black flow projection on the final snapshot without changing observation', () => {
+    const blackflow: RoguelikeBlackFlowProgress = {
+      floor: 2,
+      floorAt: new Date(0).toISOString(),
+      currentNode: { id: '281475010265088', name: '作战', type: 'battle_normal' },
+      currentNodeAt: new Date(0).toISOString(),
+      actionPoints: { before: 5, after: 4, at: new Date(0).toISOString() },
+      lastRoute: null,
+      lastNodeResolution: null,
+      milestones: [],
+      strategy: null,
+      updatedAt: new Date(0).toISOString()
+    };
+    const progress = progressSnapshot({ blackflow });
+    const summary = buildRoguelikeResultSummary('', { command: 'roguelike', args: ['Sarkaz'] }, progress);
+
+    assert.deepEqual(summary.progress?.blackflow, blackflow);
+    assert.equal(summary.observed, true);
+
+    const unobserved = buildRoguelikeResultSummary(
+      '',
+      { command: 'roguelike', args: ['Sarkaz'] },
+      progressSnapshot({ observed: false, blackflow })
+    );
+    assert.equal(unobserved.observed, false);
+    assert.deepEqual(unobserved.progress?.blackflow, blackflow);
   });
 
   it('describes a progress-only incomplete run without claiming no callbacks were read', () => {

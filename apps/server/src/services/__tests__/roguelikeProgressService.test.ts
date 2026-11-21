@@ -273,6 +273,7 @@ describe('roguelike progress reducer', () => {
         score: null,
         endedAt: iso(BASE_TIME + 1_000)
       }],
+      blackflow: null,
       updatedAt: iso(BASE_TIME + 1_000),
       degraded: false,
       observed: true
@@ -921,9 +922,119 @@ describe('roguelike progress fixture', () => {
           endedAt: iso(SETTLEMENT_ONE_TIME)
         }
       ],
+      blackflow: null,
       updatedAt: iso(STOPPED_TIME),
       degraded: false,
       observed: true
     });
+  });
+});
+
+describe('roguelike black flow progress', () => {
+  const blackFlowLog = readFileSync(
+    new URL('./fixtures/blackflow-session.fixture.txt', import.meta.url),
+    'utf8'
+  );
+  const routeTime = new Date(2026, 10, 21, 21, 36, 26, 402).getTime();
+  const resolutionTime = new Date(2026, 10, 21, 21, 36, 45, 82).getTime();
+  const resultTime = new Date(2026, 10, 21, 21, 36, 50, 56).getTime();
+  const floorTwoMilestoneTime = new Date(2026, 10, 21, 21, 34, 31, 349).getTime();
+  const shopSatisfiedTime = new Date(2026, 10, 21, 21, 33, 48, 115).getTime();
+
+  it('merges black flow events into the progress snapshot without changing round counters', () => {
+    const snapshot = snapshotForLog(blackFlowLog, { settlementSupported: true });
+
+    assert.deepEqual(snapshot.blackflow, {
+      floor: 2,
+      floorAt: iso(routeTime),
+      currentNode: { id: '562949986975748', name: '应急助力', type: 'employ' },
+      currentNodeAt: iso(routeTime),
+      actionPoints: { before: 3, after: 2, at: iso(routeTime) },
+      lastRoute: {
+        at: iso(routeTime),
+        floor: 2,
+        target: { id: '562949986975746', name: '险路尽头', type: 'final' },
+        landing: { id: '562949986975746', name: '险路尽头', type: 'final' },
+        movement: 'walk',
+        actionPointsBefore: 3,
+        actionPointsAfter: 2,
+        exactCost: 1,
+        predictedCost: 1,
+        arrived: true
+      },
+      lastNodeResolution: {
+        at: iso(resolutionTime),
+        floor: 2,
+        node: { id: '562949986975746', name: '险路尽头', type: 'final' },
+        eventName: '险路尽头',
+        progress: 'completed'
+      },
+      milestones: [
+        {
+          id: 'burn_floor2_final',
+          floor: 2,
+          progress: 0,
+          status: 'available',
+          at: iso(floorTwoMilestoneTime)
+        },
+        {
+          id: 'burn_floor1_shop',
+          floor: 1,
+          progress: 0,
+          status: 'satisfied',
+          at: iso(shopSatisfiedTime)
+        },
+        {
+          id: 'burn_floor1_final',
+          floor: 1,
+          progress: 0,
+          status: 'available',
+          at: iso(new Date(2026, 10, 21, 21, 29, 44, 554).getTime())
+        }
+      ],
+      strategy: {
+        at: iso(resultTime),
+        profile: 'burn_with_investment',
+        outcome: 'burn_completed',
+        terminationReason: 'third_floor_reached',
+        nextAction: 'restart_current_run',
+        succeeded: true
+      },
+      updatedAt: iso(resultTime)
+    });
+
+    assert.equal(snapshot.roundsStarted, 1);
+    assert.equal(snapshot.roundsEnded, 0);
+    assert.equal(snapshot.roundsSettled, 0);
+    assert.equal(snapshot.roundsPassed, 0);
+    assert.equal(snapshot.currentRound, 1);
+    assert.equal(snapshot.phase, 'ended');
+    assert.equal(snapshot.currentAction, 'TaskChainError');
+  });
+
+  it('keeps black flow in the active snapshot and the terminal snapshot', () => {
+    const lines = blackFlowLog.trimEnd().split('\n');
+    const active = snapshotForLog(lines.slice(0, -2).join('\n') + '\n');
+    const terminal = snapshotForLog(blackFlowLog);
+
+    assert.ok(active.blackflow);
+    assert.equal(active.phase, 'exploring');
+    assert.equal(active.currentRound, 1);
+    assert.equal(active.blackflow.strategy?.outcome, 'burn_completed');
+
+    assert.ok(terminal.blackflow);
+    assert.equal(terminal.phase, 'ended');
+    assert.equal(terminal.currentRound, 1);
+    assert.equal(terminal.blackflow.strategy?.nextAction, 'restart_current_run');
+  });
+
+  it('keeps blackflow null for roguelike events without black flow callbacks', () => {
+    const snapshot = snapshotFor([
+      subtaskStart('StartExplore', { exec_times: 1 }, BASE_TIME),
+      extra('StageInfo', { name: '破岁阵祀' }, BASE_TIME + 1_000),
+      subtaskStart('GamePass', { exec_times: 1 }, BASE_TIME + 2_000)
+    ]);
+
+    assert.equal(snapshot.blackflow, null);
   });
 });

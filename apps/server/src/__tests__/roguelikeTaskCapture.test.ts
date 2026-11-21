@@ -38,6 +38,7 @@ const PROGRESS_SNAPSHOT: RoguelikeProgressSnapshot = {
   combatCount: 0,
   investment: null,
   recentRounds: [],
+  blackflow: null,
   updatedAt: new Date(0).toISOString(),
   degraded: false,
   observed: true

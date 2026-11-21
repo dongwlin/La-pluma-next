@@ -111,6 +111,14 @@ for (const loggerName of ['Api', 'MaaService', 'AgentRoutes', 'Scheduler', 'Agen
 
 const servers: Server[] = [];
 
+interface RoguelikeBlackFlowPayload {
+  floor: number | null;
+  currentNode: { id: string; name: string | null; type: string | null } | null;
+  actionPoints: { before: number | null; after: number | null; at: string | null } | null;
+  lastRoute: { target: { id: string; name: string | null; type: string | null } | null } | null;
+  strategy: { profile: string | null; outcome: string | null } | null;
+}
+
 interface RoguelikeProgressPayload {
   command: string;
   theme: string;
@@ -124,6 +132,7 @@ interface RoguelikeProgressPayload {
   settlementSupported: boolean | null;
   observed: boolean;
   degraded: boolean;
+  blackflow?: RoguelikeBlackFlowPayload | null;
 }
 
 interface RunProgressPayload {
@@ -1035,8 +1044,11 @@ describe('agent execution HTTP adapter', () => {
 
   it('projects live roguelike progress and copies the final snapshot into the terminal summary', async () => {
     process.env.FAKE_MAA_EARLY_CALLBACK = [
+      'Assistant::append_callback | SubTaskExtraInfo {"taskchain":"Roguelike","what":"BlackFlowStrategyStarted","details":{"profile":"burn_with_investment"}}',
       'Assistant::append_callback | TaskChainStart {"taskchain":"Roguelike"}',
       'Assistant::append_callback | SubTaskStart {"taskchain":"Roguelike","details":{"task":"StartExplore","exec_times":1,"max_times":3}}',
+      'Assistant::append_callback | SubTaskExtraInfo {"taskchain":"Roguelike","what":"BlackFlowMapSummary","details":{"run_revision":2,"map_revision":1,"observation_id":"BF-O1","floor":1,"current_node":281475010265088}}',
+      'Assistant::append_callback | SubTaskExtraInfo {"taskchain":"Roguelike","what":"BlackFlowRoutingDecision","details":{"run_revision":2,"map_revision":1,"observation_id":"BF-O1","floor":1,"decision_id":"BF-D2-1","transaction_id":"BF-T2-1","profile":"burn_with_investment","source":281475010265088,"target":281475010265090,"landing":281475010265090,"node_name":"作战","node_type":"battle_normal","movement":"walk","exact_cost":1,"predicted_cost":1,"action_points_before":5,"action_points_after":4}}',
       'Assistant::append_callback | SubTaskExtraInfo {"taskchain":"Roguelike","what":"RoguelikeSettlement","details":{"game_pass":true,"floor":4,"score":128}}',
       'Assistant::append_callback | SubTaskStart {"taskchain":"Roguelike","details":{"task":"StartExplore","exec_times":2,"max_times":3}}',
       'Assistant::append_callback | TaskChainCompleted {"taskchain":"Roguelike"}'
@@ -1073,12 +1085,35 @@ describe('agent execution HTTP adapter', () => {
     assert.equal(liveProgress.roundsSettled, 1);
     assert.equal(liveProgress.roundsPassed, 1);
     assert.equal(liveProgress.observed, true);
+    assert.equal(liveProgress.blackflow?.floor, 1);
+    assert.deepEqual(liveProgress.blackflow?.currentNode, {
+      id: '281475010265088',
+      name: null,
+      type: null
+    });
+    assert.deepEqual(liveProgress.blackflow?.actionPoints, {
+      before: 5,
+      after: 4,
+      at: null
+    });
+    assert.deepEqual(liveProgress.blackflow?.lastRoute?.target, {
+      id: '281475010265090',
+      name: '作战',
+      type: 'battle_normal'
+    });
+    assert.equal(liveProgress.blackflow?.strategy?.profile, 'burn_with_investment');
 
     const terminal = await waitForRunState(baseUrl, runId, ['succeeded'], 12_000);
     assert.equal(terminal.result?.summary?.progress?.roundsStarted, 2);
     assert.equal(terminal.result?.summary?.progress?.roundsSettled, 1);
     assert.equal(terminal.result?.summary?.progress?.targetRounds, 3);
     assert.equal(terminal.result?.summary?.progress?.settlementSupported, true);
+    assert.equal(terminal.result?.summary?.progress?.blackflow?.floor, 1);
+    assert.deepEqual(terminal.result?.summary?.progress?.blackflow?.lastRoute?.target, {
+      id: '281475010265090',
+      name: '作战',
+      type: 'battle_normal'
+    });
 
     const snapshot = await currentSnapshot(baseUrl);
     assert.equal(snapshot.lastRun?.runId, runId);

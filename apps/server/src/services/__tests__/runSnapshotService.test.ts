@@ -71,6 +71,56 @@ function startSilentTracker(overrides: Partial<RoguelikeProgressTrackerInput> = 
   return input.runId
 }
 
+async function startBlackFlowTracker(overrides: Partial<RoguelikeProgressTrackerInput> = {}): Promise<string> {
+  const line = '[2026-11-21 21:28:27.403][INF] Assistant::append_callback | SubTaskExtraInfo '
+    + JSON.stringify({
+      taskchain: 'Roguelike',
+      what: 'BlackFlowMapSummary',
+      details: {
+        run_revision: 2,
+        map_revision: 1,
+        observation_id: 'BF-O1',
+        floor: 2,
+        current_node: 562950054084616
+      }
+    })
+  let delivered = false
+  configureRoguelikeProgressTrackerRuntimeForTests({
+    schedule(callback) {
+      if (!delivered) callback()
+      return { cancel() {} }
+    },
+    async readChunk(source) {
+      if (delivered) {
+        return { status: 'ok', text: '', nextCheckpoint: source, caughtUp: true }
+      }
+      delivered = true
+      return {
+        status: 'ok',
+        text: line,
+        nextCheckpoint: { logPath: source.logPath, size: line.length },
+        caughtUp: true
+      }
+    }
+  })
+  const input: RoguelikeProgressTrackerInput = {
+    runId: 'snapshot-blackflow-run',
+    checkpoint: { logPath: '/virtual/asst.log', size: 0 },
+    command: 'roguelike',
+    theme: 'JieGarden',
+    mode: 0,
+    targetRounds: 1,
+    settlementSupported: true,
+    startedAtMs: Date.now(),
+    ...overrides
+  }
+  assert.equal(startRoguelikeProgressTracker(input), true)
+  for (let index = 0; index < 12; index += 1) {
+    await new Promise<void>(resolve => setImmediate(resolve))
+  }
+  return input.runId
+}
+
 describe('run snapshot', () => {
   beforeEach(async () => {
     resetAgentRunsForTests()
@@ -339,6 +389,33 @@ describe('run snapshot', () => {
     assert.equal(progress.roguelike?.settlementSupported, true)
     assert.equal(progress.roguelike?.phase, 'starting')
     assert.equal(progress.roguelike?.observed, false)
+  })
+
+  it('projects live black flow progress and keeps lastRun free of progress', async () => {
+    const run = beginAgentRun({ operationId: 'run_task' }).run
+    startAgentRun(run.runId)
+    await startBlackFlowTracker({ runId: run.runId })
+
+    const snapshot = await buildAgentRunSnapshot()
+
+    assert.ok(snapshot.run)
+    const progress = snapshot.run.progress
+    if (!progress || !('roguelike' in progress)) assert.fail('expected a roguelike progress projection')
+    assert.equal(progress.roguelike?.blackflow?.floor, 2)
+    assert.deepEqual(progress.roguelike?.blackflow?.currentNode, {
+      id: '562950054084616',
+      name: null,
+      type: null
+    })
+    assert.ok(progress.roguelike?.blackflow?.updatedAt)
+
+    completeAgentRun(run.runId, { ok: true })
+    const terminal = await buildAgentRunSnapshot()
+
+    assert.equal(terminal.run, null)
+    assert.ok(terminal.lastRun)
+    assert.equal(terminal.lastRun.runId, run.runId)
+    assert.equal('progress' in terminal.lastRun, false)
   })
 
   it('projects reclamation progress with the reclamation message', async () => {
