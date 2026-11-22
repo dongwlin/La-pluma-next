@@ -657,6 +657,83 @@ describe('DataStatistics layout surfaces', () => {
     })
   })
 
+  it('recovers a failed operator panel from the snapshot catalogue after recognition', async () => {
+    mocks.executeCommand.mockResolvedValue({ success: true })
+    mocks.parseOperBoxData.mockResolvedValue({
+      success: true,
+      data: {
+        operCount: 2,
+        data: [
+          { id: 'char_001', name: '识别后的干员', rarity: 6, profession: 'SNIPER', level: 80, elite: 2, potential: 1 },
+          { id: 'char_002', name: '另一位干员', rarity: 5, profession: 'MEDIC', level: 70, elite: 1, potential: 0 },
+        ],
+        allOpers: [
+          { id: 'char_001', name: '识别后的干员', rarity: 6, owned: true },
+          { id: 'char_002', name: '另一位干员', rarity: 5, owned: true },
+          { id: 'char_003', name: '未拥有干员', rarity: 4, owned: false },
+        ],
+        path: 'operbox.json',
+      },
+    })
+    mocks.getAllOperators.mockResolvedValue({ success: false, message: '目录服务不可用' })
+    mocks.getOperBoxData.mockResolvedValue({ success: false })
+
+    await renderPage()
+    await flush()
+
+    expect(container.querySelector('[role="alert"]')?.textContent).toContain('干员数据读取失败')
+    expect(mocks.getAllOperators).toHaveBeenCalledTimes(1)
+    expect(mocks.getOperBoxData).toHaveBeenCalledTimes(1)
+
+    await selectTab('干员识别')
+    await click(findButton('立即执行')!)
+    await flush()
+
+    expect(mocks.parseOperBoxData).toHaveBeenCalledOnce()
+    expect(mocks.getAllOperators).toHaveBeenCalledTimes(2)
+    expect(mocks.getOperBoxData).toHaveBeenCalledTimes(1)
+    expect(container.querySelector('[role="alert"]')).toBeNull()
+    expect(container.textContent).toContain('识别后的干员')
+    expect(container.textContent).toContain('未拥有干员')
+  })
+
+  it('refreshes an empty snapshot catalogue after a later recognition', async () => {
+    mocks.executeCommand.mockResolvedValue({ success: true })
+    mocks.parseOperBoxData.mockResolvedValue({
+      success: true,
+      data: {
+        operCount: 1,
+        data: [{ id: 'char_new', name: '新识别的干员', rarity: 6, profession: 'SNIPER', level: 80, elite: 2, potential: 1 }],
+        allOpers: [{ id: 'char_new', name: '新识别的干员', rarity: 6, owned: true }],
+        path: 'operbox.json',
+      },
+    })
+    mocks.getOperBoxData.mockResolvedValue({
+      success: true,
+      data: {
+        operCount: 1,
+        data: [{ id: 'char_old', name: '旧快照干员', rarity: 6, profession: 'SNIPER', level: 80, elite: 2, potential: 1 }],
+        allOpers: [{ id: 'char_old', name: '旧快照干员', rarity: 6, owned: true }],
+        timestamp: '2026-07-20T08:00:00.000Z',
+      },
+    })
+
+    await renderPage()
+    await flush()
+
+    expect(container.textContent).toContain('旧快照干员')
+    expect(mocks.getAllOperators).toHaveBeenCalledTimes(1)
+
+    await selectTab('干员识别')
+    await click(findButton('立即执行')!)
+    await flush()
+
+    expect(mocks.getAllOperators).toHaveBeenCalledTimes(2)
+    expect(mocks.getOperBoxData).toHaveBeenCalledTimes(1)
+    expect(container.textContent).toContain('新识别的干员')
+    expect(container.textContent).not.toContain('旧快照干员')
+  })
+
   it('offers to continue parsing after a parse timeout without executing the command again', async () => {
     vi.useFakeTimers()
     mocks.executeCommand.mockResolvedValue({ success: true })

@@ -159,6 +159,7 @@ const DEPOT_RECOGNITION_SCOPES = [
 
 const OPERBOX_RECOGNITION_SCOPES = [
   'operbox',
+  'catalog',
   'materials',
   'training-queue',
   'dashboard-snapshot',

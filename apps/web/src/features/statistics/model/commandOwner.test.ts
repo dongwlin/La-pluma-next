@@ -206,9 +206,30 @@ describe('statistics command owner', () => {
     expect(result).toMatchObject({ status: 'succeeded', kind: 'operbox', operBox: { operCount: 1 } })
     expect(harness.parseDepot).not.toHaveBeenCalled()
     expect(harness.publish).toHaveBeenCalledWith({
-      resources: ['operbox', 'materials', 'training-queue', 'dashboard-snapshot'],
+      resources: ['operbox', 'catalog', 'materials', 'training-queue', 'dashboard-snapshot'],
       cause: 'recognition',
     })
+  })
+
+  it('invalidates the shared catalog after operbox recognition so a snapshot fallback is re-read', async () => {
+    const hub = new ResourceInvalidationHub()
+    const harness = createOwner({ publish: invalidation => hub.publish(invalidation) })
+    const catalogue = vi.fn()
+    hub.subscribe(event => {
+      if (event.resources.includes('catalog')) catalogue(event.resources)
+    })
+    harness.runCommand.mockResolvedValue({ success: true, data: {} })
+    harness.parseOperBox.mockResolvedValue(operBoxPayload)
+
+    await harness.owner.run('operbox')
+
+    expect(catalogue).toHaveBeenCalledWith([
+      'operbox',
+      'catalog',
+      'materials',
+      'training-queue',
+      'dashboard-snapshot',
+    ])
   })
 
   it('refreshes materials once and publishes the resources derived from material data', async () => {
