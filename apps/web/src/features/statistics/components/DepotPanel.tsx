@@ -7,9 +7,9 @@ import {
 } from '@/features/game-data'
 import { motion, useReducedMotion } from 'framer-motion'
 import { LoaderCircle, Package as PackageIcon, Play } from 'lucide-react'
-import Icons from '@/shared/components/Icons'
+import { Badge } from '@/shared/ui/badge'
 import { Button } from '@/shared/ui/button'
-import { Card } from '@/shared/ui/card'
+import { Card, CardAction, CardHeader, CardTitle } from '@/shared/ui/card'
 import { EmptyState, Loading } from '@/shared/components'
 import { getDepotTypeLabel, summarizeDepot } from '../model/depotSummary'
 import StatisticsQueryError from './StatisticsQueryError'
@@ -21,7 +21,6 @@ const taskPanelClass = (isActive: boolean) =>
   `data-statistics-task-card gap-0 p-0! transition-colors${isActive ? ' bg-info/5 ring-info/30' : ''}`
 
 const statCardClass = 'data-statistics-kpi'
-const chipClass = 'control-surface rounded-full px-2 py-0.5 text-xs whitespace-nowrap'
 
 interface DepotPanelProps {
   isActive: boolean
@@ -34,6 +33,7 @@ export default function DepotPanel({ isActive, command }: DepotPanelProps) {
   const itemIconVersion = useItemIconCacheVersion()
   const depotQuery = useQuery(depotQueryOptions())
   const [failedDepotImages, setFailedDepotImages] = useState<Record<string, boolean>>({})
+  const [failedDepotImagesVersion, setFailedDepotImagesVersion] = useState(itemIconVersion)
 
   const depotData = depotQuery.data ?? null
   const depotDataLoading = depotQuery.isPending
@@ -41,9 +41,17 @@ export default function DepotPanel({ isActive, command }: DepotPanelProps) {
   const depotDataError = depotQuery.isError ? DEPOT_READ_ERROR : null
   const overview = useMemo(() => summarizeDepot(depotData), [depotData])
 
+  if (failedDepotImagesVersion !== itemIconVersion) {
+    setFailedDepotImagesVersion(itemIconVersion)
+    setFailedDepotImages({})
+  }
+
   if (!isActive) return null
 
   const isRecognizing = command.activeKind === 'depot' && command.isRunning
+  const latestRecognition = depotData?.timestamp
+    ? new Date(depotData.timestamp).toLocaleString('zh-CN')
+    : '-'
 
   return (
     <motion.div
@@ -53,42 +61,40 @@ export default function DepotPanel({ isActive, command }: DepotPanelProps) {
       className="min-w-0"
     >
       <Card
+        role="region"
+        aria-labelledby="depot-panel-title"
         className={taskPanelClass(command.activeTask === 'depot')}
       >
+        <CardHeader className="px-4 pt-4 pb-0">
+          <CardTitle
+            id="depot-panel-title"
+            role="heading"
+            aria-level={2}
+            className="text-lg font-semibold"
+          >
+            仓库识别
+          </CardTitle>
+          <CardAction>
+            <Button
+              onClick={() => command.startRecognition('depot')}
+              disabled={command.isRunning || isRecognizing}
+              aria-busy={isRecognizing || undefined}
+            >
+              {isRecognizing
+                ? <><LoaderCircle className="animate-spin" aria-hidden="true" />正在执行</>
+                : (
+                  <>
+                    <Play size={15} fill="currentColor" aria-hidden="true" />
+                    {command.actionLabel('depot')}
+                  </>
+                )}
+            </Button>
+          </CardAction>
+        </CardHeader>
+
         <div className="data-statistics-task-content app-stack-card">
-          <div className="data-statistics-task-header flex items-start gap-3.5 sm:items-center">
-            <div className="flex w-full min-w-0 flex-1 items-center gap-3.5 sm:w-auto">
-              <div className="flex h-10 w-10 flex-none items-center justify-center" aria-hidden="true">
-                <Icons.Package />
-              </div>
-              <div className="min-w-0">
-                <h2 className="text-lg font-semibold text-foreground">仓库识别</h2>
-                <p className="mt-1 text-sm leading-relaxed text-muted-foreground">
-                  汇总物品库存、材料分类与数量
-                </p>
-              </div>
-            </div>
-
-            <div className="data-statistics-task-actions shrink-0">
-              <Button
-                onClick={() => command.startRecognition('depot')}
-                disabled={command.isRunning || isRecognizing}
-                aria-busy={isRecognizing || undefined}
-              >
-                {isRecognizing
-                  ? <><LoaderCircle className="animate-spin" aria-hidden="true" />正在执行</>
-                  : (
-                    <>
-                      <Play size={15} fill="currentColor" aria-hidden="true" />
-                      {command.actionLabel('depot')}
-                    </>
-                  )}
-              </Button>
-            </div>
-          </div>
-
-          {!depotDataError && !depotData && (depotDataLoading || command.activeTask === 'depot') && (
-            <div className="rounded-xl py-12 surface-soft" aria-live="polite">
+          {depotDataLoading && (
+            <div className="rounded-xl py-12 surface-soft">
               <Loading text={command.activeTask === 'depot' ? '正在识别仓库数据' : '正在读取仓库数据'} />
             </div>
           )}
@@ -102,11 +108,11 @@ export default function DepotPanel({ isActive, command }: DepotPanelProps) {
               }}
             />
           )}
-          {!depotDataLoading && !depotDataError && !command.isRunning && !depotData && (
+          {!depotDataLoading && !depotDataError && !depotData && (
             <EmptyState
               compact
               className="py-10"
-              icon={<Icons.Package />}
+              icon={<PackageIcon size={24} strokeWidth={1.7} />}
               title="还没有仓库识别结果"
               description="完成一次仓库识别后，物品清单会显示在这里。"
             />
@@ -115,6 +121,7 @@ export default function DepotPanel({ isActive, command }: DepotPanelProps) {
             <div className="app-stack-card">
               <div
                 className="data-statistics-kpi-grid grid grid-cols-2 md:grid-cols-3"
+                role="group"
                 aria-label="仓库数据概览"
               >
                 <div className={statCardClass}>
@@ -141,20 +148,22 @@ export default function DepotPanel({ isActive, command }: DepotPanelProps) {
                     {overview.totalCount.toLocaleString()}
                   </p>
                 </div>
-                <div className={statCardClass}>
-                  <p className="text-xs text-muted-foreground">库存最多</p>
-                  <p className="mt-1 truncate text-sm font-semibold text-foreground">
-                    {overview.topItem?.name ?? '-'}
-                  </p>
-                </div>
-                {depotData.timestamp && (
-                  <div className={statCardClass}>
-                    <p className="text-xs text-muted-foreground">最近识别</p>
-                    <p className="mt-1 truncate text-sm font-semibold text-foreground">
-                      {new Date(depotData.timestamp).toLocaleString('zh-CN')}
-                    </p>
+                <div className={`${statCardClass} col-span-2`}>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="min-w-0">
+                      <p className="text-xs text-muted-foreground">库存最多</p>
+                      <p className="mt-1 truncate text-sm font-semibold text-foreground">
+                        {overview.topItem?.name ?? '-'}
+                      </p>
+                    </div>
+                    <div className="min-w-0">
+                      <p className="text-xs text-muted-foreground">最近识别</p>
+                      <p className="mt-1 truncate text-sm font-semibold text-foreground">
+                        {latestRecognition}
+                      </p>
+                    </div>
                   </div>
-                )}
+                </div>
               </div>
 
               {overview.groups.length > 0 && (
@@ -162,13 +171,17 @@ export default function DepotPanel({ isActive, command }: DepotPanelProps) {
                   <h3 id="depot-category-title" className="mb-2 text-sm font-semibold text-foreground">分类汇总</h3>
                   <div className="flex flex-wrap gap-2">
                     {overview.groups.map((group) => (
-                      <div key={group.type} className="control-surface rounded-full px-3 py-1.5 text-xs text-muted-foreground">
+                      <Badge
+                        key={group.type}
+                        variant="outline"
+                        className="h-auto max-w-full flex-wrap gap-0 whitespace-normal py-1 text-muted-foreground"
+                      >
                         <span className="font-medium">{group.label}</span>
                         <span className="mx-1 brand-text">·</span>
                         <span>{group.kinds} 种</span>
                         <span className="mx-1 brand-text">/</span>
                         <span>{group.count.toLocaleString()} 件</span>
-                      </div>
+                      </Badge>
                     ))}
                   </div>
                 </section>
@@ -208,13 +221,13 @@ export default function DepotPanel({ isActive, command }: DepotPanelProps) {
                           </div>
                           <div className="flex items-center gap-2 mt-1">
                             {item.classifyType && (
-                              <span className={chipClass}>
+                              <Badge variant="outline">
                                 {getDepotTypeLabel(item.classifyType)}
-                              </span>
+                              </Badge>
                             )}
-                            <span className={`${chipClass} font-semibold`}>
+                            <Badge variant="outline" className="font-semibold">
                               ×{item.count.toLocaleString()}
-                            </span>
+                            </Badge>
                           </div>
                         </div>
                       </div>
