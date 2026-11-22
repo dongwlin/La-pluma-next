@@ -12,7 +12,7 @@ import { Button } from '@/shared/ui/button'
 import { Card } from '@/shared/ui/card'
 import { EmptyState, Loading } from '@/shared/components'
 import { getDepotTypeLabel, summarizeDepot } from '../model/depotSummary'
-import InlineDataError from './InlineDataError'
+import StatisticsQueryError from './StatisticsQueryError'
 import type { StatisticsCommands } from '../hooks/useStatisticsCommands'
 
 const DEPOT_READ_ERROR = '暂时无法读取仓库数据，请检查服务连接后重试。'
@@ -93,7 +93,7 @@ export default function DepotPanel({ isActive, command }: DepotPanelProps) {
             </div>
           )}
           {depotDataError && (
-            <InlineDataError
+            <StatisticsQueryError
               title="仓库数据读取失败"
               description={depotDataError}
               isRetrying={depotDataRefreshing}

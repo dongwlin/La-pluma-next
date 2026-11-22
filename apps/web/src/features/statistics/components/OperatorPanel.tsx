@@ -30,7 +30,7 @@ import {
 } from '../model/operatorFilters'
 import { describeOperBoxRecognitionHint } from '../model/operatorRecognition'
 import OperatorFilterMenu, { type FilterMenuOption } from './OperatorFilterMenu'
-import InlineDataError from './InlineDataError'
+import StatisticsQueryError from './StatisticsQueryError'
 import type { StatisticsCommands } from '../hooks/useStatisticsCommands'
 import type { OpenMenu } from '../types'
 
@@ -265,7 +265,7 @@ export default function OperatorPanel({ isActive, command }: OperatorPanelProps)
             </div>
           )}
           {operatorDataError && (
-            <InlineDataError
+            <StatisticsQueryError
               title="干员数据读取失败"
               description={operatorDataError}
               isRetrying={operatorDataRefreshing}
