@@ -151,7 +151,7 @@ import { SegmentedTabs, SegmentedTabNav, SegmentedTabPanel } from '@/shared/comp
 ```
 
 - `SegmentedTabs` 的根节点使用 `display: contents`，不引入额外布局层；tab 导航与面板可以继续作为原网格或弹性布局的直接子项。
-- `SegmentedTabNav` 保留 `app-workspace-segments`、`app-liquid-tab-pill`、`app-workspace-segment-list`、`app-workspace-segment-indicator`、`app-workspace-segment(-icon|-copy)`、`is-selected` 与流体高亮。`className`、`listClassName`、`indicatorClassName`、`tabClassName`、`iconClassName` 只承载页面差异；测量复用 `useFluidTabIndicator`，不要逐页复制。
+- `SegmentedTabNav` 保留 `app-workspace-segments`、`app-workspace-segment-list`、`app-workspace-segment-indicator`、`app-workspace-segment(-icon|-copy)`、`is-selected` 与流体高亮；分段容器保持透明，高亮指示器使用语义 token（`--muted` 背景与 `--border` 内描边），不再消费 `--glass-*` 或页面级玻璃类名。`className`、`listClassName`、`indicatorClassName`、`tabClassName`、`iconClassName` 只承载页面差异；测量复用 `useFluidTabIndicator`，不要逐页复制。
 - 标签使用 Base UI 的 tablist/tab 语义，`activateOnFocus` 固定为 `false`：左右方向键、Home、End 只移动 roving focus，Enter、Space 或点击才切换选中项。不要恢复方向键直接激活的旧行为。
 - `tabId` / `panelId` 可选：传入时提供稳定 id 与 `aria-controls`，省略时由 Base UI 生成并注册关联。`panelId` 只能指向当前实际渲染的面板；默认卸载的页面只在当前 tab 上返回 `panelId`，避免 `aria-controls` 指向不存在的元素。`SegmentedTabPanel` 的 `id` 同样可选；输出 `role="tabpanel"` 与 `aria-labelledby`。如果给面板传 `id`，对应 tab 必须传相同的 `panelId`；或者两侧都省略，交给 Base UI 生成。只传一侧会破坏关联。不传 `keepMounted` 时隐藏面板卸载，传 `true` 时保留 DOM 并设置 `hidden`。配置与统计需要保留草稿、反馈、Query 与统计周期，使用 `keepMounted`；作业使用默认卸载；肉鸽使用始终打开的单个 `contents` 面板承载跨 grid-area 内容。
 - 无法把整块内容包进面板时（例如肉鸽网格的多个 grid-area），保留原网格，把模式相关区域放进单个 `className="contents"` 的面板，并让所有 tab 指向同一个 `panelId`。
@@ -287,7 +287,7 @@ import { Button } from '@/shared/ui/button'
 </Alert>
 ```
 
-根节点固定输出 `role="alert"`，不要改成 `role="status"`，也不要在其中再包一层 alert 角色。`variant` 只有 `default` 与 `destructive`；不提供 success/warning 业务变体，其他状态用 `className` 覆盖。标题、描述与右上角操作分别使用 `AlertTitle`、`AlertDescription` 与 `AlertAction`。图标作为根节点的直接子元素渲染，装饰图标加 `aria-hidden="true"`。
+根节点固定输出 `role="alert"`，不要改成 `role="status"`，也不要在其中再包一层 alert 角色。`variant` 只有 `default` 与 `destructive`；不提供 success/warning 业务变体，其他状态用 `className` 覆盖。`destructive` variant 的标题与描述文字使用 `--destructive-text`（Tailwind `text-destructive-text`），背景仍为 `bg-card`；这是有意的共享语义修正，会同时影响 combat 等所有 `Alert` 调用点。标题、描述与右上角操作分别使用 `AlertTitle`、`AlertDescription` 与 `AlertAction`。图标作为根节点的直接子元素渲染，装饰图标加 `aria-hidden="true"`。
 
 ---
 
