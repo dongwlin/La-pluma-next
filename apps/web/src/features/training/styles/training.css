@@ -380,19 +380,13 @@
   }
 
   .training-settings {
-    padding: 0 1rem;
-  }
-
-  .training-settings > summary {
-    min-height: 56px;
-    align-content: center;
-    cursor: pointer;
+    padding: 1rem;
   }
 
   .training-settings-grid {
     display: grid;
     gap: 1rem;
-    padding-bottom: 1rem;
+    margin-top: 1rem;
   }
 
   .training-feedback {
@@ -422,10 +416,6 @@
 
     .training-queue-actions {
       margin-top: 0;
-    }
-
-    .training-settings-grid {
-      grid-template-columns: repeat(2, minmax(0, 1fr));
     }
   }
 

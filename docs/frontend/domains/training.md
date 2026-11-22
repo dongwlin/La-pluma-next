@@ -121,7 +121,7 @@ OperatorTraining（app-page > app-stack-section > TrainingWorkspace）
 
 ### 6. 面板、选择器与视觉契约
 
-四个主面板都以 `Card` 为根，根节点保留 `role="region"`、`aria-labelledby` 与既有标题 `id`；队列、材料、计划三面板使用 `CardHeader`/`CardTitle`/`CardDescription`/`CardAction`/`CardContent` 组织内容，队列标题保留 `tabIndex={-1}` 与操作后的焦点回归，`CardTitle` 使用 `role="heading" aria-level={2}`。设置面板只用 `Card` 包裹原生 `<details>`，summary 内放 `h2#training-settings-title`，开关行使用 `<label>` 与 `min-h-11`（44px）触达区域。
+四个主面板都以 `Card` 为根，根节点保留 `role="region"`、`aria-labelledby` 与既有标题 `id`；队列、材料、计划三面板使用 `CardHeader`/`CardTitle`/`CardDescription`/`CardAction`/`CardContent` 组织内容，队列标题保留 `tabIndex={-1}` 与操作后的焦点回归，`CardTitle` 使用 `role="heading" aria-level={2}`。设置面板不折叠、标题下无副标题：`h2#training-settings-title` 常驻，`#training-settings-status` 仅在设置快照未就绪时渲染“设置尚未读取完成，暂不可编辑”并作为两个开关的 `aria-describedby`；两个开关各占一行纵向排列（宽屏也不并排），开关行使用 `<label>` 与 `min-h-11`（44px）触达区域。
 
 - 队列行在 `<640px` 为块布局，操作区位于身份信息下方并保留 8px 上间距；`>=640px` 改为身份信息 + 操作区两列同行；`>=1280px` 操作区纵向排列。
 - 自动化设置经 `DeviceMonitorLayout(standard)` 的 support 槽位渲染在右列设备画面下方（宽屏三列）；窄屏单列顺序为主内容 → 设备画面 → 自动化设置。

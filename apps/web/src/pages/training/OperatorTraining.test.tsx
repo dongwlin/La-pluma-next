@@ -569,6 +569,27 @@ describe('OperatorTraining queue workspace', () => {
     expect(switchByLabel('完成通知')).not.toBeNull()
   })
 
+  it('renders the automation settings expanded with both switches always visible', async () => {
+    await renderComponent()
+
+    const panel = container.querySelector<HTMLElement>('[aria-labelledby="training-settings-title"]')
+    expect(panel).not.toBeNull()
+    expect(panel?.querySelector('details, summary')).toBeNull()
+    const title = panel?.querySelector('#training-settings-title')
+    expect(title?.textContent).toBe('自动化设置')
+    expect(title?.parentElement?.textContent).not.toContain('自动切换与完成通知')
+    expect(panel?.querySelector('#training-settings-status')).toBeNull()
+
+    const rows = [...(panel?.querySelectorAll('label') ?? [])]
+    expect(rows).toHaveLength(2)
+    expect(rows.map(row => row.textContent)).toEqual([
+      expect.stringContaining('自动切换'),
+      expect.stringContaining('完成通知'),
+    ])
+    expect(rows.every(row => row.querySelector('[role="switch"]'))).toBe(true)
+    expect(rows.map(row => row.querySelector('[role="switch"]')?.getAttribute('aria-label'))).toEqual(['自动切换', '完成通知'])
+  })
+
   it('supports keyboard navigation of the operator scope inside the picker', async () => {
     await renderComponent()
     const { dialog } = await openPicker()
@@ -628,10 +649,13 @@ describe('OperatorTraining queue workspace', () => {
     await renderComponent()
 
     const pendingSwitch = switchByLabel('自动切换') as HTMLElement
+    const pendingNotify = switchByLabel('完成通知') as HTMLElement
     expect(pendingSwitch.getAttribute('aria-disabled')).toBe('true')
-    const descriptionId = pendingSwitch.getAttribute('aria-describedby')
-    expect(descriptionId).toBeTruthy()
-    expect(document.getElementById(descriptionId!)?.textContent).toContain('设置尚未读取完成')
+    expect(pendingSwitch.getAttribute('aria-describedby')).toBe('training-settings-status')
+    expect(pendingNotify.getAttribute('aria-describedby')).toBe('training-settings-status')
+    const pendingStatus = container.querySelector('#training-settings-status')
+    expect(pendingStatus?.textContent).toBe('设置尚未读取完成，暂不可编辑')
+    expect(container.querySelector('#training-settings-title')?.parentElement?.textContent).not.toContain('自动切换与完成通知')
     expect(buttonWithText('预览刷图计划', container).disabled).toBe(true)
     await click(pendingSwitch)
     expect(mocks.updateTrainingSettings).not.toHaveBeenCalled()
@@ -647,6 +671,8 @@ describe('OperatorTraining queue workspace', () => {
     const readySwitch = switchByLabel('自动切换') as HTMLElement
     expect(readySwitch.getAttribute('aria-disabled')).toBeNull()
     expect(readySwitch.hasAttribute('aria-describedby')).toBe(false)
+    expect(switchByLabel('完成通知')?.hasAttribute('aria-describedby')).toBe(false)
+    expect(container.querySelector('#training-settings-status')).toBeNull()
     expect(buttonWithText('预览刷图计划', container).disabled).toBe(false)
 
     mocks.updateTrainingSettings.mockResolvedValue({

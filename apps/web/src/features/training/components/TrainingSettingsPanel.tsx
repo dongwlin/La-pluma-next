@@ -16,10 +16,9 @@ export default function TrainingSettingsPanel({
   const descriptionId = 'training-settings-status'
   return (
     <Card role="region" aria-labelledby="training-settings-title" className="min-w-0 gap-0 p-0!">
-      <details className="training-settings">
-        <summary>
-          <h2 id="training-settings-title" className="text-sm font-semibold text-foreground">自动化设置<span id={descriptionId} className="ml-3 text-xs font-normal text-muted-foreground">{settingsReady ? '自动切换与完成通知' : '设置尚未读取完成，暂不可编辑'}</span></h2>
-        </summary>
+      <div className="training-settings">
+        <h2 id="training-settings-title" className="text-sm font-semibold text-foreground">自动化设置</h2>
+        {!settingsReady && <span id={descriptionId} className="mt-1 block text-xs text-muted-foreground">设置尚未读取完成，暂不可编辑</span>}
         <div className="training-settings-grid">
           <label className="flex min-h-11 cursor-pointer items-center justify-between gap-4">
             <span>
@@ -36,7 +35,7 @@ export default function TrainingSettingsPanel({
             <Switch size="sm" aria-label="完成通知" aria-describedby={settingsReady ? undefined : descriptionId} disabled={!settingsReady} checked={settings.notifyOnComplete} onCheckedChange={checked => onUpdate({ notifyOnComplete: checked })} />
           </label>
         </div>
-      </details>
+      </div>
     </Card>
   )
 }
