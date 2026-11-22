@@ -93,6 +93,11 @@ import { DeviceMonitorLayout } from '@/features/device-mirror'
   <WorkspaceContent />
 </DeviceMonitorLayout>
 
+// standard + support：右列设备画面下方追加该页的辅助内容
+<DeviceMonitorLayout variant="standard" support={<PageSupportPanel />}>
+  <WorkspaceContent />
+</DeviceMonitorLayout>
+
 // workbench：任务流程 / 任务配置 / 支撑列（日常）
 <DeviceMonitorLayout
   variant="workbench"
@@ -109,11 +114,13 @@ import { DeviceMonitorLayout } from '@/features/device-mirror'
 />
 ```
 
-Props 是 discriminated union：`standard` 接收 `children`；`workbench` 接收 `sequence`、`editor`、`support`；`mode` 接收 `mode`、`content`。不提供列数、区域、间距或画面位置等通用网格配置。
+Props 是 discriminated union：`standard` 接收 `children` 与可选 `support`；`workbench` 接收 `sequence`、`editor`、`support`；`mode` 接收 `mode`、`content`。不提供列数、区域、间距或画面位置等通用网格配置。
 
-根节点输出 `data-device-monitor-layout="standard|workbench|mode"`，区域输出 `data-monitor-area`（`main`、`monitor`、`sequence`、`editor`、`support`、`mode`、`settings`）。`standard` 的 `main`/`monitor` 和各 variant 的 `monitor` 由布局渲染；`workbench` 的 `sequence`/`editor`、`mode` 的 `mode` 以及 `main`/`settings` 由页面提供的根节点携带，布局不克隆或包裹这些节点。`mode` 的 `content` 保持页面传入的 `display: contents` 面板，由内部的 `main`/`settings` 参与网格。
+`standard` 提供 `support` 时，右列由布局渲染 `[data-monitor-area="support"]` 容器，容器内先渲染设备画面 `aside[data-monitor-area="monitor"]`，再渲染 `support` 内容；容器本身不带 landmark role，页面仍只有一个 `data-region="monitor"`。不提供 `support`（`undefined` 或 `null`）时 DOM 与未引入该属性前一致：`main` 之后是直接的 `aside[data-monitor-area="monitor"]`，不出现 `support` 容器。
 
-`standard` 的 monitor 列在视口小于 1360px 且内容宽度超过 48rem 时使用 `max-width: 48rem` 并居中；视口达到 1360px 后改用三列网格并解除该上限。组件持有 grid 根节点 DOM、`monitor` 区域与 monitor 列；`workbench`/`mode` 的页面网格模板与断点仍由对应页面样式（`automation.css` / `roguelike.css`）提供，页面只通过 `data-monitor-area` 提供具名区域。
+根节点输出 `data-device-monitor-layout="standard|workbench|mode"`，区域输出 `data-monitor-area`（`main`、`monitor`、`sequence`、`editor`、`support`、`mode`、`settings`）。`standard` 的 `main`/`monitor`（以及提供 `support` 时的 `support` 容器）和各 variant 的 `monitor` 由布局渲染；`workbench` 的 `sequence`/`editor`、`mode` 的 `mode` 以及 `main`/`settings` 由页面提供的根节点携带，布局不克隆或包裹这些节点。`mode` 的 `content` 保持页面传入的 `display: contents` 面板，由内部的 `main`/`settings` 参与网格。
+
+`standard` 的 monitor 列与 `support` 容器在视口小于 1360px 且内容宽度超过 48rem 时使用 `max-width: 48rem` 并居中；视口达到 1360px 后改用三列网格并解除该上限。组件持有 grid 根节点 DOM、`monitor` 区域与 monitor 列；`workbench`/`mode` 的页面网格模板与断点仍由对应页面样式（`automation.css` / `roguelike.css`）提供，页面只通过 `data-monitor-area` 提供具名区域。
 
 `data-region="monitor"` 仍只由 `DeviceMonitorPanel` 的卡片输出，每个页面恰好一个。概览页的设备卡片不纳入此布局，不输出 `data-device-monitor-layout`，也不渲染 `data-region="monitor"`。
 

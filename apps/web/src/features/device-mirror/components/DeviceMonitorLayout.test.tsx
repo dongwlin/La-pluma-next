@@ -45,6 +45,21 @@ describe('DeviceMonitorLayout', () => {
     expect(container.querySelector('[data-monitor-area="support"]')).toBeNull()
   })
 
+  it('keeps the legacy standard layout when support is null', async () => {
+    await renderLayout(
+      <DeviceMonitorLayout variant="standard" support={null}>
+        <p>标准内容</p>
+      </DeviceMonitorLayout>,
+    )
+
+    const layout = container.querySelector('[data-device-monitor-layout="standard"]')
+    const monitor = container.querySelector('[data-monitor-area="monitor"]')
+    expect(container.querySelector('[data-monitor-area="support"]')).toBeNull()
+    expect(monitor?.parentElement).toBe(layout)
+    expect(monitor?.getAttribute('aria-label')).toBe('设备画面')
+    expect(container.querySelectorAll('[data-region="monitor"]')).toHaveLength(1)
+  })
+
   it('stacks standard support content below the monitor in the same column', async () => {
     await renderLayout(
       <DeviceMonitorLayout
