@@ -6,12 +6,13 @@ import {
   useItemIconCacheVersion,
 } from '@/features/game-data'
 import { motion, useReducedMotion } from 'framer-motion'
-import { LoaderCircle, Package as PackageIcon, Play } from 'lucide-react'
+import { ArrowUp, LoaderCircle, Package as PackageIcon } from 'lucide-react'
 import { Badge } from '@/shared/ui/badge'
 import { Button } from '@/shared/ui/button'
 import { Card, CardAction, CardHeader, CardTitle } from '@/shared/ui/card'
 import { EmptyState, Loading } from '@/shared/components'
 import { getDepotTypeLabel, summarizeDepot } from '../model/depotSummary'
+import { usePanelScrollTop } from '../hooks/usePanelScrollTop'
 import StatisticsQueryError from './StatisticsQueryError'
 import type { StatisticsCommands } from '../hooks/useStatisticsCommands'
 
@@ -29,6 +30,15 @@ interface DepotPanelProps {
 
 export default function DepotPanel({ isActive, command }: DepotPanelProps) {
   const shouldReduceMotion = useReducedMotion()
+  const {
+    setScrollNode,
+    setContentBandNode,
+    isScrolled,
+    isInContentBand,
+    scrollMetrics,
+    handleScroll,
+    scrollToTop,
+  } = usePanelScrollTop(shouldReduceMotion)
   // 资源更新成功后推进，使同一图标的 `<img src>` 换到新的浏览器缓存身份。
   const itemIconVersion = useItemIconCacheVersion()
   const depotQuery = useQuery(depotQueryOptions())
@@ -63,7 +73,8 @@ export default function DepotPanel({ isActive, command }: DepotPanelProps) {
       <Card
         role="region"
         aria-labelledby="depot-panel-title"
-        className={taskPanelClass(command.activeTask === 'depot')}
+        data-scroll-clip="panel"
+        className={`${taskPanelClass(command.activeTask === 'depot')} overflow-clip`}
       >
         <CardHeader className="px-4 pt-4 pb-0">
           <CardTitle
@@ -82,12 +93,7 @@ export default function DepotPanel({ isActive, command }: DepotPanelProps) {
             >
               {isRecognizing
                 ? <><LoaderCircle className="animate-spin" aria-hidden="true" />正在执行</>
-                : (
-                  <>
-                    <Play size={15} fill="currentColor" aria-hidden="true" />
-                    {command.actionLabel('depot')}
-                  </>
-                )}
+                : command.actionLabel('depot')}
             </Button>
           </CardAction>
         </CardHeader>
@@ -188,51 +194,107 @@ export default function DepotPanel({ isActive, command }: DepotPanelProps) {
               )}
 
               {depotData.items && depotData.items.length > 0 && (
-                <div className="data-statistics-item-grid grid grid-cols-1 overflow-hidden rounded-xl surface-soft sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-4">
-                  {depotData.items.map((item) => {
-                    const itemKey = item.id || item.iconId
-                    const imageKey = `${itemKey}:${item.iconId}`
-
-                    return (
-                      <div
-                        key={itemKey}
-                        className="data-statistics-depot-item flex min-w-0 items-center gap-3.5 p-3"
+                <div className="min-w-0">
+                  <div
+                    ref={setContentBandNode}
+                    data-scroll-anchor="back-to-top"
+                    className="flex items-start"
+                    style={{
+                      position: 'sticky',
+                      top: 'var(--layout-content-sticky-top)',
+                      zIndex: 'var(--layout-z-sticky)',
+                      height: '1.75rem',
+                      marginBottom: '-1.75rem',
+                      justifyContent: 'center',
+                      pointerEvents: 'none',
+                    }}
+                  >
+                    {isScrolled && isInContentBand && (
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        className="bg-popover shadow-md dark:bg-popover"
+                        style={{ pointerEvents: 'auto' }}
+                        onClick={scrollToTop}
                       >
-                        <div className="flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-muted">
-                          {failedDepotImages[imageKey] ? (
-                            <span role="img" aria-label={`${item.name}图标不可用`}>
-                              <PackageIcon className="h-6 w-6 brand-text" aria-hidden="true" />
-                            </span>
-                          ) : (
-                            <img
-                              src={getItemIconUrl(item.id, itemIconVersion)}
-                              alt={item.name}
-                              className="w-full h-full object-cover"
-                              onError={() => {
-                                setFailedDepotImages(previous => ({ ...previous, [imageKey]: true }))
-                              }}
-                            />
-                          )}
-                        </div>
+                        <ArrowUp size={14} aria-hidden="true" />
+                        回到顶部
+                      </Button>
+                    )}
+                  </div>
+                  <div className="relative">
+                    <div
+                      ref={setScrollNode}
+                      role="list"
+                      aria-label="仓库物品清单"
+                      tabIndex={0}
+                      onScroll={handleScroll}
+                      className="data-statistics-scroll-area data-statistics-item-grid grid grid-cols-1 rounded-xl surface-soft sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-4"
+                    >
+                      {depotData.items.map((item) => {
+                        const itemKey = item.id || item.iconId
+                        const imageKey = `${itemKey}:${item.iconId}`
 
-                        <div className="flex-1 min-w-0">
-                          <div className="text-sm font-bold text-foreground truncate" title={item.name}>
-                            {item.name}
+                        return (
+                          <div
+                            key={itemKey}
+                            role="listitem"
+                            className="data-statistics-depot-item flex min-w-0 items-center gap-3.5 p-3"
+                          >
+                            <div className="flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-muted">
+                              {failedDepotImages[imageKey] ? (
+                                <span role="img" aria-label={`${item.name}图标不可用`}>
+                                  <PackageIcon className="h-6 w-6 brand-text" aria-hidden="true" />
+                                </span>
+                              ) : (
+                                <img
+                                  src={getItemIconUrl(item.id, itemIconVersion)}
+                                  alt={item.name}
+                                  className="w-full h-full object-cover"
+                                  onError={() => {
+                                    setFailedDepotImages(previous => ({ ...previous, [imageKey]: true }))
+                                  }}
+                                />
+                              )}
+                            </div>
+
+                            <div className="flex-1 min-w-0">
+                              <div className="text-sm font-bold text-foreground truncate" title={item.name}>
+                                {item.name}
+                              </div>
+                              <div className="flex items-center gap-2 mt-1">
+                                {item.classifyType && (
+                                  <Badge variant="outline">
+                                    {getDepotTypeLabel(item.classifyType)}
+                                  </Badge>
+                                )}
+                                <Badge variant="outline" className="font-semibold">
+                                  ×{item.count.toLocaleString()}
+                                </Badge>
+                              </div>
+                            </div>
                           </div>
-                          <div className="flex items-center gap-2 mt-1">
-                            {item.classifyType && (
-                              <Badge variant="outline">
-                                {getDepotTypeLabel(item.classifyType)}
-                              </Badge>
-                            )}
-                            <Badge variant="outline" className="font-semibold">
-                              ×{item.count.toLocaleString()}
-                            </Badge>
-                          </div>
-                        </div>
+                        )
+                      })}
+                    </div>
+                    {scrollMetrics.hasOverflow && (
+                      <div
+                        aria-hidden="true"
+                        data-scroll-indicator="track"
+                        className="data-statistics-scroll-indicator"
+                      >
+                        <div
+                          data-scroll-indicator="thumb"
+                          className="data-statistics-scroll-thumb"
+                          style={{
+                            height: `${scrollMetrics.viewportRatio * 100}%`,
+                            top: `${scrollMetrics.progress * (1 - scrollMetrics.viewportRatio) * 100}%`,
+                          }}
+                        />
                       </div>
-                    )
-                  })}
+                    )}
+                  </div>
                 </div>
               )}
             </div>

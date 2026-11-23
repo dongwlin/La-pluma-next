@@ -60,4 +60,39 @@
   .la-pluma-app [data-page-surface="borderless"] .data-statistics-kpi-grid {
     padding: 0;
   }
+
+  .data-statistics-scroll-area {
+    max-height: 60svh;
+    overflow: hidden auto;
+    overscroll-behavior: contain;
+    scrollbar-width: none;
+  }
+
+  .data-statistics-scroll-area::-webkit-scrollbar {
+    display: none;
+  }
+
+  .data-statistics-scroll-area:focus-visible {
+    outline: 2px solid var(--primary);
+    outline-offset: -2px;
+  }
+
+  .data-statistics-scroll-indicator {
+    position: absolute;
+    top: 0.375rem;
+    right: -0.5rem;
+    bottom: 0.375rem;
+    width: 0.1875rem;
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--foreground) 12%, transparent);
+    pointer-events: none;
+  }
+
+  .data-statistics-scroll-thumb {
+    position: absolute;
+    right: 0;
+    left: 0;
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--foreground) 32%, transparent);
+  }
 }

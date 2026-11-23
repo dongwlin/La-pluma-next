@@ -7,7 +7,7 @@ import {
   useItemIconCacheVersion,
 } from '@/features/game-data'
 import { motion, useReducedMotion } from 'framer-motion'
-import { Download, LoaderCircle, Play, RotateCcw, UserRound, Users } from 'lucide-react'
+import { ArrowUp, LoaderCircle, RotateCcw, UserRound, Users } from 'lucide-react'
 import { Badge } from '@/shared/ui/badge'
 import { Button } from '@/shared/ui/button'
 import { Card, CardAction, CardHeader, CardTitle } from '@/shared/ui/card'
@@ -31,6 +31,7 @@ import {
   type SortBy,
 } from '../model/operatorFilters'
 import { describeOperBoxRecognitionHint } from '../model/operatorRecognition'
+import { usePanelScrollTop } from '../hooks/usePanelScrollTop'
 import OperatorFilterMenu, { type FilterMenuOption } from './OperatorFilterMenu'
 import StatisticsQueryError from './StatisticsQueryError'
 import type { StatisticsCommands } from '../hooks/useStatisticsCommands'
@@ -123,6 +124,15 @@ interface OperatorPanelProps {
 
 export default function OperatorPanel({ isActive, command }: OperatorPanelProps) {
   const shouldReduceMotion = useReducedMotion()
+  const {
+    setScrollNode,
+    setContentBandNode,
+    isScrolled,
+    isInContentBand,
+    scrollMetrics,
+    handleScroll,
+    scrollToTop,
+  } = usePanelScrollTop(shouldReduceMotion)
   const itemIconVersion = useItemIconCacheVersion()
   const operBoxQuery = useQuery(operBoxQueryOptions())
   const operatorCatalogQuery = useQuery(operatorCatalogWithSourceQueryOptions())
@@ -245,7 +255,8 @@ export default function OperatorPanel({ isActive, command }: OperatorPanelProps)
       <Card
         role="region"
         aria-labelledby="operator-panel-title"
-        className={taskPanelClass(command.activeTask === 'operbox')}
+        data-scroll-clip="panel"
+        className={`${taskPanelClass(command.activeTask === 'operbox')} overflow-clip`}
       >
         <CardHeader className="px-4 pt-4 pb-0 max-sm:gap-3">
           <CardTitle
@@ -265,12 +276,7 @@ export default function OperatorPanel({ isActive, command }: OperatorPanelProps)
             >
               {isFetchingMaterials
                 ? <><LoaderCircle className="animate-spin" aria-hidden="true" />正在获取</>
-                : (
-                  <>
-                    <Download size={16} aria-hidden="true" />
-                    获取材料数据
-                  </>
-                )}
+                : '获取材料数据'}
             </Button>
             <Button
               onClick={() => command.startRecognition('operbox')}
@@ -279,12 +285,7 @@ export default function OperatorPanel({ isActive, command }: OperatorPanelProps)
             >
               {isRecognizing
                 ? <><LoaderCircle className="animate-spin" aria-hidden="true" />正在执行</>
-                : (
-                  <>
-                    <Play size={15} fill="currentColor" aria-hidden="true" />
-                    {command.actionLabel('operbox')}
-                  </>
-                )}
+                : command.actionLabel('operbox')}
             </Button>
           </CardAction>
         </CardHeader>
@@ -309,7 +310,7 @@ export default function OperatorPanel({ isActive, command }: OperatorPanelProps)
             <div className="app-stack-card">
               {showErrorBanner && readError}
               <div role="group" aria-label="干员数据概览">
-                <dl className="data-statistics-kpi-grid grid grid-cols-2 lg:grid-cols-4">
+                <dl className="data-statistics-kpi-grid grid grid-cols-3">
                   <div className={statCardClass}>
                     <dt className="text-xs text-muted-foreground">已识别</dt>
                     <dd className="mt-1 text-2xl font-semibold text-foreground">{ownedOperatorCount}</dd>
@@ -317,10 +318,6 @@ export default function OperatorPanel({ isActive, command }: OperatorPanelProps)
                   <div className={statCardClass}>
                     <dt className="text-xs text-muted-foreground">干员资料</dt>
                     <dd className="mt-1 text-2xl font-semibold text-foreground">{catalogCountLabel}</dd>
-                  </div>
-                  <div className={statCardClass}>
-                    <dt className="text-xs text-muted-foreground">当前显示</dt>
-                    <dd className="mt-1 text-2xl font-semibold text-foreground">{filteredOperators.length}</dd>
                   </div>
                   <div className={statCardClass}>
                     <dt className="text-xs text-muted-foreground">档案覆盖</dt>
@@ -464,113 +461,164 @@ export default function OperatorPanel({ isActive, command }: OperatorPanelProps)
                   />
                 )
               ) : (
-                <div
-                  role="list"
-                  aria-label="干员列表"
-                  className="data-statistics-item-grid grid grid-cols-2 overflow-hidden rounded-xl surface-soft sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6"
-                >
-                  {filteredOperators.map((oper) => {
-                    const isOwned = isOwnedOperator(oper, ownedOperatorIds)
-                    const isUnknown = !isOwned && isUnknownOperator(oper, knownOperatorIds)
-                    const imageLoaded = loadedImages[oper.id] || false
-                    const avatarStage = avatarStages[oper.id] ?? 0
-                    const avatarVariant = AVATAR_FALLBACK_VARIANTS[avatarStage] ?? null
-                    const avatarFailed = avatarVariant === null
-
-                    return (
-                      <div
-                        key={oper.id}
-                        role="listitem"
-                        className={`data-statistics-operator-item relative overflow-hidden p-3 ${
-                          isOwned
-                            ? ''
-                            : 'opacity-70 grayscale-[0.15]'
-                        }`}
+                <div className="min-w-0">
+                  <div
+                    ref={setContentBandNode}
+                    data-scroll-anchor="back-to-top"
+                    className="flex items-start"
+                    style={{
+                      position: 'sticky',
+                      top: 'var(--layout-content-sticky-top)',
+                      zIndex: 'var(--layout-z-sticky)',
+                      height: '1.75rem',
+                      marginBottom: '-1.75rem',
+                      justifyContent: 'center',
+                      pointerEvents: 'none',
+                    }}
+                  >
+                    {isScrolled && isInContentBand && (
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        className="bg-popover shadow-md dark:bg-popover"
+                        style={{ pointerEvents: 'auto' }}
+                        onClick={scrollToTop}
                       >
-                        {!isOwned && (
-                          <Badge
-                            variant="secondary"
-                            className="absolute left-2 top-2 z-10 font-semibold text-muted-foreground"
+                        <ArrowUp size={14} aria-hidden="true" />
+                        回到顶部
+                      </Button>
+                    )}
+                  </div>
+                  <div className="relative">
+                    <div
+                      ref={setScrollNode}
+                      role="list"
+                      aria-label="干员列表"
+                      tabIndex={0}
+                      onScroll={handleScroll}
+                      className="data-statistics-scroll-area data-statistics-item-grid grid grid-cols-2 rounded-xl surface-soft sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6"
+                    >
+                      {filteredOperators.map((oper) => {
+                        const isOwned = isOwnedOperator(oper, ownedOperatorIds)
+                        const isUnknown = !isOwned && isUnknownOperator(oper, knownOperatorIds)
+                        const imageLoaded = loadedImages[oper.id] || false
+                        const avatarStage = avatarStages[oper.id] ?? 0
+                        const avatarVariant = AVATAR_FALLBACK_VARIANTS[avatarStage] ?? null
+                        const avatarFailed = avatarVariant === null
+
+                        return (
+                          <div
+                            key={oper.id}
+                            role="listitem"
+                            className={`data-statistics-operator-item relative overflow-hidden p-3 ${
+                              isOwned
+                                ? ''
+                                : 'opacity-70 grayscale-[0.15]'
+                            }`}
                           >
-                            {isUnknown ? '未知' : '未拥有'}
-                          </Badge>
-                        )}
+                            {!isOwned && (
+                              <Badge
+                                variant="secondary"
+                                className="absolute left-2 top-2 z-10 font-semibold text-muted-foreground"
+                              >
+                                {isUnknown ? '未知' : '未拥有'}
+                              </Badge>
+                            )}
 
-                        <div
-                          className="relative mb-2 aspect-square w-full overflow-hidden rounded-xl bg-muted"
-                          aria-busy={Boolean(oper.id) && !imageLoaded && !avatarFailed ? true : undefined}
-                        >
-                          {oper.id ? (
-                            <>
-                              {!imageLoaded && !avatarFailed && (
-                                <Skeleton className="absolute inset-0 rounded-none" />
-                              )}
-                              {avatarFailed ? (
-                                <div
-                                  role="img"
-                                  aria-label={`${oper.name}头像不可用`}
-                                  className="absolute inset-0 flex items-center justify-center text-muted-foreground"
-                                >
-                                  <UserRound size={28} strokeWidth={1.7} aria-hidden="true" />
-                                </div>
+                            <div
+                              className="relative mb-2 aspect-square w-full overflow-hidden rounded-xl bg-muted"
+                              aria-busy={Boolean(oper.id) && !imageLoaded && !avatarFailed ? true : undefined}
+                            >
+                              {oper.id ? (
+                                <>
+                                  {!imageLoaded && !avatarFailed && (
+                                    <Skeleton className="absolute inset-0 rounded-none" />
+                                  )}
+                                  {avatarFailed ? (
+                                    <div
+                                      role="img"
+                                      aria-label={`${oper.name}头像不可用`}
+                                      className="absolute inset-0 flex items-center justify-center text-muted-foreground"
+                                    >
+                                      <UserRound size={28} strokeWidth={1.7} aria-hidden="true" />
+                                    </div>
+                                  ) : (
+                                    <img
+                                      src={getOperatorAvatarUrl(oper.id, avatarVariant, itemIconVersion)}
+                                      alt={oper.name}
+                                      className={`h-full w-full object-cover transition-opacity duration-300 ${
+                                        imageLoaded ? 'opacity-100' : 'opacity-0'
+                                      }`}
+                                      onLoad={() => setLoadedImages(prev => ({ ...prev, [oper.id]: true }))}
+                                      onError={() => {
+                                        setAvatarStages(prev => ({ ...prev, [oper.id]: avatarStage + 1 }))
+                                      }}
+                                    />
+                                  )}
+                                  {!isOwned && imageLoaded && !avatarFailed && (
+                                    <div className="absolute inset-0 bg-[color-mix(in_srgb,var(--background)_62%,transparent)]"></div>
+                                  )}
+                                </>
                               ) : (
-                                <img
-                                  src={getOperatorAvatarUrl(oper.id, avatarVariant, itemIconVersion)}
-                                  alt={oper.name}
-                                  className={`h-full w-full object-cover transition-opacity duration-300 ${
-                                    imageLoaded ? 'opacity-100' : 'opacity-0'
-                                  }`}
-                                  onLoad={() => setLoadedImages(prev => ({ ...prev, [oper.id]: true }))}
-                                  onError={() => {
-                                    setAvatarStages(prev => ({ ...prev, [oper.id]: avatarStage + 1 }))
-                                  }}
-                                />
-                              )}
-                              {!isOwned && imageLoaded && !avatarFailed && (
-                                <div className="absolute inset-0 bg-[color-mix(in_srgb,var(--background)_62%,transparent)]"></div>
-                              )}
-                            </>
-                          ) : (
-                            <div className="absolute inset-0 flex items-center justify-center text-muted-foreground">
-                              无头像
-                            </div>
-                          )}
-                          {oper.rarity !== undefined && oper.rarity > 0 && (
-                            <div className="brand-chip absolute right-1.5 top-1.5 rounded-full px-2 py-0.5 text-xs font-semibold">
-                              {Math.min(oper.rarity, 6)}★
-                            </div>
-                          )}
-                        </div>
-
-                        <div className="text-center space-y-2">
-                          <div className="text-sm font-bold text-foreground truncate" title={oper.name}>
-                            {oper.name || '未知干员'}
-                          </div>
-                          {isOwned && (
-                            <>
-                              <div className="flex flex-wrap items-center justify-center gap-1 text-xs">
-                                {oper.elite !== undefined && (
-                                  <Badge variant="secondary">
-                                    精{oper.elite}
-                                  </Badge>
-                                )}
-                                {oper.level !== undefined && (
-                                  <Badge variant="secondary">
-                                    Lv.{oper.level}
-                                  </Badge>
-                                )}
-                              </div>
-                              {oper.potential !== undefined && (
-                                <div className="text-xs text-muted-foreground">
-                                  潜能 {oper.potential}
+                                <div className="absolute inset-0 flex items-center justify-center text-muted-foreground">
+                                  无头像
                                 </div>
                               )}
-                            </>
-                          )}
-                        </div>
+                              {oper.rarity !== undefined && oper.rarity > 0 && (
+                                <div className="brand-chip absolute right-1.5 top-1.5 rounded-full px-2 py-0.5 text-xs font-semibold">
+                                  {Math.min(oper.rarity, 6)}★
+                                </div>
+                              )}
+                            </div>
+
+                            <div className="text-center space-y-2">
+                              <div className="text-sm font-bold text-foreground truncate" title={oper.name}>
+                                {oper.name || '未知干员'}
+                              </div>
+                              {isOwned && (
+                                <>
+                                  <div className="flex flex-wrap items-center justify-center gap-1 text-xs">
+                                    {oper.elite !== undefined && (
+                                      <Badge variant="secondary">
+                                        精{oper.elite}
+                                      </Badge>
+                                    )}
+                                    {oper.level !== undefined && (
+                                      <Badge variant="secondary">
+                                        Lv.{oper.level}
+                                      </Badge>
+                                    )}
+                                  </div>
+                                  {oper.potential !== undefined && (
+                                    <div className="text-xs text-muted-foreground">
+                                      潜能 {oper.potential}
+                                    </div>
+                                  )}
+                                </>
+                              )}
+                            </div>
+                          </div>
+                        )
+                      })}
+                    </div>
+                    {scrollMetrics.hasOverflow && (
+                      <div
+                        aria-hidden="true"
+                        data-scroll-indicator="track"
+                        className="data-statistics-scroll-indicator"
+                      >
+                        <div
+                          data-scroll-indicator="thumb"
+                          className="data-statistics-scroll-thumb"
+                          style={{
+                            height: `${scrollMetrics.viewportRatio * 100}%`,
+                            top: `${scrollMetrics.progress * (1 - scrollMetrics.viewportRatio) * 100}%`,
+                          }}
+                        />
                       </div>
-                    )
-                  })}
+                    )}
+                  </div>
                 </div>
               )}
             </div>
