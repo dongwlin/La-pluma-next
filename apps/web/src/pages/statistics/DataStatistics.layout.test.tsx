@@ -32,12 +32,17 @@ const mocks = vi.hoisted(() => ({
   dismissNotice: vi.fn(),
 }))
 
+const availability = vi.hoisted(() => ({ available: true, message: '' }))
+
 vi.mock('@/features/device-mirror', () => ({
   DeviceMonitorLayout: ({ children }: { children: ReactNode }) => children,
 }))
 
 vi.mock('@/features/runtime-status', () => ({
-  useAutomationAvailability: () => ({ isAvailable: true, unavailableMessage: '' }),
+  useAutomationAvailability: () => ({
+    isAvailable: availability.available,
+    unavailableMessage: availability.message,
+  }),
 }))
 
 vi.mock('framer-motion', async () => {
@@ -224,6 +229,8 @@ describe('DataStatistics layout surfaces', () => {
       return 1
     })
     window.cancelAnimationFrame = vi.fn()
+    availability.available = true
+    availability.message = ''
     Object.values(mocks).forEach(mock => mock.mockReset())
     mocks.getAllOperators.mockResolvedValue({ success: true, data: [] })
     mocks.getDepotData.mockResolvedValue({
@@ -310,6 +317,27 @@ describe('DataStatistics layout surfaces', () => {
 
     await selectTab('仓库识别')
     expect(recognitionLabels()).toEqual(['识别'])
+  })
+
+  it('disables both recognition actions with a reason while automation is unavailable', async () => {
+    availability.available = false
+    availability.message = '后端服务暂不可用，请确认服务已启动'
+
+    await renderPage()
+    await flush()
+
+    const recognition = findExactButton('识别')
+    const materials = findExactButton('获取材料数据')
+    expect(recognition?.disabled).toBe(true)
+    expect(materials?.disabled).toBe(true)
+    expect(container.querySelector('[aria-label="识别：后端服务暂不可用，请确认服务已启动"]')).not.toBeNull()
+    expect(container.querySelector('[aria-label="获取材料数据：后端服务暂不可用，请确认服务已启动"]')).not.toBeNull()
+
+    await selectTab('仓库识别')
+
+    const depotRecognition = findExactButton('识别')
+    expect(depotRecognition?.disabled).toBe(true)
+    expect(depotRecognition?.closest('[aria-label="识别：后端服务暂不可用，请确认服务已启动"]')).not.toBeNull()
   })
 
   it('shows operator KPI values derived from the owned snapshot and the trusted catalogue', async () => {

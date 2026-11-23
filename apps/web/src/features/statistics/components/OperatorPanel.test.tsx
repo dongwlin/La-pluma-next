@@ -676,6 +676,20 @@ describe('OperatorPanel coverage and query states', () => {
       expect(container.querySelector('[aria-label="识别：后端服务暂不可用，请确认服务已启动"]')).toBeNull()
       expect(running?.closest('[aria-label]')).toBeNull()
     })
+
+    it('keeps the running materials refresh unwrapped while the backend is unavailable', async () => {
+      availability.available = false
+      availability.message = '后端服务暂不可用，请确认服务已启动'
+
+      await render(command({ isRunning: true, activeKind: 'materials' }))
+
+      const running = findButtonByText('正在获取')
+      expect(running).toBeDefined()
+      expect(running?.disabled).toBe(true)
+      expect(running?.getAttribute('aria-busy')).toBe('true')
+      expect(container.querySelector('[aria-label="获取材料数据：后端服务暂不可用，请确认服务已启动"]')).toBeNull()
+      expect(running?.closest('[aria-label]')).toBeNull()
+    })
   })
 
   it('renders a bare 24px lucide icon in the empty state', async () => {

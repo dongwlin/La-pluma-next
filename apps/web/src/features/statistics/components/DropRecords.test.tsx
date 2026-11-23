@@ -392,7 +392,7 @@ describe('DropRecords read states', () => {
     expect(container.textContent).not.toContain('正在读取新周期')
   })
 
-  it('sizes the period switch status icon and keeps the refresh button idle', async () => {
+  it('marks the period switch status icon decorative and keeps the refresh button idle', async () => {
     await act(async () => root.render(
       <DropRecords
         dropStatistics={{
