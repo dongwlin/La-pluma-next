@@ -410,7 +410,9 @@ describe('DropRecords read states', () => {
       />,
     ))
 
-    expect(container.querySelector('[role="status"] svg')?.classList.contains('size-4')).toBe(true)
+    const statusIcon = container.querySelector('[role="status"] svg')
+    expect(statusIcon).not.toBeNull()
+    expect(statusIcon?.getAttribute('aria-hidden')).toBe('true')
     expect(container.textContent).toContain('正在读取新周期')
     expect(container.textContent).not.toContain('正在刷新')
   })

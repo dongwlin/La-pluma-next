@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import {
   getOperatorAvatarUrl,
@@ -6,6 +6,7 @@ import {
   operatorCatalogWithSourceQueryOptions,
   useItemIconCacheVersion,
 } from '@/features/game-data'
+import { useAutomationAvailability } from '@/features/runtime-status'
 import { motion, useReducedMotion } from 'framer-motion'
 import { ArrowUp, LoaderCircle, RotateCcw, UserRound, Users } from 'lucide-react'
 import { Badge } from '@/shared/ui/badge'
@@ -34,6 +35,7 @@ import { describeOperBoxRecognitionHint } from '../model/operatorRecognition'
 import { usePanelScrollTop } from '../hooks/usePanelScrollTop'
 import OperatorFilterMenu, { type FilterMenuOption } from './OperatorFilterMenu'
 import StatisticsQueryError from './StatisticsQueryError'
+import UnavailableAction from './UnavailableAction'
 import type { StatisticsCommands } from '../hooks/useStatisticsCommands'
 import type { OpenMenu } from '../types'
 
@@ -124,6 +126,7 @@ interface OperatorPanelProps {
 
 export default function OperatorPanel({ isActive, command }: OperatorPanelProps) {
   const shouldReduceMotion = useReducedMotion()
+  const { isAvailable, unavailableMessage } = useAutomationAvailability()
   const {
     setScrollNode,
     setContentBandNode,
@@ -227,6 +230,12 @@ export default function OperatorPanel({ isActive, command }: OperatorPanelProps)
 
   const isRecognizing = command.activeKind === 'operbox' && command.isRunning
   const isFetchingMaterials = command.activeKind === 'materials' && command.isRunning
+  const unavailableReason = !isAvailable ? unavailableMessage : ''
+  const withUnavailableHint = (action: string, node: ReactNode) => (
+    unavailableReason
+      ? <UnavailableAction action={action} reason={unavailableReason}>{node}</UnavailableAction>
+      : node
+  )
   const hasOperBoxRows = Boolean(operBoxData?.data && operBoxData.data.length > 0)
   const showLoading = operatorDataLoading && !hasOperBoxRows
   const showErrorPlaceholder = !showLoading && Boolean(operatorDataError) && !hasOperBoxRows
@@ -268,25 +277,46 @@ export default function OperatorPanel({ isActive, command }: OperatorPanelProps)
             干员识别
           </CardTitle>
           <CardAction className="flex flex-wrap items-center justify-end gap-2 max-sm:col-span-2 max-sm:col-start-1 max-sm:row-span-1 max-sm:row-start-2 max-sm:w-full max-sm:justify-start max-sm:justify-self-stretch">
-            <Button
-              onClick={command.fetchMaterials}
-              disabled={command.isRunning || isFetchingMaterials}
-              aria-busy={isFetchingMaterials || undefined}
-              variant="outline"
-            >
-              {isFetchingMaterials
-                ? <><LoaderCircle className="animate-spin" aria-hidden="true" />正在获取</>
-                : '获取材料数据'}
-            </Button>
-            <Button
-              onClick={() => command.startRecognition('operbox')}
-              disabled={command.isRunning || isRecognizing}
-              aria-busy={isRecognizing || undefined}
-            >
-              {isRecognizing
-                ? <><LoaderCircle className="animate-spin" aria-hidden="true" />正在执行</>
-                : command.actionLabel('operbox')}
-            </Button>
+            {isFetchingMaterials
+              ? (
+                <Button
+                  onClick={command.fetchMaterials}
+                  disabled
+                  aria-busy
+                  variant="outline"
+                >
+                  <LoaderCircle className="animate-spin" aria-hidden="true" />
+                  正在获取
+                </Button>
+              )
+              : withUnavailableHint('获取材料数据', (
+                <Button
+                  onClick={command.fetchMaterials}
+                  disabled={!isAvailable || command.isRunning}
+                  variant="outline"
+                >
+                  获取材料数据
+                </Button>
+              ))}
+            {isRecognizing
+              ? (
+                <Button
+                  onClick={() => command.startRecognition('operbox')}
+                  disabled
+                  aria-busy
+                >
+                  <LoaderCircle className="animate-spin" aria-hidden="true" />
+                  正在执行
+                </Button>
+              )
+              : withUnavailableHint(command.actionLabel('operbox'), (
+                <Button
+                  onClick={() => command.startRecognition('operbox')}
+                  disabled={!isAvailable || command.isRunning}
+                >
+                  {command.actionLabel('operbox')}
+                </Button>
+              ))}
           </CardAction>
         </CardHeader>
 

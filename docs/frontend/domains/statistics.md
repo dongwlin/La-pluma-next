@@ -78,7 +78,7 @@ DataStatistics（app-page > app-stack-section > StatisticsWorkspace）
 
 | 模块 | 导出 | 规则 |
 | --- | --- | --- |
-| `model/operatorFilters.ts` | `selectOperators`、`buildOwnedOperatorIdSet`、`buildKnownOperatorIdSet`、`isOwnedOperator`、`isUnknownOperator`、`hasActiveOperatorFilters` 等 | 阿米娅形态共享持有状态；未拥有视图只收录识别快照确认未拥有的干员，快照未覆盖的按未知展示且不计入未拥有；未拥有视图忽略精英/潜能筛选；非已拥有视图按星级与中文名排序 |
+| `model/operatorFilters.ts` | `selectOperators`、`buildOwnedOperatorIdSet`、`buildKnownOperatorIdSet`、`isOwnedOperator`、`isUnknownOperator`、`hasActiveOperatorFilters`、`isProfessionFilterUnavailable` 等 | `catalogSource` 取 `'remote' \| 'snapshot'`，由 `game-data` 的目录 Query 提供；远端目录不可用或为空时回退到识别快照；阿米娅形态共享持有状态；未拥有视图只收录识别快照确认未拥有的干员，快照未覆盖的按未知展示且不计入未拥有；未拥有视图忽略精英/潜能筛选；非已拥有视图按星级与中文名排序；快照源下职业筛选不可用（结果为空的空态并给出专属说明「快照目录不含职业信息」），清除筛选后恢复 |
 | `model/operatorRecognition.ts` | `describeOperBoxRecognitionHint` | 完整识别不占位；旧快照缺少识别目录时提示未列出的干员拥有状态未确认 |
 | `model/depotSummary.ts` | `summarizeDepot`、`summarizeDepotTypes`、`getDepotTypeLabel` | 分类按库存件数降序，件数相同保留首次出现顺序；`itemCount` 用服务端快照值；空快照返回全零 |
 | `model/dropRecords.ts` | `sortDropItems`、`sortDropStages`、`DROP_ITEM_DISPLAY_LIMIT` | 材料按数量、关卡按战斗次数降序；并列保留服务端键顺序；最多展示 20 种材料 |

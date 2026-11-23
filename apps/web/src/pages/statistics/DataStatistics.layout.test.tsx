@@ -36,6 +36,10 @@ vi.mock('@/features/device-mirror', () => ({
   DeviceMonitorLayout: ({ children }: { children: ReactNode }) => children,
 }))
 
+vi.mock('@/features/runtime-status', () => ({
+  useAutomationAvailability: () => ({ isAvailable: true, unavailableMessage: '' }),
+}))
+
 vi.mock('framer-motion', async () => {
   const React = await import('react')
   type MotionTestProps = Record<string, unknown> & { children?: ReactNode }

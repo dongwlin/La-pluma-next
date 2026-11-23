@@ -21,6 +21,15 @@ const mocks = vi.hoisted(() => ({
 
 const motionState = vi.hoisted(() => ({ reduceMotion: true }))
 
+const availability = vi.hoisted(() => ({ available: true, message: '' }))
+
+vi.mock('@/features/runtime-status', () => ({
+  useAutomationAvailability: () => ({
+    isAvailable: availability.available,
+    unavailableMessage: availability.message,
+  }),
+}))
+
 const fakeRect = (top: number, bottom: number) => ({
   top,
   bottom,
@@ -156,6 +165,14 @@ const clickButton = async (button: HTMLButtonElement) => {
   })
 }
 
+const focus = async (element: HTMLElement) => {
+  await act(async () => element.focus())
+  await flush()
+}
+
+const findButtonByText = (text: string) => Array.from(container.querySelectorAll<HTMLButtonElement>('button'))
+  .find(button => button.textContent?.trim() === text)
+
 const commitGate = async () => {
   await act(async () => {
     hostNode().dispatchEvent(new Event('scroll'))
@@ -274,6 +291,8 @@ describe('OperatorPanel coverage and query states', () => {
     mocks.getOperBoxData.mockResolvedValue({ success: true, data: null })
     mocks.getDepotData.mockResolvedValue({ success: true, data: null })
     motionState.reduceMotion = true
+    availability.available = true
+    availability.message = ''
     onlineManager.setOnline(true)
     client = createQueryClient()
     container = document.createElement('div')
@@ -608,6 +627,55 @@ describe('OperatorPanel coverage and query states', () => {
 
     expect(running).toBeDefined()
     expect(running!.querySelector('svg')).not.toBeNull()
+  })
+
+  describe('OperatorPanel automation availability', () => {
+    it('disables the recognition and materials actions with a focusable reason', async () => {
+      availability.available = false
+      availability.message = '后端服务暂不可用，请确认服务已启动'
+
+      await render()
+
+      const recognition = findButtonByText('识别')
+      const materials = findButtonByText('获取材料数据')
+
+      expect(recognition?.disabled).toBe(true)
+      expect(materials?.disabled).toBe(true)
+
+      const recognitionHint = container.querySelector<HTMLElement>(
+        '[aria-label="识别：后端服务暂不可用，请确认服务已启动"]',
+      )
+      const materialsHint = container.querySelector<HTMLElement>(
+        '[aria-label="获取材料数据：后端服务暂不可用，请确认服务已启动"]',
+      )
+      expect(recognitionHint).not.toBeNull()
+      expect(materialsHint).not.toBeNull()
+      expect(recognitionHint?.tabIndex).toBe(0)
+
+      await focus(recognitionHint!)
+      expect(document.querySelector('[role="tooltip"]')?.textContent)
+        .toBe('后端服务暂不可用，请确认服务已启动')
+    })
+
+    it('leaves both actions enabled without a hint while the backend is available', async () => {
+      await render()
+
+      expect(findButtonByText('识别')?.disabled).toBe(false)
+      expect(findButtonByText('获取材料数据')?.disabled).toBe(false)
+      expect(container.querySelector('[aria-label$="后端服务暂不可用，请确认服务已启动"]')).toBeNull()
+    })
+
+    it('keeps the running recognition action unwrapped while the backend is unavailable', async () => {
+      availability.available = false
+      availability.message = '后端服务暂不可用，请确认服务已启动'
+
+      await render(command({ isRunning: true, activeTask: 'operbox', activeKind: 'operbox' }))
+
+      const running = findButtonByText('正在执行')
+      expect(running?.disabled).toBe(true)
+      expect(container.querySelector('[aria-label="识别：后端服务暂不可用，请确认服务已启动"]')).toBeNull()
+      expect(running?.closest('[aria-label]')).toBeNull()
+    })
   })
 
   it('renders a bare 24px lucide icon in the empty state', async () => {

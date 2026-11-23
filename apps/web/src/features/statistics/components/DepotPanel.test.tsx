@@ -18,6 +18,15 @@ const mocks = vi.hoisted(() => ({
 
 const motionState = vi.hoisted(() => ({ reduceMotion: true }))
 
+const availability = vi.hoisted(() => ({ available: true, message: '' }))
+
+vi.mock('@/features/runtime-status', () => ({
+  useAutomationAvailability: () => ({
+    isAvailable: availability.available,
+    unavailableMessage: availability.message,
+  }),
+}))
+
 const fakeRect = (top: number, bottom: number) => ({
   top,
   bottom,
@@ -71,7 +80,7 @@ const command = (overrides: Partial<StatisticsCommands> = {}): StatisticsCommand
   isRunning: false,
   activeTask: null,
   activeKind: null,
-  actionLabel: () => '立即执行',
+  actionLabel: () => '识别',
   startRecognition: vi.fn(),
   fetchMaterials: vi.fn(),
   ...overrides,
@@ -130,6 +139,14 @@ const clickButton = async (button: HTMLButtonElement) => {
     button.click()
   })
 }
+
+const focus = async (element: HTMLElement) => {
+  await act(async () => element.focus())
+  await flush()
+}
+
+const findButtonByText = (text: string) => Array.from(container.querySelectorAll<HTMLButtonElement>('button'))
+  .find(button => button.textContent?.trim() === text)
 
 const renderWithItems = async () => {
   mocks.getDepotData.mockResolvedValue({ success: true, data: depotFixture })
@@ -196,6 +213,8 @@ describe('DepotPanel view states', () => {
     mocks.getDepotData.mockReset()
     mocks.getDepotData.mockResolvedValue({ success: true, data: null })
     motionState.reduceMotion = true
+    availability.available = true
+    availability.message = ''
     onlineManager.setOnline(true)
     client = createQueryClient()
     container = document.createElement('div')
@@ -255,6 +274,47 @@ describe('DepotPanel view states', () => {
     const decorativeIcons = Array.from(title?.parentElement?.querySelectorAll('svg') ?? [])
       .filter(icon => icon.closest('button') === null)
     expect(decorativeIcons).toEqual([])
+  })
+
+  describe('DepotPanel automation availability', () => {
+    it('disables the recognition action with a focusable reason', async () => {
+      availability.available = false
+      availability.message = '后端服务暂不可用，请确认服务已启动'
+
+      await render()
+
+      const recognition = findButtonByText('识别')
+      expect(recognition?.disabled).toBe(true)
+
+      const hint = container.querySelector<HTMLElement>(
+        '[aria-label="识别：后端服务暂不可用，请确认服务已启动"]',
+      )
+      expect(hint).not.toBeNull()
+      expect(hint?.tabIndex).toBe(0)
+
+      await focus(hint!)
+      expect(document.querySelector('[role="tooltip"]')?.textContent)
+        .toBe('后端服务暂不可用，请确认服务已启动')
+    })
+
+    it('leaves the action enabled without a hint while the backend is available', async () => {
+      await render()
+
+      expect(findButtonByText('识别')?.disabled).toBe(false)
+      expect(container.querySelector('[aria-label$="后端服务暂不可用，请确认服务已启动"]')).toBeNull()
+    })
+
+    it('keeps the running action unwrapped while the backend is unavailable', async () => {
+      availability.available = false
+      availability.message = '后端服务暂不可用，请确认服务已启动'
+
+      await render(command({ isRunning: true, activeTask: 'depot', activeKind: 'depot' }))
+
+      const running = findButtonByText('正在执行')
+      expect(running?.disabled).toBe(true)
+      expect(container.querySelector('[aria-label="识别：后端服务暂不可用，请确认服务已启动"]')).toBeNull()
+      expect(running?.closest('[aria-label]')).toBeNull()
+    })
   })
 
   it('merges the top item and latest recognition time into one KPI entry', async () => {

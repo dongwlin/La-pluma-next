@@ -1,10 +1,11 @@
-import { useMemo, useState } from 'react'
+import { useMemo, useState, type ReactNode } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import {
   depotQueryOptions,
   getItemIconUrl,
   useItemIconCacheVersion,
 } from '@/features/game-data'
+import { useAutomationAvailability } from '@/features/runtime-status'
 import { motion, useReducedMotion } from 'framer-motion'
 import { ArrowUp, LoaderCircle, Package as PackageIcon } from 'lucide-react'
 import { Badge } from '@/shared/ui/badge'
@@ -14,6 +15,7 @@ import { EmptyState, Loading } from '@/shared/components'
 import { getDepotTypeLabel, summarizeDepot } from '../model/depotSummary'
 import { usePanelScrollTop } from '../hooks/usePanelScrollTop'
 import StatisticsQueryError from './StatisticsQueryError'
+import UnavailableAction from './UnavailableAction'
 import type { StatisticsCommands } from '../hooks/useStatisticsCommands'
 
 const DEPOT_READ_ERROR = '暂时无法读取仓库数据，请检查服务连接后重试。'
@@ -30,6 +32,7 @@ interface DepotPanelProps {
 
 export default function DepotPanel({ isActive, command }: DepotPanelProps) {
   const shouldReduceMotion = useReducedMotion()
+  const { isAvailable, unavailableMessage } = useAutomationAvailability()
   const {
     setScrollNode,
     setContentBandNode,
@@ -59,6 +62,12 @@ export default function DepotPanel({ isActive, command }: DepotPanelProps) {
   if (!isActive) return null
 
   const isRecognizing = command.activeKind === 'depot' && command.isRunning
+  const unavailableReason = !isAvailable ? unavailableMessage : ''
+  const withUnavailableHint = (action: string, node: ReactNode) => (
+    unavailableReason
+      ? <UnavailableAction action={action} reason={unavailableReason}>{node}</UnavailableAction>
+      : node
+  )
   const latestRecognition = depotData?.timestamp
     ? new Date(depotData.timestamp).toLocaleString('zh-CN')
     : '-'
@@ -86,15 +95,25 @@ export default function DepotPanel({ isActive, command }: DepotPanelProps) {
             仓库识别
           </CardTitle>
           <CardAction>
-            <Button
-              onClick={() => command.startRecognition('depot')}
-              disabled={command.isRunning || isRecognizing}
-              aria-busy={isRecognizing || undefined}
-            >
-              {isRecognizing
-                ? <><LoaderCircle className="animate-spin" aria-hidden="true" />正在执行</>
-                : command.actionLabel('depot')}
-            </Button>
+            {isRecognizing
+              ? (
+                <Button
+                  onClick={() => command.startRecognition('depot')}
+                  disabled
+                  aria-busy
+                >
+                  <LoaderCircle className="animate-spin" aria-hidden="true" />
+                  正在执行
+                </Button>
+              )
+              : withUnavailableHint(command.actionLabel('depot'), (
+                <Button
+                  onClick={() => command.startRecognition('depot')}
+                  disabled={!isAvailable || command.isRunning}
+                >
+                  {command.actionLabel('depot')}
+                </Button>
+              ))}
           </CardAction>
         </CardHeader>
 
