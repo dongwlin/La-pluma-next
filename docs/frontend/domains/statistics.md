@@ -27,7 +27,7 @@
 | 仓库分类标签、分组与概览 | `features/statistics/model/depotSummary.ts` | 纯模型 |
 | 掉落材料/关卡排序与展示上限 | `features/statistics/model/dropRecords.ts` | 纯模型 |
 | 识别/材料命令生命周期 | `model/commandOwner.ts` + `hooks/useStatisticsCommands.ts` | 所有者是模块级单例；hook 只订阅、投影并写回解析快照 |
-| 四类资源读取 | `game-data` 与 `statistics` 的 query 定义 | key、失效作用域与重取策略均未变 |
+| 四类资源读取 | `game-data` 与 `statistics` 的 query 定义 | key、统计页订阅的失效作用域与重取策略均未变 |
 
 维护约束：
 
@@ -52,7 +52,7 @@ DataStatistics（app-page > app-stack-section > StatisticsWorkspace）
 - **当前 tab** 由 URL 查询串 `?tab=` 决定，是跨页深链与浏览器前进/后退的唯一来源；缺失或未知值回落默认的 `operbox`，默认值不写入查询串。切换 tab 用 `replace` 更新当前历史项，不在历史里堆积同页 tab 记录；筛选等面板局部状态仍留在面板。总览掉落摘要使用 `statisticsTabRoute('drops')` 直达掉落记录。
 - **识别/材料命令**只有一份页面投影：`useStatisticsCommands()` 在工作区调用一次 `useStatisticsCommandState()`，把 `isRunning`、`activeTask`、`activeKind`、按钮文案与两个动作投影给干员/仓库面板。面板不创建第二份状态机；按钮的 loading/disabled 都从该投影派生，跨面板互斥仍由命令所有者的单飞保证。
 - **解析快照**由该 hook 写回 `gameDataKeys.resource('depot')` / `('operbox')`；跨域失效仍由命令所有者发布，工作区只订阅 `depot`/`operbox`/`catalog`/`drops` 四个作用域并按 key 失效。
-- **掉落视图** `DropRecords` 只接收 `dropStatistics`、`dropDays`、`setDropDays`、`onRefresh`、loading 与错误文案；周期状态与 Query 归 `DropPanel`。
+- **掉落视图** `DropRecords` 除 `dropStatistics`、`dropDays`、`setDropDays`、`onRefresh` 外，还接收 `isLoading`、`isPlaceholderData`、`fetchStatus` 与 `error`；周期状态、回退与 Query 归 `DropPanel`。
 - 面板可调用所属领域 hooks；筛选菜单的定位、焦点与键盘规则不外溢到面板。
 - 工作区不保存资源副本、loading 或 request id；四路 Query 的启用不依赖当前 tab。
 
@@ -62,7 +62,7 @@ DataStatistics（app-page > app-stack-section > StatisticsWorkspace）
 | --- | --- |
 | 仓库快照 | 独立错误面板，不阻塞干员/掉落；重试按钮 `refetch` |
 | 持有干员、干员目录 | 合并为干员面板错误；重试 `refetch` |
-| 掉落统计 | 独立错误面板；同 key 刷新失败保留旧数据；天数切换期间用旧周期占位，新 key 首次失败只展示错误，不伪造上个周期数据 |
+| 掉落统计 | 读取失败独立展示，不阻塞其他面板：无数据时显示错误面板与重试；已有数据时同 key 刷新失败保留旧数据并显示刷新失败提示。切换天数分两种情形：目标周期尚无缓存时用 `keepPreviousData` 保留旧周期数据占位，工具栏显示“正在读取新周期...”；目标周期已有缓存但已过期时直接显示该周期缓存并在后台重取，`isPlaceholderData` 为假，刷新按钮显示“正在刷新...”。已有可渲染数据时，读取因离线暂停会显示“等待网络恢复...”；首屏离线且无任何数据时不进入该工具栏，按空态展示并提供「重新加载」。两种切换读取在读取结束后失败都自动回退到最近成功周期并 toast 提示，回退过程不闪现错误面；只有首次加载失败（没有可回退周期）才保留错误面板与重试 |
 
 ### 3. 筛选菜单规则
 
@@ -93,8 +93,8 @@ DataStatistics（app-page > app-stack-section > StatisticsWorkspace）
 
 ### 6. 兼容与维护约束
 
-- 四路 Query key、失效作用域、`staleTime`/`gcTime`/重试策略未变；首屏仍同时启动四路读取。
-- 识别/材料命令的端点、幂等键、超时与失效发布未变；材料刷新仍不重读干员目录。
+- 四路 Query key、统计页订阅的失效作用域、`staleTime`/`gcTime`/重试策略未变；首屏仍同时启动四路读取。
+- 识别/材料命令的端点、幂等键与超时未变，发布时机与“成功后发布”规则也未变；发布作用域以《共享资源归属与失效端口》为准，其中干员识别成功会发布 `catalog`，仓库识别与材料刷新不会（见「识别命令」第 5 节）。材料刷新仍不重读干员目录。
 - 保持 tab/panel id、`aria-controls`/`aria-labelledby`、表单 `id` 与默认态视觉；掉落记录视图保留 `h2` → 两个 `h3` 的标题层级。筛选菜单、tab 导航、URL 同步与局部状态由下列回归测试覆盖。
 
 ## 识别命令
@@ -170,7 +170,8 @@ DataStatistics（app-page > app-stack-section > StatisticsWorkspace）
 
 - **写成功才发布。** 命令失败、Run 失败、解析失败与超时都不发布。
 - **快照是权威结果。** 页面把解析出的完整快照写入 `game-data` 的 `depot`/`operbox` key；跨域接收方各自刷新，不复制页面副本。
-- **发布自身资源会带来一次后台重读。** 统计页订阅 `depot`/`operbox`，收到自己发布的失效后会按默认 Query 策略重取一次；服务端此时已保存解析结果，因此不会用旧快照覆盖新结果。若页面在 Activity 隐藏期间完成，恢复时由失效 hook 补发一次并重取。
+- **自身发布不重读刚写入的 key。** 页面先把解析快照写入 `game-data` 的 `depot`/`operbox` key（写入前取消该 key 的在途读取），所有者随后才发布失效，并在发布中携带 `detail: { authoritativeSnapshot: true }`；统计页只对同时满足 `cause: 'recognition'` 与该标记的发布跳过 `depot`/`operbox` 对应的失效，因此不会立即重读自己刚写入的资源。若快照写入失败，发布不带该标记，统计页照常按 key 失效并重取；服务端已保存解析结果，重取得到的是同一份新快照。若页面在 Activity 隐藏期间完成，恢复时由失效 hook 补发一次不带该标记的合成事件，订阅的四个作用域各失效一次。
+- **`catalog` 不跳过。** 干员识别成功后所有者还会发布 `catalog`（仓库识别不发布），统计页只跳过 `depot`/`operbox`，`catalog` 仍按 key 失效重取。重取时远端目录不可用或为空才回退到 operbox 快照的 `allOpers`，且仅在该快照存在且带 `allOpers` 时有内容：快照写入成功时读到的就是本次识别快照，写入失败时回退读取 Query 缓存中的既有快照、缓存缺失才单次读取；旧服务端快照或未提供识别目录的快照不含 `allOpers`，此时回退为空。远端失败且回退为空时 `catalog` 读取失败，远端成功但为空且回退为空时返回空目录；完整回退链见《Query 缓存与键规范》。各命令的完整作用域映射见《共享资源归属与失效端口》。
 - **材料刷新不再触发目录重读。** 干员目录端点不包含材料进度；材料刷新的影响由 `materials` 作用域表达，养成页据此重读候选与计数。
 
 ### 6. 页面与生命周期
@@ -200,7 +201,7 @@ DataStatistics（app-page > app-stack-section > StatisticsWorkspace）
 - 解析轮询：`data: null`、失败信封与坏载荷视为“尚未可用”，超时前继续轮询；取消只结束本地等待。
 - 解析成功才写入 `game-data` 快照并发布失效；命令失败、Run 失败、解析失败与超时都不发布。
 - 当前 tab 跟随 URL：`?tab=drops` 直接打开掉落记录，未知取值回落默认 tab，选择默认 tab 时移除查询串。
-- 非当前 tab 面板仍启动首屏读取（`null` 渲染）；掉落周期切换进入 Query key，首次失败只展示错误，不伪造上个周期数据。
+- 非当前 tab 面板仍启动首屏读取（`null` 渲染）；掉落周期切换进入 Query key，目标周期无缓存时用 `keepPreviousData` 占位并显示“正在读取新周期...”，已有缓存但过期时显示该周期缓存并在后台重取、刷新按钮显示“正在刷新...”，读取失败时自动回退到最近成功周期并 toast 提示、回退过程不闪现错误面；只有首次加载失败（没有可回退周期）才显示错误面板与重试。
 
 ### 验证命令
 
