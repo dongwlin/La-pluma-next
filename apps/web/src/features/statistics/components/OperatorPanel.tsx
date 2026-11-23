@@ -41,7 +41,7 @@ const OPER_BOX_READ_ERROR = '暂时无法读取干员识别结果，请检查服
 const OPERATOR_CATALOG_READ_ERROR = '暂时无法读取干员资料，请检查资源状态后重试。'
 
 const taskPanelClass = (isActive: boolean) =>
-  `data-statistics-task-card gap-0 p-0! transition-colors${isActive ? ' bg-info/5 ring-info/30' : ''}`
+  `gap-0 p-0! transition-colors${isActive ? ' bg-primary/5 ring-primary/30' : ''}`
 
 const statCardClass = 'data-statistics-kpi'
 const coverageUnavailable = '—'
@@ -310,7 +310,7 @@ export default function OperatorPanel({ isActive, command }: OperatorPanelProps)
             <div className="app-stack-card">
               {showErrorBanner && readError}
               <div role="group" aria-label="干员数据概览">
-                <dl className="data-statistics-kpi-grid grid grid-cols-3">
+                <dl className="data-statistics-kpi-grid grid grid-cols-3 divide-x divide-border">
                   <div className={statCardClass}>
                     <dt className="text-xs text-muted-foreground">已识别</dt>
                     <dd className="mt-1 text-2xl font-semibold text-foreground">{ownedOperatorCount}</dd>
@@ -336,7 +336,7 @@ export default function OperatorPanel({ isActive, command }: OperatorPanelProps)
                       </p>
                     )}
                     {recognitionHint && (
-                      <p role="status" className="mt-1 text-xs leading-5 text-warning">
+                      <p role="status" className="mt-1 text-xs leading-5 text-warning-text">
                         {recognitionHint}
                       </p>
                     )}

@@ -101,6 +101,13 @@ const depotRegion = () => container.querySelector<HTMLElement>('[role="region"][
 
 const depotList = () => container.querySelector<HTMLElement>('[role="list"][aria-label="仓库物品清单"]')
 
+const kpiGroup = () => container.querySelector<HTMLElement>('[role="group"][aria-label="仓库数据概览"]')
+
+const kpiEntries = () => Array.from(kpiGroup()?.children ?? [])
+
+const kpiValue = (label: string) => Array.from(kpiGroup()?.querySelectorAll('p') ?? [])
+  .find(item => item.textContent === label)?.nextElementSibling?.textContent?.trim()
+
 const backToTopButton = () =>
   Array.from(container.querySelectorAll<HTMLButtonElement>('button'))
     .find(button => button.textContent?.trim() === '回到顶部')
@@ -209,11 +216,9 @@ describe('DepotPanel view states', () => {
     await render(command({ isRunning: true, activeKind: 'materials' }))
 
     expect(container.textContent).toContain('还没有仓库识别结果')
+    expect(container.textContent).toContain('完成一次仓库识别后，物品清单会显示在这里。')
     expect(container.querySelector('[role="status"]')).toBeNull()
-
-    const icon = container.querySelector('.app-empty-state-icon')
-    expect(icon?.querySelector('svg')).not.toBeNull()
-    expect(icon?.querySelector('.icon-well')).toBeNull()
+    expect(container.querySelector('[aria-hidden="true"] > svg')).not.toBeNull()
   })
 
   it('drives the loading surface from the query alone', async () => {
@@ -247,26 +252,33 @@ describe('DepotPanel view states', () => {
     expect(title?.getAttribute('role')).toBe('heading')
     expect(title?.getAttribute('aria-level')).toBe('2')
     expect(container.textContent).not.toContain('汇总物品库存、材料分类与数量')
-    expect(region?.querySelector('.icon-well')).toBeNull()
+    const decorativeIcons = Array.from(title?.parentElement?.querySelectorAll('svg') ?? [])
+      .filter(icon => icon.closest('button') === null)
+    expect(decorativeIcons).toEqual([])
   })
 
-  it('merges the top item and latest recognition time into one two-column KPI', async () => {
+  it('merges the top item and latest recognition time into one KPI entry', async () => {
     mocks.getDepotData.mockResolvedValue({ success: true, data: depotFixture })
 
     await render()
 
-    const group = container.querySelector('[role="group"]')
+    const group = kpiGroup()
     expect(group?.getAttribute('aria-label')).toBe('仓库数据概览')
 
-    const cells = Array.from(container.querySelectorAll<HTMLElement>('.data-statistics-kpi'))
-    expect(cells).toHaveLength(5)
+    const entries = kpiEntries()
+    expect(entries).toHaveLength(5)
 
-    const merged = cells[cells.length - 1]
-    expect(merged?.classList.contains('col-span-2')).toBe(true)
+    expect(kpiValue('物品种类')).toBe('2')
+    expect(kpiValue('材料种类')).toBe('2')
+    expect(kpiValue('识别分类')).toBe('1')
+    expect(kpiValue('库存总量')).toBe('21')
+
+    const merged = entries[entries.length - 1]
     expect(merged?.textContent).toContain('库存最多')
     expect(merged?.textContent).toContain('固源岩')
     expect(merged?.textContent).toContain('最近识别')
     expect(merged?.textContent).toContain(new Date(depotFixture.timestamp).toLocaleString('zh-CN'))
+    expect(merged?.querySelectorAll(':scope > div > div')).toHaveLength(2)
   })
 
   it('keeps the merged KPI filled when the snapshot carries no timestamp', async () => {
@@ -277,9 +289,8 @@ describe('DepotPanel view states', () => {
 
     await render()
 
-    const cells = Array.from(container.querySelectorAll<HTMLElement>('.data-statistics-kpi'))
-    expect(cells).toHaveLength(5)
-    expect(cells[cells.length - 1]?.textContent).toContain('最近识别-')
+    expect(kpiEntries()).toHaveLength(5)
+    expect(kpiEntries()[kpiEntries().length - 1]?.textContent).toContain('最近识别-')
   })
 
   it('renders read-only item and category chips as badges without hover affordance', async () => {
@@ -287,10 +298,13 @@ describe('DepotPanel view states', () => {
 
     await render()
 
-    expect(container.querySelector('.control-surface')).toBeNull()
+    const badges = Array.from(container.querySelectorAll<HTMLElement>('[data-slot="badge"]'))
+    expect(badges.length).toBeGreaterThan(0)
+    for (const badge of badges) {
+      expect(badge.closest('button, a, [role="button"]')).toBeNull()
+    }
 
-    const chips = Array.from(container.querySelectorAll<HTMLElement>('[data-slot="badge"]'))
-      .map(badge => badge.textContent)
+    const chips = badges.map(badge => badge.textContent)
 
     expect(chips).toContain('材料·2 种/21 件')
     expect(chips).toContain('材料')

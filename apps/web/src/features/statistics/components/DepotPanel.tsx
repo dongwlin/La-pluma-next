@@ -19,7 +19,7 @@ import type { StatisticsCommands } from '../hooks/useStatisticsCommands'
 const DEPOT_READ_ERROR = '暂时无法读取仓库数据，请检查服务连接后重试。'
 
 const taskPanelClass = (isActive: boolean) =>
-  `data-statistics-task-card gap-0 p-0! transition-colors${isActive ? ' bg-info/5 ring-info/30' : ''}`
+  `gap-0 p-0! transition-colors${isActive ? ' bg-primary/5 ring-primary/30' : ''}`
 
 const statCardClass = 'data-statistics-kpi'
 
@@ -126,7 +126,7 @@ export default function DepotPanel({ isActive, command }: DepotPanelProps) {
           {depotData && (
             <div className="app-stack-card">
               <div
-                className="data-statistics-kpi-grid grid grid-cols-2 md:grid-cols-3"
+                className="data-statistics-kpi-grid data-statistics-kpi-grid-depot grid grid-cols-2 md:grid-cols-3"
                 role="group"
                 aria-label="仓库数据概览"
               >
@@ -154,8 +154,8 @@ export default function DepotPanel({ isActive, command }: DepotPanelProps) {
                     {overview.totalCount.toLocaleString()}
                   </p>
                 </div>
-                <div className={`${statCardClass} col-span-2`}>
-                  <div className="grid grid-cols-2 gap-3">
+                <div className={`${statCardClass} data-statistics-kpi-split-cell col-span-2`}>
+                  <div className="data-statistics-kpi-split grid h-full grid-cols-2">
                     <div className="min-w-0">
                       <p className="text-xs text-muted-foreground">库存最多</p>
                       <p className="mt-1 truncate text-sm font-semibold text-foreground">

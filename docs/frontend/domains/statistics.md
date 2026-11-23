@@ -18,7 +18,7 @@
 | --- | --- | --- |
 | 页面壳与工作区组合 | `pages/statistics/DataStatistics.tsx` | 只渲染 `app-page`/`app-stack-section` 与工作区；工作区内容经 `DeviceMonitorLayout(standard)` 与设备画面并列，设备画面类名与材质归 device-mirror 域 |
 | 当前 tab、命令投影与失效订阅 | `features/statistics/components/StatisticsWorkspace.tsx` | 跨面板唯一容器；tab 由 URL 查询串 `?tab=` 承载 |
-| tab 分段控件的键盘与高亮 | `features/statistics/components/StatisticsTabs.tsx` | 组合共享 `SegmentedTabNav`：tablist/tab 语义、方向键移动焦点、Enter/Space 激活与流体高亮 |
+| tab 分段控件的键盘与高亮 | `features/statistics/components/StatisticsTabs.tsx` | 组合共享 `SegmentedTabNav`：tablist/tab 语义、方向键移动焦点、Enter/Space 激活与流体高亮；tab 只渲染标题文字，不传 `description`/`icon` |
 | 干员读取、筛选/排序、筛选菜单、头像缓存 | `features/statistics/components/OperatorPanel.tsx` | 读取 `operbox` 与 `catalog` 两路 Query |
 | 仓库读取、失败图标与分类展示 | `features/statistics/components/DepotPanel.tsx` | 汇总结果由纯模型派生 |
 | 掉落周期与掉落读取 | `features/statistics/components/DropPanel.tsx` | `DropRecords` 退为纯视图 |
@@ -34,6 +34,7 @@
 - 不改变四路读取的首屏时机、失效作用域与 Query key。
 - `activeTab` 只由 URL 查询串承载，不写入配置、Query 或 localStorage；筛选、排序与掉落统计周期仍不持久化。
 - 保持 tab/panel 的 `data-statistics-tab-*` / `data-statistics-panel-*` id、`aria-controls`/`aria-labelledby` 配对、表单 `id` 与默认态视觉；筛选菜单、tab 导航、URL 同步与局部状态由下列回归测试覆盖。
+- 两张面板的 KPI 分组用真实 1px 发丝线表达分隔：容器 `data-statistics-kpi-grid` 提供外框、圆角裁切与 `var(--card)` 底面，单元格 `data-statistics-kpi` 保持不透明的 `var(--card)`；不再用 `gap: 1px` 加背景色模拟分隔线。仓库 KPI 会在 `grid-cols-2` 与 `md:grid-cols-3` 两档换行，其行列分隔由 `data-statistics-kpi-grid-depot` 的 `nth-child` 规则按断点维护；干员 KPI 单行三格使用 `divide-x divide-border`。
 
 ### 2. 组合与状态边界
 
@@ -48,7 +49,7 @@ DataStatistics（app-page > app-stack-section > StatisticsWorkspace）
 ```
 
 - **三个面板随页面挂载而常驻**：三个 `SegmentedTabPanel` 都使用 `keepMounted`；非当前 tab 时面板在跑完 hooks 后返回 `null`，因此四路读取仍在页面首屏并行启动，与迁移前一致；tab 切换不会重建 Query 观察者，也不会丢失筛选、排序、打开菜单、掉落周期或图标缓存。面板的 `null` 渲染保证同一时刻只有当前 tab 的内容存在，文本查询与像素结果不变。
-- **tab 语义**：`StatisticsTabs` 使用共享 `SegmentedTabNav`，id 保持 `data-statistics-tab-*` 与 `data-statistics-panel-*`；方向键/Home/End 只移动 roving focus，Enter/Space 或点击才切换。隐藏面板保留 `role="tabpanel"` 与 `hidden` 属性。
+- **tab 语义**：`StatisticsTabs` 使用共享 `SegmentedTabNav`，id 保持 `data-statistics-tab-*` 与 `data-statistics-panel-*`；方向键/Home/End 只移动 roving focus，Enter/Space 或点击才切换。隐藏面板保留 `role="tabpanel"` 与 `hidden` 属性。tab 选项只传 `label`，不传共享组件仍支持的 `description`/`icon`，因此 tab 内不渲染副标题与图标。
 - **当前 tab** 由 URL 查询串 `?tab=` 决定，是跨页深链与浏览器前进/后退的唯一来源；缺失或未知值回落默认的 `operbox`，默认值不写入查询串。切换 tab 用 `replace` 更新当前历史项，不在历史里堆积同页 tab 记录；筛选等面板局部状态仍留在面板。总览掉落摘要使用 `statisticsTabRoute('drops')` 直达掉落记录。
 - **识别/材料命令**只有一份页面投影：`useStatisticsCommands()` 在工作区调用一次 `useStatisticsCommandState()`，把 `isRunning`、`activeTask`、`activeKind`、按钮文案与两个动作投影给干员/仓库面板。面板不创建第二份状态机；按钮的 loading/disabled 都从该投影派生，跨面板互斥仍由命令所有者的单飞保证。
 - **解析快照**由该 hook 写回 `gameDataKeys.resource('depot')` / `('operbox')`；跨域失效仍由命令所有者发布，工作区只订阅 `depot`/`operbox`/`catalog`/`drops` 四个作用域并按 key 失效。
