@@ -182,6 +182,9 @@ const click = async (element: HTMLElement) => {
 const findButton = (label: string) => Array.from(container.querySelectorAll<HTMLButtonElement>('button'))
   .find(button => button.textContent?.includes(label))
 
+const findExactButton = (label: string) => Array.from(container.querySelectorAll<HTMLButtonElement>('button'))
+  .find(button => button.textContent === label)
+
 const selectTab = async (tab: string) => {
   const target = Array.from(container.querySelectorAll<HTMLButtonElement>('[role="tab"]'))
     .find(button => button.textContent?.includes(tab))
@@ -308,6 +311,23 @@ describe('DataStatistics layout surfaces', () => {
     expect(container.querySelector('#data-statistics-panel-depot')?.hasAttribute('hidden')).toBe(false)
     expect(container.querySelector('#data-statistics-panel-operbox')?.hasAttribute('hidden')).toBe(true)
     expect(container.querySelector('#data-statistics-panel-depot')?.textContent).toContain('仓库识别')
+  })
+
+  it('uses one recognition label for both operator and depot panels', async () => {
+    mocks.getAllOperators.mockResolvedValue(catalogFixture)
+    mocks.getOperBoxData.mockResolvedValue(ownedOperatorFixture)
+
+    await renderPage()
+    await flush()
+
+    const recognitionLabels = () => Array.from(container.querySelectorAll<HTMLButtonElement>('button'))
+      .map(button => button.textContent)
+      .filter(label => label === '识别' || label === '立即执行' || label === '重试识别')
+
+    expect(recognitionLabels()).toEqual(['识别'])
+
+    await selectTab('仓库识别')
+    expect(recognitionLabels()).toEqual(['识别'])
   })
 
   it('keeps the drops tab and panel ids linked across visibility transitions', async () => {
@@ -598,7 +618,7 @@ describe('DataStatistics layout surfaces', () => {
     await renderPage()
     await flush()
     await selectTab('仓库识别')
-    await click(findButton('立即执行')!)
+    await click(findExactButton('识别')!)
     await flush()
 
     expect(mocks.executeCommand).toHaveBeenCalledOnce()
@@ -636,7 +656,7 @@ describe('DataStatistics layout surfaces', () => {
     await renderPage()
     await flush()
     await selectTab('干员识别')
-    await click(findButton('立即执行')!)
+    await click(findExactButton('识别')!)
 
     // 运行中按钮由领域命令状态切换为 loading/disabled，不会产生第二个设备命令。
     const runningButton = findButton('正在执行')
@@ -686,7 +706,7 @@ describe('DataStatistics layout surfaces', () => {
     expect(mocks.getOperBoxData).toHaveBeenCalledTimes(1)
 
     await selectTab('干员识别')
-    await click(findButton('立即执行')!)
+    await click(findExactButton('识别')!)
     await flush()
 
     expect(mocks.parseOperBoxData).toHaveBeenCalledOnce()
@@ -725,7 +745,7 @@ describe('DataStatistics layout surfaces', () => {
     expect(mocks.getAllOperators).toHaveBeenCalledTimes(1)
 
     await selectTab('干员识别')
-    await click(findButton('立即执行')!)
+    await click(findExactButton('识别')!)
     await flush()
 
     expect(mocks.getAllOperators).toHaveBeenCalledTimes(2)
@@ -748,7 +768,7 @@ describe('DataStatistics layout surfaces', () => {
     await renderPage()
     await flush()
     await selectTab('仓库识别')
-    await click(findButton('立即执行')!)
+    await click(findExactButton('识别')!)
 
     await act(async () => {
       await vi.advanceTimersByTimeAsync(30_500)
@@ -799,7 +819,7 @@ describe('DataStatistics layout surfaces', () => {
     await renderPage()
     await flush()
     await selectTab('仓库识别')
-    await click(findButton('立即执行')!)
+    await click(findExactButton('识别')!)
 
     await act(async () => {
       await vi.advanceTimersByTimeAsync(5 * 60_000 + 500)
@@ -807,9 +827,9 @@ describe('DataStatistics layout surfaces', () => {
     await flush()
 
     expect(mocks.executeCommand).toHaveBeenCalledTimes(1)
-    expect(findButton('重试识别')).toBeDefined()
+    expect(findExactButton('重新识别')).toBeDefined()
 
-    await click(findButton('重试识别')!)
+    await click(findExactButton('重新识别')!)
     await flush()
 
     // 继续的是同一逻辑命令：幂等键复用由 commandOwner 覆盖，页面只重新展示解析结果。

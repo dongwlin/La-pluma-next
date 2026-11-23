@@ -160,7 +160,7 @@ DataStatistics（app-page > app-stack-section > StatisticsWorkspace）
 | 解析超时/取消 | `parse` | 只重新轮询解析端点 | 否 |
 | 材料刷新超时/取消 | `null` | 没有 Run 身份可确认；用户主动重试是一次新的显式操作 | 是（仅用户显式触发） |
 
-页面对 `resumeMode=parse` 的按钮显示“继续解析”，对 `resumeMode=command` 显示“重试识别”；`failed` 且不可继续时恢复“立即执行”。所有者本身不自动重试任何阶段。
+页面对 `resumeMode=parse` 的按钮显示“继续解析”，对 `resumeMode=command` 显示“重新识别”，`failed` 且不可继续时恢复“识别”；仓库识别与干员识别使用同一组按钮文案。所有者本身不自动重试任何阶段。
 
 ### 5. 识别成功后的失效联动
 

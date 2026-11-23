@@ -3,14 +3,15 @@ import { useQuery } from '@tanstack/react-query'
 import {
   getOperatorAvatarUrl,
   operBoxQueryOptions,
-  operatorCatalogQueryOptions,
+  operatorCatalogWithSourceQueryOptions,
   useItemIconCacheVersion,
 } from '@/features/game-data'
 import { motion, useReducedMotion } from 'framer-motion'
-import { Download, LoaderCircle, Play, RotateCcw } from 'lucide-react'
-import Icons from '@/shared/components/Icons'
+import { Download, LoaderCircle, Play, RotateCcw, UserRound, Users } from 'lucide-react'
+import { Badge } from '@/shared/ui/badge'
 import { Button } from '@/shared/ui/button'
-import { Card } from '@/shared/ui/card'
+import { Card, CardAction, CardHeader, CardTitle } from '@/shared/ui/card'
+import { Skeleton } from '@/shared/ui/skeleton'
 import { EmptyState, Loading } from '@/shared/components'
 import {
   DEFAULT_OPERATOR_FILTERS,
@@ -18,6 +19,7 @@ import {
   buildOwnedOperatorIdSet,
   hasActiveOperatorFilters,
   isOwnedOperator,
+  isProfessionFilterUnavailable,
   isUnknownOperator,
   selectOperators,
   type FilterElite,
@@ -41,7 +43,9 @@ const taskPanelClass = (isActive: boolean) =>
   `data-statistics-task-card gap-0 p-0! transition-colors${isActive ? ' bg-info/5 ring-info/30' : ''}`
 
 const statCardClass = 'data-statistics-kpi'
-const chipClass = 'control-surface rounded-full px-2 py-0.5 text-xs whitespace-nowrap'
+const coverageUnavailable = '—'
+
+const AVATAR_FALLBACK_VARIANTS = ['base', '2', '1'] as const
 
 const ownershipOptions: readonly FilterMenuOption[] = [
   { value: 'all', label: '全部' },
@@ -121,13 +125,18 @@ export default function OperatorPanel({ isActive, command }: OperatorPanelProps)
   const shouldReduceMotion = useReducedMotion()
   const itemIconVersion = useItemIconCacheVersion()
   const operBoxQuery = useQuery(operBoxQueryOptions())
-  const operatorCatalogQuery = useQuery(operatorCatalogQueryOptions())
+  const operatorCatalogQuery = useQuery(operatorCatalogWithSourceQueryOptions())
 
   const operBoxData = operBoxQuery.data ?? null
+  const catalogData = operatorCatalogQuery.data
   const allOperators = useMemo(
-    () => operatorCatalogQuery.data ?? [],
-    [operatorCatalogQuery.data],
+    () => catalogData?.operators ?? [],
+    [catalogData],
   )
+  const catalogSource = catalogData?.source ?? 'remote'
+  const catalogTrusted = !operatorCatalogQuery.isError
+    && catalogData?.source === 'remote'
+    && allOperators.length > 0
   const operBoxDataError = operBoxQuery.isError ? OPER_BOX_READ_ERROR : null
   const operatorCatalogError = operatorCatalogQuery.isError ? OPERATOR_CATALOG_READ_ERROR : null
   const operatorDataError = operBoxDataError || operatorCatalogError
@@ -138,10 +147,18 @@ export default function OperatorPanel({ isActive, command }: OperatorPanelProps)
   const [filters, setFilters] = useState<OperatorFilters>(DEFAULT_OPERATOR_FILTERS)
   const [openMenu, setOpenMenu] = useState<OpenMenu>(null)
   const [loadedImages, setLoadedImages] = useState<Record<string, boolean>>({})
+  const [avatarStages, setAvatarStages] = useState<Record<string, number>>({})
+  const [avatarVersion, setAvatarVersion] = useState(itemIconVersion)
+
+  if (avatarVersion !== itemIconVersion) {
+    setAvatarVersion(itemIconVersion)
+    setLoadedImages({})
+    setAvatarStages({})
+  }
 
   const filteredOperators = useMemo(
-    () => selectOperators({ catalog: allOperators, operBox: operBoxData, filters }),
-    [allOperators, operBoxData, filters],
+    () => selectOperators({ catalog: allOperators, catalogSource, operBox: operBoxData, filters }),
+    [allOperators, catalogSource, operBoxData, filters],
   )
 
   const ownedOperatorIds = useMemo(
@@ -158,15 +175,13 @@ export default function OperatorPanel({ isActive, command }: OperatorPanelProps)
     () => new Set((operBoxData?.data || []).map(operator => operator.id)).size,
     [operBoxData],
   )
-  // 档案分母优先用本地目录；只有识别快照带识别目录时才用快照总数，
-  // 旧快照的 recognition.total 只是已识别数量，不能当作完整目录。
-  const operatorCatalogCount = allOperators.length
-    || operBoxData?.operTotal
-    || ownedOperatorCount
+  const operatorCatalogCount = catalogTrusted ? allOperators.length : null
+  const operatorCoverage = operatorCatalogCount !== null
+    ? Math.min(100, Math.round((ownedOperatorCount / operatorCatalogCount) * 100))
+    : null
+  const coverageLabel = operatorCoverage !== null ? `${operatorCoverage}%` : coverageUnavailable
+  const catalogCountLabel = operatorCatalogCount !== null ? String(operatorCatalogCount) : coverageUnavailable
   const recognitionHint = describeOperBoxRecognitionHint(operBoxData?.recognition)
-  const operatorCoverage = operatorCatalogCount > 0
-    ? Math.round((ownedOperatorCount / operatorCatalogCount) * 100)
-    : 0
 
   // 当筛选条件变化时，清理不再显示的干员图片加载状态。
   // 这是有上限的缓存修剪，不是渲染循环；既有行为由 layout 测试覆盖。
@@ -192,6 +207,7 @@ export default function OperatorPanel({ isActive, command }: OperatorPanelProps)
   }, [filters, filteredOperators])
 
   const filtersActive = hasActiveOperatorFilters(filters)
+  const professionFilterUnavailable = isProfessionFilterUnavailable({ catalogSource, filters })
 
   const resetOperatorFilters = () => {
     setFilters(DEFAULT_OPERATOR_FILTERS)
@@ -201,6 +217,23 @@ export default function OperatorPanel({ isActive, command }: OperatorPanelProps)
 
   const isRecognizing = command.activeKind === 'operbox' && command.isRunning
   const isFetchingMaterials = command.activeKind === 'materials' && command.isRunning
+  const hasOperBoxRows = Boolean(operBoxData?.data && operBoxData.data.length > 0)
+  const showLoading = operatorDataLoading && !hasOperBoxRows
+  const showErrorPlaceholder = !showLoading && Boolean(operatorDataError) && !hasOperBoxRows
+  const showErrorBanner = !showLoading && Boolean(operatorDataError) && hasOperBoxRows
+  const showEmpty = !showLoading && !operatorDataError && !hasOperBoxRows
+  const showContent = !showLoading && hasOperBoxRows
+  const readError = (
+    <StatisticsQueryError
+      title="干员数据读取失败"
+      description={operatorDataError ?? OPER_BOX_READ_ERROR}
+      isRetrying={operatorDataRefreshing}
+      onRetry={() => {
+        void operBoxQuery.refetch()
+        void operatorCatalogQuery.refetch()
+      }}
+    />
+  )
 
   return (
     <motion.div
@@ -210,109 +243,97 @@ export default function OperatorPanel({ isActive, command }: OperatorPanelProps)
       className="min-w-0"
     >
       <Card
+        role="region"
+        aria-labelledby="operator-panel-title"
         className={taskPanelClass(command.activeTask === 'operbox')}
       >
+        <CardHeader className="px-4 pt-4 pb-0 max-sm:gap-3">
+          <CardTitle
+            id="operator-panel-title"
+            role="heading"
+            aria-level={2}
+            className="text-lg font-semibold"
+          >
+            干员识别
+          </CardTitle>
+          <CardAction className="flex flex-wrap items-center justify-end gap-2 max-sm:col-span-2 max-sm:col-start-1 max-sm:row-span-1 max-sm:row-start-2 max-sm:w-full max-sm:justify-start max-sm:justify-self-stretch">
+            <Button
+              onClick={command.fetchMaterials}
+              disabled={command.isRunning || isFetchingMaterials}
+              aria-busy={isFetchingMaterials || undefined}
+              variant="outline"
+            >
+              {isFetchingMaterials
+                ? <><LoaderCircle className="animate-spin" aria-hidden="true" />正在获取</>
+                : (
+                  <>
+                    <Download size={16} aria-hidden="true" />
+                    获取材料数据
+                  </>
+                )}
+            </Button>
+            <Button
+              onClick={() => command.startRecognition('operbox')}
+              disabled={command.isRunning || isRecognizing}
+              aria-busy={isRecognizing || undefined}
+            >
+              {isRecognizing
+                ? <><LoaderCircle className="animate-spin" aria-hidden="true" />正在执行</>
+                : (
+                  <>
+                    <Play size={15} fill="currentColor" aria-hidden="true" />
+                    {command.actionLabel('operbox')}
+                  </>
+                )}
+            </Button>
+          </CardAction>
+        </CardHeader>
+
         <div className="data-statistics-task-content app-stack-card">
-          <div className="data-statistics-task-header flex items-start gap-3.5 sm:items-center">
-            <div className="flex w-full min-w-0 flex-1 items-center gap-3.5 sm:w-auto">
-              <div className="flex h-10 w-10 flex-none items-center justify-center" aria-hidden="true">
-                <Icons.Users />
-              </div>
-              <div className="min-w-0">
-                <h2 className="text-lg font-semibold text-foreground">干员识别</h2>
-                <p className="mt-1 text-sm leading-relaxed text-muted-foreground">
-                  读取档案、等级、精英化与潜能数据
-                </p>
-              </div>
-            </div>
-
-            <div className="data-statistics-task-actions flex shrink-0 items-center gap-2">
-              <Button
-                onClick={command.fetchMaterials}
-                disabled={command.isRunning || isFetchingMaterials}
-                aria-busy={isFetchingMaterials || undefined}
-                variant="outline"
-              >
-                {isFetchingMaterials
-                  ? <><LoaderCircle className="animate-spin" aria-hidden="true" />正在获取</>
-                  : (
-                    <>
-                      <Download size={16} aria-hidden="true" />
-                      获取材料数据
-                    </>
-                  )}
-              </Button>
-              <Button
-                onClick={() => command.startRecognition('operbox')}
-                disabled={command.isRunning || isRecognizing}
-                aria-busy={isRecognizing || undefined}
-              >
-                {isRecognizing
-                  ? <><LoaderCircle className="animate-spin" aria-hidden="true" />正在执行</>
-                  : (
-                    <>
-                      <Play size={15} fill="currentColor" aria-hidden="true" />
-                      {command.actionLabel('operbox')}
-                    </>
-                  )}
-              </Button>
-            </div>
-          </div>
-
-          {!operatorDataError && !operBoxData && (operatorDataLoading || command.activeTask === 'operbox') && (
-            <div className="rounded-xl py-12 surface-soft" aria-live="polite">
+          {showLoading && (
+            <div className="rounded-xl py-12 surface-soft">
               <Loading text={command.activeTask === 'operbox' ? '正在识别干员数据' : '正在读取干员数据'} />
             </div>
           )}
-          {operatorDataError && (
-            <StatisticsQueryError
-              title="干员数据读取失败"
-              description={operatorDataError}
-              isRetrying={operatorDataRefreshing}
-              onRetry={() => {
-                void operBoxQuery.refetch()
-                void operatorCatalogQuery.refetch()
-              }}
-            />
-          )}
-          {!operatorDataLoading && !operatorDataError && !command.isRunning && (!operBoxData?.data || operBoxData.data.length === 0) && (
+          {showErrorPlaceholder && readError}
+          {showEmpty && (
             <EmptyState
               compact
               className="py-10"
-              icon={<Icons.Users />}
+              icon={<Users size={24} strokeWidth={1.7} />}
               title="还没有干员识别结果"
               description="完成一次干员识别后，清单会显示在这里。"
             />
           )}
-          {operBoxData && operBoxData.data && operBoxData.data.length > 0 && (
+          {showContent && (
             <div className="app-stack-card">
-              <div
-                className="data-statistics-kpi-grid grid grid-cols-2 lg:grid-cols-4"
-                aria-label="干员数据概览"
-              >
-                <div className={statCardClass}>
-                  <p className="text-xs text-muted-foreground">已识别</p>
-                  <p className="mt-1 text-2xl font-semibold text-foreground">{ownedOperatorCount}</p>
-                </div>
-                <div className={statCardClass}>
-                  <p className="text-xs text-muted-foreground">干员资料</p>
-                  <p className="mt-1 text-2xl font-semibold text-foreground">{operatorCatalogCount}</p>
-                </div>
-                <div className={statCardClass}>
-                  <p className="text-xs text-muted-foreground">当前显示</p>
-                  <p className="mt-1 text-2xl font-semibold text-foreground">{filteredOperators.length}</p>
-                </div>
-                <div className={statCardClass}>
-                  <p className="text-xs text-muted-foreground">档案覆盖</p>
-                  <p className="mt-1 text-2xl font-semibold text-foreground">{operatorCoverage}%</p>
-                </div>
+              {showErrorBanner && readError}
+              <div role="group" aria-label="干员数据概览">
+                <dl className="data-statistics-kpi-grid grid grid-cols-2 lg:grid-cols-4">
+                  <div className={statCardClass}>
+                    <dt className="text-xs text-muted-foreground">已识别</dt>
+                    <dd className="mt-1 text-2xl font-semibold text-foreground">{ownedOperatorCount}</dd>
+                  </div>
+                  <div className={statCardClass}>
+                    <dt className="text-xs text-muted-foreground">干员资料</dt>
+                    <dd className="mt-1 text-2xl font-semibold text-foreground">{catalogCountLabel}</dd>
+                  </div>
+                  <div className={statCardClass}>
+                    <dt className="text-xs text-muted-foreground">当前显示</dt>
+                    <dd className="mt-1 text-2xl font-semibold text-foreground">{filteredOperators.length}</dd>
+                  </div>
+                  <div className={statCardClass}>
+                    <dt className="text-xs text-muted-foreground">档案覆盖</dt>
+                    <dd className="mt-1 text-2xl font-semibold text-foreground">{coverageLabel}</dd>
+                  </div>
+                </dl>
               </div>
 
               <section className="rounded-xl surface-soft p-3" aria-labelledby="operator-filter-title">
                 <div className="mb-3 flex items-center justify-between gap-3.5">
                   <div className="min-w-0">
                     <h3 id="operator-filter-title" className="text-sm font-semibold text-foreground">筛选与排序</h3>
-                    {operBoxData.timestamp && (
+                    {operBoxData?.timestamp && (
                       <p className="mt-1 truncate text-xs text-tertiary">
                         更新于 {new Date(operBoxData.timestamp).toLocaleString('zh-CN')}
                       </p>
@@ -415,28 +436,51 @@ export default function OperatorPanel({ isActive, command }: OperatorPanelProps)
               </section>
 
               {filteredOperators.length === 0 ? (
-                <EmptyState
-                  compact
-                  className="py-10"
-                  icon={<Icons.Users />}
-                  title="没有符合条件的干员"
-                  description="调整筛选条件后再查看。"
-                  action={filtersActive ? (
-                    <Button variant="secondary" size="sm" onClick={resetOperatorFilters}>
-                      清除筛选
-                    </Button>
-                  ) : undefined}
-                />
+                professionFilterUnavailable ? (
+                  <EmptyState
+                    compact
+                    className="py-10"
+                    icon={<Users size={24} strokeWidth={1.7} />}
+                    title="快照目录不含职业信息"
+                    description="当前只能使用识别快照，快照不含职业信息，无法按职业筛选。清除筛选后可继续浏览。"
+                    action={(
+                      <Button variant="secondary" size="sm" onClick={resetOperatorFilters}>
+                        清除筛选
+                      </Button>
+                    )}
+                  />
+                ) : (
+                  <EmptyState
+                    compact
+                    className="py-10"
+                    icon={<Users size={24} strokeWidth={1.7} />}
+                    title="没有符合条件的干员"
+                    description="调整筛选条件后再查看。"
+                    action={filtersActive ? (
+                      <Button variant="secondary" size="sm" onClick={resetOperatorFilters}>
+                        清除筛选
+                      </Button>
+                    ) : undefined}
+                  />
+                )
               ) : (
-                <div className="data-statistics-item-grid grid grid-cols-2 overflow-hidden rounded-xl surface-soft sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6">
+                <div
+                  role="list"
+                  aria-label="干员列表"
+                  className="data-statistics-item-grid grid grid-cols-2 overflow-hidden rounded-xl surface-soft sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6"
+                >
                   {filteredOperators.map((oper) => {
                     const isOwned = isOwnedOperator(oper, ownedOperatorIds)
                     const isUnknown = !isOwned && isUnknownOperator(oper, knownOperatorIds)
                     const imageLoaded = loadedImages[oper.id] || false
+                    const avatarStage = avatarStages[oper.id] ?? 0
+                    const avatarVariant = AVATAR_FALLBACK_VARIANTS[avatarStage] ?? null
+                    const avatarFailed = avatarVariant === null
 
                     return (
                       <div
                         key={oper.id}
+                        role="listitem"
                         className={`data-statistics-operator-item relative overflow-hidden p-3 ${
                           isOwned
                             ? ''
@@ -444,38 +488,45 @@ export default function OperatorPanel({ isActive, command }: OperatorPanelProps)
                         }`}
                       >
                         {!isOwned && (
-                          <div className="control-surface absolute left-2 top-2 z-10 rounded-full px-2 py-0.5 text-xs font-semibold text-muted-foreground">
+                          <Badge
+                            variant="secondary"
+                            className="absolute left-2 top-2 z-10 font-semibold text-muted-foreground"
+                          >
                             {isUnknown ? '未知' : '未拥有'}
-                          </div>
+                          </Badge>
                         )}
 
-                        <div className="relative mb-2 aspect-square w-full overflow-hidden rounded-xl bg-muted">
+                        <div
+                          className="relative mb-2 aspect-square w-full overflow-hidden rounded-xl bg-muted"
+                          aria-busy={Boolean(oper.id) && !imageLoaded && !avatarFailed ? true : undefined}
+                        >
                           {oper.id ? (
                             <>
-                              {!imageLoaded && (
-                                <div className="absolute inset-0 animate-pulse bg-muted"></div>
+                              {!imageLoaded && !avatarFailed && (
+                                <Skeleton className="absolute inset-0 rounded-none" />
                               )}
-                              <img
-                                src={getOperatorAvatarUrl(oper.id, 'base', itemIconVersion)}
-                                alt={oper.name}
-                                className={`h-full w-full object-cover transition-opacity duration-300 ${
-                                  imageLoaded ? 'opacity-100' : 'opacity-0'
-                                }`}
-                                onLoad={() => setLoadedImages(prev => ({ ...prev, [oper.id]: true }))}
-                                onError={(e) => {
-                                  const target = e.target as HTMLImageElement
-                                  const currentSrc = target.src
-                                  if (!currentSrc.includes('_2.png') && !currentSrc.includes('_1.png')) {
-                                    target.src = getOperatorAvatarUrl(oper.id, '2', itemIconVersion)
-                                  } else if (currentSrc.includes('_2.png')) {
-                                    target.src = getOperatorAvatarUrl(oper.id, '1', itemIconVersion)
-                                  } else {
-                                    target.style.display = 'none'
-                                    setLoadedImages(prev => ({ ...prev, [oper.id]: true }))
-                                  }
-                                }}
-                              />
-                              {!isOwned && imageLoaded && (
+                              {avatarFailed ? (
+                                <div
+                                  role="img"
+                                  aria-label={`${oper.name}头像不可用`}
+                                  className="absolute inset-0 flex items-center justify-center text-muted-foreground"
+                                >
+                                  <UserRound size={28} strokeWidth={1.7} aria-hidden="true" />
+                                </div>
+                              ) : (
+                                <img
+                                  src={getOperatorAvatarUrl(oper.id, avatarVariant, itemIconVersion)}
+                                  alt={oper.name}
+                                  className={`h-full w-full object-cover transition-opacity duration-300 ${
+                                    imageLoaded ? 'opacity-100' : 'opacity-0'
+                                  }`}
+                                  onLoad={() => setLoadedImages(prev => ({ ...prev, [oper.id]: true }))}
+                                  onError={() => {
+                                    setAvatarStages(prev => ({ ...prev, [oper.id]: avatarStage + 1 }))
+                                  }}
+                                />
+                              )}
+                              {!isOwned && imageLoaded && !avatarFailed && (
                                 <div className="absolute inset-0 bg-[color-mix(in_srgb,var(--background)_62%,transparent)]"></div>
                               )}
                             </>
@@ -499,14 +550,14 @@ export default function OperatorPanel({ isActive, command }: OperatorPanelProps)
                             <>
                               <div className="flex flex-wrap items-center justify-center gap-1 text-xs">
                                 {oper.elite !== undefined && (
-                                  <span className={chipClass}>
+                                  <Badge variant="secondary">
                                     精{oper.elite}
-                                  </span>
+                                  </Badge>
                                 )}
                                 {oper.level !== undefined && (
-                                  <span className={chipClass}>
+                                  <Badge variant="secondary">
                                     Lv.{oper.level}
-                                  </span>
+                                  </Badge>
                                 )}
                               </div>
                               {oper.potential !== undefined && (
@@ -518,7 +569,7 @@ export default function OperatorPanel({ isActive, command }: OperatorPanelProps)
                           )}
                         </div>
                       </div>
-                    );
+                    )
                   })}
                 </div>
               )}
