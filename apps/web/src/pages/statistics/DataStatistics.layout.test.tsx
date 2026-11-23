@@ -103,31 +103,6 @@ vi.mock('@/shared/notifications', () => ({
   SETTINGS_UPDATE_NOTICE_ID: 'settings-update',
 }))
 
-vi.mock('@/features/statistics/components/DropRecords', () => ({
-  default: ({
-    dropStatistics,
-    isLoading,
-    error,
-    onRefresh,
-  }: {
-    dropStatistics: unknown
-    isLoading?: boolean
-    error?: string | null
-    onRefresh: () => void
-  }) => (
-    <div data-testid="drop-records">
-      {isLoading && <span>正在读取掉落记录</span>}
-      {error && (
-        <div role="alert">
-          <span>{error}</span>
-          <button type="button" onClick={onRefresh}>重新加载掉落记录</button>
-        </div>
-      )}
-      {Boolean(dropStatistics) && <span>掉落数据已加载</span>}
-    </div>
-  ),
-}))
-
 let client: ReturnType<typeof createQueryClient>
 let container: HTMLDivElement
 let root: Root
@@ -333,6 +308,63 @@ describe('DataStatistics layout surfaces', () => {
     expect(recognitionLabels()).toEqual(['识别'])
   })
 
+  it('shows operator KPI values derived from the owned snapshot and the trusted catalogue', async () => {
+    mocks.getAllOperators.mockResolvedValue({
+      success: true,
+      data: [
+        { id: 'char_001', name: '测试干员', rarity: 6, profession: 'SNIPER' },
+        { id: 'char_002', name: '第二位干员', rarity: 5, profession: 'MEDIC' },
+        { id: 'char_003', name: '第三位干员', rarity: 4, profession: 'TANK' },
+      ],
+    })
+    mocks.getOperBoxData.mockResolvedValue({
+      success: true,
+      data: {
+        operCount: 2,
+        data: [
+          { id: 'char_001', name: '测试干员', rarity: 6, profession: 'SNIPER', level: 80, elite: 2, potential: 1 },
+          { id: 'char_002', name: '第二位干员', rarity: 5, profession: 'MEDIC', level: 50, elite: 1, potential: 2 },
+        ],
+        timestamp: '2026-07-20T08:00:00.000Z',
+      },
+    })
+
+    await renderPage()
+    await flush()
+
+    const overview = () => container.querySelector('[role="group"][aria-label="干员数据概览"]')
+    expect(Array.from(overview()?.querySelectorAll('dt') ?? []).map(term => term.textContent))
+      .toEqual(['已识别', '干员资料', '档案覆盖'])
+    expect(Array.from(overview()?.querySelectorAll('dd') ?? []).map(value => value.textContent))
+      .toEqual(['2', '3', '67%'])
+  })
+
+  it('shows an unknown coverage instead of a stale snapshot ratio', async () => {
+    mocks.getAllOperators.mockResolvedValue({ success: false, message: '目录服务不可用' })
+    mocks.getOperBoxData.mockResolvedValue({
+      success: true,
+      data: {
+        operCount: 2,
+        data: [
+          { id: 'char_001', name: '测试干员', rarity: 6, profession: 'SNIPER', level: 80, elite: 2, potential: 1 },
+          { id: 'char_002', name: '第二位干员', rarity: 5, profession: 'MEDIC', level: 50, elite: 1, potential: 2 },
+        ],
+        allOpers: [
+          { id: 'char_001', name: '测试干员', rarity: 6, owned: true },
+          { id: 'char_002', name: '第二位干员', rarity: 5, owned: true },
+        ],
+        timestamp: '2026-07-20T08:00:00.000Z',
+      },
+    })
+
+    await renderPage()
+    await flush()
+
+    const overview = () => container.querySelector('[role="group"][aria-label="干员数据概览"]')
+    expect(Array.from(overview()?.querySelectorAll('dd') ?? []).map(value => value.textContent))
+      .toEqual(['2', '—', '—'])
+  })
+
   it('keeps the drops tab and panel ids linked across visibility transitions', async () => {
     mocks.getAllOperators.mockResolvedValue(catalogFixture)
     mocks.getOperBoxData.mockResolvedValue(ownedOperatorFixture)
@@ -382,7 +414,9 @@ describe('DataStatistics layout surfaces', () => {
     await flush()
 
     expect(selectedTab()?.textContent).toContain('掉落记录')
-    expect(container.querySelector('[data-testid="drop-records"]')?.textContent).toContain('掉落数据已加载')
+    const dropsPanel = container.querySelector('#data-statistics-panel-drops')
+    expect(dropsPanel?.textContent).toContain('总理智消耗')
+    expect(dropsPanel?.textContent).toContain('42')
   })
 
   it('switches to the tab of a later navigation without reloading the page', async () => {
@@ -489,8 +523,8 @@ describe('DataStatistics layout surfaces', () => {
         success: true,
         data: {
           total: { sanity: 42, battles: 3, medicine: 0, stone: 0 },
-          items: {},
-          stages: {},
+          items: { 固源岩: { count: 6, iconId: 'rock' } },
+          stages: { '1-7': { battles: 3, sanity: 42, items: { 固源岩: 6 } } },
           dateRange: { start: '2026-07-20', end: '2026-07-20', days: 1 },
         },
       })
@@ -499,13 +533,16 @@ describe('DataStatistics layout surfaces', () => {
     await flush()
     await selectTab('掉落记录')
 
-    const alert = container.querySelector('[data-testid="drop-records"] [role="alert"]')
+    const alert = container.querySelector('#data-statistics-panel-drops [role="alert"]')
+    expect(alert?.textContent).toContain('掉落记录读取失败')
     expect(alert?.textContent).toContain('暂时无法读取掉落记录')
     expect(alert?.textContent).not.toContain('Internal Server Error')
 
-    await click(findButton('重新加载掉落记录')!)
+    await click(findButton('重新加载')!)
     expect(mocks.getDropStatistics).toHaveBeenCalledTimes(2)
-    expect(container.textContent).toContain('掉落数据已加载')
+    expect(container.querySelector('#data-statistics-panel-drops [role="alert"]')).toBeNull()
+    expect(container.textContent).toContain('总理智消耗')
+    expect(container.textContent).toContain('固源岩')
   })
 
   it('keeps a depot read failure distinct from an empty result and retries it', async () => {

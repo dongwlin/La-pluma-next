@@ -326,7 +326,7 @@ describe('DropRecords read states', () => {
     expect(container.querySelector('[role="img"][aria-label="固源岩图标不可用"]')).not.toBeNull()
   })
 
-  it('uses a static surface for stage drop chips without hover affordance', async () => {
+  it('renders stage drop chips as static text without an interactive affordance', async () => {
     await act(async () => root.render(
       <DropRecords
         dropStatistics={{
@@ -343,8 +343,10 @@ describe('DropRecords read states', () => {
 
     const chip = Array.from(container.querySelectorAll('span'))
       .find(element => element.textContent === '固源岩 ×6')
-    expect(chip?.classList.contains('control-surface')).toBe(false)
-    expect(chip?.classList.contains('surface-soft')).toBe(true)
+    expect(chip).toBeDefined()
+    expect(chip?.closest('button, a, [role="button"]')).toBeNull()
+    expect(chip?.getAttribute('role')).toBeNull()
+    expect(chip?.hasAttribute('tabindex')).toBe(false)
   })
 
   it('reports a paused new-period read instead of a spinning status', async () => {
