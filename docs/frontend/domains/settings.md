@@ -12,7 +12,7 @@
 
 ## 页面与面板
 
-连接草稿、设备命令、版本/目录读取、组件更新与自动更新的所有者、Query key、wire 与失效语义均未改变；页面/面板分别承担组合与订阅职责，不新增缓存、命令状态或存储。
+连接草稿、设备命令、版本/目录读取、组件更新与自动更新的所有者、Query key、wire 与失效语义均未改变；自动保存只新增 UI 触发层（`useAutoSave`），草稿仍由原 owner 持有，不新增第二份 revision、缓存或存储。
 
 ### 1. 定位与边界
 
@@ -25,22 +25,23 @@
 | 外观主题 | `features/settings/components/AppearanceCard.tsx` | 读取 `useTheme()` 的 `themeId`/`resolvedMode`，通过 `setThemeId` 切换主题；选项来自 `THEMES`，不新增主题存储 |
 | 表单与开关行 | `features/settings/components/ConfigFieldControls.tsx`、`SwitchSettingRow.tsx` | `Field`/`Label` 组合标签、说明与控件；开关行统一 44px 触达高度与说明排版 |
 | 页内反馈 | `features/settings/components/SettingsFeedback.tsx` | 错误用 `Alert`（可带重试 action），成功/警告用 `role="status"` 语义块；不重复全局通知正文 |
-| connection 表单、保存与读取反馈 | `features/settings/components/ConnectionConfigPanel.tsx` | Query/草稿适配、保存/重置、迟到读取提示；非 connection section 返回 null |
+| connection 表单、自动保存与读取反馈 | `features/settings/components/ConnectionConfigPanel.tsx` | Query/草稿适配、自动保存、迟到读取提示；非 connection section 返回 null |
 | 模拟器查找与连接测试 | `features/settings/components/DeviceConnectionPanel.tsx` | 命令 owner 订阅、设备列表、独立 loading/反馈 |
-| resource 资源源表单 | `features/settings/components/ResourceSourcePanel.tsx` | Git / MirrorChyan 来源、自动更新开关与 MirrorChyan CDK |
+| resource 资源源表单 | `features/settings/components/ResourceSourcePanel.tsx` | Git / MirrorChyan 来源、自动更新开关与 MirrorChyan CDK；MAA 运行中只读 |
 | instance 实例选项表单 | `features/settings/components/InstanceOptionsPanel.tsx` | 触控模式与三项实例开关 |
-| 配置编辑卡外壳 | `features/settings/components/ConfigEditorCard.tsx` | 标题、保存 / 重置按钮与页内反馈，三个 section 共用 |
+| 配置编辑卡外壳 | `features/settings/components/ConfigEditorCard.tsx` | 标题、页内错误与失焦冲刷入口，三个 section 共用 |
 | 配置目录 | `features/settings/components/ConfigDirectoryPanel.tsx` | 路径三态、重试与“打开目录” |
 | 组件更新卡片容器 | `features/settings/components/SettingsUpdatesPanel.tsx` | 共享标题与 `app-stack-card` 内容布局；不再注入页面级间距 CSS |
-| 自动更新策略 | `features/settings/components/AutoUpdateConfigPanel.tsx` | 自动更新草稿、本地回退、完整提交与反馈 |
+| 自动更新策略 | `features/settings/components/AutoUpdateConfigPanel.tsx` | 自动更新草稿、本地回退、防抖自动保存与反馈 |
+| 自动保存调度 | `features/settings/hooks/useAutoSave.ts` | 600ms 防抖、失焦/section/卸载冲刷、执行中锁定；不持有草稿 |
 | 版本与组件更新 | `features/settings/components/ComponentUpdatePanel.tsx` | 版本 Query、core/渠道/CLI/资源命令与反馈 |
 
 维护约束：
 
-- 不改变 connection 字段、wire 与保存时机；自动更新仍先写 user config 再应用调度。
+- 不改变 connection 字段与 wire；保存改为 600ms 防抖自动提交，失焦、section 隐藏、卸载与 `pagehide` 立即冲刷。自动更新仍先写 user config 再应用调度。
 - 不改变 Query key、读取时机、失败/重试、失效作用域与展示文案。
 - 不改变设备发现/连接测试的取消、迟到响应与草稿回填语义；取消仍跟随页面/Activity，而不是 section。
-- 不改变配置面板的字段结构、表单 id、保存语义或默认态行为；section 导航继续使用共享 tablist。页面视觉已按设置页治理调整，视觉基线冻结至 RW-019。
+- 不改变配置面板的字段结构与表单 id；保存改为自动保存，成功静默，失败保留页内 `Alert` 与带重试的 error toast；资源源在 MAA 运行中只读。section 导航继续使用共享 tablist。页面视觉已按设置页治理调整，视觉基线冻结至 RW-019。
 
 ### 2. 组合与订阅边界
 
@@ -64,7 +65,7 @@ ConfigManager（app-page > app-stack-section > SettingsWorkspace）
 
 - **页面无请求。** `ConfigManager` 不导入 API、Query、领域所有者或 localStorage，只组合页面壳与工作区。
 - **section 只有一份。** `SettingsWorkspace` 是唯一调用 `useConfigSection()` 的位置，也用 `SegmentedTabs` 提供受控上下文；`ConfigSectionNav` 只渲染共享 `SegmentedTabNav`。方向键/Home/End 只移动 roving focus，Enter/Space 或点击才切换，`aria-controls`/`aria-labelledby` 与 `config-section-panel-*` 一一对应。
-- **三个编辑面板始终挂载。** 三个 `SegmentedTabPanel` 都使用 `keepMounted`；`ConnectionConfigPanel`、`ResourceSourcePanel`、`InstanceOptionsPanel` 在所有 section 下保持组件挂载，只在自身 section 渲染 Card；切换 section 不重建各自的 Query 观察者，也不清空草稿、保存 loading 或读取/保存反馈。隐藏面板的 Query 以 `enabled: false` 跳过读取。`ConfigDirectoryPanel` 留在 tab 面板之外。
+- **三个编辑面板始终挂载。** 三个 `SegmentedTabPanel` 都使用 `keepMounted`；`ConnectionConfigPanel`、`ResourceSourcePanel`、`InstanceOptionsPanel` 在所有 section 下保持组件挂载，只在自身 section 渲染 Card；切换 section 不重建各自的 Query 观察者，也不清空草稿或读取/保存反馈；切走时立即冲刷待保存草稿。隐藏面板的 Query 以 `enabled: false` 跳过读取。`ConfigDirectoryPanel` 留在 tab 面板之外。
 - **设备面板按 section 挂载，命令不随 section 取消。** `DeviceConnectionPanel` 只在自己的可见子树内订阅 `DeviceConnectionOwner`；切到其它 section 会卸载面板 DOM，但 owner 继续持有在途命令与已完成结果，恢复 connection 后从 owner 读取最新状态。
 - **更新用例分成两个面板。** `SettingsUpdatesPanel` 只提供卡片壳；`AutoUpdateConfigPanel` 订阅 `AutoUpdateConfigOwner`，`ComponentUpdatePanel` 订阅版本 Query 与 `SettingsUpdateOwner`。自动更新草稿/保存状态不会重渲染组件更新按钮，组件更新/版本状态也不会重渲染自动更新表单。
 - **目录 Query 只有一个观察者。** 配置目录卡片是 `settings/config-directory` 的唯一观察者；resource/instance 面板不读取目录，切 section 不产生目录请求，失败后的重试入口仍只在目录卡片。
@@ -89,14 +90,15 @@ ConfigManager（app-page > app-stack-section > SettingsWorkspace）
 | 当前 section | `useConfigSection` | 写存储并更新状态 | Effect 清理后恢复时重新订阅 | 从存储恢复 |
 | connection 草稿/revision | `ConnectionConfigOwner` | 保留 | 保留 | 保留（模块级 owner） |
 | connection Query 快照 | `settings/maa-config` Query | 观察者保持 | 观察者注销/恢复 | 缓存按新鲜度重取 |
-| 连接保存 loading 与反馈 | `ConnectionConfigPanel` 本地状态 | 保留 | 保留 | 清空 |
+| 连接自动保存与反馈 | `ConfigDraftOwner` + `ConnectionConfigPanel` 派生反馈 | 保留 | 保留；切走时冲刷 | 草稿保留在模块级 owner，反馈清空 |
 | 设备列表/测试反馈 | `DeviceConnectionOwner` | 保留 | 保留已完成结果 | 保留（未完成已取消） |
 | 目录路径/状态 | `settings/config-directory` Query | 保留（共享缓存） | 观察者注销/恢复 | 按新鲜度重取 |
 | 版本 | `settings/version` Query | 保留 | 观察者注销/恢复 | 按新鲜度重取 |
-| 自动更新草稿/dirty/反馈 | `AutoUpdateConfigOwner` | 保留 | 保留；初始化标记阻止重读 | 保留；重挂载会重读，未保存草稿不被覆盖 |
+| 自动更新草稿/dirty/反馈 | `AutoUpdateConfigOwner` | 保留 | 保留；初始化标记阻止重读 | 保留；重挂载会重读，本地回退草稿不自动提交 |
 | 更新命令状态/反馈 | `SettingsUpdateOwner` | 保留 | 保留；命令继续完成 | 保留 |
 
-- 保存进行中切到其它 section：保存继续在 owner 中执行，返回原 section 后仍能看到 `superseded`/失败反馈与最新草稿。
+- 保存进行中切到其它 section：保存继续在 owner 中执行；切走时的冲刷若撞上在途保存会被忽略，返回后下一次编辑或恢复排程会提交最新草稿。
+- MAA 运行中资源源表单只读，运行状态来自 `useStatusStore` 的 `isRunStatusBusy` 投影；服务端执行租约仍是最终防线。
 - 切换 section 会替换编辑器 Card 的 DOM（三个 section 是独立面板），但各自的草稿、Query 快照与保存反馈不随之销毁。
 - `Resource`/`Instance` 各自持有草稿与反馈，来回切换不会互相清空或覆盖。
 
@@ -114,16 +116,17 @@ ConfigManager（app-page > app-stack-section > SettingsWorkspace）
 | 反馈 | 渲染位置 | 来源 |
 | --- | --- | --- |
 | 连接读取失败 | 编辑卡 `CardContent` 内 `Alert` + “重新读取” | `ConnectionConfigPanel` 本地反馈 + Query 初始失败 |
-| 连接保存失败 | 编辑卡 `CardContent` 内 `Alert`；同一结果也发全局 toast | `ConfigDraftOwner` 结果 |
-| `superseded` 警告、保存成功 | 仅全局 toast（固定 notice id） | `ConfigDraftOwner` 结果 |
+| 连接保存失败 | 编辑卡 `CardContent` 内 `Alert` + “重试保存”；同一结果也发带重试 action 的全局 error toast | `ConfigDraftOwner` 结果 |
+| 自动保存成功、`superseded` | 无提示；`superseded` 由后续自动保存补齐 | `ConfigDraftOwner` 结果 |
 | 设备查找/连接测试失败 | 设备分组内 `Alert`；连接成功用 `role="status"` | `DeviceConnectionOwner.discovery/test` |
 | 目录读取失败与重试 | 目录卡片内 `Alert` + `AlertAction` | `config-directory` Query 状态 |
-| 自动更新读取/保存/调度失败 | 更新卡片自动更新分组内 `Alert` | `AutoUpdateConfigOwner` |
-| 自动更新成功/本地回退警告 | 仅全局 toast | `AutoUpdateConfigOwner` 结果 |
+| 自动更新读取/保存/调度失败 | 更新卡片自动更新分组内 `Alert` + “重试保存”；保存/调度失败同时发 error toast | `AutoUpdateConfigOwner` |
+| 自动更新非法时间 | 仅 error toast，不发请求 | `useAutoSave` 的 `canSave` 前置拦截 |
+| 自动更新保存成功 | 无提示；本地回退 warning 仍走全局 toast | `AutoUpdateConfigOwner` 结果 |
 | 组件更新失败与资源重试 | 更新卡片底部 `Alert` + `AlertAction` | `SettingsUpdateOwner` |
 | 组件更新成功 | 仅全局 toast | `SettingsUpdateOwner` 结果 |
 
-各面板只渲染自己的反馈；一个用例的失败不会写入另一个面板的页内状态。全局通知仍由各面板在明确结果后调用 `notify` / `notifyProgress` 发送。
+各面板只渲染自己的反馈；一个用例的失败不会写入另一个面板的页内状态。自动保存成功不发通知；失败由反馈 hook 发送带重试 action 的 error toast，读取失败仍只提示一次。
 
 ### 6. 兼容与维护约束
 
@@ -141,11 +144,11 @@ ConfigManager（app-page > app-stack-section > SettingsWorkspace）
 
 ### 1. 定位与边界
 
-| section | 可编辑 | 服务端资源 | 保存 / 重置 |
+| section | 可编辑 | 服务端资源 | 保存方式 |
 | --- | --- | --- | --- |
-| `connection` | 是 | `settings/maa-config` Query + `ConnectionConfigOwner` 草稿 | 显式保存；重置只改草稿 |
-| `resource` | 是 | `settings/resource-source` Query + `ResourceSourceOwner` 草稿 | 显式保存；重置只改草稿 |
-| `instance` | 是 | `settings/maa-instance-options` Query + `InstanceOptionsOwner` 草稿 | 显式保存；重置只改草稿 |
+| `connection` | 是 | `settings/maa-config` Query + `ConnectionConfigOwner` 草稿 | 自动保存（600ms 防抖 + 失焦/停用冲刷） |
+| `resource` | 是 | `settings/resource-source` Query + `ResourceSourceOwner` 草稿 | 自动保存；MAA 运行中只读 |
+| `instance` | 是 | `settings/maa-instance-options` Query + `InstanceOptionsOwner` 草稿 | 自动保存（600ms 防抖 + 失焦/停用冲刷） |
 
 归属：
 
@@ -154,9 +157,9 @@ ConfigManager（app-page > app-stack-section > SettingsWorkspace）
 | 服务端只读快照、取消与重试 | `settings/maa-config`、`settings/maa-instance-options`、`settings/resource-source` Query（`model/connectionConfig.ts`、`model/instanceOptions.ts`、`model/resourceSource.ts`） | 草稿合并、保存时机 |
 | 草稿、revision、迟到读取裁决、保存去重与结果 | `ConfigDraftOwner`（`model/configDraftOwner.ts`）及其 `ConnectionConfigOwner` / `InstanceOptionsOwner` / `ResourceSourceOwner` 实例 | 服务端事务、跨客户端条件写 |
 | section 选择、存储键、window 事件与清理 | `model/configSection.ts` + `hooks/useConfigSection.ts` | 配置读取或保存 |
-| 页面反馈、保存按钮 loading、section 面板组合 | `ConfigEditorCard`、三个 section 面板、`SettingsWorkspace`、`ConfigSectionNav` | 再维护一份 revision 或草稿副本 |
+| 页面反馈、自动保存调度、section 面板组合 | `ConfigEditorCard`、三个 section 面板、`useAutoSave`、`SettingsWorkspace`、`ConfigSectionNav` | 再维护一份 revision 或草稿副本 |
 
-三个 section 各自持有草稿与保存状态：connection/instance 读写同一 MAA profile 的不同 section，resource 读写 `cli.toml` 的 `[resource]`。切到其它 section 不影响已有草稿；保存进行中切换 section 时保存继续执行，返回后草稿与反馈仍然有效。
+三个 section 各自持有草稿与保存状态：connection/instance 读写同一 MAA profile 的不同 section，resource 读写 `cli.toml` 的 `[resource]`。切到其它 section 不影响已有草稿，并立即冲刷待保存值；保存进行中切换 section 时保存继续执行，返回后草稿与反馈仍然有效。
 
 ### 2. 读取与草稿
 
@@ -179,7 +182,7 @@ ConfigManager（app-page > app-stack-section > SettingsWorkspace）
 | --- | --- |
 | `draft` | 当前可编辑草稿；包含服务端未知 connection 字段 |
 | `persisted` | 最近一次服务端读取采用或成功保存的值 |
-| `revision` | 草稿可观察版本；编辑、重置、采用服务端值、保存成功都会推进 |
+| `revision` | 草稿可观察版本；编辑、采用服务端值与保存成功都会推进 |
 | `dirty` | `draft` 与 `persisted` 是否存在差异 |
 | `syncState` | `idle` / `saving` / `failed` |
 | `error` | 最近一次保存失败的原始原因 |
@@ -190,51 +193,45 @@ ConfigManager（app-page > app-stack-section > SettingsWorkspace）
 
 一次读取开始时 owner 记录 `{ revision, dirty, saving }` 快照；Query 返回时只有以下条件全部满足才采用服务端值：
 
-1. 读取开始后没有新编辑、重置或保存（`revision` 未变）；
+1. 读取开始后没有新编辑或保存（`revision` 未变）；
 2. 读取开始时没有未保存草稿（`dirty=false`）；
 3. 读取开始时没有保存在途（`saving=false`）；
 4. 当前没有保存在途，也没有未保存草稿。
 
 因此：
 
-- **首次加载完成前不接收编辑**：`loaded=false` 时 `update()` 与 `restoreDefaults()` 返回 `false`，表单控件、重置与保存都禁用；首次响应因此总能按当前 revision 采纳，不会因加载期间的编辑被丢弃而停留在未加载状态。
+- **首次加载完成前不接收编辑**：`loaded=false` 时 `update()` 返回 `false`，表单控件禁用且自动保存不排程；首次响应因此总能按当前 revision 采纳，不会因加载期间的编辑被丢弃而停留在未加载状态。
 - **refresh 不覆盖编辑**：重新读取（remount、失效后的重取或显式重新读取）在草稿未保存时不会改页面值；草稿干净时才采用服务端快照。
 - **保存前发出的读取不会回滚保存**：保存成功会推进 revision，使保存前开始的读取即使更晚返回也失效。
-- **重置后不会被旧读取带回服务端值**：重置即使内容未变也推进 revision。
 
 页面把 Query 快照交给 owner 裁决（`adoptServer(snapshot)`），不直接把 `query.data` 写进表单。
 
-#### 2.4 保存
+#### 2.4 自动保存
 
-保存是显式动作：`POST /agent/config/maa/:profileName`，connection 与 instance 各发 `{ connection: snapshot }` 或 `{ instance_options: snapshot }`，服务端按 section 合并，因此两个表单不会互相覆盖。
+保存由 `useAutoSave` 调度，写请求仍是 `POST /agent/config/maa/:profileName`，connection 与 instance 各发 `{ connection: snapshot }` 或 `{ instance_options: snapshot }`，服务端按 section 合并，因此两个表单不会互相覆盖。
 
-- 首次服务端读取被采纳前（`loaded=false`）不可保存：`ConfigDraftOwner.save()` 返回 `ignored` 且不发送写请求，避免把页面默认值写回服务端；三个面板同时禁用“保存”、表单控件与“重置”，不再额外渲染读取状态说明；读取失败时只在卡内显示错误与重试入口。
-- 同一时刻只允许一次保存；保存中再次调用返回 `ignored`，页面不重复提示。
-- 保存期间仍可编辑。响应返回时只有 revision 未变才把当前草稿视为已保存；否则返回 `superseded`，通过固定 notice id 提示“此前连接配置/实例选项/资源源配置已保存，当前更改尚未保存”，并保留新草稿。
-- 保存成功清除 dirty、更新 `persisted` 与 `lastSavedAt`，并推进 revision 使保存前的读取失效；保存失败保留草稿与 `failed`/`error`，下一次保存重试同一份最新草稿。
+- 文本输入停止 600ms 后提交；开关/复选/下拉在变更后立即冲刷；文本框失焦、切换 section、Activity 隐藏、组件卸载与 `pagehide` 立即冲刷。
+- 首次服务端读取被采纳前（`loaded=false`）不保存，表单控件禁用；读取失败时卡内显示错误与“重新读取”，不排程自动保存。
+- `revision=0`（尚未发生用户编辑）时不提交，避免把读取回退或默认值写回服务端。自动保存只读 owner 的 `dirty`/`syncState`/`revision`，不复制草稿。
+- 同一时刻只允许一次保存；保存期间仍可编辑。响应返回时只有 revision 未变才把当前草稿视为已保存；否则返回 `superseded`，静默保留新草稿，后续状态变化会再次排程提交最新值。
+- 保存成功清除 dirty、更新 `persisted` 与 `lastSavedAt`，并推进 revision 使保存前的读取失效；成功不发提示。保存失败保留草稿与 `failed`/`error`，卡内显示 `Alert`，同时发带“重试保存”action 的 error toast；下一次编辑或显式重试继续提交。
+- 资源源保存受 MAA 执行租约约束：运行中表单只读并暂停自动保存，任务结束后脏草稿自动补交。
 - 服务端只返回成功信封，不回写 profile；页面按已发送快照确认，不伪造服务端归一化结果。
 
-#### 2.5 重置
-
-“重置”只把草稿恢复为页面原有默认值：
-
-- 不调用保存端点；用户下一次显式“保存”才写入服务端；
-- 首次读取被采纳前与保存进行中时忽略重置；
-- 重置推进 revision，使重置前发出的读取不能把服务端旧值带回；
-- 重置只作用于当前 section 的草稿，会丢弃从服务端读取到的未知字段（恢复的是该 section 的完整默认快照）。
-
-#### 2.6 读取失败
+#### 2.5 读取失败
 
 初始读取失败（尚无 Query 数据）在对应面板显示页内 `role="alert"` 与全局通知（`连接配置读取失败: <原因>`、`实例选项读取失败: <原因>`、`资源源配置读取失败: <原因>`），页内反馈提供“重新读取”按钮调用同一 Query 的 `refetch`；已有服务端数据后的后台 refresh 失败不打断编辑，也不重复发送全局通知。读取成功后清除对应的初始失败提示并恢复编辑与保存。
 
-`loaded` 保持 `false` 期间编辑、重置与保存都不可用；`ConfigDraftOwner.adoptServer()` 仍按 revision/dirty 规则丢弃过期的后台快照，但首次快照按当前 revision 采纳（加载期间没有可推进 revision 的编辑），因此慢请求与显式重试都能恢复到可保存状态。
+`loaded` 保持 `false` 期间编辑与自动保存都不可用；`ConfigDraftOwner.adoptServer()` 仍按 revision/dirty 规则丢弃过期的后台快照，但首次快照按当前 revision 采纳（加载期间没有可推进 revision 的编辑），因此慢请求与显式重试都能恢复到可保存状态。
 
-#### 2.7 实例选项与资源源配置
+#### 2.6 实例选项与资源源配置
 
 - **实例选项**（`model/instanceOptions.ts`、`hooks/useSettingsInstanceOptions.ts`）读写同一 MAA profile 的 `[instance_options]`，保存只提交 `{ instance_options: snapshot }`；字段为触控模式（`Adb`/`MiniTouch`/`MaaTouch`/`MacPlayTools`/`MaaFwAdb`）、`deployment_with_pause`、`adb_lite_enabled`、`kill_adb_on_exit`。profile 缺该 section 时按 MaaCore 默认值展示，未知字段原样保留。
 - **资源源**（`model/resourceSource.ts`、`hooks/useSettingsResourceSource.ts`）管理来源、自动更新与失败告警开关。Git 表单提供后端选择，保存时沿用已有分支配置。MirrorChyan 表单用 `cdkKind` 显示已保存的凭据形态，并用 `clearCdk` 请求显式清除。字段契约见 [Agent API](../../api/agent.md)。
 - 保存成功后 hook 重新读取同一 Query，以服务端归一化的配置和凭据形态覆盖草稿，并清空凭据输入框。
 - 保存请求中空白凭据表示保留服务端已保存值；输入新值会替换为明文字符串；`clearCdk` 显式写回 `cdk = false`。页面从不接收或渲染已保存的明文凭据。
+- MAA 运行中（`useStatusStore` + `isRunStatusBusy`）资源源表单整体只读并暂停自动保存；服务端 `saveResourceSourceConfig` 在 `withMaaExecutionLease` 内执行，运行中保存返回 409 `MAA_EXECUTION_BUSY`。任务结束恢复编辑后，若草稿仍 dirty 会自动补交。
+- CDK 输入聚焦期间只改草稿、不排程自动保存；失焦立即提交，避免把半截凭据写入 `cli.toml`。
 
 ### 3. Section 状态与清理
 
@@ -254,10 +251,10 @@ section 只控制渲染哪个面板：三个编辑面板在所有 section 下保
 ### 4. 面板接线
 
 - `ConfigManager` 只组合页面壳与 `SettingsWorkspace`；section 导航与网格由工作区渲染。
-- `useSettingsConnectionConfig()` / `useSettingsInstanceOptions()` / `useSettingsResourceSource()` 返回各自的 `draft`、`dirty`、`syncState`、`error`、`loaded`、`loadError`、`update`、`restoreDefaults`、`save`、`reload`；三个面板只渲染表单、按钮 loading 与反馈，卡片外壳共用 `ConfigEditorCard`。隐藏面板向 hook 传 `enabled: false`，不触发读取。
+- `useSettingsConnectionConfig()` / `useSettingsInstanceOptions()` / `useSettingsResourceSource()` 返回各自的 `draft`、`dirty`、`syncState`、`error`、`loaded`、`loadError`、`update`、`getState`、`save`、`reload`；三个面板通过 `useAutoSave` 接线，卡片外壳共用 `ConfigEditorCard`。隐藏面板向 hook 传 `enabled: false`，不触发读取。
 - 页面删除的职责：`configData` state、`loadConfig()`、`connectionRevisionRef`、`connectionSaveInFlightRef`、section `localStorage` 读写与 window 监听。
-- 连接、实例与资源源表单字段都通过 `update(patch)` 写入各自 owner；编辑清空页内反馈与保存错误。
-- 保存按钮 loading 取 `syncState === 'saving'`，重置按钮在保存中禁用；保存结果按 `saved`/`superseded`/`failed` 分别提示：成功与 `superseded` 只发全局 toast，读取/保存失败在卡内显示 `Alert` 并可重试读取。
+- 连接、实例与资源源表单字段都通过 `update(patch)` 写入各自 owner；编辑会清除 owner 的 `error`，页内保存错误由此消失。
+- 自动保存成功与 `superseded` 均静默；读取失败在卡内显示 `Alert` 并可“重新读取”，保存失败卡内显示 `Alert` 并可“重试保存”，同时发带 retry action 的 error toast。资源源在 MAA 运行中只读，重试按钮同时禁用。
 - 自动更新的读取/本地回退、touched/revision、保存后 `setupAutoUpdate` 与反馈由 `AutoUpdateConfigOwner` 和 `useSettingsAutoUpdate()` 持有；归一化与时间校验仍在 `model/configNormalization.ts`，见[设置组件更新与自动更新](#组件更新与自动更新)。
 - 设备发现、连接测试、版本、配置目录与打开目录归[设置设备连接与系统资源](#设备连接与系统资源)；组件更新与自动更新归[设置组件更新与自动更新](#组件更新与自动更新)。
 
@@ -282,7 +279,7 @@ section 只控制渲染哪个面板：三个编辑面板在所有 section 下保
 | 版本读取 | `features/settings/model/systemResources.ts` 的 `versionQueryOptions()` | `settings/version` Query | 更新命令 |
 | 配置目录读取 | 同文件的 `configDirectoryQueryOptions()` | `settings/config-directory` Query | 打开目录 |
 | 打开配置目录 | `features/settings/hooks/useSettingsConfigDirectory.ts` 的 `open()` | 显式命令 `POST /agent/actions/open-config-directory` | Query、自动重取 |
-| 页面反馈与按钮 loading | `components/DeviceConnectionPanel.tsx`、`ConfigDirectoryPanel.tsx`、`ResourceSourcePanel.tsx`、`InstanceOptionsPanel.tsx` | 只渲染 owner/Query 状态 | 命令状态机、请求取消 |
+| 页面反馈与自动保存提示 | `components/DeviceConnectionPanel.tsx`、`ConfigDirectoryPanel.tsx`、`ResourceSourcePanel.tsx`、`InstanceOptionsPanel.tsx` | 只渲染 owner/Query 状态；资源源额外订阅运行状态 | 命令状态机、请求取消 |
 
 设备发现会探测本机 ADB 与常见模拟器端口，连接测试会尝试 `adb connect`；两者在 Agent 契约中属于低风险写入，不应做成可自动重取的只读 Query。打开配置目录同样有副作用，只保留显式入口。
 
@@ -392,11 +389,11 @@ section 只控制渲染哪个面板：三个编辑面板在所有 section 下保
 | 更新 Run 的观察与停止 | `features/settings/model/updateRunPort.ts` | 采纳 `runId`、等待终态、解除身份、按目标停止；复用 `task-execution` 控制器 | 服务端 Run 身份与状态机 |
 | 更新后的版本同步 | `features/settings/hooks/useSettingsUpdates.ts` 调用 `useSettingsVersion().reload()` | 后者 `invalidateQueries` 同一 `settings/version` | 伪造版本快照 |
 | 更新后的跨域失效 | 同一 hook | 成功确认后推进物品图标 epoch，并按[失效端口](../../architecture/resource-ownership.md)发布（`cause: resource-update`） | 清空 Query 缓存、轮询 |
-| 自动更新策略草稿与完整提交 | `features/settings/model/autoUpdateConfig.ts` 的 `AutoUpdateConfigOwner` | 模块级草稿；保存 = 写 user config + 应用调度 | 定时任务本身的执行 |
+| 自动更新策略草稿与完整提交 | `features/settings/model/autoUpdateConfig.ts` 的 `AutoUpdateConfigOwner` | 模块级草稿；自动保存 = 写 user config + 应用调度 | 定时任务本身的执行 |
 | 自动更新归一化与时间校验 | `features/settings/model/configNormalization.ts` | 纯函数 | 草稿生命周期 |
-| 页面反馈、按钮 loading、反馈渲染 | `components/AutoUpdateConfigPanel.tsx`、`components/ComponentUpdatePanel.tsx` | 只渲染 owner 状态 | 再维护 update/auto-update 草稿 |
+| 页面反馈与自动保存提示 | `components/AutoUpdateConfigPanel.tsx`、`components/ComponentUpdatePanel.tsx` | 只渲染 owner 状态；失败带重试，成功静默 | 再维护 update/auto-update 草稿 |
 
-四条更新命令与自动更新保存都是**写入**：没有 Query mutation、没有自动重试，也没有 AbortSignal。用户取消页面或 Activity 隐藏只停止观察，不会撤销已提交的写入。
+四条更新命令与自动更新保存都是**写入**：没有 Query mutation，也没有 AbortSignal。自动更新失败后不会循环重试，只在下一次编辑或显式“重试保存”时再提交。用户取消页面或 Activity 隐藏只停止观察，不会撤销已提交的写入。
 
 更新命令提交为服务端 Run：`waitForCompletion:false` 在取得执行权后返回 `runId`，命令在 Run 进入终态前保持 `running`；面板可用“停止更新”按该 `runId` 发送停止请求，但停止返回只代表意图已记录，命令仍等待终态。服务端返回没有 `runId` 的旧同步响应时，命令按原语义立即完成，不伪造执行身份。
 
@@ -467,30 +464,35 @@ section 只控制渲染哪个面板：三个编辑面板在所有 section 下保
 `AutoUpdateConfigOwner.load()`：
 
 1. 读取服务端 `auto-update` 用户配置并归一化。成功且载荷可归一化时采用，`dirty=false`，清空此前的读取/保存反馈，并把该副本写入 `autoUpdateConfig` 本地键（编辑过的草稿不采用、不覆盖）。
-2. 服务端失败时读取本设备上次保存的 `autoUpdateConfig`：可归一化时作为草稿（`dirty=true`），并给出 warning。服务端错误存在时文案为 `自动更新设置读取失败: <原因>，已显示此设备上次保存的设置，请保存后重试`；否则为 `已载入此设备上次保存的自动更新设置，请保存后应用`。
+2. 服务端失败时读取本设备上次保存的 `autoUpdateConfig`：可归一化时作为草稿（`dirty=true`），并给出 warning。服务端错误存在时文案为 `自动更新设置读取失败: <原因>，已显示此设备上次保存的设置，修改后将自动同步`；否则为 `已载入此设备上次保存的自动更新设置，修改后将自动同步`。回退草稿 `revision=0`，不会在挂载时自动提交。
 3. 本地 JSON 损坏时给出 `自动更新设置读取失败: <解析原因>`，不伪造草稿。
 4. 服务端成功但载荷不可归一化时按“无服务端错误”走本地回退；没有本地草稿且无服务端错误时保持默认值、不提示。
 
 读取守卫：`load()` 记录开始时的 revision 与 touched；读取期间出现编辑（revision 推进、touched=true）或确认保存（revision 推进）时，迟到响应不写草稿。页面每次真正挂载读取一次；Activity 隐藏/恢复不重读（hook 的初始化标记随页面 state 保留），真正重挂载会重读：未保存草稿不会被覆盖，确认保存后的读取可以重新采用服务端副本（例如其它客户端已更新）。
 
-#### 4.2 草稿与保存
+#### 4.2 草稿与自动保存
 
 任意 `update(patch)` 都：
 
-- 合并当前草稿，`dirty=true`，清空 owner 反馈；
-- 推进本地 revision；
-- 立即把草稿写入 `autoUpdateConfig` 本地键（本设备 fallback，不代表服务端已确认）。
+- 合并当前草稿；内容与当前草稿完全一致时直接忽略，不推进 revision、不写本地草稿、不安排保存；
+- 内容变化时 `dirty=true`、清空 owner 反馈、推进 revision，并立即写 `autoUpdateConfig` 本地键（本设备 fallback，不代表服务端已确认）。
 
-保存是完整提交，同一时刻只有一次：
+自动保存由 `useAutoSave` 调度：
 
-1. `enabled && time` 不是 `00:00–23:59` 的 `HH:MM` 时直接返回 `invalid`，不调用任何端点。
-2. `saveUserConfig('auto-update', config)`。失败返回 `failed`，不调用调度接口，保留草稿与 dirty。
-3. `setupAutoUpdate(config)`。`result.success` 且（禁用时或响应 data 的 `success !== false`）才算完整成功。
-4. 完整成功且 revision 未变：写本地 fallback、清除 touched、推进 revision（使保存前发出的读取失效）、`dirty=false`、success 反馈（`自动更新已启用，每天 <time> 执行` / `自动更新已禁用`）。
-5. 完整成功但保存期间出现新编辑：返回 `superseded`，保留新草稿与 dirty，提示“此前设置已保存，当前更改尚未保存”。
-6. 配置已保存而调度失败：返回 `failed`，提示 `自动更新设置应用失败: <原因>`，配置不回滚，用户可再次保存重试。
+- 时间输入停止 600ms 后提交；开关/复选变更后立即冲刷；输入失焦、切到其它页面（Activity 隐藏）、组件卸载与 `pagehide` 立即冲刷。
+- 首次 load 完成前不排程；load 产生的本地回退 dirty（`revision=0`）不算用户编辑，不会在挂载时覆盖服务端。
+- `enabled && time` 不是 `00:00–23:59` 的 `HH:MM` 时前置拦截，不调用任何端点，只发固定 id 的 error toast；恢复合法后自动继续保存。
+- 保存失败后不自动循环重试；用户下一次编辑或点击页内/toast 的“重试保存”再提交。
 
-保存期间允许继续编辑；Activity 隐藏或页面重挂载不会中断已提交的保存。owner 是模块级对象，保存完成后即使页面隐藏也会写入状态与全局提示。
+owner 的完整提交语义不变，同一时刻只有一次：
+
+1. `saveUserConfig('auto-update', config)`。失败返回 `failed`，不调用调度接口，保留草稿与 dirty。
+2. `setupAutoUpdate(config)`。`result.success` 且（禁用时或响应 data 的 `success !== false`）才算完整成功。
+3. 完整成功且 revision 未变：写本地 fallback、清除 touched、推进 revision（使保存前发出的读取失效）、`dirty=false`；成功不发 toast。
+4. 完整成功但保存期间出现新编辑：返回 `superseded`，保留新草稿与 dirty，静默等待下一次排程提交。
+5. 配置已保存而调度失败：返回 `failed`，提示 `自动更新设置应用失败: <原因>`，配置不回滚，页内 `Alert` 与带“重试保存”的 error toast 同时出现。
+
+保存期间允许继续编辑；Activity 隐藏或页面重挂载不会中断已提交的保存。owner 是模块级对象，保存完成后即使页面隐藏也会写入状态。
 
 ### 5. 面板接线
 
@@ -505,14 +507,14 @@ section 只控制渲染哪个面板：三个编辑面板在所有 section 下保
 | core/渠道/CLI/资源命令与开始/结束提示 | `useSettingsUpdates()` |
 | 更新成功后的版本重取 | `useSettingsUpdates()` 调用 `useSettingsVersion().reload()`（`invalidateQueries`） |
 | 自动更新 `autoUpdate`/`dirty`/`saving`/`feedback`、touched/revision、本地回退、保存 + 调度 | `AutoUpdateConfigOwner` + `useSettingsAutoUpdate()` |
-| 自动更新页内/全局提示 | owner 反馈；hook 转发到全局通知 |
+| 自动更新页内/全局提示 | 失败：owner 反馈 + 带重试 action 的 toast；成功：静默；非法时间：仅 toast |
 
 按钮语义：core/资源按钮显示各自 loading，切换渠道按钮只禁用不 loading，CLI 按钮显示自己的 loading；全部更新按钮在任意命令运行期间禁用。命令运行期间额外渲染一个“停止更新”按钮（`canceling` 时显示停止中）。成功只走全局 toast；失败在卡片底部显示 `Alert`，资源重试放在 `AlertAction`。
 
 ### 6. 兼容与维护约束
 
 - 三类更新命令的路径未变，请求体新增 `waitForCompletion:false`，响应新增 `runId`/`run`/`pollUrl`/`stopUrl`，同时保留既有领域字段；更新渠道与资源源另用 `GET /agent/update-channels`、`POST /agent/actions/update-channel` 与 `GET/POST /agent/config/resource-source` 配置端点（不创建 Run）。update-core 仍在不传版本时使用 `maa update`，切渠道传 `beta`/`stable`；auto-update 仍先写 user config 再 POST `configure-auto-update`。
-- localStorage 键 `autoUpdateConfig` 的写入时机与内容不变（成功加载、每次编辑、保存成功）；新增 `laPlumaItemIconVersion`，只保存物品图标缓存 epoch，不保存业务配置。
+- localStorage 键 `autoUpdateConfig` 的写入时机与内容不变（成功加载、内容变化的编辑、保存成功；同值编辑跳过）；新增 `laPlumaItemIconVersion`，只保存物品图标缓存 epoch，不保存业务配置。
 - 本专题未新增 Query key；版本继续复用 `settings/version`；物品图标与头像仍不进入 Query。
 - 组件更新的图标缓存、版本同步与反馈时机见[成功后的版本与资源失效](#3-成功后的版本与资源失效)；自动更新草稿的读取、重挂载与保存裁决见[自动更新策略](#4-自动更新策略)。命令重试与生命周期以本专题第 2 节为准，Query 默认策略见[Query 缓存与键规范](../../architecture/query-cache.md)。
 
@@ -524,10 +526,10 @@ section 只控制渲染哪个面板：三个编辑面板在所有 section 下保
 
 关键不变量：
 
-- 草稿裁决：三个 section 的初始读取与 refresh 不覆盖未保存编辑，保存期间编辑返回 `superseded`，重置推进 revision 且保存中忽略。
+- 草稿裁决：三个 section 的初始读取与 refresh 不覆盖未保存编辑，保存期间编辑返回 `superseded`，后续自动保存补齐最新草稿；重置已移除。
 - 实例选项与资源源：实例保存只提交 `instance_options`、连接保存只提交 `connection`；资源源保存不发送空白凭据、`clearCdk` 写回 `cdk = false`、响应不回显明文。
 - 设备命令：取消跟随页面/Activity 而不是 section，查找与测试 loading 互不影响，测试期间编辑标记 `test.superseded`，选择回填保留未知字段与最新编辑。
-- 更新互斥与失效：单槽位重复发起返回 `ignored`，命令等待 Run 终态后才完成，停止只作用于本次 `runId`；core/热更新发布资源失效并推进图标 epoch，CLI 只重取版本；自动更新保存 = 写 user config + 应用调度，跨 Activity 隐藏继续完成，迟到读取不覆盖编辑。
+- 更新互斥与失效：单槽位重复发起返回 `ignored`，命令等待 Run 终态后才完成，停止只作用于本次 `runId`；core/热更新发布资源失效并推进图标 epoch，CLI 只重取版本；自动更新自动保存 = 写 user config + 应用调度，成功静默、失败可重试、非法时间不请求，跨 Activity 隐藏继续完成，迟到读取不覆盖编辑。
 - 草稿隔离：connection/instance/resource 三个 owner 各自持有草稿与保存状态，隐藏面板的 Query 不发起读取；设备/更新/版本状态与全局通知不重渲染连接表单。
 
 视觉基线只覆盖默认 connection 页面；connection 表单新增「连接预设」后曾更新 6 张 config 基线，随后设置页治理（外观卡、Field/Item/Alert 替换、删除 settings.css）冻结基线，留待 RW-019 统一重生成。仓库内保留 section 切换、草稿保留与保存反馈的行为回归。
