@@ -1,5 +1,5 @@
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion'
-import { Clock3, LoaderCircle, Save } from 'lucide-react'
+import { LoaderCircle, Save } from 'lucide-react'
 import { Button } from '@/shared/ui/button'
 import { Separator } from '@/shared/ui/separator'
 import { Switch } from '@/shared/ui/switch'
@@ -26,12 +26,9 @@ export default function AutoUpdateConfigPanel() {
   return (
     <section className="min-w-0">
       <div className="flex items-center justify-between gap-3.5">
-        <div className="flex min-w-0 items-start gap-3.5">
-          <Clock3 size={18} className="mt-0.5 shrink-0 text-muted-foreground" aria-hidden="true" />
-          <div className="min-w-0">
-            <h3 className="text-sm font-semibold text-foreground">自动更新</h3>
-            <p className="mt-1 text-xs leading-5 text-muted-foreground">每天按设定时间更新所选组件</p>
-          </div>
+        <div className="min-w-0">
+          <h3 className="text-sm font-semibold text-foreground">自动更新</h3>
+          <p className="mt-1 text-xs leading-5 text-muted-foreground">每天按设定时间更新所选组件</p>
         </div>
         <Switch
           checked={autoUpdate.enabled}

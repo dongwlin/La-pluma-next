@@ -22,32 +22,29 @@ export default function ConfigDirectoryPanel() {
   return (
     <Card>
       <CardContent className="flex flex-wrap items-center justify-between gap-3.5">
-        <div className="flex min-w-0 items-start gap-3.5">
-          <FolderOpen size={20} className="mt-0.5 shrink-0 text-muted-foreground" aria-hidden="true" />
-          <div className="min-w-0 flex-1">
-            <h2 className="text-base font-semibold text-foreground">配置目录</h2>
-            {configDirStatus === 'error' ? (
-              <SettingsFeedback
-                tone="error"
-                message={configDirError ?? '配置目录读取失败'}
-                className="mt-2"
-                action={(
-                  <Button
-                    onClick={() => void reloadConfigDir()}
-                    variant="outline"
-                    size="sm"
-                  >
-                    <RefreshCw size={16} aria-hidden="true" />
-                    重试
-                  </Button>
-                )}
-              />
-            ) : (
-              <p className="mt-1 wrap-break-word font-mono text-xs leading-5 text-muted-foreground wrap-anywhere" aria-live="polite">
-                {configDirStatus === 'loading' ? '正在读取目录...' : configDir}
-              </p>
-            )}
-          </div>
+        <div className="min-w-0 flex-1">
+          <h2 className="text-base font-semibold text-foreground">配置目录</h2>
+          {configDirStatus === 'error' ? (
+            <SettingsFeedback
+              tone="error"
+              message={configDirError ?? '配置目录读取失败'}
+              className="mt-2"
+              action={(
+                <Button
+                  onClick={() => void reloadConfigDir()}
+                  variant="outline"
+                  size="sm"
+                >
+                  <RefreshCw size={16} aria-hidden="true" />
+                  重试
+                </Button>
+              )}
+            />
+          ) : (
+            <p className="mt-1 wrap-break-word font-mono text-xs leading-5 text-muted-foreground wrap-anywhere" aria-live="polite">
+              {configDirStatus === 'loading' ? '正在读取目录...' : configDir}
+            </p>
+          )}
         </div>
         <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto">
           <Button

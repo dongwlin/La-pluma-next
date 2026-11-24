@@ -14,8 +14,6 @@ const options: readonly SegmentedTabOption<ConfigSectionId>[] = CONFIG_SECTION_I
   return {
     value: id,
     label: view.name,
-    description: view.description,
-    icon: view.icon,
   }
 })
 

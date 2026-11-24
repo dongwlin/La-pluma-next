@@ -1,4 +1,3 @@
-import type { ReactNode } from 'react'
 import type { ConfigSectionId } from '../model/configSection'
 
 /** maa-cli `[connection].preset` 的受支持取值；`PlayTools` 读取时归一为 `PlayCover`。 */
@@ -111,5 +110,4 @@ export interface UpdateChannels {
 export interface ConfigSection {
   id: ConfigSectionId
   name: string
-  icon: ReactNode
 }
