@@ -1,6 +1,14 @@
-import { useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useExecutionSnapshot } from '@/features/task-execution'
 import { ConfirmAlertDialog } from '@/shared/components'
+import {
+  dismissNotice,
+  LOGS_COVERAGE_NOTICE_ID,
+  LOGS_HIDDEN_MATCHES_NOTICE_ID,
+  LOGS_NOTICE_ID,
+  LOGS_REFRESH_NOTICE_ID,
+  notify,
+} from '@/shared/notifications'
 import { useLogsSession } from '../hooks/useLogsSession'
 import {
   buildLogView,
@@ -12,7 +20,6 @@ import { buildLogExportFileName, formatLogExport } from '../model/logExport'
 import type { LogFile } from '../types'
 import HistoryLogPicker from './HistoryLogPicker'
 import LogConsole from './LogConsole'
-import LogNotice, { type LogNoticeData } from './LogNotice'
 import LogsToolbar from './LogsToolbar'
 
 export default function LogsWorkspace() {
@@ -26,8 +33,8 @@ export default function LogsWorkspace() {
   const [filter, setFilter] = useState<LogFilter>('all')
   const [search, setSearch] = useState('')
   const [collapseRepeats, setCollapseRepeats] = useState(true)
-  const [notice, setNotice] = useState<LogNoticeData | null>(null)
   const [confirmCleanup, setConfirmCleanup] = useState(false)
+  const refreshErrorRef = useRef<string | null>(null)
   const viewingHistory = history.viewing
   const logs = viewingHistory ? history.logs : realtime.logs
   const loading = history.readPhase === 'loading'
@@ -51,6 +58,61 @@ export default function LogsWorkspace() {
     collapseRepeats,
   }), [collapseRepeats, events, filter, runFilteredLogs, search])
 
+  const retryActiveLogs = useCallback(() => {
+    if (viewingHistory) {
+      if (history.selectedFile) history.retry()
+      return
+    }
+    if (realtime.paused) realtime.resume()
+    else realtime.refresh()
+  }, [history, realtime, viewingHistory])
+
+  useEffect(() => {
+    if (realtime.coverageNotice) {
+      notify(realtime.coverageNotice, 'warning', {
+        id: LOGS_COVERAGE_NOTICE_ID,
+        duration: Infinity,
+      })
+      return
+    }
+    dismissNotice(LOGS_COVERAGE_NOTICE_ID)
+  }, [realtime.coverageNotice])
+
+  useEffect(() => {
+    if (logView.hiddenMatchCount > 0) {
+      notify(`${logView.hiddenMatchCount} 条匹配日志被关键事件筛选隐藏`, 'info', {
+        id: LOGS_HIDDEN_MATCHES_NOTICE_ID,
+        action: { label: '显示全部事件', onClick: () => setEvents('all') },
+      })
+      return
+    }
+    dismissNotice(LOGS_HIDDEN_MATCHES_NOTICE_ID)
+  }, [logView.hiddenMatchCount])
+
+  useEffect(() => {
+    const refreshError = !viewingHistory && realtime.logs.length > 0 ? realtime.error : null
+    if (!refreshError) {
+      if (refreshErrorRef.current !== null) {
+        refreshErrorRef.current = null
+        dismissNotice(LOGS_REFRESH_NOTICE_ID)
+      }
+      return
+    }
+    if (refreshErrorRef.current === refreshError) return
+    refreshErrorRef.current = refreshError
+    notify(refreshError, 'error', {
+      id: LOGS_REFRESH_NOTICE_ID,
+      duration: Infinity,
+      action: { label: '重试', onClick: retryActiveLogs },
+    })
+  }, [realtime.error, realtime.logs.length, retryActiveLogs, viewingHistory])
+
+  useEffect(() => () => {
+    dismissNotice(LOGS_COVERAGE_NOTICE_ID)
+    dismissNotice(LOGS_HIDDEN_MATCHES_NOTICE_ID)
+    dismissNotice(LOGS_REFRESH_NOTICE_ID)
+  }, [])
+
   const viewHistoryFile = (file: LogFile) => {
     setAutoScroll(false)
     session.enterHistory(file)
@@ -65,18 +127,16 @@ export default function LogsWorkspace() {
     if (viewingHistory) return
     realtime.clear()
     setClearVersion(value => value + 1)
-    setNotice({ type: 'success', text: '已清屏，后续到达的日志会继续显示' })
+    notify('已清屏，后续到达的日志会继续显示', 'success', { id: LOGS_NOTICE_ID })
   }
 
   const cleanupHistoryLogs = async () => {
-    setNotice(null)
     const outcome = await session.cleanupHistoryLogs()
     if (outcome.status === 'succeeded') {
-      setNotice({ type: 'success', text: outcome.message })
+      notify(outcome.message, 'success', { id: LOGS_NOTICE_ID })
       return true
     }
     if (outcome.status === 'failed') {
-      setNotice({ type: 'error', text: outcome.message })
       throw new Error(outcome.message)
     }
     return false
@@ -91,15 +151,9 @@ export default function LogsWorkspace() {
     anchor.download = buildLogExportFileName(new Date())
     anchor.click()
     URL.revokeObjectURL(url)
-  }
-
-  const retryActiveLogs = () => {
-    if (viewingHistory) {
-      if (history.selectedFile) history.retry()
-      return
-    }
-    if (realtime.paused) realtime.resume()
-    else realtime.refresh()
+    notify(`已导出 ${logView.selected.length} 条日志（当前筛选）`, 'success', {
+      id: LOGS_NOTICE_ID,
+    })
   }
 
   const togglePause = () => {
@@ -109,14 +163,6 @@ export default function LogsWorkspace() {
 
   return (
     <>
-      {notice && (
-        <LogNotice
-          type={notice.type}
-          text={notice.text}
-          onDismiss={() => setNotice(null)}
-        />
-      )}
-
       <LogsToolbar
         autoScroll={autoScroll}
         onAutoScrollChange={setAutoScroll}
@@ -142,15 +188,6 @@ export default function LogsWorkspace() {
 
       {viewingHistory && (
         <p className="log-coverage">历史文件显示已加载的尾部内容；导出仅包含当前筛选结果。</p>
-      )}
-      {!viewingHistory && realtime.coverageNotice && (
-        <p className="log-coverage" role="status">{realtime.coverageNotice}</p>
-      )}
-      {logView.hiddenMatchCount > 0 && (
-        <div className="log-hidden-matches" role="status">
-          <span>{logView.hiddenMatchCount} 条匹配日志被关键事件筛选隐藏</span>
-          <button type="button" onClick={() => setEvents('all')}>显示全部事件</button>
-        </div>
       )}
 
       <LogConsole

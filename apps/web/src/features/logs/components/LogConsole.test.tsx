@@ -260,6 +260,11 @@ describe('LogConsole scroll following', () => {
     expect(findFollowIndicator()).toBeUndefined()
   })
 
+  it('keeps a background refresh error out of the visible rows', async () => {
+    await renderConsole(initialLogs, { error: '后台刷新暂不可用' })
+    expect(container.querySelector('[role="alert"]')).toBeNull()
+    expect(container.textContent).toContain('第一行')
+  })
 })
 
 describe('LogConsole record details', () => {

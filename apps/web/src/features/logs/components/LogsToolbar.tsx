@@ -55,25 +55,6 @@ export default function LogsToolbar({
     <Card className="log-card log-toolbar-card gap-0 p-0!" data-region="toolbar">
       <CardContent className="log-toolbar">
         <div className="log-toolbar-controls">
-          <div className={`log-toggle-control flex min-h-11 min-w-0 items-center justify-between gap-3.5 ${viewingHistory ? 'opacity-50' : ''}`}>
-            <span className="truncate text-xs font-medium text-muted-foreground">自动滚动</span>
-            <Switch
-              size="sm"
-              checked={autoScroll}
-              onCheckedChange={onAutoScrollChange}
-              aria-label="自动滚动"
-              disabled={viewingHistory}
-            />
-          </div>
-          <div className="log-toggle-control flex min-h-11 min-w-0 items-center justify-between gap-3.5">
-            <span className="truncate text-xs font-medium text-muted-foreground">折叠重复</span>
-            <Switch
-              size="sm"
-              checked={collapseRepeats}
-              onCheckedChange={onCollapseRepeatsChange}
-              aria-label="折叠重复日志"
-            />
-          </div>
           <Select
             value={runId}
             onValueChange={(next, details) => { if (details.reason !== 'none' && next !== null) onRunIdChange(next) }}
@@ -83,7 +64,7 @@ export default function LogsToolbar({
               ...runIds.map(id => ({ value: id, label: `Run · ${id}` })),
             ]}
           >
-            <SelectTrigger aria-label="执行范围" className="col-span-2 w-full sm:col-auto sm:w-56">
+            <SelectTrigger aria-label="执行范围" className="col-span-2 w-full sm:col-auto sm:w-48">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -103,7 +84,7 @@ export default function LogsToolbar({
               { value: 'all', label: '全部事件' },
             ]}
           >
-            <SelectTrigger aria-label="事件范围" className="w-full sm:w-36">
+            <SelectTrigger aria-label="事件范围" className="w-full sm:w-32">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -126,7 +107,7 @@ export default function LogsToolbar({
               { value: 'DEBUG', label: '调试' },
             ]}
           >
-            <SelectTrigger aria-label="日志级别" className="w-full sm:w-36">
+            <SelectTrigger aria-label="日志级别" className="w-full sm:w-32">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -141,7 +122,7 @@ export default function LogsToolbar({
               ))}
             </SelectContent>
           </Select>
-          <div className="relative col-span-2 sm:col-auto sm:min-w-56 sm:flex-1">
+          <div className="relative col-span-2 sm:col-auto sm:min-w-40 sm:flex-1">
             <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-tertiary" aria-hidden="true" />
             <Input
               value={search}
@@ -153,40 +134,63 @@ export default function LogsToolbar({
             />
           </div>
         </div>
-        <div className="log-toolbar-actions">
-          {!viewingHistory && (
+        <div className="log-toolbar-footer">
+          <div className="log-toolbar-toggles">
+            <div className="log-toggle-control flex min-h-11 min-w-0 items-center justify-between gap-3.5">
+              <span className={`truncate text-xs font-medium text-muted-foreground ${viewingHistory ? 'opacity-50' : ''}`}>自动滚动</span>
+              <Switch
+                size="sm"
+                checked={autoScroll}
+                onCheckedChange={onAutoScrollChange}
+                aria-label="自动滚动"
+                disabled={viewingHistory}
+              />
+            </div>
+            <div className="log-toggle-control flex min-h-11 min-w-0 items-center justify-between gap-3.5">
+              <span className="truncate text-xs font-medium text-muted-foreground">折叠重复</span>
+              <Switch
+                size="sm"
+                checked={collapseRepeats}
+                onCheckedChange={onCollapseRepeatsChange}
+                aria-label="折叠重复日志"
+              />
+            </div>
+          </div>
+          <div className="log-toolbar-actions">
+            {!viewingHistory && (
+              <Button
+                onClick={onTogglePause}
+                variant="outline"
+                size="sm"
+                disabled={actionBusy}
+                aria-label={paused ? '继续读取日志' : '暂停读取日志'}
+              >
+                {paused
+                  ? <Play className="h-4 w-4" aria-hidden="true" />
+                  : <Pause className="h-4 w-4" aria-hidden="true" />}
+                {paused ? '继续' : '暂停'}
+              </Button>
+            )}
+            {!viewingHistory && (
+              <Button
+                onClick={onClear}
+                variant="outline"
+                size="sm"
+                disabled={actionBusy}
+              >
+                <Trash2 className="h-4 w-4" aria-hidden="true" />
+                清屏
+              </Button>
+            )}
             <Button
-              onClick={onTogglePause}
-              variant="outline"
+              onClick={onExport}
               size="sm"
-              disabled={actionBusy}
-              aria-label={paused ? '继续读取日志' : '暂停读取日志'}
+              disabled={!canExport}
             >
-              {paused
-                ? <Play className="h-4 w-4" aria-hidden="true" />
-                : <Pause className="h-4 w-4" aria-hidden="true" />}
-              {paused ? '继续' : '暂停'}
+              <Download className="h-4 w-4" aria-hidden="true" />
+              导出筛选结果
             </Button>
-          )}
-          {!viewingHistory && (
-            <Button
-              onClick={onClear}
-              variant="outline"
-              size="sm"
-              disabled={actionBusy}
-            >
-              <Trash2 className="h-4 w-4" aria-hidden="true" />
-              清屏
-            </Button>
-          )}
-          <Button
-            onClick={onExport}
-            size="sm"
-            disabled={!canExport}
-          >
-            <Download className="h-4 w-4" aria-hidden="true" />
-            导出筛选结果
-          </Button>
+          </div>
         </div>
       </CardContent>
     </Card>

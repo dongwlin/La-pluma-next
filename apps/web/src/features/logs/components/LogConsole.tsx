@@ -104,6 +104,10 @@ export default function LogConsole({
   }, [])
 
   const visibleLogs = view.visible
+  const totalFacts = view.selected.length
+  const countLabel = visibleLogs.length === totalFacts
+    ? `${totalFacts} 条`
+    : `${totalFacts} 条 · ${visibleLogs.length} 行`
   const isFilteredEmpty = logs.length > 0 && visibleLogs.length === 0
 
   return (
@@ -112,7 +116,7 @@ export default function LogConsole({
         <CardTitle role="heading" aria-level={3}>{headingTitle}</CardTitle>
         <CardAction>
           <div className="log-console-heading-actions">
-            <span className="log-count">{visibleLogs.length} 条</span>
+            <span className="log-count">{countLabel}</span>
             {viewingHistory && (
               <Button
                 onClick={onBackToRealtime}
@@ -155,11 +159,8 @@ export default function LogConsole({
               aria-live={liveRegionMuted ? 'off' : 'polite'}
               aria-relevant="additions text"
             >
-              {error && (
-                <div
-                  className={`log-console-state is-error flex-wrap ${logs.length > 0 ? 'status-danger m-3 min-h-0! justify-start! p-3! text-left font-sans text-sm' : ''}`}
-                  role="alert"
-                >
+              {error && logs.length === 0 && (
+                <div className="log-console-state is-error flex-wrap" role="alert">
                   <AlertCircle className="h-5 w-5" aria-hidden="true" />
                   <span>{error}</span>
                   <Button

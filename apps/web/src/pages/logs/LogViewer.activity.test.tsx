@@ -34,6 +34,20 @@ vi.mock('framer-motion', async () => {
   }
 })
 
+const notices = vi.hoisted(() => ({
+  notify: vi.fn(),
+  dismissNotice: vi.fn(),
+}))
+
+vi.mock('@/shared/notifications', () => ({
+  notify: notices.notify,
+  dismissNotice: notices.dismissNotice,
+  LOGS_NOTICE_ID: 'logs',
+  LOGS_COVERAGE_NOTICE_ID: 'logs-coverage',
+  LOGS_HIDDEN_MATCHES_NOTICE_ID: 'logs-hidden-matches',
+  LOGS_REFRESH_NOTICE_ID: 'logs-refresh',
+}))
+
 vi.mock('@/features/logs/api', () => mocks)
 
 const row = (message: string) => ({
@@ -116,6 +130,8 @@ describe('LogViewer realtime lifecycle', () => {
     mocks.readLogFile.mockReset()
     mocks.clearRealtimeLogs.mockReset()
     mocks.cleanupLogs.mockReset()
+    notices.notify.mockClear()
+    notices.dismissNotice.mockClear()
     container = document.createElement('div')
     document.body.appendChild(container)
     root = createRoot(container)

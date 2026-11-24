@@ -42,6 +42,20 @@ vi.mock('framer-motion', async () => {
   }
 })
 
+const notices = vi.hoisted(() => ({
+  notify: vi.fn(),
+  dismissNotice: vi.fn(),
+}))
+
+vi.mock('@/shared/notifications', () => ({
+  notify: notices.notify,
+  dismissNotice: notices.dismissNotice,
+  LOGS_NOTICE_ID: 'logs',
+  LOGS_COVERAGE_NOTICE_ID: 'logs-coverage',
+  LOGS_HIDDEN_MATCHES_NOTICE_ID: 'logs-hidden-matches',
+  LOGS_REFRESH_NOTICE_ID: 'logs-refresh',
+}))
+
 vi.mock('@/features/logs/api', () => mocks)
 
 let container: HTMLDivElement
@@ -143,6 +157,8 @@ describe('LogViewer recovery and controls', () => {
     mocks.readLogFile.mockReset()
     mocks.clearRealtimeLogs.mockReset()
     mocks.cleanupLogs.mockReset()
+    notices.notify.mockClear()
+    notices.dismissNotice.mockClear()
     visibility = 'visible'
     Object.defineProperty(document, 'visibilityState', { configurable: true, get: () => visibility })
     container = document.createElement('div')
@@ -213,8 +229,17 @@ describe('LogViewer recovery and controls', () => {
     await flush()
 
     expect(mocks.getRealtimeLogs).toHaveBeenCalledTimes(2)
-    expect(container.querySelector('[role="alert"]')?.textContent).toContain('后台刷新暂不可用')
+    expect(container.querySelector('[role="alert"]')).toBeNull()
     expect(container.querySelector('[role="log"]')?.textContent).toContain('保留这条实时日志')
+    expect(notices.notify).toHaveBeenCalledWith(
+      '后台刷新暂不可用',
+      'error',
+      expect.objectContaining({
+        id: 'logs-refresh',
+        duration: Infinity,
+        action: expect.objectContaining({ label: '重试' }),
+      }),
+    )
   })
 
   it('offers retry for both the history list and a selected history file', async () => {
@@ -419,7 +444,11 @@ describe('LogViewer recovery and controls', () => {
     expect(mocks.cleanupLogs).toHaveBeenCalledWith(10, expect.any(AbortSignal))
     expect(mocks.getLogFiles).toHaveBeenCalledTimes(2)
     expect(mocks.getRealtimeLogs).toHaveBeenCalledTimes(1)
-    expect(container.textContent).toContain('已清理 1 个日志文件')
+    expect(notices.notify).toHaveBeenCalledWith(
+      '已清理 1 个日志文件',
+      'success',
+      { id: 'logs' },
+    )
     expect(container.textContent).toContain('暂无历史日志文件')
   })
 
@@ -440,7 +469,7 @@ describe('LogViewer recovery and controls', () => {
 
     expect(document.body.textContent).toContain('清理接口暂不可用')
     expect(document.body.textContent).toContain('清理旧日志文件？')
-    expect(container.textContent).toContain('清理接口暂不可用')
+    expect(container.textContent).not.toContain('清理接口暂不可用')
     expect(mocks.getLogFiles).toHaveBeenCalledTimes(1)
 
     const retryConfirm = Array.from(document.body.querySelectorAll<HTMLButtonElement>('button'))
@@ -449,7 +478,7 @@ describe('LogViewer recovery and controls', () => {
 
     expect(mocks.cleanupLogs).toHaveBeenCalledTimes(2)
     expect(mocks.getLogFiles).toHaveBeenCalledTimes(2)
-    expect(container.textContent).toContain('清理完成')
+    expect(notices.notify).toHaveBeenCalledWith('清理完成', 'success', { id: 'logs' })
   })
 
   it('clears the local display without mutating shared server logs', async () => {
@@ -464,7 +493,11 @@ describe('LogViewer recovery and controls', () => {
     await click(findButton('清屏')!)
 
     expect(container.querySelector('[role="log"]')?.textContent).not.toContain('清屏前的行')
-    expect(container.textContent).toContain('已清屏，后续到达的日志会继续显示')
+    expect(notices.notify).toHaveBeenCalledWith(
+      '已清屏，后续到达的日志会继续显示',
+      'success',
+      { id: 'logs' },
+    )
     expect(document.body.textContent).not.toContain('确认清空')
     expect(mocks.clearRealtimeLogs).not.toHaveBeenCalled()
     expect(mocks.getRealtimeLogs).toHaveBeenCalledTimes(1)
@@ -621,7 +654,7 @@ describe('LogViewer recovery and controls', () => {
     mocks.getRealtimeLogs.mockResolvedValue({ success: true, data: records })
 
     await renderComponent()
-    expect(container.textContent).toContain('2 条')
+    expect(container.textContent).toContain('3 条 · 2 行')
     expect(container.querySelector('[role="log"]')?.textContent).toContain('x2')
 
     await click(findButton('导出筛选结果')!)
@@ -631,6 +664,11 @@ describe('LogViewer recovery and controls', () => {
     expect((await readBlobText(blob)).split('\n').map(line => JSON.parse(line))).toEqual(records)
     expect(clickSpy).toHaveBeenCalledTimes(1)
     expect(revokeObjectURL).toHaveBeenCalledWith('blob:log-export')
+    expect(notices.notify).toHaveBeenCalledWith(
+      '已导出 3 条日志（当前筛选）',
+      'success',
+      { id: 'logs' },
+    )
 
     await changeSelect(container.querySelector<HTMLElement>('[aria-label="日志级别"]')!, '错误')
     expect(findButton('导出筛选结果')?.disabled).toBe(true)

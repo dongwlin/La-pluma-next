@@ -198,11 +198,14 @@ export class RealtimeLogStream {
     this.active = null
 
     if (!response.success) {
-      this.setState({ ...this.state, error: readFailureMessage(response) })
+      const error = readFailureMessage(response)
+      if (this.state.error === error) return
+      this.setState({ ...this.state, error })
       return
     }
 
     if (!Array.isArray(response.data)) {
+      if (this.state.error === '实时日志响应格式无效') return
       this.setState({ ...this.state, error: '实时日志响应格式无效' })
       return
     }
@@ -237,7 +240,9 @@ export class RealtimeLogStream {
     if (!this.isCurrent(request)) return
     this.active = null
     if (isAbortError(error)) return
-    this.setState({ ...this.state, error: catchFailureMessage(error) })
+    const message = catchFailureMessage(error)
+    if (this.state.error === message) return
+    this.setState({ ...this.state, error: message })
   }
 
   private abortActive(): void {

@@ -135,6 +135,26 @@ describe('RealtimeLogStream', () => {
     stream.stop()
   })
 
+  it('does not publish an identical refresh failure twice', async () => {
+    const read = vi.fn<(lines: number, signal?: AbortSignal) => Promise<ApiResponse<unknown>>>()
+      .mockResolvedValue({ success: false, message: '后台刷新暂不可用' })
+    const stream = new RealtimeLogStream({ read })
+    const listener = vi.fn()
+    stream.subscribe(listener)
+
+    stream.start()
+    await flush()
+    expect(listener).toHaveBeenCalledTimes(1)
+    expect(stream.getState().error).toBe('后台刷新暂不可用')
+
+    await vi.advanceTimersByTimeAsync(REALTIME_LOG_INTERVAL_MS)
+    await flush()
+    expect(read).toHaveBeenCalledTimes(2)
+    expect(listener).toHaveBeenCalledTimes(1)
+
+    stream.stop()
+  })
+
   it('keeps the observed window when a successful response has an invalid payload', async () => {
     const read = vi.fn()
       .mockResolvedValueOnce({ success: true, data: [realtimeRow('保留')] })
