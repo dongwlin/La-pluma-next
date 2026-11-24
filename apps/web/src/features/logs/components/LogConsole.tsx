@@ -1,14 +1,23 @@
 import { useCallback, useEffect, useMemo, useReducer, useRef } from 'react'
 import { AlertCircle, ArrowDown, ArrowLeft, FileText, Search } from 'lucide-react'
+import { Badge } from '@/shared/ui/badge'
 import { Button } from '@/shared/ui/button'
 import { Card, CardAction, CardContent, CardHeader, CardTitle } from '@/shared/ui/card'
 import { Loading } from '@/shared/components'
 import { countAppendedRows, initialLogFollowState, reduceLogFollow } from '../model/logFollow'
+import { formatLogFileSize } from '../model/logFileSize'
 import { getLogIdentity, getLogSourceText, type LogView } from '../model/logModel'
 import type { LogEntry, LogFile } from '../types'
 
 /** 距底部小于该值视为仍在底部，吸收取整与吸附误差。 */
 const FOLLOW_BOTTOM_GAP_PX = 4
+
+const LEVEL_BADGE_CLASS: Record<LogEntry['level'], string> = {
+  ERROR: 'bg-destructive/10 text-destructive-text',
+  WARN: 'bg-warning/10 text-warning-text',
+  INFO: 'bg-primary-soft text-primary-strong',
+  DEBUG: 'bg-muted text-muted-foreground',
+}
 
 interface LogConsoleProps {
   readonly viewingHistory: boolean
@@ -113,10 +122,12 @@ export default function LogConsole({
   return (
     <Card className="log-card min-w-0 gap-0 p-0!">
       <CardHeader className="border-b py-3.5">
-        <CardTitle role="heading" aria-level={3}>{headingTitle}</CardTitle>
+        <CardTitle role="heading" aria-level={2}>{headingTitle}</CardTitle>
         <CardAction>
           <div className="log-console-heading-actions">
-            <span className="log-count">{countLabel}</span>
+            <Badge variant="secondary" className="bg-primary-soft font-semibold tabular-nums text-primary-strong">
+              {countLabel}
+            </Badge>
             {viewingHistory && (
               <Button
                 onClick={onBackToRealtime}
@@ -138,7 +149,7 @@ export default function LogConsole({
               {selectedFile.name}
             </span>
             <span className="hidden shrink-0 text-tertiary sm:inline">
-              {(selectedFile.size / 1024).toFixed(2)} KB
+              {formatLogFileSize(selectedFile.size)}
             </span>
           </div>
         )}
@@ -195,11 +206,15 @@ export default function LogConsole({
                 <div className="log-row" data-log-row key={log.members[0]!.record.id || `${getLogIdentity(log.members[0]!.record)}-${index}`}>
                   <div className="log-row-meta">
                     {log.time && <time>{log.time}</time>}
-                    <span className={`log-level is-${log.level.toLowerCase()}`}>{log.level}</span>
+                    <Badge variant="secondary" className={LEVEL_BADGE_CLASS[log.level]}>{log.level}</Badge>
                   </div>
                   <div className="log-message">
                     <span data-log-message>{log.message}</span>
-                    {log.count > 1 && <span className="log-repeat">x{log.count}</span>}
+                    {log.count > 1 && (
+                      <Badge variant="secondary" className="ml-2 bg-primary-soft px-1.5 text-primary-strong">
+                        {`x${log.count}`}
+                      </Badge>
+                    )}
                     <details className="log-raw">
                       <summary>{log.count > 1 ? `查看 ${log.count} 条原文与详情` : '原文与详情'}</summary>
                       {log.members.map((annotation, index) => {
