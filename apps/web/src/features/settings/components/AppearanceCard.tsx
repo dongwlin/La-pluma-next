@@ -44,7 +44,6 @@ export default function AppearanceCard() {
                   </span>
                   <span className="min-w-0">
                     <span className="block text-sm font-medium text-foreground">{theme.name}</span>
-                    <span className="mt-0.5 block text-xs leading-5 text-muted-foreground">{theme.description}</span>
                   </span>
                 </span>
                 {selected && <Check className="size-4 shrink-0 text-primary" aria-hidden="true" />}
@@ -52,7 +51,6 @@ export default function AppearanceCard() {
             )
           })}
         </ToggleGroup>
-        <p className="mt-3 text-xs text-muted-foreground">明暗模式仍由顶栏切换。</p>
       </CardContent>
     </Card>
   )

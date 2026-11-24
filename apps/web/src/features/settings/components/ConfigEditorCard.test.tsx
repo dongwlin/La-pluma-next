@@ -43,45 +43,38 @@ describe('ConfigEditorCard save gating', () => {
     container.remove()
   })
 
-  it('disables save and exposes the blocked reason while the config is not loaded', async () => {
+  it('disables save while the config is not loaded', async () => {
     const onSave = vi.fn()
     await renderCard({
       saveDisabled: true,
-      saveBlockedReason: '连接配置正在读取，加载完成后才能保存',
       onSave,
     })
 
     const saveButton = findButton('保存')
     expect(saveButton.disabled).toBe(true)
 
-    const blocked = container.querySelector('[role="status"]')
-    expect(blocked?.textContent).toBe('连接配置正在读取，加载完成后才能保存')
-
     await act(async () => saveButton.click())
     expect(onSave).not.toHaveBeenCalled()
   })
 
-  it('enables save and drops the blocked reason once the config is loaded', async () => {
+  it('enables save once the config is loaded', async () => {
     const onSave = vi.fn()
     await renderCard({
       saveDisabled: false,
-      saveBlockedReason: null,
       onSave,
     })
 
     const saveButton = findButton('保存')
     expect(saveButton.disabled).toBe(false)
-    expect(container.querySelector('[role="status"]')).toBeNull()
 
     await act(async () => saveButton.click())
     expect(onSave).toHaveBeenCalledOnce()
   })
 
-  it('does not stack the blocked reason on top of an existing load error feedback', async () => {
+  it('renders only the load error feedback when reading fails', async () => {
     await renderCard({
       feedback: { type: 'error', message: '连接配置读取失败: 网络错误' },
       saveDisabled: true,
-      saveBlockedReason: '连接配置读取失败，暂时无法保存',
     })
 
     expect(container.querySelector('[role="status"]')).toBeNull()

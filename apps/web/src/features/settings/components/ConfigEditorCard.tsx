@@ -14,7 +14,6 @@ export interface ConfigEditorCardProps {
   readonly feedback: ConfigEditorFeedback | null
   readonly saving: boolean
   readonly saveDisabled?: boolean
-  readonly saveBlockedReason?: string | null
   /** 首次服务端快照被采纳前禁用编辑入口（重置），保存另有 saveDisabled。 */
   readonly editingDisabled?: boolean
   /** 读取失败时提供的显式重试入口。 */
@@ -30,15 +29,12 @@ export default function ConfigEditorCard({
   feedback,
   saving,
   saveDisabled = false,
-  saveBlockedReason = null,
   editingDisabled = false,
   onRetryLoad,
   onSave,
   onReset,
   children,
 }: ConfigEditorCardProps) {
-  const blockedReason = saveBlockedReason && !feedback ? saveBlockedReason : null
-
   return (
     <Card>
       <CardHeader className="border-b py-3.5">
@@ -73,11 +69,6 @@ export default function ConfigEditorCard({
         </CardAction>
       </CardHeader>
       <CardContent className="app-stack-card">
-        {blockedReason && (
-          <div role="status" className="rounded-lg px-3 py-2.5 text-xs leading-5 status-warning">
-            {blockedReason}
-          </div>
-        )}
         {feedback && (
           <SettingsFeedback
             tone="error"

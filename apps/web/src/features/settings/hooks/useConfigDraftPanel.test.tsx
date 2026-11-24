@@ -115,7 +115,7 @@ describe('useConfigDraftPanel notices', () => {
     await renderPanel(baseOptions({ loadError: 'offline', loaded: false, save }))
 
     expect(notifications.notify).toHaveBeenCalledWith(
-      '连接配置读取失败: offline（保存已禁用，请重试读取）',
+      '连接配置读取失败: offline',
       'error',
     )
 
@@ -123,11 +123,7 @@ describe('useConfigDraftPanel notices', () => {
     notifications.notifyProgress.mockClear()
     await runSave()
 
-    expect(notifications.notify).toHaveBeenCalledWith(
-      '连接配置读取失败，暂时无法保存',
-      'warning',
-      { id: 'settings-config:connection' },
-    )
+    expect(notifications.notify).not.toHaveBeenCalled()
     expect(notifications.notifyProgress).not.toHaveBeenCalled()
     expect(save).not.toHaveBeenCalled()
   })

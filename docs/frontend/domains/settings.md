@@ -21,7 +21,7 @@
 | 页面壳与工作区组合 | `pages/settings/ConfigManager.tsx` | 渲染 `app-page` 页面壳与 `app-stack-section`，并组合工作区 |
 | section 导航与布局 | `features/settings/components/SettingsWorkspace.tsx` | section 订阅、工作区网格与面板组合 |
 | 配置 section 分段 | `features/settings/components/ConfigSectionNav.tsx` | 组合共享 `SegmentedTabNav`：tablist/tab 语义、方向键移动焦点、Enter/Space 激活与流体高亮 |
-| section 展示文案 | `features/settings/components/configSectionViews.tsx` | 名称；不持有存储或事件 |
+| section 展示文案 | `features/settings/components/configSectionViews.ts` | 名称；不持有存储或事件 |
 | 外观主题 | `features/settings/components/AppearanceCard.tsx` | 读取 `useTheme()` 的 `themeId`/`resolvedMode`，通过 `setThemeId` 切换主题；选项来自 `THEMES`，不新增主题存储 |
 | 表单与开关行 | `features/settings/components/ConfigFieldControls.tsx`、`SwitchSettingRow.tsx` | `Field`/`Label` 组合标签、说明与控件；开关行统一 44px 触达高度与说明排版 |
 | 页内反馈 | `features/settings/components/SettingsFeedback.tsx` | 错误用 `Alert`（可带重试 action），成功/警告用 `role="status"` 语义块；不重复全局通知正文 |
@@ -208,7 +208,7 @@ ConfigManager（app-page > app-stack-section > SettingsWorkspace）
 
 保存是显式动作：`POST /agent/config/maa/:profileName`，connection 与 instance 各发 `{ connection: snapshot }` 或 `{ instance_options: snapshot }`，服务端按 section 合并，因此两个表单不会互相覆盖。
 
-- 首次服务端读取被采纳前（`loaded=false`）不可保存：`ConfigDraftOwner.save()` 返回 `ignored` 且不发送写请求，避免把页面默认值写回服务端；三个面板同时禁用“保存”、表单控件与“重置”，并提示“正在读取，加载完成后才能保存”或读取失败原因。
+- 首次服务端读取被采纳前（`loaded=false`）不可保存：`ConfigDraftOwner.save()` 返回 `ignored` 且不发送写请求，避免把页面默认值写回服务端；三个面板同时禁用“保存”、表单控件与“重置”，不再额外渲染读取状态说明；读取失败时只在卡内显示错误与重试入口。
 - 同一时刻只允许一次保存；保存中再次调用返回 `ignored`，页面不重复提示。
 - 保存期间仍可编辑。响应返回时只有 revision 未变才把当前草稿视为已保存；否则返回 `superseded`，通过固定 notice id 提示“此前连接配置/实例选项/资源源配置已保存，当前更改尚未保存”，并保留新草稿。
 - 保存成功清除 dirty、更新 `persisted` 与 `lastSavedAt`，并推进 revision 使保存前的读取失效；保存失败保留草稿与 `failed`/`error`，下一次保存重试同一份最新草稿。
@@ -225,7 +225,7 @@ ConfigManager（app-page > app-stack-section > SettingsWorkspace）
 
 #### 2.6 读取失败
 
-初始读取失败（尚无 Query 数据）在对应面板显示页内 `role="alert"` 与全局通知（`连接配置读取失败: <原因>`、`实例选项读取失败: <原因>`、`资源源配置读取失败: <原因>`），提示文案同时说明“保存已禁用，请重试读取”，并在页内反馈提供“重新读取”按钮调用同一 Query 的 `refetch`；已有服务端数据后的后台 refresh 失败不打断编辑，也不重复发送全局通知。读取成功后清除对应的初始失败提示并恢复编辑与保存。
+初始读取失败（尚无 Query 数据）在对应面板显示页内 `role="alert"` 与全局通知（`连接配置读取失败: <原因>`、`实例选项读取失败: <原因>`、`资源源配置读取失败: <原因>`），页内反馈提供“重新读取”按钮调用同一 Query 的 `refetch`；已有服务端数据后的后台 refresh 失败不打断编辑，也不重复发送全局通知。读取成功后清除对应的初始失败提示并恢复编辑与保存。
 
 `loaded` 保持 `false` 期间编辑、重置与保存都不可用；`ConfigDraftOwner.adoptServer()` 仍按 revision/dirty 规则丢弃过期的后台快照，但首次快照按当前 revision 采纳（加载期间没有可推进 revision 的编辑），因此慢请求与显式重试都能恢复到可保存状态。
 

@@ -734,7 +734,6 @@ describe('ConfigManager layout surfaces', () => {
     await renderMode('visible')
     await settle()
 
-    expect(container.textContent).toContain('设置会在保存后生效')
     expect(mocks.loadUserConfig).toHaveBeenCalledOnce()
   })
 
@@ -883,12 +882,11 @@ describe('ConfigManager layout surfaces', () => {
 
     const alert = container.querySelector('[role="alert"]')
     expect(alert?.textContent).toContain('连接配置读取失败: 配置不可读')
-    expect(alert?.textContent).toContain('保存已禁用')
     expect(buttonByText('保存')?.disabled).toBe(true)
     expect(addressInputWithValue('127.0.0.1:16384')?.disabled).toBe(true)
     expect(buttonByText('重置')?.disabled).toBe(true)
     expect(mocks.notify).toHaveBeenCalledWith(
-      '连接配置读取失败: 配置不可读（保存已禁用，请重试读取）',
+      '连接配置读取失败: 配置不可读',
       'error',
     )
 

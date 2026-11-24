@@ -48,7 +48,6 @@ export default function ConnectionConfigPanel({ isActive }: ConnectionConfigPane
   const {
     feedback: configFeedback,
     setFeedback: setConfigFeedback,
-    saveBlockedReason,
     save: saveConnectionConfig,
   } = useConfigDraftPanel({
     label: '连接配置',
@@ -86,7 +85,6 @@ export default function ConnectionConfigPanel({ isActive }: ConnectionConfigPane
       feedback={configFeedback}
       saving={connectionSaving}
       saveDisabled={!connectionLoaded}
-      saveBlockedReason={saveBlockedReason}
       editingDisabled={!connectionLoaded}
       onRetryLoad={connectionLoadError ? reloadConnectionConfig : undefined}
       onSave={handleSave}
@@ -101,7 +99,6 @@ export default function ConnectionConfigPanel({ isActive }: ConnectionConfigPane
             updateConnectionConfig({ adb_path: event.target.value })
           }}
           disabled={!connectionLoaded}
-          hint="ADB 可执行文件的完整路径"
         />
         <ConfigFieldInput
           id="connection-address"
@@ -112,7 +109,6 @@ export default function ConnectionConfigPanel({ isActive }: ConnectionConfigPane
             clearTestFeedback()
           }}
           disabled={!connectionLoaded}
-          hint="模拟器地址，例如 127.0.0.1:16384"
         />
       </div>
 
@@ -133,7 +129,6 @@ export default function ConnectionConfigPanel({ isActive }: ConnectionConfigPane
           }}
           disabled={!connectionLoaded}
           items={PRESET_OPTIONS}
-          hint="预设提供默认 ADB 路径与平台配置；显式填写的值优先"
         />
         <ConfigFieldSelect
           id="connection-platform-config"
@@ -148,13 +143,11 @@ export default function ConnectionConfigPanel({ isActive }: ConnectionConfigPane
             { value: 'CompatPOSIXShell', label: 'CompatPOSIXShell (Linux)' },
             { value: 'General', label: 'General (Windows)' },
           ]}
-          hint="选择与服务器系统匹配的平台预设"
         />
       </div>
       <SwitchSettingRow
         id="connection-auto-reconnect"
         label="自动重连"
-        description="连接中断后自动尝试恢复"
         checked={configData.auto_reconnect !== false}
         onCheckedChange={(checked: boolean) => {
           updateConnectionConfig({ auto_reconnect: checked })

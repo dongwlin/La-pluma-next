@@ -124,7 +124,6 @@ export default function ComponentUpdatePanel() {
               </SelectContent>
             </Select>
           </div>
-          <p className="mt-1 text-xs leading-5 text-muted-foreground">核心组件与游戏资源</p>
           {versionInfo?.resource && (
             <div className="mt-3 flex flex-wrap items-center gap-2 text-xs">
               <span className="text-muted-foreground">
@@ -208,7 +207,6 @@ export default function ComponentUpdatePanel() {
               </SelectContent>
             </Select>
           </div>
-          <p className="mt-1 text-xs leading-5 text-muted-foreground">命令行工具与任务运行入口</p>
           <div className="mt-auto pt-3.5">
             <Button
               onClick={handleUpdateCli}

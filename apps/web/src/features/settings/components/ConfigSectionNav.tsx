@@ -25,8 +25,6 @@ export default function ConfigSectionNav({ section }: ConfigSectionNavProps) {
       options={options}
       className="w-full"
       listClassName="grid-cols-3"
-      indicatorTestId="config-section-highlight"
-      tabClassName="min-h-11"
       tabId={id => `config-section-tab-${id}`}
       panelId={id => `config-section-panel-${id}`}
     />

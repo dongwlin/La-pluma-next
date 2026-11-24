@@ -80,7 +80,6 @@ export default function DeviceConnectionPanel({
           <Cable size={18} className="mt-0.5 shrink-0 text-muted-foreground" aria-hidden="true" />
           <div className="min-w-0">
             <h3 className="text-sm font-semibold text-foreground">模拟器连接</h3>
-            <p className="mt-1 text-xs leading-5 text-muted-foreground">查找本机模拟器，或测试当前连接地址。</p>
           </div>
         </div>
         <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto">
@@ -170,7 +169,6 @@ export default function DeviceConnectionPanel({
           className="mt-3"
           icon={<Search className="h-5 w-5" aria-hidden="true" />}
           title="未找到已连接设备"
-          description="启动模拟器后重新查找，或手动填写连接地址。"
         />
       )}
 

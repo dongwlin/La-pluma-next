@@ -45,7 +45,6 @@ export default function InstanceOptionsPanel({ isActive }: InstanceOptionsPanelP
   const {
     feedback: configFeedback,
     setFeedback: setConfigFeedback,
-    saveBlockedReason,
     save: saveInstanceOptions,
   } = useConfigDraftPanel({
     label: '实例选项',
@@ -80,7 +79,6 @@ export default function InstanceOptionsPanel({ isActive }: InstanceOptionsPanelP
       feedback={configFeedback}
       saving={saving}
       saveDisabled={!loaded}
-      saveBlockedReason={saveBlockedReason}
       editingDisabled={!loaded}
       onRetryLoad={loadError ? reload : undefined}
       onSave={handleSave}
@@ -95,14 +93,12 @@ export default function InstanceOptionsPanel({ isActive }: InstanceOptionsPanelP
         }}
         disabled={!loaded}
         items={TOUCH_MODE_OPTIONS}
-        hint="ADB 兼容性最好；MaaTouch 触控更接近真实点击"
       />
 
       <FieldGroup className="gap-3.5!">
         <SwitchSettingRow
           id="instance-deployment-with-pause"
           label="部署时暂停"
-          description="开启后部署干员时暂停游戏，适用于部分特殊关卡"
           checked={draft.deployment_with_pause}
           onCheckedChange={(checked: boolean) => {
             updateInstanceOptions({ deployment_with_pause: checked })
@@ -112,7 +108,6 @@ export default function InstanceOptionsPanel({ isActive }: InstanceOptionsPanelP
         <SwitchSettingRow
           id="instance-adb-lite"
           label="ADB Lite"
-          description="使用 AdbLite 减少 ADB 调用开销"
           checked={draft.adb_lite_enabled}
           onCheckedChange={(checked: boolean) => {
             updateInstanceOptions({ adb_lite_enabled: checked })
@@ -122,7 +117,6 @@ export default function InstanceOptionsPanel({ isActive }: InstanceOptionsPanelP
         <SwitchSettingRow
           id="instance-kill-adb-on-exit"
           label="退出时结束 ADB"
-          description="任务结束后由 MAA 关闭自己启动的 ADB 进程"
           checked={draft.kill_adb_on_exit}
           onCheckedChange={(checked: boolean) => {
             updateInstanceOptions({ kill_adb_on_exit: checked })

@@ -71,7 +71,6 @@ export default function ResourceSourcePanel({ isActive }: ResourceSourcePanelPro
   const {
     feedback: configFeedback,
     setFeedback: setConfigFeedback,
-    saveBlockedReason,
     save: saveResourceSource,
   } = useConfigDraftPanel({
     label: '资源源配置',
@@ -113,7 +112,6 @@ export default function ResourceSourcePanel({ isActive }: ResourceSourcePanelPro
       feedback={configFeedback}
       saving={saving}
       saveDisabled={!loaded}
-      saveBlockedReason={saveBlockedReason}
       editingDisabled={!loaded}
       onRetryLoad={loadError ? reload : undefined}
       onSave={handleSave}
@@ -184,7 +182,6 @@ export default function ResourceSourcePanel({ isActive }: ResourceSourcePanelPro
         <SwitchSettingRow
           id="resource-auto-update"
           label="自动更新资源"
-          description="由 maa-cli 在运行前按需同步 MaaResource"
           checked={draft.autoUpdate}
           onCheckedChange={(checked: boolean) => {
             update({ autoUpdate: checked })
@@ -195,7 +192,6 @@ export default function ResourceSourcePanel({ isActive }: ResourceSourcePanelPro
         <SwitchSettingRow
           id="resource-warn-on-update-failure"
           label="更新失败时告警"
-          description="资源自动更新失败时输出警告而不是静默跳过"
           checked={draft.warnOnUpdateFailure}
           onCheckedChange={(checked: boolean) => {
             update({ warnOnUpdateFailure: checked })

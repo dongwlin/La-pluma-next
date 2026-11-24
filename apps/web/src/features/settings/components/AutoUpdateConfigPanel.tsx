@@ -28,7 +28,6 @@ export default function AutoUpdateConfigPanel() {
       <div className="flex items-center justify-between gap-3.5">
         <div className="min-w-0">
           <h3 className="text-sm font-semibold text-foreground">自动更新</h3>
-          <p className="mt-1 text-xs leading-5 text-muted-foreground">每天按设定时间更新所选组件</p>
         </div>
         <Switch
           checked={autoUpdate.enabled}
@@ -82,8 +81,8 @@ export default function AutoUpdateConfigPanel() {
       )}
 
       <Separator className="my-3.5" />
-      <div className="flex flex-wrap items-center justify-between gap-3.5">
-        <p className="text-xs text-muted-foreground">{autoUpdateDirty ? '有尚未保存的更改' : '设置会在保存后生效'}</p>
+      <div className={`flex flex-wrap items-center gap-3.5 ${autoUpdateDirty ? 'justify-between' : 'justify-end'}`}>
+        {autoUpdateDirty && <p className="text-xs text-muted-foreground">有尚未保存的更改</p>}
         <Button
           type="button"
           variant="outline"

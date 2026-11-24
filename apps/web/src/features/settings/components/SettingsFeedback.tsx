@@ -2,7 +2,7 @@ import type { ReactNode } from 'react'
 import { AlertCircle } from 'lucide-react'
 import { Alert, AlertAction, AlertDescription } from '@/shared/ui/alert'
 
-export type SettingsFeedbackTone = 'success' | 'warning' | 'error'
+export type SettingsFeedbackTone = 'success' | 'error'
 
 export interface SettingsFeedbackProps {
   readonly tone: SettingsFeedbackTone
@@ -27,7 +27,7 @@ export default function SettingsFeedback({
     )
   }
 
-  const toneClass = tone === 'success' ? 'status-success' : 'status-warning'
+  const toneClass = 'status-success'
   return (
     <div role="status" className={`rounded-lg px-3 py-2.5 text-xs leading-5 ${toneClass} ${className}`}>
       <div className="flex flex-wrap items-center justify-between gap-2">

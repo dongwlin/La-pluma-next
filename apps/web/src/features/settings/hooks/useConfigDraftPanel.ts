@@ -30,14 +30,9 @@ export function useConfigDraftPanel<T extends Record<string, unknown>>({
   const [feedback, setFeedback] = useState<ConfigEditorFeedback | null>(null)
   const reportedLoadFailureRef = useRef<string | null>(null)
 
-  const blockedSaveMessage = loadError
-    ? `${label}读取失败，暂时无法保存`
-    : `${label}正在读取，加载完成后才能保存`
-  const saveBlockedReason = loaded ? null : blockedSaveMessage
-
   useEffect(() => {
     if (!loadError) return
-    const message = `${label}读取失败: ${loadError}（保存已禁用，请重试读取）`
+    const message = `${label}读取失败: ${loadError}`
     if (reportedLoadFailureRef.current === message) return
     reportedLoadFailureRef.current = message
     // 读取失败同步为页内反馈；ref 保证同一失败只提示一次，不是渲染循环。
@@ -54,10 +49,7 @@ export function useConfigDraftPanel<T extends Record<string, unknown>>({
   }, [loaded])
 
   const saveWithFeedback = useCallback(async () => {
-    if (!loaded) {
-      notify(blockedSaveMessage, 'warning', { id: noticeId })
-      return
-    }
+    if (!loaded) return
     if (saving) return
     setFeedback(null)
     notifyProgress(savingMessage, noticeId)
@@ -88,7 +80,7 @@ export function useConfigDraftPanel<T extends Record<string, unknown>>({
     const message = `${label}保存失败: ${outcome.message ?? '未知错误'}`
     setFeedback({ type: 'error', message })
     notify(message, 'error', { id: noticeId })
-  }, [blockedSaveMessage, label, loaded, noticeId, save, saving, savingMessage])
+  }, [label, loaded, noticeId, save, saving, savingMessage])
 
-  return { feedback, setFeedback, saveBlockedReason, save: saveWithFeedback }
+  return { feedback, setFeedback, save: saveWithFeedback }
 }
