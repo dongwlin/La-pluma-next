@@ -4,7 +4,8 @@
 import { ConfigFieldSelect } from './ConfigFieldControls'
 import SwitchSettingRow from './SwitchSettingRow'
 import { FieldGroup } from '@/shared/ui/field'
-import { notify, SETTINGS_CONFIG_INSTANCE_NOTICE_ID } from '@/shared/notifications'
+import { SETTINGS_CONFIG_INSTANCE_NOTICE_ID } from '@/shared/notifications'
+import { useAutoSave } from '../hooks/useAutoSave'
 import { useConfigDraftPanel } from '../hooks/useConfigDraftPanel'
 import { useSettingsInstanceOptions } from '../hooks/useSettingsInstanceOptions'
 import { CONFIG_SECTION_VIEWS } from './configSectionViews'
@@ -34,41 +35,52 @@ export default function InstanceOptionsPanel({ isActive }: InstanceOptionsPanelP
   const {
     draft,
     update,
-    restoreDefaults,
     save: saveInstanceOptionsDraft,
     syncState,
+    error,
+    dirty,
+    revision,
+    getState,
     loadError,
     loaded,
     reload,
   } = useSettingsInstanceOptions(undefined, 'default', isActive)
   const saving = syncState === 'saving'
+  const getAutoSaveState = () => {
+    const current = getState()
+    return {
+      loaded: current.loaded,
+      dirty: current.dirty,
+      saving: current.syncState === 'saving',
+      revision: current.revision,
+    }
+  }
   const {
     feedback: configFeedback,
-    setFeedback: setConfigFeedback,
     save: saveInstanceOptions,
   } = useConfigDraftPanel({
     label: '实例选项',
     noticeId: SETTINGS_CONFIG_INSTANCE_NOTICE_ID,
-    savingMessage: '正在保存实例选项...',
     loadError,
-    loaded,
-    saving,
+    syncState,
+    error,
     save: saveInstanceOptionsDraft,
   })
+  const { flush } = useAutoSave({
+    state: { loaded, dirty, saving, revision },
+    getState: getAutoSaveState,
+    save: saveInstanceOptions,
+    active: isActive,
+    saveBlocked: syncState === 'failed',
+  })
 
-  const updateInstanceOptions = (patch: Parameters<typeof update>[0]) => {
+  const updateInstanceOptionsNow = (patch: Parameters<typeof update>[0]) => {
     update(patch)
-    setConfigFeedback(null)
+    flush()
   }
 
-  const handleSave = () => {
+  const handleRetrySave = () => {
     void saveInstanceOptions()
-  }
-
-  const handleReset = () => {
-    restoreDefaults()
-    setConfigFeedback(null)
-    notify('已重置实例选项为默认值')
   }
 
   if (!isActive) return null
@@ -77,19 +89,16 @@ export default function InstanceOptionsPanel({ isActive }: InstanceOptionsPanelP
     <ConfigEditorCard
       title={CONFIG_SECTION_VIEWS.instance.name}
       feedback={configFeedback}
-      saving={saving}
-      saveDisabled={!loaded}
-      editingDisabled={!loaded}
       onRetryLoad={loadError ? reload : undefined}
-      onSave={handleSave}
-      onReset={handleReset}
+      onRetrySave={handleRetrySave}
+      onFieldBlur={flush}
     >
       <ConfigFieldSelect
         id="instance-touch-mode"
         label="触控模式"
         value={draft.touch_mode}
         onValueChange={(value) => {
-          updateInstanceOptions({ touch_mode: value as MaaTouchMode })
+          updateInstanceOptionsNow({ touch_mode: value as MaaTouchMode })
         }}
         disabled={!loaded}
         items={TOUCH_MODE_OPTIONS}
@@ -101,7 +110,7 @@ export default function InstanceOptionsPanel({ isActive }: InstanceOptionsPanelP
           label="部署时暂停"
           checked={draft.deployment_with_pause}
           onCheckedChange={(checked: boolean) => {
-            updateInstanceOptions({ deployment_with_pause: checked })
+            updateInstanceOptionsNow({ deployment_with_pause: checked })
           }}
           disabled={!loaded}
         />
@@ -110,7 +119,7 @@ export default function InstanceOptionsPanel({ isActive }: InstanceOptionsPanelP
           label="ADB Lite"
           checked={draft.adb_lite_enabled}
           onCheckedChange={(checked: boolean) => {
-            updateInstanceOptions({ adb_lite_enabled: checked })
+            updateInstanceOptionsNow({ adb_lite_enabled: checked })
           }}
           disabled={!loaded}
         />
@@ -119,7 +128,7 @@ export default function InstanceOptionsPanel({ isActive }: InstanceOptionsPanelP
           label="退出时结束 ADB"
           checked={draft.kill_adb_on_exit}
           onCheckedChange={(checked: boolean) => {
-            updateInstanceOptions({ kill_adb_on_exit: checked })
+            updateInstanceOptionsNow({ kill_adb_on_exit: checked })
           }}
           disabled={!loaded}
         />

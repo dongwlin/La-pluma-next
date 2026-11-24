@@ -1,37 +1,43 @@
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion'
-import { LoaderCircle, Save } from 'lucide-react'
 import { Button } from '@/shared/ui/button'
 import { Separator } from '@/shared/ui/separator'
 import { Switch } from '@/shared/ui/switch'
 import { ConfigFieldCheckbox, ConfigFieldInput } from './ConfigFieldControls'
 import SettingsFeedback from './SettingsFeedback'
 import { notify } from '@/shared/notifications'
+import { INVALID_UPDATE_TIME_MESSAGE } from '../model/autoUpdateConfig'
 import { useSettingsAutoUpdate } from '../hooks/useSettingsAutoUpdate'
+import type { AutoUpdateConfig } from '../types'
 
 export default function AutoUpdateConfigPanel() {
   const shouldReduceMotion = useReducedMotion()
   const {
     draft: autoUpdate,
-    dirty: autoUpdateDirty,
-    saving: autoUpdateSaving,
     feedback: autoUpdateFeedback,
     update: updateAutoUpdate,
-    save: saveAutoUpdateConfig,
+    flush,
+    retrySave,
   } = useSettingsAutoUpdate(notify)
 
-  const handleSaveAutoUpdate = () => {
-    void saveAutoUpdateConfig()
+  const applyUpdate = (patch: Partial<AutoUpdateConfig>) => {
+    updateAutoUpdate(patch)
+    flush()
   }
+  const errorMessage = autoUpdateFeedback?.type === 'error'
+    && autoUpdateFeedback.message !== INVALID_UPDATE_TIME_MESSAGE
+    ? autoUpdateFeedback.message
+    : null
+  const canRetrySave = errorMessage !== null && !errorMessage.startsWith('自动更新设置读取失败')
 
   return (
-    <section className="min-w-0">
+    <section className="min-w-0" onBlur={flush}>
       <div className="flex items-center justify-between gap-3.5">
         <div className="min-w-0">
           <h3 className="text-sm font-semibold text-foreground">自动更新</h3>
         </div>
         <Switch
           checked={autoUpdate.enabled}
-          onCheckedChange={checked => updateAutoUpdate({ enabled: checked })}
+          onCheckedChange={checked => applyUpdate({ enabled: checked })}
           aria-label="启用自动更新"
         />
       </div>
@@ -58,12 +64,12 @@ export default function AutoUpdateConfigPanel() {
               <div className="flex min-h-11 flex-wrap items-center gap-x-4.5 gap-y-2">
                 <ConfigFieldCheckbox
                   checked={autoUpdate.updateCore}
-                  onCheckedChange={(checked: boolean) => updateAutoUpdate({ updateCore: checked })}
+                  onCheckedChange={(checked: boolean) => applyUpdate({ updateCore: checked })}
                   label="更新 MaaCore"
                 />
                 <ConfigFieldCheckbox
                   checked={autoUpdate.updateCli}
-                  onCheckedChange={(checked: boolean) => updateAutoUpdate({ updateCli: checked })}
+                  onCheckedChange={(checked: boolean) => applyUpdate({ updateCli: checked })}
                   label="更新 MAA CLI"
                 />
               </div>
@@ -72,34 +78,25 @@ export default function AutoUpdateConfigPanel() {
         )}
       </AnimatePresence>
 
-      {autoUpdateFeedback?.type === 'error' && (
+      {errorMessage && (
         <SettingsFeedback
           tone="error"
-          message={autoUpdateFeedback.message}
+          message={errorMessage}
+          action={canRetrySave
+            ? (
+                <Button
+                  type="button"
+                  onClick={retrySave}
+                  variant="outline"
+                  size="sm"
+                >
+                  重试保存
+                </Button>
+              )
+            : undefined}
           className="mt-3.5"
         />
       )}
-
-      <div className={`mt-3.5 flex flex-wrap items-center gap-3.5 ${autoUpdateDirty ? 'justify-between' : 'justify-end'}`}>
-        {autoUpdateDirty && <p className="text-xs text-muted-foreground">有尚未保存的更改</p>}
-        <Button
-          type="button"
-          variant="outline"
-          size="sm"
-          disabled={!autoUpdateDirty || autoUpdateSaving}
-          aria-busy={autoUpdateSaving || undefined}
-          onClick={handleSaveAutoUpdate}
-        >
-          {autoUpdateSaving
-            ? <><LoaderCircle className="animate-spin" aria-hidden="true" />保存中</>
-            : (
-              <>
-                <Save size={16} aria-hidden="true" />
-                保存自动更新
-              </>
-            )}
-        </Button>
-      </div>
     </section>
   )
 }

@@ -11,8 +11,6 @@ export interface DeviceConnectionPanelProps {
   /** 点击时取最新草稿，而不是面板挂载时的副本。 */
   readonly adbPath: string
   readonly address: string
-  /** 选择设备会更新 connection 草稿，先清掉连接表单的旧保存/读取反馈。 */
-  readonly onSelectDeviceStart: () => void
   /** 首次读取被采纳前不写入草稿，选择设备入口保持禁用。 */
   readonly disabled?: boolean
 }
@@ -49,7 +47,6 @@ const deviceStateClass = (device: DiscoveredDevice): string => {
 export default function DeviceConnectionPanel({
   adbPath,
   address,
-  onSelectDeviceStart,
   disabled = false,
 }: DeviceConnectionPanelProps) {
   const {
@@ -69,7 +66,6 @@ export default function DeviceConnectionPanel({
     : null
 
   const handleUseDiscoveredDevice = (device: DiscoveredDevice) => {
-    onSelectDeviceStart()
     selectDiscoveredDevice(device)
   }
 

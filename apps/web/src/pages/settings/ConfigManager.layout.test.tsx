@@ -18,6 +18,7 @@ import { settingsResourceSourceOwner } from '@/features/settings/model/resourceS
 import { CONFIG_SECTION_EVENT, CONFIG_SECTION_STORAGE_KEY } from '@/features/settings/model/configSection'
 import { settingsDeviceConnectionOwner } from '@/features/settings/model/deviceConnection'
 import { settingsUpdateOwner } from '@/features/settings/model/updateCommands'
+import { IDLE_RUN_STATUS, useStatusStore } from '@/features/runtime-status'
 import ConfigManager from './ConfigManager'
 
 ;(globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true
@@ -166,6 +167,13 @@ const setInputValue = async (input: HTMLInputElement, value: string) => {
   })
 }
 
+const blurElement = async (element: HTMLElement) => {
+  await act(async () => {
+    element.focus()
+    element.blur()
+  })
+}
+
 const buttonByText = (text: string) => (
   Array.from(container.querySelectorAll<HTMLButtonElement>('button'))
     .find(button => button.textContent?.trim() === text)
@@ -269,6 +277,7 @@ describe('ConfigManager layout surfaces', () => {
     settingsDeviceConnectionOwner.reset()
     settingsAutoUpdateOwner.reset()
     settingsUpdateOwner.reset()
+    useStatusStore.getState().applyRunStatus(IDLE_RUN_STATUS)
     queryClient = createQueryClient()
     container = document.createElement('div')
     document.body.appendChild(container)
@@ -357,7 +366,7 @@ describe('ConfigManager layout surfaces', () => {
     openButtons.forEach(button => expect(button.disabled).toBe(true))
   })
 
-  it('keeps auto-update edits local until the user explicitly saves them', async () => {
+  it('auto-saves auto-update edits after the input loses focus', async () => {
     mocks.loadUserConfig.mockResolvedValue({
       success: true,
       data: { enabled: true, time: '04:00', updateCore: true, updateCli: false },
@@ -371,32 +380,20 @@ describe('ConfigManager layout surfaces', () => {
     const timeInput = container.querySelector<HTMLInputElement>('input[placeholder="HH:MM"]')
     expect(timeInput).not.toBeNull()
 
-    await act(async () => {
-      const valueSetter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set
-      valueSetter?.call(timeInput, '05:30')
-      timeInput?.dispatchEvent(new Event('input', { bubbles: true }))
-    })
+    await setInputValue(timeInput!, '05:30')
 
     expect(mocks.saveUserConfig).not.toHaveBeenCalled()
     expect(mocks.setupAutoUpdate).not.toHaveBeenCalled()
-    expect(container.textContent).toContain('有尚未保存的更改')
 
-    const saveButton = Array.from(container.querySelectorAll('button')).find(button =>
-      button.textContent?.includes('保存自动更新')
-    )
-    expect(saveButton?.disabled).toBe(false)
-
-    await act(async () => {
-      saveButton?.dispatchEvent(new MouseEvent('click', { bubbles: true }))
-      await Promise.resolve()
-      await Promise.resolve()
-    })
+    await blurElement(timeInput!)
+    await flush()
 
     const expectedConfig = { enabled: true, time: '05:30', updateCore: true, updateCli: false }
     expect(mocks.saveUserConfig).toHaveBeenCalledWith('auto-update', expectedConfig)
     expect(mocks.setupAutoUpdate).toHaveBeenCalledWith(expectedConfig)
     expect(mocks.saveUserConfig.mock.invocationCallOrder[0]!).toBeLessThan(mocks.setupAutoUpdate.mock.invocationCallOrder[0]!)
     expect(localStorage.getItem('autoUpdateConfig')).toBe(JSON.stringify(expectedConfig))
+    expect(mocks.notify).not.toHaveBeenCalledWith('自动更新已启用，每天 05:30 执行', 'success', expect.anything())
   })
 
   it('shows connection save failures in place and in the global status', async () => {
@@ -405,19 +402,18 @@ describe('ConfigManager layout surfaces', () => {
     await act(async () => root.render(page()))
     await flush()
 
-    const saveButton = Array.from(container.querySelectorAll('button')).find(button => button.textContent?.trim() === '保存')
-    await act(async () => {
-      saveButton?.dispatchEvent(new MouseEvent('click', { bubbles: true }))
-      await Promise.resolve()
-      await Promise.resolve()
-    })
+    const addressInput = addressInputWithValue('127.0.0.1:16384')!
+    await setInputValue(addressInput, '127.0.0.1:5555')
+    await blurElement(addressInput)
+    await flush()
 
     const inlineError = container.querySelector('[role="alert"]')
     expect(inlineError?.textContent).toContain('连接配置保存失败: 磁盘只读')
-    expect(mocks.notifyProgress).toHaveBeenCalledWith('正在保存配置...', 'settings-config:connection')
-    expect(mocks.notify).toHaveBeenCalledWith('连接配置保存失败: 磁盘只读', 'error', {
+    expect(mocks.notify).not.toHaveBeenCalledWith('正在保存配置...', expect.anything(), expect.anything())
+    expect(mocks.notify).toHaveBeenCalledWith('连接配置保存失败: 磁盘只读', 'error', expect.objectContaining({
       id: 'settings-config:connection',
-    })
+      action: expect.objectContaining({ label: '重试保存' }),
+    }))
   })
 
   it('keeps an auto-update draft editable when persistence fails', async () => {
@@ -430,29 +426,18 @@ describe('ConfigManager layout surfaces', () => {
     await act(async () => root.render(page()))
     await flush()
 
-    const timeInput = container.querySelector<HTMLInputElement>('input[placeholder="HH:MM"]')
-    await act(async () => {
-      const valueSetter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set
-      valueSetter?.call(timeInput, '06:15')
-      timeInput?.dispatchEvent(new Event('input', { bubbles: true }))
-    })
-
-    const saveButton = Array.from(container.querySelectorAll('button')).find(button =>
-      button.textContent?.includes('保存自动更新')
-    )
-    await act(async () => {
-      saveButton?.dispatchEvent(new MouseEvent('click', { bubbles: true }))
-      await Promise.resolve()
-      await Promise.resolve()
-    })
+    const timeInput = container.querySelector<HTMLInputElement>('input[placeholder="HH:MM"]')!
+    await setInputValue(timeInput, '06:15')
+    await blurElement(timeInput)
+    await flush()
 
     expect(mocks.setupAutoUpdate).not.toHaveBeenCalled()
-    expect(timeInput?.value).toBe('06:15')
-    expect(saveButton?.disabled).toBe(false)
+    expect(timeInput.value).toBe('06:15')
     expect(container.querySelector('[role="alert"]')?.textContent).toContain('自动更新设置保存失败: 配置目录不可写')
-    expect(mocks.notify).toHaveBeenCalledWith('自动更新设置保存失败: 配置目录不可写', 'error', {
+    expect(mocks.notify).toHaveBeenCalledWith('自动更新设置保存失败: 配置目录不可写', 'error', expect.objectContaining({
       id: 'settings-auto-update',
-    })
+      action: expect.objectContaining({ label: '重试保存' }),
+    }))
   })
 
   it('keeps the connection form read-only until a slow first response is adopted', async () => {
@@ -467,11 +452,9 @@ describe('ConfigManager layout surfaces', () => {
 
     const addressInput = addressInputWithValue('127.0.0.1:16384')!
     expect(addressInput.disabled).toBe(true)
-    expect(buttonByText('保存')?.disabled).toBe(true)
-    expect(buttonByText('重置')?.disabled).toBe(true)
 
     await setInputValue(addressInput, '127.0.0.1:5555')
-    await act(async () => buttonByText('保存')?.click())
+    await flush()
     expect(mocks.saveConfig).not.toHaveBeenCalled()
 
     await act(async () => pendingConfig.resolve({
@@ -482,14 +465,13 @@ describe('ConfigManager layout surfaces', () => {
 
     expect(addressInput.value).toBe('10.0.0.2:5555')
     expect(addressInput.disabled).toBe(false)
-    expect(buttonByText('保存')?.disabled).toBe(false)
-    expect(buttonByText('重置')?.disabled).toBe(false)
 
-    await act(async () => buttonByText('保存')?.click())
+    await setInputValue(addressInput, '127.0.0.1:5555')
+    await blurElement(addressInput)
     await flush()
 
     expect(mocks.saveConfig).toHaveBeenCalledWith('default', {
-      connection: expect.objectContaining({ address: '10.0.0.2:5555' }),
+      connection: expect.objectContaining({ address: '127.0.0.1:5555' }),
     })
   })
 
@@ -717,8 +699,7 @@ describe('ConfigManager layout surfaces', () => {
 
     const timeInput = container.querySelector<HTMLInputElement>('input[placeholder="HH:MM"]')!
     await setInputValue(timeInput, '05:30')
-    const saveButton = buttonContaining('保存自动更新')!
-    await act(async () => saveButton.click())
+    await blurElement(timeInput)
     await flush()
 
     await renderMode('hidden')
@@ -726,10 +707,8 @@ describe('ConfigManager layout surfaces', () => {
     await settle()
 
     expect(mocks.setupAutoUpdate).toHaveBeenCalledOnce()
-    expect(mocks.notifyProgress).toHaveBeenCalledWith('正在保存自动更新设置...', 'settings-auto-update')
-    expect(mocks.notify).toHaveBeenCalledWith('自动更新已启用，每天 05:30 执行', 'success', {
-      id: 'settings-auto-update',
-    })
+    expect(mocks.notifyProgress).not.toHaveBeenCalled()
+    expect(mocks.notify).not.toHaveBeenCalledWith('自动更新已启用，每天 05:30 执行', 'success', expect.anything())
 
     await renderMode('visible')
     await settle()
@@ -749,10 +728,24 @@ describe('ConfigManager layout surfaces', () => {
     await act(async () => root.render(page()))
     await flush()
 
-    const expected = '自动更新设置读取失败: 配置目录不可读，已显示此设备上次保存的设置，请保存后重试'
+    const expected = '自动更新设置读取失败: 配置目录不可读，已显示此设备上次保存的设置，修改后将自动同步'
     expect(container.querySelector<HTMLInputElement>('input[placeholder="HH:MM"]')?.value).toBe('06:00')
-    expect(container.textContent).toContain('有尚未保存的更改')
+    expect(mocks.saveUserConfig).not.toHaveBeenCalled()
+    expect(mocks.setupAutoUpdate).not.toHaveBeenCalled()
     expect(mocks.notify).toHaveBeenCalledWith(expected, 'warning')
+  })
+
+  it('shows an auto-update read failure without offering a save retry', async () => {
+    mocks.loadUserConfig.mockResolvedValue({ success: false, message: '配置目录不可读' })
+
+    await act(async () => root.render(page()))
+    await flush()
+
+    const alert = container.querySelector('[role="alert"]')
+    expect(alert?.textContent).toContain('自动更新设置读取失败: 配置目录不可读')
+    expect(alert?.querySelector('button')).toBeNull()
+    expect(mocks.saveUserConfig).not.toHaveBeenCalled()
+    expect(mocks.setupAutoUpdate).not.toHaveBeenCalled()
   })
 
   it('does not report success when the scheduler rejects an enabled setting', async () => {
@@ -773,21 +766,14 @@ describe('ConfigManager layout surfaces', () => {
     await act(async () => {
       coreCheckbox?.dispatchEvent(new MouseEvent('click', { bubbles: true }))
     })
-
-    const saveButton = Array.from(container.querySelectorAll('button')).find(button =>
-      button.textContent?.includes('保存自动更新')
-    )
-    await act(async () => {
-      saveButton?.dispatchEvent(new MouseEvent('click', { bubbles: true }))
-      await Promise.resolve()
-      await Promise.resolve()
-    })
+    await flush()
 
     expect(container.querySelector('[role="alert"]')?.textContent).toContain('自动更新设置应用失败: 无法创建定时任务')
-    expect(saveButton?.disabled).toBe(false)
-    expect(mocks.notify).toHaveBeenCalledWith('自动更新设置应用失败: 无法创建定时任务', 'error', {
+    expect(buttonByText('重试保存')).toBeDefined()
+    expect(mocks.notify).toHaveBeenCalledWith('自动更新设置应用失败: 无法创建定时任务', 'error', expect.objectContaining({
       id: 'settings-auto-update',
-    })
+      action: expect.objectContaining({ label: '重试保存' }),
+    }))
   })
 
   it('hides the repository address and branch and keeps instance options editable', async () => {
@@ -807,7 +793,6 @@ describe('ConfigManager layout surfaces', () => {
     expect(fieldLabels).not.toContain('SSH 私钥路径')
     expect(fieldLabels).not.toContain('SSH 私钥口令')
     expect(container.textContent).not.toContain('ssh-agent')
-    expect(buttonByText('保存')).toBeDefined()
     expect(mocks.getResourceSource).toHaveBeenCalledOnce()
     expect(mocks.getConfigDir).toHaveBeenCalledOnce()
 
@@ -841,7 +826,11 @@ describe('ConfigManager layout surfaces', () => {
       .find(input => input.labels?.[0]?.textContent === 'MirrorChyan CDK')!
     expect(cdk.value).toBe('')
     expect(cdk.type).toBe('password')
-    await act(async () => buttonByText('保存')?.click())
+
+    const interval = Array.from(container.querySelectorAll<HTMLInputElement>('input'))
+      .find(input => input.labels?.[0]?.textContent === '检查间隔（秒）')!
+    await setInputValue(interval, '300')
+    await blurElement(interval)
     await flush()
 
     expect(mocks.saveResourceSource).toHaveBeenCalledWith(expect.objectContaining({
@@ -849,12 +838,76 @@ describe('ConfigManager layout surfaces', () => {
       warnOnUpdateFailure: false,
       source: 'mirrorchyan',
       git: { backend: 'git' },
-      mirrorchyan: expect.objectContaining({ checkInterval: 600 }),
+      mirrorchyan: expect.objectContaining({ checkInterval: 300 }),
     }))
-    expect(mocks.notify).toHaveBeenCalledWith('资源源配置保存成功', 'success', {
-      id: 'settings-config:resource-source',
-    })
+    expect(mocks.notify).not.toHaveBeenCalledWith('资源源配置保存成功', 'success', expect.anything())
     expect(mocks.getResourceSource).toHaveBeenCalledTimes(2)
+  })
+
+  it('locks the resource form and pauses auto save while MAA is running', async () => {
+    localStorage.setItem('laPlumaConfigSection', 'resource')
+    mocks.getResourceSource.mockResolvedValueOnce({
+      success: true,
+      data: {
+        autoUpdate: true,
+        warnOnUpdateFailure: false,
+        source: 'mirrorchyan',
+        git: { backend: 'git' },
+        mirrorchyan: { cdkKind: 'plain', checkInterval: 600 },
+      },
+    })
+
+    await act(async () => root.render(page()))
+    await flush()
+
+    const interval = Array.from(container.querySelectorAll<HTMLInputElement>('input'))
+      .find(input => input.labels?.[0]?.textContent === '检查间隔（秒）')!
+    await setInputValue(interval, '300')
+
+    await act(async () => {
+      useStatusStore.getState().applyRunStatus({
+        phase: 'running',
+        isRunning: true,
+        runId: 'run-1',
+        label: '任务执行中',
+        detail: null,
+      })
+    })
+    await flush()
+
+    expect(interval.disabled).toBe(true)
+    expect(container.textContent).toContain('MAA 运行中，资源设置暂不可修改')
+    expect(mocks.saveResourceSource).not.toHaveBeenCalled()
+
+    await act(async () => {
+      useStatusStore.getState().applyRunStatus(IDLE_RUN_STATUS)
+    })
+    await flush()
+
+    expect(interval.disabled).toBe(false)
+    await blurElement(interval)
+    await flush()
+
+    expect(mocks.saveResourceSource).toHaveBeenCalledWith(expect.objectContaining({
+      mirrorchyan: expect.objectContaining({ checkInterval: 300 }),
+    }))
+  })
+
+  it('keeps the connection form editable while MAA is running', async () => {
+    await act(async () => {
+      useStatusStore.getState().applyRunStatus({
+        phase: 'running',
+        isRunning: true,
+        runId: 'run-1',
+        label: '任务执行中',
+        detail: null,
+      })
+    })
+
+    await act(async () => root.render(page()))
+    await flush()
+
+    expect(addressInputWithValue('127.0.0.1:16384')?.disabled).toBe(false)
   })
 
   it('saves only the instance options section from the instance form', async () => {
@@ -863,15 +916,14 @@ describe('ConfigManager layout surfaces', () => {
     await act(async () => root.render(page()))
     await flush()
 
-    await act(async () => buttonByText('保存')?.click())
+    const pauseSwitch = container.querySelector<HTMLElement>('[role="switch"][aria-label="部署时暂停"]')
+    await act(async () => pauseSwitch?.click())
     await flush()
 
     expect(mocks.saveConfig).toHaveBeenCalledWith('default', {
       instance_options: expect.any(Object),
     })
-    expect(mocks.notify).toHaveBeenCalledWith('实例选项保存成功', 'success', {
-      id: 'settings-config:instance',
-    })
+    expect(mocks.notify).not.toHaveBeenCalledWith('实例选项保存成功', 'success', expect.anything())
   })
 
   it('reports an initial connection read failure and recovers through the retry entry', async () => {
@@ -882,9 +934,7 @@ describe('ConfigManager layout surfaces', () => {
 
     const alert = container.querySelector('[role="alert"]')
     expect(alert?.textContent).toContain('连接配置读取失败: 配置不可读')
-    expect(buttonByText('保存')?.disabled).toBe(true)
     expect(addressInputWithValue('127.0.0.1:16384')?.disabled).toBe(true)
-    expect(buttonByText('重置')?.disabled).toBe(true)
     expect(mocks.notify).toHaveBeenCalledWith(
       '连接配置读取失败: 配置不可读',
       'error',
@@ -895,12 +945,10 @@ describe('ConfigManager layout surfaces', () => {
 
     expect(addressInputWithValue('127.0.0.1:16384')).toBeDefined()
     expect(addressInputWithValue('127.0.0.1:16384')?.disabled).toBe(false)
-    expect(buttonByText('保存')?.disabled).toBe(false)
-    expect(buttonByText('重置')?.disabled).toBe(false)
     expect(container.querySelector('[role="alert"]')).toBeNull()
   })
 
-  it('keeps a connection save running across section switches and reports later edits as unsaved', async () => {
+  it('keeps a connection save running across section switches and commits the latest edit afterwards', async () => {
     const pendingSave = deferred<{ success: boolean }>()
     mocks.saveConfig.mockReturnValueOnce(pendingSave.promise)
 
@@ -910,7 +958,7 @@ describe('ConfigManager layout surfaces', () => {
     const addressInput = Array.from(container.querySelectorAll<HTMLInputElement>('input'))
       .find(input => input.value === '127.0.0.1:16384')!
     await setInputValue(addressInput, '127.0.0.1:5555')
-    await act(async () => buttonByText('保存')?.click())
+    await blurElement(addressInput)
     await setInputValue(addressInput, '127.0.0.1:6666')
 
     const resourceButton = Array.from(container.querySelectorAll<HTMLButtonElement>('button'))
@@ -922,59 +970,22 @@ describe('ConfigManager layout surfaces', () => {
     const connectionButton = Array.from(container.querySelectorAll<HTMLButtonElement>('button'))
       .find(button => button.textContent?.includes('连接'))
     await act(async () => connectionButton?.click())
+    await flush()
 
-    expect(mocks.saveConfig).toHaveBeenCalledWith('default', {
+    const latestInput = Array.from(container.querySelectorAll<HTMLInputElement>('input'))
+      .find(input => input.value === '127.0.0.1:6666')!
+    await blurElement(latestInput)
+    await flush()
+
+    expect(mocks.saveConfig).toHaveBeenNthCalledWith(1, 'default', {
       connection: expect.objectContaining({ address: '127.0.0.1:5555' }),
     })
-    expect(mocks.saveConfig).toHaveBeenCalledOnce()
+    expect(mocks.saveConfig).toHaveBeenNthCalledWith(2, 'default', {
+      connection: expect.objectContaining({ address: '127.0.0.1:6666' }),
+    })
     expect(Array.from(container.querySelectorAll<HTMLInputElement>('input'))
       .find(input => input.value === '127.0.0.1:6666')).toBeDefined()
-    expect(buttonByText('保存')?.disabled).toBe(false)
-    expect(mocks.notify).toHaveBeenCalledWith('此前连接配置已保存，当前更改尚未保存', 'warning', {
-      id: 'settings-config:connection',
-    })
-  })
-
-  it('resets the connection draft without saving until an explicit save', async () => {
-    mocks.getConfig.mockResolvedValue({
-      success: true,
-      data: { adb_path: '/usr/bin/adb', address: '10.0.0.2:5555', config: 'General', auto_reconnect: false },
-    })
-
-    await act(async () => root.render(page()))
-    await flush()
-
-    expect(Array.from(container.querySelectorAll<HTMLInputElement>('input'))
-      .find(input => input.value === '10.0.0.2:5555')).toBeDefined()
-
-    await act(async () => buttonByText('重置')?.click())
-
-    expect(mocks.saveConfig).not.toHaveBeenCalled()
-    expect(Array.from(container.querySelectorAll<HTMLInputElement>('input'))
-      .find(input => input.value === '127.0.0.1:16384')).toBeDefined()
-
-    const resourceButton = Array.from(container.querySelectorAll<HTMLButtonElement>('button'))
-      .find(button => button.textContent?.includes('资源'))
-    await act(async () => resourceButton?.click())
-    const connectionButton = Array.from(container.querySelectorAll<HTMLButtonElement>('button'))
-      .find(button => button.textContent?.includes('连接'))
-    await act(async () => connectionButton?.click())
-
-    expect(Array.from(container.querySelectorAll<HTMLInputElement>('input'))
-      .find(input => input.value === '127.0.0.1:16384')).toBeDefined()
-
-    await act(async () => buttonByText('保存')?.click())
-    await flush()
-
-    expect(mocks.saveConfig).toHaveBeenCalledWith('default', {
-      connection: {
-        adb_path: '/opt/homebrew/bin/adb',
-        address: '127.0.0.1:16384',
-        config: 'CompatMac',
-        preset: 'ADB',
-        auto_reconnect: true,
-      },
-    })
+    expect(mocks.notify).not.toHaveBeenCalledWith('此前连接配置已保存，当前更改尚未保存', 'warning', expect.anything())
   })
 
   it('applies external section events, persists them, and removes the listener on unmount', async () => {
@@ -1059,7 +1070,9 @@ describe('ConfigManager layout surfaces', () => {
     await act(async () => root.render(page()))
     await flush()
 
-    await act(async () => buttonByText('保存')?.click())
+    const addressInput = addressInputWithValue('127.0.0.1:16384')!
+    await setInputValue(addressInput, '127.0.0.1:5555')
+    await blurElement(addressInput)
     await flush()
     await act(async () => buttonByText('更新 MaaCore')?.click())
     await flush()

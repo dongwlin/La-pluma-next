@@ -13,7 +13,7 @@ export interface UseSettingsResourceSourceResult extends ResourceSourceState {
   /** 初始读取失败的错误；已有服务端数据或草稿时不再报告后台刷新失败。 */
   readonly loadError: string | null
   readonly update: (patch: Partial<ResourceSourceDraft>) => void
-  readonly restoreDefaults: () => boolean
+  readonly getState: () => ResourceSourceState
   readonly save: () => Promise<ResourceSourceSaveOutcome>
   /** 初始读取失败后的显式重试入口。 */
   readonly reload: () => void
@@ -42,8 +42,6 @@ export function useSettingsResourceSource(
     owner.update(patch)
   }, [owner])
 
-  const restoreDefaults = useCallback(() => owner.restoreDefaults(), [owner])
-
   const save = useCallback(async () => {
     const outcome = await owner.save()
     if (outcome.status === 'saved' && !outcome.superseded) {
@@ -65,7 +63,7 @@ export function useSettingsResourceSource(
     ...state,
     loadError,
     update,
-    restoreDefaults,
+    getState: owner.getState,
     save,
     reload,
   }

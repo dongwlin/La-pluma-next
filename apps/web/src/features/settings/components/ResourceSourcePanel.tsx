@@ -1,7 +1,10 @@
+import { useState } from 'react'
 import { ConfigFieldCheckbox, ConfigFieldInput, ConfigFieldSelect } from './ConfigFieldControls'
 import SwitchSettingRow from './SwitchSettingRow'
 import { FieldGroup } from '@/shared/ui/field'
-import { notify, SETTINGS_CONFIG_RESOURCE_SOURCE_NOTICE_ID } from '@/shared/notifications'
+import { SETTINGS_CONFIG_RESOURCE_SOURCE_NOTICE_ID } from '@/shared/notifications'
+import { isRunStatusBusy, useStatusStore } from '@/features/runtime-status'
+import { useAutoSave } from '../hooks/useAutoSave'
 import { useConfigDraftPanel } from '../hooks/useConfigDraftPanel'
 import { useSettingsResourceSource } from '../hooks/useSettingsResourceSource'
 import { CONFIG_SECTION_VIEWS } from './configSectionViews'
@@ -60,41 +63,60 @@ export default function ResourceSourcePanel({ isActive }: ResourceSourcePanelPro
   const {
     draft,
     update,
-    restoreDefaults,
     save: saveResourceSourceDraft,
     syncState,
+    error,
+    dirty,
+    revision,
+    getState,
     loadError,
     loaded,
     reload,
   } = useSettingsResourceSource(undefined, isActive)
   const saving = syncState === 'saving'
+  const getAutoSaveState = () => {
+    const current = getState()
+    return {
+      loaded: current.loaded,
+      dirty: current.dirty,
+      saving: current.syncState === 'saving',
+      revision: current.revision,
+    }
+  }
+  const runBusy = useStatusStore(state => isRunStatusBusy(state.runStatus))
+  const [cdkFocused, setCdkFocused] = useState(false)
   const {
     feedback: configFeedback,
-    setFeedback: setConfigFeedback,
     save: saveResourceSource,
   } = useConfigDraftPanel({
     label: '资源源配置',
     noticeId: SETTINGS_CONFIG_RESOURCE_SOURCE_NOTICE_ID,
-    savingMessage: '正在保存资源源配置...',
     loadError,
-    loaded,
-    saving,
+    syncState,
+    error,
     save: saveResourceSourceDraft,
+  })
+  const { flush } = useAutoSave({
+    state: { loaded, dirty, saving, revision },
+    getState: getAutoSaveState,
+    save: saveResourceSource,
+    active: isActive,
+    locked: runBusy,
+    paused: cdkFocused,
+    saveBlocked: syncState === 'failed',
   })
 
   const updateMirrorChyan = (patch: Partial<ResourceSourceDraft['mirrorchyan']>) => {
     update({ mirrorchyan: { ...draft.mirrorchyan, ...patch } })
-    setConfigFeedback(null)
   }
 
-  const handleSave = () => {
+  const updateNow = (patch: Partial<ResourceSourceDraft>) => {
+    update(patch)
+    flush()
+  }
+
+  const handleRetrySave = () => {
     void saveResourceSource()
-  }
-
-  const handleReset = () => {
-    restoreDefaults()
-    setConfigFeedback(null)
-    notify('已重置资源源配置为默认值')
   }
 
   const handleCheckIntervalChange = (value: string) => {
@@ -110,22 +132,24 @@ export default function ResourceSourcePanel({ isActive }: ResourceSourcePanelPro
     <ConfigEditorCard
       title={CONFIG_SECTION_VIEWS.resource.name}
       feedback={configFeedback}
-      saving={saving}
-      saveDisabled={!loaded}
-      editingDisabled={!loaded}
       onRetryLoad={loadError ? reload : undefined}
-      onSave={handleSave}
-      onReset={handleReset}
+      onRetrySave={handleRetrySave}
+      retryDisabled={runBusy}
+      onFieldBlur={flush}
     >
+      {runBusy && (
+        <p role="status" className="text-xs leading-5 text-muted-foreground">
+          MAA 运行中，资源设置暂不可修改
+        </p>
+      )}
       <ConfigFieldSelect
         id="resource-source"
         label="资源来源"
         value={draft.source}
         onValueChange={(value) => {
-          update({ source: value as ResourceSourceType })
-          setConfigFeedback(null)
+          updateNow({ source: value as ResourceSourceType })
         }}
-        disabled={!loaded}
+        disabled={!loaded || runBusy}
         items={SOURCE_OPTIONS}
       />
 
@@ -135,10 +159,9 @@ export default function ResourceSourcePanel({ isActive }: ResourceSourcePanelPro
           label="Git 后端"
           value={draft.git.backend}
           onValueChange={(value) => {
-            update({ git: { backend: value as GitBackend } })
-            setConfigFeedback(null)
+            updateNow({ git: { backend: value as GitBackend } })
           }}
-          disabled={!loaded}
+          disabled={!loaded || runBusy}
           items={BACKEND_OPTIONS}
         />
       )}
@@ -153,7 +176,9 @@ export default function ResourceSourcePanel({ isActive }: ResourceSourcePanelPro
             onChange={(event) => {
               updateMirrorChyan({ cdk: event.target.value, clearCdk: false })
             }}
-            disabled={!loaded || draft.mirrorchyan.clearCdk}
+            onFocus={() => setCdkFocused(true)}
+            onBlur={() => setCdkFocused(false)}
+            disabled={!loaded || runBusy || draft.mirrorchyan.clearCdk}
             hint={describeCdk(draft.mirrorchyan.cdkKind)}
           />
           {draft.mirrorchyan.cdkKind !== 'none' && (
@@ -161,9 +186,9 @@ export default function ResourceSourcePanel({ isActive }: ResourceSourcePanelPro
               label="清除已保存的 CDK"
               checked={draft.mirrorchyan.clearCdk}
               onCheckedChange={(checked: boolean) => {
-                updateMirrorChyan({ clearCdk: checked, cdk: checked ? '' : draft.mirrorchyan.cdk })
+                updateNow({ mirrorchyan: { ...draft.mirrorchyan, clearCdk: checked, cdk: checked ? '' : draft.mirrorchyan.cdk } })
               }}
-              disabled={!loaded}
+              disabled={!loaded || runBusy}
             />
           )}
           <ConfigFieldInput
@@ -172,7 +197,7 @@ export default function ResourceSourcePanel({ isActive }: ResourceSourcePanelPro
             type="number"
             value={draft.mirrorchyan.checkInterval}
             onChange={event => handleCheckIntervalChange(event.target.value)}
-            disabled={!loaded}
+            disabled={!loaded || runBusy}
             hint="0 表示禁用缓存；默认 600 秒"
           />
         </>
@@ -184,20 +209,18 @@ export default function ResourceSourcePanel({ isActive }: ResourceSourcePanelPro
           label="自动更新资源"
           checked={draft.autoUpdate}
           onCheckedChange={(checked: boolean) => {
-            update({ autoUpdate: checked })
-            setConfigFeedback(null)
+            updateNow({ autoUpdate: checked })
           }}
-          disabled={!loaded}
+          disabled={!loaded || runBusy}
         />
         <SwitchSettingRow
           id="resource-warn-on-update-failure"
           label="更新失败时告警"
           checked={draft.warnOnUpdateFailure}
           onCheckedChange={(checked: boolean) => {
-            update({ warnOnUpdateFailure: checked })
-            setConfigFeedback(null)
+            updateNow({ warnOnUpdateFailure: checked })
           }}
-          disabled={!loaded}
+          disabled={!loaded || runBusy}
         />
       </FieldGroup>
     </ConfigEditorCard>

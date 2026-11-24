@@ -1,10 +1,10 @@
 // 非 connection section 时返回 null 但组件保持挂载：section 切换不重建 Query 观察者，
 // 也不清空草稿与保存/读取反馈。
 
-import { useCallback } from 'react'
 import { ConfigFieldInput, ConfigFieldSelect } from './ConfigFieldControls'
 import SwitchSettingRow from './SwitchSettingRow'
-import { notify, SETTINGS_CONFIG_CONNECTION_NOTICE_ID } from '@/shared/notifications'
+import { SETTINGS_CONFIG_CONNECTION_NOTICE_ID } from '@/shared/notifications'
+import { useAutoSave } from '../hooks/useAutoSave'
 import { useConfigDraftPanel } from '../hooks/useConfigDraftPanel'
 import { useSettingsConnectionConfig } from '../hooks/useSettingsConnectionConfig'
 import { useClearConnectionTestFeedback } from '../hooks/useSettingsDeviceConnection'
@@ -36,9 +36,12 @@ export default function ConnectionConfigPanel({ isActive }: ConnectionConfigPane
   const {
     draft: configData,
     update: updateConnectionDraft,
-    restoreDefaults,
     save: saveConnectionDraft,
     syncState: connectionSyncState,
+    error: connectionError,
+    dirty: connectionDirty,
+    revision: connectionRevision,
+    getState: getConnectionState,
     loadError: connectionLoadError,
     loaded: connectionLoaded,
     reload: reloadConnectionConfig,
@@ -47,35 +50,54 @@ export default function ConnectionConfigPanel({ isActive }: ConnectionConfigPane
   const connectionSaving = connectionSyncState === 'saving'
   const {
     feedback: configFeedback,
-    setFeedback: setConfigFeedback,
     save: saveConnectionConfig,
   } = useConfigDraftPanel({
     label: '连接配置',
     noticeId: SETTINGS_CONFIG_CONNECTION_NOTICE_ID,
-    savingMessage: '正在保存配置...',
     loadError: connectionLoadError,
-    loaded: connectionLoaded,
-    saving: connectionSaving,
+    syncState: connectionSyncState,
+    error: connectionError,
     save: saveConnectionDraft,
+  })
+  const { flush } = useAutoSave({
+    state: {
+      loaded: connectionLoaded,
+      dirty: connectionDirty,
+      saving: connectionSaving,
+      revision: connectionRevision,
+    },
+    getState: () => {
+      const current = getConnectionState()
+      return {
+        loaded: current.loaded,
+        dirty: current.dirty,
+        saving: current.syncState === 'saving',
+        revision: current.revision,
+      }
+    },
+    save: saveConnectionConfig,
+    active: isActive,
+    saveBlocked: connectionSyncState === 'failed',
   })
 
   const updateConnectionConfig = (patch: Partial<MaaConnectionConfig>) => {
     updateConnectionDraft(patch)
-    setConfigFeedback(null)
   }
 
-  const handleSave = () => {
+  const updateConnectionConfigNow = (patch: Partial<MaaConnectionConfig>) => {
+    updateConnectionDraft(patch)
+    flush()
+  }
+
+  const handleRetrySave = () => {
     void saveConnectionConfig()
   }
 
-  const handleReset = () => {
-    restoreDefaults()
-    setConfigFeedback(null)
-    notify('已重置为默认值')
-  }
-
   // 地址输入变更清除旧测试反馈；不取消在途测试，与迁移前一致。
-  const clearConfigFeedback = useCallback(() => setConfigFeedback(null), [setConfigFeedback])
+  const handleAddressChange = (address: string) => {
+    updateConnectionConfig({ address })
+    clearTestFeedback()
+  }
 
   if (!isActive) return null
 
@@ -83,12 +105,9 @@ export default function ConnectionConfigPanel({ isActive }: ConnectionConfigPane
     <ConfigEditorCard
       title={CONFIG_SECTION_VIEWS.connection.name}
       feedback={configFeedback}
-      saving={connectionSaving}
-      saveDisabled={!connectionLoaded}
-      editingDisabled={!connectionLoaded}
       onRetryLoad={connectionLoadError ? reloadConnectionConfig : undefined}
-      onSave={handleSave}
-      onReset={handleReset}
+      onRetrySave={handleRetrySave}
+      onFieldBlur={flush}
     >
       <div className="grid min-w-0 gap-3.5 md:grid-cols-2">
         <ConfigFieldInput
@@ -105,8 +124,7 @@ export default function ConnectionConfigPanel({ isActive }: ConnectionConfigPane
           label="连接地址"
           value={configData.address}
           onChange={(event) => {
-            updateConnectionConfig({ address: event.target.value })
-            clearTestFeedback()
+            handleAddressChange(event.target.value)
           }}
           disabled={!connectionLoaded}
         />
@@ -115,7 +133,6 @@ export default function ConnectionConfigPanel({ isActive }: ConnectionConfigPane
       <DeviceConnectionPanel
         adbPath={configData.adb_path}
         address={configData.address}
-        onSelectDeviceStart={clearConfigFeedback}
         disabled={!connectionLoaded}
       />
 
@@ -125,7 +142,7 @@ export default function ConnectionConfigPanel({ isActive }: ConnectionConfigPane
           label="连接预设"
           value={configData.preset}
           onValueChange={(value) => {
-            updateConnectionConfig({ preset: value as MaaConnectionPreset })
+            updateConnectionConfigNow({ preset: value as MaaConnectionPreset })
           }}
           disabled={!connectionLoaded}
           items={PRESET_OPTIONS}
@@ -135,7 +152,7 @@ export default function ConnectionConfigPanel({ isActive }: ConnectionConfigPane
           label="平台配置"
           value={configData.config}
           onValueChange={(value) => {
-            updateConnectionConfig({ config: value })
+            updateConnectionConfigNow({ config: value })
           }}
           disabled={!connectionLoaded}
           items={[
@@ -150,7 +167,7 @@ export default function ConnectionConfigPanel({ isActive }: ConnectionConfigPane
         label="自动重连"
         checked={configData.auto_reconnect !== false}
         onCheckedChange={(checked: boolean) => {
-          updateConnectionConfig({ auto_reconnect: checked })
+          updateConnectionConfigNow({ auto_reconnect: checked })
         }}
         disabled={!connectionLoaded}
       />
