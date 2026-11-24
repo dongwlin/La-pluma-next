@@ -132,7 +132,7 @@ Props 是 discriminated union：`standard` 接收 `children` 与可选 `support`
 
 **文件位置**：`apps/web/src/shared/components/SegmentedTabs.tsx`（组合 `@/shared/ui/tabs` 的 shadcn Base UI 原语）
 
-**适用场景**：页面内一级视图切换，例如配置 section、作业类型、肉鸽模式与统计视图。三个同源导出必须一起使用：`SegmentedTabs` 提供受控 Tabs 上下文，`SegmentedTabNav` 渲染分段标签，`SegmentedTabPanel` 渲染对应面板。页面不再手写 tablist、`aria-pressed` 按钮或高亮测量。
+**适用场景**：页面内一级视图切换，例如作业类型、肉鸽模式与统计视图。三个同源导出必须一起使用：`SegmentedTabs` 提供受控 Tabs 上下文，`SegmentedTabNav` 渲染分段标签，`SegmentedTabPanel` 渲染对应面板。页面不再手写 tablist、`aria-pressed` 按钮或高亮测量。
 
 ```tsx
 import { SegmentedTabs, SegmentedTabNav, SegmentedTabPanel } from '@/shared/components'
@@ -160,7 +160,7 @@ import { SegmentedTabs, SegmentedTabNav, SegmentedTabPanel } from '@/shared/comp
 - `SegmentedTabs` 的根节点使用 `display: contents`，不引入额外布局层；tab 导航与面板可以继续作为原网格或弹性布局的直接子项。
 - `SegmentedTabNav` 保留 `app-workspace-segments`、`app-workspace-segment-list`、`app-workspace-segment-indicator`、`app-workspace-segment(-icon|-copy)`、`is-selected` 与流体高亮；分段容器保持透明，高亮指示器使用语义 token（`--muted` 背景与 `--border` 内描边），不再消费 `--glass-*` 或页面级玻璃类名。`className`、`listClassName`、`indicatorClassName`、`tabClassName`、`iconClassName` 只承载页面差异；测量复用 `useFluidTabIndicator`，不要逐页复制。
 - 标签使用 Base UI 的 tablist/tab 语义，`activateOnFocus` 固定为 `false`：左右方向键、Home、End 只移动 roving focus，Enter、Space 或点击才切换选中项。不要恢复方向键直接激活的旧行为。
-- `tabId` / `panelId` 可选：传入时提供稳定 id 与 `aria-controls`，省略时由 Base UI 生成并注册关联。`panelId` 只能指向当前实际渲染的面板；默认卸载的页面只在当前 tab 上返回 `panelId`，避免 `aria-controls` 指向不存在的元素。`SegmentedTabPanel` 的 `id` 同样可选；输出 `role="tabpanel"` 与 `aria-labelledby`。如果给面板传 `id`，对应 tab 必须传相同的 `panelId`；或者两侧都省略，交给 Base UI 生成。只传一侧会破坏关联。不传 `keepMounted` 时隐藏面板卸载，传 `true` 时保留 DOM 并设置 `hidden`。配置与统计需要保留草稿、反馈、Query 与统计周期，使用 `keepMounted`；作业使用默认卸载；肉鸽使用始终打开的单个 `contents` 面板承载跨 grid-area 内容。
+- `tabId` / `panelId` 可选：传入时提供稳定 id 与 `aria-controls`，省略时由 Base UI 生成并注册关联。`panelId` 只能指向当前实际渲染的面板；默认卸载的页面只在当前 tab 上返回 `panelId`，避免 `aria-controls` 指向不存在的元素。`SegmentedTabPanel` 的 `id` 同样可选；输出 `role="tabpanel"` 与 `aria-labelledby`。如果给面板传 `id`，对应 tab 必须传相同的 `panelId`；或者两侧都省略，交给 Base UI 生成。只传一侧会破坏关联。不传 `keepMounted` 时隐藏面板卸载，传 `true` 时保留 DOM 并设置 `hidden`。统计需要保留周期与反馈，使用 `keepMounted`；作业使用默认卸载；肉鸽使用始终打开的单个 `contents` 面板承载跨 grid-area 内容。
 - 无法把整块内容包进面板时（例如肉鸽网格的多个 grid-area），保留原网格，把模式相关区域放进单个 `className="contents"` 的面板，并让所有 tab 指向同一个 `panelId`。
 
 ---
