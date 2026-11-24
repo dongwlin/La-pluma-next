@@ -56,6 +56,7 @@ vi.mock('../hooks/useLogsSession', () => ({
       logs: realtimeLogs,
       error: null,
       paused: false,
+      hasLoaded: true,
       coverageNotice,
       start: () => {},
       stop: () => {},

@@ -182,6 +182,19 @@ describe('LogViewer recovery and controls', () => {
     vi.restoreAllMocks()
   })
 
+  it('shows a loading state before the first realtime read resolves', async () => {
+    const pending = deferred<ApiResponse<unknown>>()
+    mocks.getRealtimeLogs.mockReturnValue(pending.promise)
+
+    await renderComponent()
+    expect(container.textContent).toContain('正在读取日志...')
+    expect(container.textContent).not.toContain('暂无实时日志，等待任务执行')
+
+    pending.resolve({ success: true, data: [] })
+    await flush()
+    expect(container.textContent).toContain('暂无实时日志，等待任务执行')
+  })
+
   it('shows a retry action when realtime logs fail and replaces the error after recovery', async () => {
     mocks.getRealtimeLogs
       .mockResolvedValueOnce({ success: false, message: '实时日志暂不可用' })

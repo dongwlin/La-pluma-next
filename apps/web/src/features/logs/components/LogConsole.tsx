@@ -1,12 +1,14 @@
 import { useCallback, useEffect, useMemo, useReducer, useRef } from 'react'
-import { AlertCircle, ArrowDown, ArrowLeft, FileText, Search } from 'lucide-react'
+import { AlertCircle, ArrowDown, ArrowLeft, FileText, Filter, Search } from 'lucide-react'
 import { Badge } from '@/shared/ui/badge'
 import { Button } from '@/shared/ui/button'
 import { Card, CardAction, CardContent, CardHeader, CardTitle } from '@/shared/ui/card'
-import { Loading } from '@/shared/components'
+import { FieldHint, Loading } from '@/shared/components'
+import { HISTORY_LOG_LINES } from '../model/historyLogSession'
 import { countAppendedRows, initialLogFollowState, reduceLogFollow } from '../model/logFollow'
 import { formatLogFileSize } from '../model/logFileSize'
 import { getLogIdentity, getLogSourceText, type LogView } from '../model/logModel'
+import { REALTIME_LOG_LINES } from '../model/realtimeLogStream'
 import type { LogEntry, LogFile } from '../types'
 
 /** 距底部小于该值视为仍在底部，吸收取整与吸附误差。 */
@@ -25,11 +27,14 @@ interface LogConsoleProps {
   readonly loading: boolean
   readonly error: string | null
   readonly logs: readonly LogEntry[]
+  readonly unfilteredLogCount: number
   readonly view: LogView
   readonly autoScroll: boolean
   readonly paused: boolean
   readonly onRetry: () => void
   readonly onBackToRealtime: () => void
+  readonly onClearFilters: () => void
+  readonly onShowAllRuns: () => void
   readonly scopeKey?: string
 }
 
@@ -39,11 +44,14 @@ export default function LogConsole({
   loading,
   error,
   logs,
+  unfilteredLogCount,
   view,
   autoScroll,
   paused,
   onRetry,
   onBackToRealtime,
+  onClearFilters,
+  onShowAllRuns,
   scopeKey = '',
 }: LogConsoleProps) {
   const containerRef = useRef<HTMLDivElement>(null)
@@ -114,10 +122,16 @@ export default function LogConsole({
 
   const visibleLogs = view.visible
   const totalFacts = view.selected.length
-  const countLabel = visibleLogs.length === totalFacts
-    ? `${totalFacts} 条`
-    : `${totalFacts} 条 · ${visibleLogs.length} 行`
-  const isFilteredEmpty = logs.length > 0 && visibleLogs.length === 0
+  const countLabel = loading
+    ? '读取中'
+    : visibleLogs.length === totalFacts
+      ? `${totalFacts} 条`
+      : `${totalFacts} 条 · ${visibleLogs.length} 行`
+  const runFilteredEmpty = !viewingHistory && unfilteredLogCount > 0 && logs.length === 0
+  const filteredEmpty = logs.length > 0 && visibleLogs.length === 0
+  const coverageHint = viewingHistory
+    ? `历史文件只读取尾部 ${HISTORY_LOG_LINES} 行；导出仅包含当前筛选结果。`
+    : `实时日志只显示最近 ${REALTIME_LOG_LINES} 条窗口，不代表完整执行日志；Run 筛选仅作用于当前窗口。`
 
   return (
     <Card className="log-card min-w-0 gap-0 p-0!">
@@ -125,6 +139,7 @@ export default function LogConsole({
         <CardTitle role="heading" aria-level={2}>{headingTitle}</CardTitle>
         <CardAction>
           <div className="log-console-heading-actions">
+            <FieldHint id="log-console-coverage" label="日志覆盖范围" hint={coverageHint} />
             <Badge variant="secondary" className="bg-primary-soft font-semibold tabular-nums text-primary-strong">
               {countLabel}
             </Badge>
@@ -184,7 +199,7 @@ export default function LogConsole({
                   </Button>
                 </div>
               )}
-              {!error && logs.length === 0 && (
+              {!error && logs.length === 0 && !runFilteredEmpty && (
                 <div className="log-console-state">
                   <FileText className="h-5 w-5" aria-hidden="true" />
                   <span>
@@ -196,10 +211,32 @@ export default function LogConsole({
                   </span>
                 </div>
               )}
-              {!error && isFilteredEmpty && (
-                <div className="log-console-state">
+              {!error && runFilteredEmpty && (
+                <div className="log-console-state flex-wrap">
+                  <Filter className="h-5 w-5" aria-hidden="true" />
+                  <span>当前执行范围内没有日志</span>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={onShowAllRuns}
+                  >
+                    显示全部执行
+                  </Button>
+                </div>
+              )}
+              {!error && filteredEmpty && (
+                <div className="log-console-state flex-wrap">
                   <Search className="h-5 w-5" aria-hidden="true" />
                   <span>没有符合当前筛选条件的日志</span>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={onClearFilters}
+                  >
+                    清除筛选
+                  </Button>
                 </div>
               )}
               {visibleLogs.map((log, index) => (

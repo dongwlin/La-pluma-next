@@ -27,6 +27,8 @@ export interface RealtimeLogStreamState {
   readonly logs: readonly LogEntry[]
   readonly error: string | null
   readonly paused: boolean
+  /** 首次读取完成前为 false；失败也视为已完成，错误单独展示。 */
+  readonly hasLoaded: boolean
   /** 已观察快照之间失去连续性；不是完整 Run 归档。 */
   readonly coverageNotice: string | null
 }
@@ -80,7 +82,13 @@ export class RealtimeLogStream {
   private readonly lines: number
   private readonly intervalMs: number
 
-  private state: RealtimeLogStreamState = { logs: [], error: null, paused: false, coverageNotice: null }
+  private state: RealtimeLogStreamState = {
+    logs: [],
+    error: null,
+    paused: false,
+    hasLoaded: false,
+    coverageNotice: null,
+  }
   private latestSnapshot: readonly LogEntry[] = []
   private coverageSnapshot: readonly LogEntry[] = []
   private clearedIdentities = new Set<string>()
@@ -170,7 +178,7 @@ export class RealtimeLogStream {
     this.latestSnapshot = []
     this.coverageSnapshot = []
     this.clearedIdentities.clear()
-    this.setState({ ...this.state, logs: [], error: null, coverageNotice: null })
+    this.setState({ ...this.state, logs: [], error: null, hasLoaded: false, coverageNotice: null })
   }
 
   private setState(next: RealtimeLogStreamState): void {
@@ -199,14 +207,14 @@ export class RealtimeLogStream {
 
     if (!response.success) {
       const error = readFailureMessage(response)
-      if (this.state.error === error) return
-      this.setState({ ...this.state, error })
+      if (this.state.error === error && this.state.hasLoaded) return
+      this.setState({ ...this.state, error, hasLoaded: true })
       return
     }
 
     if (!Array.isArray(response.data)) {
-      if (this.state.error === '实时日志响应格式无效') return
-      this.setState({ ...this.state, error: '实时日志响应格式无效' })
+      if (this.state.error === '实时日志响应格式无效' && this.state.hasLoaded) return
+      this.setState({ ...this.state, error: '实时日志响应格式无效', hasLoaded: true })
       return
     }
     const values: unknown[] = response.data
@@ -220,7 +228,11 @@ export class RealtimeLogStream {
     const currentIds = new Set(snapshot.map(getLogIdentity))
     this.clearedIdentities = new Set([...this.clearedIdentities].filter(id => currentIds.has(id)))
     const logs = snapshot.filter(log => !this.clearedIdentities.has(getLogIdentity(log)))
-    if (areLogsEqual(this.state.logs, logs) && coverageNotice === this.state.coverageNotice) {
+    if (
+      this.state.hasLoaded
+      && areLogsEqual(this.state.logs, logs)
+      && coverageNotice === this.state.coverageNotice
+    ) {
       // 内容未变时保留既有行数组引用并跳过提交：消费方（useSyncExternalStore、
       // 滚动 Effect）靠引用与内容指纹区分「内容变化」与「仅轮询到达」，短路后
       // 相同快照不再触发重渲染与全量重建。有错误待清除时仍需提交一次。
@@ -232,6 +244,7 @@ export class RealtimeLogStream {
       ...this.state,
       logs,
       error: null,
+      hasLoaded: true,
       coverageNotice,
     })
   }
@@ -241,8 +254,8 @@ export class RealtimeLogStream {
     this.active = null
     if (isAbortError(error)) return
     const message = catchFailureMessage(error)
-    if (this.state.error === message) return
-    this.setState({ ...this.state, error: message })
+    if (this.state.error === message && this.state.hasLoaded) return
+    this.setState({ ...this.state, error: message, hasLoaded: true })
   }
 
   private abortActive(): void {

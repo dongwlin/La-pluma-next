@@ -40,12 +40,14 @@ describe('RealtimeLogStream', () => {
     const read = vi.fn<(lines: number, signal?: AbortSignal) => Promise<ApiResponse<unknown>>>()
       .mockResolvedValue({ success: true, data: [realtimeRow('first')] })
     const stream = new RealtimeLogStream({ read })
+    expect(stream.getState().hasLoaded).toBe(false)
 
     stream.start()
     await flush()
 
     expect(read).toHaveBeenCalledTimes(1)
     expect(read.mock.calls[0]?.[0]).toBe(REALTIME_LOG_LINES)
+    expect(stream.getState().hasLoaded).toBe(true)
     expect(stream.getState().logs).toMatchObject([{ time: '10:11:12', level: 'INFO', message: 'first' }])
     expect(stream.getState().error).toBeNull()
 
@@ -59,6 +61,20 @@ describe('RealtimeLogStream', () => {
     await vi.advanceTimersByTimeAsync(REALTIME_LOG_INTERVAL_MS)
     expect(stream.getState().logs).toMatchObject([{ time: '10:11:12', level: 'INFO', message: 'second' }])
 
+    stream.stop()
+  })
+
+  it('marks the first empty snapshot as loaded', async () => {
+    const read = vi.fn<(lines: number, signal?: AbortSignal) => Promise<ApiResponse<unknown>>>()
+      .mockResolvedValue({ success: true, data: [] })
+    const stream = new RealtimeLogStream({ read })
+
+    stream.start()
+    await flush()
+
+    expect(stream.getState().hasLoaded).toBe(true)
+    expect(stream.getState().logs).toEqual([])
+    expect(stream.getState().error).toBeNull()
     stream.stop()
   })
 

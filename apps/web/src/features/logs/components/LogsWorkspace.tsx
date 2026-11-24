@@ -37,7 +37,9 @@ export default function LogsWorkspace() {
   const refreshErrorRef = useRef<string | null>(null)
   const viewingHistory = history.viewing
   const logs = viewingHistory ? history.logs : realtime.logs
-  const loading = history.readPhase === 'loading'
+  const loading = viewingHistory
+    ? history.readPhase === 'loading'
+    : !realtime.hasLoaded && realtime.error === null && !realtime.paused
   const actionBusy = session.commandPending !== null
   const activeError = viewingHistory ? history.error : realtime.error
 
@@ -169,6 +171,16 @@ export default function LogsWorkspace() {
     else realtime.pause()
   }
 
+  const clearFilters = () => {
+    setSearch('')
+    setFilter('all')
+    setEvents('all')
+  }
+
+  const showAllRuns = () => {
+    setRunId('')
+  }
+
   return (
     <>
       <LogsToolbar
@@ -193,21 +205,20 @@ export default function LogsWorkspace() {
         onExport={exportLogs}
       />
 
-      {viewingHistory && (
-        <p className="log-coverage">历史文件显示已加载的尾部内容；导出仅包含当前筛选结果。</p>
-      )}
-
       <LogConsole
         viewingHistory={viewingHistory}
         selectedFile={history.selectedFile}
         loading={loading}
         error={activeError}
         logs={runFilteredLogs}
+        unfilteredLogCount={logs.length}
         view={logView}
         autoScroll={autoScroll}
         paused={realtime.paused}
         onRetry={retryActiveLogs}
         onBackToRealtime={backToRealtime}
+        onClearFilters={clearFilters}
+        onShowAllRuns={showAllRuns}
         scopeKey={JSON.stringify([viewingHistory ? history.selectedFile?.path : runId, events, filter, search, clearVersion])}
       />
 
