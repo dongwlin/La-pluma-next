@@ -275,6 +275,34 @@ import { Separator } from '@/shared/ui/separator'
 
 ---
 
+### Item - 列表项容器
+
+**文件位置**：`apps/web/src/shared/ui/item.tsx`（shadcn 生成物）
+
+**适用场景**：列表、搜索结果的只读或可点击行。组合 `ItemMedia`、`ItemContent`、`ItemTitle`、`ItemDescription`、`ItemActions` 统一行内布局；可点击行通过 `render={<button type="button" />}` 渲染为按钮，不要用 `div` 加 `onClick`。
+
+```tsx
+import { Item, ItemActions, ItemContent, ItemDescription, ItemTitle } from '@/shared/ui/item'
+import { Badge } from '@/shared/ui/badge'
+
+<Item
+  render={<button type="button" onClick={() => selectDevice(device.address)} />}
+  className="text-left"
+>
+  <ItemContent className="min-w-0">
+    <ItemTitle className="block w-full truncate">{device.address}</ItemTitle>
+    <ItemDescription className="line-clamp-1 text-xs">{device.details}</ItemDescription>
+  </ItemContent>
+  <ItemActions>
+    <Badge variant="ghost" className="status-success">已连接</Badge>
+  </ItemActions>
+</Item>
+```
+
+`ItemGroup` 固定输出 `role="list"`，只适合子项也是列表语义的场景；把 `Item` 渲染成 `button` 时用普通容器包裹，避免 `list` 下出现 `button` 子项。行内有状态标签时使用非交互 `Badge`，不要再用自绘 `span`。
+
+---
+
 ### Alert - 常驻提示
 
 **文件位置**：`apps/web/src/shared/ui/alert.tsx`（shadcn 生成物，随上游原文保留）
@@ -346,6 +374,29 @@ import { Switch } from '@/shared/ui/switch'
 错误态给控件传 `aria-invalid`，需要与错误文本建立关联时再传 `aria-errormessage`；错误文本使用 `form-error-text`，不要在页面里单独手写红色边框。`Select` 由 Root、`SelectTrigger`、`SelectValue`、`SelectContent` 与 `SelectItem` 组合，受控值通过 `value` / `onValueChange` 传递；选项数组传给 Root 的 `items`，`SelectValue` 才能显示当前标签。
 
 `autoComplete="off"` 是消费点（feature field helper 或直接调用处）的契约，不是 `@/shared/ui/input` 原语的默认值。配置值与搜索词在新增输入时显式关闭浏览器自动填充历史，确实需要浏览器记住输入时才改为显式传入其他值。
+
+---
+
+### Field / Label - 表单字段布局
+
+**文件位置**：`apps/web/src/shared/ui/field.tsx`、`apps/web/src/shared/ui/label.tsx`（shadcn 生成物）
+
+**适用场景**：组合字段标签、控件、说明与错误。`Field` 提供 `vertical` / `horizontal` / `responsive` 三种方向；`FieldLabel`、`FieldDescription`、`FieldError` 分别承担标签、说明与错误；`Label` 用于包裹单个 `Checkbox` 等控件。
+
+```tsx
+import { Field, FieldContent, FieldDescription, FieldLabel } from '@/shared/ui/field'
+import { Switch } from '@/shared/ui/switch'
+
+<Field orientation="horizontal" className="min-h-11">
+  <FieldContent className="gap-1">
+    <FieldLabel htmlFor="auto-reconnect" className="text-foreground">自动重连</FieldLabel>
+    <FieldDescription className="text-xs text-muted-foreground">连接中断后自动尝试恢复</FieldDescription>
+  </FieldContent>
+  <Switch id="auto-reconnect" aria-label="自动重连" checked={autoReconnect} onCheckedChange={setAutoReconnect} />
+</Field>
+```
+
+新表单优先用 `Field` 组合，不要再用裸 `<label>` + `<p>` 手写字段行。开关行使用 `orientation="horizontal"`，标签与说明放 `FieldContent`，控件作为兄弟节点；多行字段使用默认纵向布局。`FieldGroup` 的默认间距是 `gap-5`，需要 14px 卡片节奏时在调用点显式覆盖（`gap-3.5!`）。`Field` 的 `gap-*` 同样会与生成物默认值竞争，必要时使用 `!` 明确覆盖。
 
 ---
 
