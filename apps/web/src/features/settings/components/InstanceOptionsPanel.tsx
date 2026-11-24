@@ -1,6 +1,3 @@
-// 实例选项与连接配置分属同一 MAA profile 的不同 section：面板只在 instance
-// section 渲染，但草稿与读取反馈由模块级 owner 持有，切换 section 不丢草稿。
-
 import { ConfigFieldSelect } from './ConfigFieldControls'
 import SwitchSettingRow from './SwitchSettingRow'
 import { FieldGroup } from '@/shared/ui/field'
@@ -8,7 +5,6 @@ import { SETTINGS_CONFIG_INSTANCE_NOTICE_ID } from '@/shared/notifications'
 import { useAutoSave } from '../hooks/useAutoSave'
 import { useConfigDraftPanel } from '../hooks/useConfigDraftPanel'
 import { useSettingsInstanceOptions } from '../hooks/useSettingsInstanceOptions'
-import { CONFIG_SECTION_VIEWS } from './configSectionViews'
 import ConfigEditorCard from './ConfigEditorCard'
 import { MAA_TOUCH_MODES } from '../types'
 import type { MaaTouchMode } from '../types'
@@ -26,12 +22,7 @@ const TOUCH_MODE_OPTIONS = MAA_TOUCH_MODES.map(mode => ({
   label: TOUCH_MODE_LABELS[mode],
 }))
 
-export interface InstanceOptionsPanelProps {
-  /** 只有 instance section 渲染可写表单；隐藏时保留订阅与反馈。 */
-  readonly isActive: boolean
-}
-
-export default function InstanceOptionsPanel({ isActive }: InstanceOptionsPanelProps) {
+export default function InstanceOptionsPanel() {
   const {
     draft,
     update,
@@ -44,7 +35,7 @@ export default function InstanceOptionsPanel({ isActive }: InstanceOptionsPanelP
     loadError,
     loaded,
     reload,
-  } = useSettingsInstanceOptions(undefined, 'default', isActive)
+  } = useSettingsInstanceOptions(undefined, 'default')
   const saving = syncState === 'saving'
   const getAutoSaveState = () => {
     const current = getState()
@@ -70,7 +61,6 @@ export default function InstanceOptionsPanel({ isActive }: InstanceOptionsPanelP
     state: { loaded, dirty, saving, revision },
     getState: getAutoSaveState,
     save: saveInstanceOptions,
-    active: isActive,
     saveBlocked: syncState === 'failed',
   })
 
@@ -83,11 +73,8 @@ export default function InstanceOptionsPanel({ isActive }: InstanceOptionsPanelP
     void saveInstanceOptions()
   }
 
-  if (!isActive) return null
-
   return (
     <ConfigEditorCard
-      title={CONFIG_SECTION_VIEWS.instance.name}
       feedback={configFeedback}
       onRetryLoad={loadError ? reload : undefined}
       onRetrySave={handleRetrySave}

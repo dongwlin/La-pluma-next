@@ -1,4 +1,4 @@
-import { Field, FieldContent, FieldLabel } from '@/shared/ui/field'
+import { Field, FieldLabel } from '@/shared/ui/field'
 import { Switch } from '@/shared/ui/switch'
 
 export interface SwitchSettingRowProps {
@@ -18,16 +18,13 @@ export default function SwitchSettingRow({
 }: SwitchSettingRowProps) {
   return (
     <Field orientation="horizontal" className="min-h-11 gap-3.5">
-      <FieldContent>
-        <FieldLabel htmlFor={id} className="text-sm font-medium text-foreground">{label}</FieldLabel>
-      </FieldContent>
+      <FieldLabel htmlFor={id} className="text-sm font-medium whitespace-nowrap text-foreground">{label}</FieldLabel>
       <Switch
         id={id}
         aria-label={label}
         checked={checked}
         onCheckedChange={onCheckedChange}
         disabled={disabled}
-        className="self-center"
       />
     </Field>
   )

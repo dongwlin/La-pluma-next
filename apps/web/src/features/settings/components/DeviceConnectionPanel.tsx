@@ -1,4 +1,4 @@
-import { Cable, LoaderCircle, Search } from 'lucide-react'
+import { LoaderCircle, Search } from 'lucide-react'
 import { Badge } from '@/shared/ui/badge'
 import { Button } from '@/shared/ui/button'
 import { Item, ItemActions, ItemContent, ItemDescription, ItemTitle } from '@/shared/ui/item'
@@ -71,14 +71,11 @@ export default function DeviceConnectionPanel({
 
   return (
     <section className="min-w-0" aria-label="模拟器查找与连接测试">
-      <div className="flex flex-wrap items-start justify-between gap-3.5">
-        <div className="flex min-w-0 items-start gap-3.5">
-          <Cable size={18} className="mt-0.5 shrink-0 text-muted-foreground" aria-hidden="true" />
-          <div className="min-w-0">
-            <h3 className="text-sm font-semibold text-foreground">模拟器连接</h3>
-          </div>
+      <div className="flex min-h-11 flex-wrap items-center justify-between gap-3.5">
+        <div className="min-w-0">
+          <h3 className="text-sm font-medium whitespace-nowrap text-foreground">模拟器连接</h3>
         </div>
-        <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto">
+        <div className="flex flex-wrap items-center gap-2">
           <Button
             type="button"
             variant="secondary"
@@ -86,16 +83,11 @@ export default function DeviceConnectionPanel({
             disabled={disabled || discoveringDevices}
             aria-busy={discoveringDevices || undefined}
             onClick={() => void discoverDevices(adbPath)}
-            className="flex-1 sm:flex-none"
+            className="shrink-0"
           >
             {discoveringDevices
               ? <><LoaderCircle className="animate-spin" aria-hidden="true" />查找中</>
-              : (
-                <>
-                  <Search size={16} aria-hidden="true" />
-                  查找模拟器
-                </>
-              )}
+              : '查找模拟器'}
           </Button>
           <Button
             type="button"
@@ -104,16 +96,11 @@ export default function DeviceConnectionPanel({
             disabled={disabled || testingConnection}
             aria-busy={testingConnection || undefined}
             onClick={() => void testConnection(adbPath, address)}
-            className="flex-1 sm:flex-none"
+            className="shrink-0"
           >
             {testingConnection
               ? <><LoaderCircle className="animate-spin" aria-hidden="true" />测试中</>
-              : (
-                <>
-                  <Cable size={16} aria-hidden="true" />
-                  测试连接
-                </>
-              )}
+              : '测试连接'}
           </Button>
         </div>
       </div>

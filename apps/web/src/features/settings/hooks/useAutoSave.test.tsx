@@ -38,7 +38,6 @@ const createOwner = (initial: Partial<AutoSaveState> = {}): TestOwner => {
 interface HarnessProps {
   readonly owner: TestOwner
   readonly save: () => Promise<unknown>
-  readonly active?: boolean
   readonly locked?: boolean
   readonly paused?: boolean
   readonly saveBlocked?: boolean
@@ -190,18 +189,6 @@ describe('useAutoSave', () => {
     await act(async () => owner.set({ revision: 2 }))
     await advance(1000)
     expect(onBlocked).toHaveBeenCalledTimes(2)
-  })
-
-  it('flushes when the panel becomes inactive', async () => {
-    const owner = createOwner({ revision: 1, dirty: true })
-    const save = vi.fn(async () => undefined)
-    await renderHarness({ owner, save, active: true })
-    expect(save).not.toHaveBeenCalled()
-
-    await act(async () => {
-      root.render(<Harness owner={owner} save={save} active={false} />)
-    })
-    expect(save).toHaveBeenCalledOnce()
   })
 
   it('flushes on unmount before the debounce elapses', async () => {

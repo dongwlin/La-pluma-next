@@ -13,11 +13,9 @@ export interface UseAutoSaveOptions<TState extends AutoSaveState> {
   readonly state: TState
   readonly getState: () => TState
   readonly save: () => Promise<unknown>
-  /** 面板当前是否可见；隐藏时冲刷并暂停排程。 */
-  readonly active?: boolean
   /** 设备忙时同时阻止排程与显式冲刷。 */
   readonly locked?: boolean
-  /** 只暂停防抖排程；显式冲刷（失焦、停用、卸载）仍然生效。 */
+  /** 只暂停防抖排程；显式冲刷（失焦、卸载）仍然生效。 */
   readonly paused?: boolean
   /** 上一次自动保存失败后阻止自动重试，直到下一次编辑。 */
   readonly saveBlocked?: boolean
@@ -34,7 +32,6 @@ export function useAutoSave<TState extends AutoSaveState>({
   state,
   getState,
   save,
-  active = true,
   locked = false,
   paused = false,
   saveBlocked = false,
@@ -49,7 +46,6 @@ export function useAutoSave<TState extends AutoSaveState>({
   const onBlockedRef = useRef(onBlocked)
   const lockedRef = useRef(locked)
   const blockedRevisionRef = useRef<number | null>(null)
-  const wasActiveRef = useRef(active)
 
   useEffect(() => {
     saveRef.current = save
@@ -85,7 +81,7 @@ export function useAutoSave<TState extends AutoSaveState>({
 
   useEffect(() => {
     clearTimer()
-    if (paused || !active || locked || saveBlocked) return
+    if (paused || locked || saveBlocked) return
     if (!state.loaded || !state.dirty || state.saving || state.revision === 0) return
     const current = getStateRef.current()
     if (canSaveRef.current && !canSaveRef.current(current)) {
@@ -98,7 +94,6 @@ export function useAutoSave<TState extends AutoSaveState>({
     }, delayMs)
     return clearTimer
   }, [
-    active,
     clearTimer,
     delayMs,
     locked,
@@ -111,11 +106,6 @@ export function useAutoSave<TState extends AutoSaveState>({
     state.revision,
     state.saving,
   ])
-
-  useEffect(() => {
-    if (wasActiveRef.current && !active) performSave()
-    wasActiveRef.current = active
-  }, [active, performSave])
 
   useEffect(() => {
     const handlePageHide = () => performSave()

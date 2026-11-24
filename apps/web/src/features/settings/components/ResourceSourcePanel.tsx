@@ -7,7 +7,6 @@ import { isRunStatusBusy, useStatusStore } from '@/features/runtime-status'
 import { useAutoSave } from '../hooks/useAutoSave'
 import { useConfigDraftPanel } from '../hooks/useConfigDraftPanel'
 import { useSettingsResourceSource } from '../hooks/useSettingsResourceSource'
-import { CONFIG_SECTION_VIEWS } from './configSectionViews'
 import ConfigEditorCard from './ConfigEditorCard'
 import { DEFAULT_MIRRORCHYAN_CHECK_INTERVAL } from '../model/resourceSource'
 import { GIT_BACKENDS, RESOURCE_SOURCE_TYPES } from '../types'
@@ -54,12 +53,7 @@ const describeCdk = (kind: ResourceSecretKind): string => {
   }
 }
 
-export interface ResourceSourcePanelProps {
-  /** 只有 resource section 渲染可写表单；隐藏时保留订阅与反馈。 */
-  readonly isActive: boolean
-}
-
-export default function ResourceSourcePanel({ isActive }: ResourceSourcePanelProps) {
+export default function ResourceSourcePanel() {
   const {
     draft,
     update,
@@ -72,7 +66,7 @@ export default function ResourceSourcePanel({ isActive }: ResourceSourcePanelPro
     loadError,
     loaded,
     reload,
-  } = useSettingsResourceSource(undefined, isActive)
+  } = useSettingsResourceSource(undefined)
   const saving = syncState === 'saving'
   const getAutoSaveState = () => {
     const current = getState()
@@ -100,7 +94,6 @@ export default function ResourceSourcePanel({ isActive }: ResourceSourcePanelPro
     state: { loaded, dirty, saving, revision },
     getState: getAutoSaveState,
     save: saveResourceSource,
-    active: isActive,
     locked: runBusy,
     paused: cdkFocused,
     saveBlocked: syncState === 'failed',
@@ -126,11 +119,8 @@ export default function ResourceSourcePanel({ isActive }: ResourceSourcePanelPro
     })
   }
 
-  if (!isActive) return null
-
   return (
     <ConfigEditorCard
-      title={CONFIG_SECTION_VIEWS.resource.name}
       feedback={configFeedback}
       onRetryLoad={loadError ? reload : undefined}
       onRetrySave={handleRetrySave}
@@ -183,6 +173,7 @@ export default function ResourceSourcePanel({ isActive }: ResourceSourcePanelPro
           />
           {draft.mirrorchyan.cdkKind !== 'none' && (
             <ConfigFieldCheckbox
+              id="resource-clear-cdk"
               label="清除已保存的 CDK"
               checked={draft.mirrorchyan.clearCdk}
               onCheckedChange={(checked: boolean) => {

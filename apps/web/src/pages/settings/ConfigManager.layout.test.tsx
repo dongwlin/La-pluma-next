@@ -116,6 +116,7 @@ let root: Root
 let queryClient: QueryClient
 let invalidationEvents: ResourceInvalidation[]
 let stopInvalidations: (() => void) | null = null
+let originalScrollIntoView: PropertyDescriptor | undefined
 
 const flush = async () => {
   await act(async () => {
@@ -282,6 +283,11 @@ describe('ConfigManager layout surfaces', () => {
     container = document.createElement('div')
     document.body.appendChild(container)
     root = createRoot(container)
+    originalScrollIntoView = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'scrollIntoView')
+    Object.defineProperty(HTMLElement.prototype, 'scrollIntoView', {
+      configurable: true,
+      value: vi.fn(),
+    })
   })
 
   afterEach(async () => {
@@ -290,29 +296,44 @@ describe('ConfigManager layout surfaces', () => {
     await act(async () => root.unmount())
     queryClient.clear()
     container.remove()
+    if (originalScrollIntoView) {
+      Object.defineProperty(HTMLElement.prototype, 'scrollIntoView', originalScrollIntoView)
+    } else {
+      delete (HTMLElement.prototype as Partial<HTMLElement>).scrollIntoView
+    }
     vi.restoreAllMocks()
   })
 
-  it('keeps the config section nav roving and reports switch semantics', async () => {
+  it('renders every settings section with a matching table of contents', async () => {
     await act(async () => root.render(page()))
     await flush()
 
-    const tablist = container.querySelector('[role="tablist"][aria-label="配置类型"]')
-    expect(tablist).not.toBeNull()
-    const sections = Array.from(tablist?.querySelectorAll<HTMLButtonElement>('[role="tab"]') ?? [])
-    expect(sections).toHaveLength(3)
-    expect(sections.filter(button => button.getAttribute('aria-selected') === 'true')).toHaveLength(1)
-    expect(sections.find(button => button.getAttribute('aria-selected') === 'true')?.textContent).toContain('连接')
-    sections.forEach(button => {
-      expect(button.tabIndex).toBe(button.getAttribute('aria-selected') === 'true' ? 0 : -1)
-      const panel = container.querySelector<HTMLElement>(`#${button.getAttribute('aria-controls')}`)
-      expect(panel?.getAttribute('role')).toBe('tabpanel')
-      expect(panel?.getAttribute('aria-labelledby')).toBe(button.id)
-      expect(panel?.hasAttribute('hidden')).toBe(button.getAttribute('aria-selected') !== 'true')
+    expect(container.querySelector('[role="tablist"]')).toBeNull()
+
+    const headings = Array.from(container.querySelectorAll('h2'))
+      .map(heading => heading.textContent?.trim())
+    expect(headings).toEqual(['连接', '资源', '实例', '配置目录', '外观', '组件更新'])
+
+    const nav = container.querySelector('[aria-label="本页目录"]')
+    expect(nav).not.toBeNull()
+    const links = Array.from(nav?.querySelectorAll('a') ?? [])
+    expect(links.map(link => link.textContent?.trim())).toEqual(headings)
+    expect(links.filter(link => link.getAttribute('aria-current') === 'location')).toHaveLength(1)
+    expect(links[0]?.getAttribute('aria-current')).toBe('location')
+
+    container.querySelectorAll('section[aria-labelledby]').forEach((section) => {
+      const headingId = section.getAttribute('aria-labelledby')
+      expect(headingId).not.toBeNull()
+      expect(container.querySelector(`#${headingId}`)?.textContent?.trim())
+        .toBe(section.querySelector('h2')?.textContent?.trim())
     })
 
-    const autoUpdateToggle = container.querySelector('[role="switch"][aria-label="启用自动更新"]')
-    expect(autoUpdateToggle).not.toBeNull()
+    expect(addressInputWithValue('127.0.0.1:16384')).toBeDefined()
+    expect(container.querySelector('#resource-source')).not.toBeNull()
+    expect(container.querySelector('#instance-touch-mode')).not.toBeNull()
+    expect(container.textContent).toContain('/tmp/la-pluma')
+    expect(container.querySelector('[role="switch"][aria-label="启用自动更新"]')).not.toBeNull()
+    expect(container.textContent).toContain('v5.0.0')
   })
 
   it('shows a retryable config-directory error instead of an endless loading label', async () => {
@@ -339,8 +360,7 @@ describe('ConfigManager layout surfaces', () => {
     expect(openButton?.disabled).toBe(false)
   })
 
-  it('does not retry a failed config-directory read when switching sections', async () => {
-    // 每次读取都失败：切换 section 时若产生新的目录观察者，调用次数会继续增加。
+  it('keeps one config-directory observer and one retry entry', async () => {
     mocks.getConfigDir.mockResolvedValue({ success: false, message: '目录服务暂不可用' })
 
     await act(async () => root.render(page()))
@@ -349,17 +369,9 @@ describe('ConfigManager layout surfaces', () => {
     expect(container.querySelector('[role="alert"]')?.textContent)
       .toContain('配置目录读取失败: 目录服务暂不可用')
     expect(buttonByText('重试')).toBeDefined()
-    const callsBeforeSwitch = mocks.getConfigDir.mock.calls.length
-
-    const resourceButton = Array.from(container.querySelectorAll<HTMLButtonElement>('button'))
-      .find(button => button.textContent?.includes('资源'))
-    await act(async () => resourceButton?.click())
-    await flush()
-
-    expect(mocks.getConfigDir).toHaveBeenCalledTimes(callsBeforeSwitch)
+    expect(mocks.getConfigDir).toHaveBeenCalledOnce()
     expect(container.textContent).toContain('配置目录读取失败: 目录服务暂不可用')
     expect(container.textContent).not.toContain('正在读取目录...')
-    expect(buttonByText('重试')).toBeDefined()
     const openButtons = Array.from(container.querySelectorAll<HTMLButtonElement>('button'))
       .filter(button => button.textContent?.trim() === '打开目录')
     expect(openButtons).toHaveLength(1)
@@ -776,9 +788,7 @@ describe('ConfigManager layout surfaces', () => {
     }))
   })
 
-  it('hides the repository address and branch and keeps instance options editable', async () => {
-    localStorage.setItem('laPlumaConfigSection', 'resource')
-
+  it('shows resource and instance options together and hides repository details', async () => {
     await act(async () => root.render(page()))
     await flush()
 
@@ -796,18 +806,11 @@ describe('ConfigManager layout surfaces', () => {
     expect(mocks.getResourceSource).toHaveBeenCalledOnce()
     expect(mocks.getConfigDir).toHaveBeenCalledOnce()
 
-    const instanceButton = Array.from(container.querySelectorAll('button')).find(button => button.textContent?.includes('实例'))
-    await act(async () => {
-      instanceButton?.dispatchEvent(new MouseEvent('click', { bubbles: true }))
-    })
-    await flush()
-
     expect(container.textContent).toContain('触控模式')
     expect(container.textContent).toContain('部署时暂停')
   })
 
   it('saves the resource source form and reports success', async () => {
-    localStorage.setItem('laPlumaConfigSection', 'resource')
     mocks.getResourceSource.mockResolvedValueOnce({
       success: true,
       data: {
@@ -845,7 +848,6 @@ describe('ConfigManager layout surfaces', () => {
   })
 
   it('locks the resource form and pauses auto save while MAA is running', async () => {
-    localStorage.setItem('laPlumaConfigSection', 'resource')
     mocks.getResourceSource.mockResolvedValueOnce({
       success: true,
       data: {
@@ -911,8 +913,6 @@ describe('ConfigManager layout surfaces', () => {
   })
 
   it('saves only the instance options section from the instance form', async () => {
-    localStorage.setItem('laPlumaConfigSection', 'instance')
-
     await act(async () => root.render(page()))
     await flush()
 
@@ -948,7 +948,7 @@ describe('ConfigManager layout surfaces', () => {
     expect(container.querySelector('[role="alert"]')).toBeNull()
   })
 
-  it('keeps a connection save running across section switches and commits the latest edit afterwards', async () => {
+  it('keeps a connection save running while editing continues and commits the latest draft afterwards', async () => {
     const pendingSave = deferred<{ success: boolean }>()
     mocks.saveConfig.mockReturnValueOnce(pendingSave.promise)
 
@@ -961,20 +961,10 @@ describe('ConfigManager layout surfaces', () => {
     await blurElement(addressInput)
     await setInputValue(addressInput, '127.0.0.1:6666')
 
-    const resourceButton = Array.from(container.querySelectorAll<HTMLButtonElement>('button'))
-      .find(button => button.textContent?.includes('资源'))
-    await act(async () => resourceButton?.click())
     await act(async () => pendingSave.resolve({ success: true }))
     await flush()
 
-    const connectionButton = Array.from(container.querySelectorAll<HTMLButtonElement>('button'))
-      .find(button => button.textContent?.includes('连接'))
-    await act(async () => connectionButton?.click())
-    await flush()
-
-    const latestInput = Array.from(container.querySelectorAll<HTMLInputElement>('input'))
-      .find(input => input.value === '127.0.0.1:6666')!
-    await blurElement(latestInput)
+    await blurElement(addressInput)
     await flush()
 
     expect(mocks.saveConfig).toHaveBeenNthCalledWith(1, 'default', {
@@ -983,35 +973,47 @@ describe('ConfigManager layout surfaces', () => {
     expect(mocks.saveConfig).toHaveBeenNthCalledWith(2, 'default', {
       connection: expect.objectContaining({ address: '127.0.0.1:6666' }),
     })
-    expect(Array.from(container.querySelectorAll<HTMLInputElement>('input'))
-      .find(input => input.value === '127.0.0.1:6666')).toBeDefined()
+    expect(addressInput.value).toBe('127.0.0.1:6666')
     expect(mocks.notify).not.toHaveBeenCalledWith('此前连接配置已保存，当前更改尚未保存', 'warning', expect.anything())
   })
 
-  it('applies external section events, persists them, and removes the listener on unmount', async () => {
+  it('scrolls to sections for external events, persists the active one, and removes the listener on unmount', async () => {
     const removeListener = vi.spyOn(window, 'removeEventListener')
-    localStorage.setItem(CONFIG_SECTION_STORAGE_KEY, 'instance')
 
     await act(async () => root.render(page()))
     await flush()
 
-    expect(container.textContent).toContain('触控模式')
+    const nav = container.querySelector('[aria-label="本页目录"]')
+    const navLink = (label: string) => (
+      Array.from(nav?.querySelectorAll<HTMLAnchorElement>('a') ?? [])
+        .find(link => link.textContent?.trim() === label)
+    )
+    expect(navLink('连接')?.getAttribute('aria-current')).toBe('location')
+    expect(localStorage.getItem(CONFIG_SECTION_STORAGE_KEY)).toBe('connection')
+
+    const resourceSection = container.querySelector<HTMLElement>('#settings-section-resource')
+    const resourceScroll = vi.fn()
+    Object.defineProperty(resourceSection, 'scrollIntoView', {
+      configurable: true,
+      value: resourceScroll,
+    })
 
     await act(async () => {
       window.dispatchEvent(new CustomEvent(CONFIG_SECTION_EVENT, { detail: 'resource' }))
     })
+    expect(resourceScroll).toHaveBeenCalledOnce()
+    expect(navLink('资源')?.getAttribute('aria-current')).toBe('location')
     expect(localStorage.getItem(CONFIG_SECTION_STORAGE_KEY)).toBe('resource')
-    expect(container.textContent).toContain('资源来源')
 
     await act(async () => {
       window.dispatchEvent(new CustomEvent(CONFIG_SECTION_EVENT, { detail: 'unknown' }))
     })
+    expect(resourceScroll).toHaveBeenCalledOnce()
     expect(localStorage.getItem(CONFIG_SECTION_STORAGE_KEY)).toBe('resource')
 
-    const connectionButton = Array.from(container.querySelectorAll<HTMLButtonElement>('button'))
-      .find(button => button.textContent?.includes('连接'))
-    await act(async () => connectionButton?.click())
+    await act(async () => navLink('连接')?.click())
     expect(localStorage.getItem(CONFIG_SECTION_STORAGE_KEY)).toBe('connection')
+    expect(navLink('连接')?.getAttribute('aria-current')).toBe('location')
     expect(container.querySelector('#connection-preset')).not.toBeNull()
 
     await act(async () => {
@@ -1044,17 +1046,19 @@ describe('ConfigManager layout surfaces', () => {
     await renderMode('hidden')
     await renderMode('visible')
 
-    expect(mocks.getConfig).toHaveBeenCalledOnce()
+    expect(mocks.getConfig).toHaveBeenCalled()
+    const nav = container.querySelector('[aria-label="本页目录"]')
+    const navLink = (label: string) => (
+      Array.from(nav?.querySelectorAll<HTMLAnchorElement>('a') ?? [])
+        .find(link => link.textContent?.trim() === label)
+    )
+
     await act(async () => {
       window.dispatchEvent(new CustomEvent(CONFIG_SECTION_EVENT, { detail: 'resource' }))
     })
-    const resourceButton = Array.from(container.querySelectorAll<HTMLButtonElement>('[role="tab"]'))
-      .find(button => button.textContent?.includes('资源'))
-    expect(resourceButton?.getAttribute('aria-selected')).toBe('true')
+    expect(navLink('资源')?.getAttribute('aria-current')).toBe('location')
 
-    const connectionButton = Array.from(container.querySelectorAll<HTMLButtonElement>('[role="tab"]'))
-      .find(button => button.textContent?.includes('连接'))
-    await act(async () => connectionButton?.click())
+    await act(async () => navLink('连接')?.click())
     expect(Array.from(container.querySelectorAll<HTMLInputElement>('input'))
       .find(input => input.value === '127.0.0.1:5555')).toBeDefined()
   })
@@ -1084,42 +1088,6 @@ describe('ConfigManager layout surfaces', () => {
     expect(updateAlert?.textContent).toContain('下载失败')
     expect(editorAlert?.textContent).not.toContain('下载失败')
     expect(updateAlert?.textContent).not.toContain('磁盘只读')
-  })
-
-  it('keeps an in-flight discovery running across section switches', async () => {
-    const pendingDiscovery = deferred<{ success: boolean; data: unknown }>()
-    mocks.discoverDevices.mockReturnValueOnce(pendingDiscovery.promise)
-
-    await act(async () => root.render(page()))
-    await flush()
-
-    await act(async () => buttonByText('查找模拟器')?.click())
-    await flush()
-    const signal = mocks.discoverDevices.mock.calls[0]![1] as AbortSignal
-
-    const resourceButton = Array.from(container.querySelectorAll<HTMLButtonElement>('button'))
-      .find(button => button.textContent?.includes('资源'))
-    await act(async () => resourceButton?.click())
-    expect(signal.aborted).toBe(false)
-
-    pendingDiscovery.resolve({
-      success: true,
-      data: {
-        success: true,
-        message: '找到 1 个设备或可尝试地址',
-        devices: [{ address: 'emulator-5554', state: 'device', source: 'adb' }],
-        candidates: [],
-      },
-    })
-    await flush()
-
-    const connectionButton = Array.from(container.querySelectorAll<HTMLButtonElement>('button'))
-      .find(button => button.textContent?.includes('连接'))
-    await act(async () => connectionButton?.click())
-
-    expect(container.textContent).toContain('emulator-5554')
-    expect(buttonByText('查找模拟器')).toBeDefined()
-    expect(buttonByText('查找中')).toBeUndefined()
   })
 
   it('discovers devices with the draft adb path and backfills the selected device', async () => {
@@ -1372,10 +1340,6 @@ describe('ConfigManager layout surfaces', () => {
 
     expect(mocks.openConfigDir).toHaveBeenCalledTimes(1)
     expect(mocks.notify).toHaveBeenCalledWith('已打开配置目录')
-
-    const resourceButton = Array.from(container.querySelectorAll<HTMLButtonElement>('button'))
-      .find(button => button.textContent?.includes('资源'))
-    await act(async () => resourceButton?.click())
 
     const openButtons = Array.from(container.querySelectorAll<HTMLButtonElement>('button'))
       .filter(button => button.textContent?.trim() === '打开目录')

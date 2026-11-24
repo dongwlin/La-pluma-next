@@ -12,7 +12,6 @@ let container: HTMLDivElement
 let root: Root
 
 const baseProps: ConfigEditorCardProps = {
-  title: '连接配置',
   feedback: null,
   children: <div>表单内容</div>,
 }

@@ -1,6 +1,3 @@
-// 非 connection section 时返回 null 但组件保持挂载：section 切换不重建 Query 观察者，
-// 也不清空草稿与保存/读取反馈。
-
 import { ConfigFieldInput, ConfigFieldSelect } from './ConfigFieldControls'
 import SwitchSettingRow from './SwitchSettingRow'
 import { SETTINGS_CONFIG_CONNECTION_NOTICE_ID } from '@/shared/notifications'
@@ -8,7 +5,6 @@ import { useAutoSave } from '../hooks/useAutoSave'
 import { useConfigDraftPanel } from '../hooks/useConfigDraftPanel'
 import { useSettingsConnectionConfig } from '../hooks/useSettingsConnectionConfig'
 import { useClearConnectionTestFeedback } from '../hooks/useSettingsDeviceConnection'
-import { CONFIG_SECTION_VIEWS } from './configSectionViews'
 import ConfigEditorCard from './ConfigEditorCard'
 import DeviceConnectionPanel from './DeviceConnectionPanel'
 import { MAA_CONNECTION_PRESETS } from '../types'
@@ -27,12 +23,7 @@ const PRESET_OPTIONS = MAA_CONNECTION_PRESETS.map(preset => ({
   label: PRESET_LABELS[preset],
 }))
 
-export interface ConnectionConfigPanelProps {
-  /** 只有 connection section 渲染可写表单；隐藏时仍保留订阅与本地反馈。 */
-  readonly isActive: boolean
-}
-
-export default function ConnectionConfigPanel({ isActive }: ConnectionConfigPanelProps) {
+export default function ConnectionConfigPanel() {
   const {
     draft: configData,
     update: updateConnectionDraft,
@@ -76,7 +67,6 @@ export default function ConnectionConfigPanel({ isActive }: ConnectionConfigPane
       }
     },
     save: saveConnectionConfig,
-    active: isActive,
     saveBlocked: connectionSyncState === 'failed',
   })
 
@@ -99,36 +89,31 @@ export default function ConnectionConfigPanel({ isActive }: ConnectionConfigPane
     clearTestFeedback()
   }
 
-  if (!isActive) return null
-
   return (
     <ConfigEditorCard
-      title={CONFIG_SECTION_VIEWS.connection.name}
       feedback={configFeedback}
       onRetryLoad={connectionLoadError ? reloadConnectionConfig : undefined}
       onRetrySave={handleRetrySave}
       onFieldBlur={flush}
     >
-      <div className="grid min-w-0 gap-3.5 md:grid-cols-2">
-        <ConfigFieldInput
-          id="connection-adb-path"
-          label="ADB 路径"
-          value={configData.adb_path}
-          onChange={(event) => {
-            updateConnectionConfig({ adb_path: event.target.value })
-          }}
-          disabled={!connectionLoaded}
-        />
-        <ConfigFieldInput
-          id="connection-address"
-          label="连接地址"
-          value={configData.address}
-          onChange={(event) => {
-            handleAddressChange(event.target.value)
-          }}
-          disabled={!connectionLoaded}
-        />
-      </div>
+      <ConfigFieldInput
+        id="connection-adb-path"
+        label="ADB 路径"
+        value={configData.adb_path}
+        onChange={(event) => {
+          updateConnectionConfig({ adb_path: event.target.value })
+        }}
+        disabled={!connectionLoaded}
+      />
+      <ConfigFieldInput
+        id="connection-address"
+        label="连接地址"
+        value={configData.address}
+        onChange={(event) => {
+          handleAddressChange(event.target.value)
+        }}
+        disabled={!connectionLoaded}
+      />
 
       <DeviceConnectionPanel
         adbPath={configData.adb_path}
@@ -136,32 +121,30 @@ export default function ConnectionConfigPanel({ isActive }: ConnectionConfigPane
         disabled={!connectionLoaded}
       />
 
-      <div className="grid min-w-0 gap-3.5 md:grid-cols-2 md:items-end">
-        <ConfigFieldSelect
-          id="connection-preset"
-          label="连接预设"
-          value={configData.preset}
-          onValueChange={(value) => {
-            updateConnectionConfigNow({ preset: value as MaaConnectionPreset })
-          }}
-          disabled={!connectionLoaded}
-          items={PRESET_OPTIONS}
-        />
-        <ConfigFieldSelect
-          id="connection-platform-config"
-          label="平台配置"
-          value={configData.config}
-          onValueChange={(value) => {
-            updateConnectionConfigNow({ config: value })
-          }}
-          disabled={!connectionLoaded}
-          items={[
-            { value: 'CompatMac', label: 'CompatMac (macOS)' },
-            { value: 'CompatPOSIXShell', label: 'CompatPOSIXShell (Linux)' },
-            { value: 'General', label: 'General (Windows)' },
-          ]}
-        />
-      </div>
+      <ConfigFieldSelect
+        id="connection-preset"
+        label="连接预设"
+        value={configData.preset}
+        onValueChange={(value) => {
+          updateConnectionConfigNow({ preset: value as MaaConnectionPreset })
+        }}
+        disabled={!connectionLoaded}
+        items={PRESET_OPTIONS}
+      />
+      <ConfigFieldSelect
+        id="connection-platform-config"
+        label="平台配置"
+        value={configData.config}
+        onValueChange={(value) => {
+          updateConnectionConfigNow({ config: value })
+        }}
+        disabled={!connectionLoaded}
+        items={[
+          { value: 'CompatMac', label: 'CompatMac (macOS)' },
+          { value: 'CompatPOSIXShell', label: 'CompatPOSIXShell (Linux)' },
+          { value: 'General', label: 'General (Windows)' },
+        ]}
+      />
       <SwitchSettingRow
         id="connection-auto-reconnect"
         label="自动重连"

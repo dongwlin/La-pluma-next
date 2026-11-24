@@ -106,7 +106,7 @@ export default function ComponentUpdatePanel() {
       <div className="grid gap-3.5 md:grid-cols-2 xl:grid-cols-1">
         <section className="flex min-w-0 flex-col">
           <div className="flex flex-wrap items-center gap-2">
-            <h3 className="text-base font-semibold text-foreground">MaaCore</h3>
+            <h3 className="text-sm font-medium text-foreground">MaaCore</h3>
             {versionInfo && <span className="text-sm text-muted-foreground">{versionInfo.core}</span>}
             <Select
               items={CORE_CHANNEL_OPTIONS}
@@ -189,7 +189,7 @@ export default function ComponentUpdatePanel() {
 
         <section className="flex min-w-0 flex-col">
           <div className="flex flex-wrap items-center gap-2">
-            <h3 className="text-base font-semibold text-foreground">MAA CLI</h3>
+            <h3 className="text-sm font-medium text-foreground">MAA CLI</h3>
             {versionInfo && <span className="text-sm text-muted-foreground">{versionInfo.cli}</span>}
             <Select
               items={CLI_CHANNEL_OPTIONS}

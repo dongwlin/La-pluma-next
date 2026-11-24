@@ -1,7 +1,7 @@
 import { Check } from 'lucide-react'
 import { THEMES } from '@/shared/theme/registry'
 import { useTheme } from '@/shared/theme/useTheme'
-import { Card, CardContent, CardHeader, CardTitle } from '@/shared/ui/card'
+import { Card, CardContent } from '@/shared/ui/card'
 import { ToggleGroup, ToggleGroupItem } from '@/shared/ui/toggle-group'
 
 export default function AppearanceCard() {
@@ -9,9 +9,6 @@ export default function AppearanceCard() {
 
   return (
     <Card>
-      <CardHeader className="border-b py-3.5">
-        <CardTitle role="heading" aria-level={2}>外观</CardTitle>
-      </CardHeader>
       <CardContent>
         <ToggleGroup
           aria-label="界面主题"

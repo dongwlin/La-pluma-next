@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react'
 import { Button } from '@/shared/ui/button'
-import { Card, CardContent, CardHeader, CardTitle } from '@/shared/ui/card'
+import { Card, CardContent } from '@/shared/ui/card'
 import SettingsFeedback from './SettingsFeedback'
 
 export interface ConfigEditorFeedback {
@@ -10,7 +10,6 @@ export interface ConfigEditorFeedback {
 }
 
 export interface ConfigEditorCardProps {
-  readonly title: string
   readonly feedback: ConfigEditorFeedback | null
   /** 读取失败时提供的显式重试入口。 */
   readonly onRetryLoad?: () => void
@@ -23,9 +22,8 @@ export interface ConfigEditorCardProps {
   readonly children: ReactNode
 }
 
-/** 配置编辑卡的公共外壳：标题、页内错误与字段冲刷入口；表单内容由各 section 提供。 */
+/** 配置编辑卡的公共外壳：页内错误与字段冲刷入口；表单内容由各 section 提供。 */
 export default function ConfigEditorCard({
-  title,
   feedback,
   onRetryLoad,
   onRetrySave,
@@ -37,9 +35,6 @@ export default function ConfigEditorCard({
 
   return (
     <Card>
-      <CardHeader className="border-b py-3.5">
-        <CardTitle role="heading" aria-level={2}>{title}</CardTitle>
-      </CardHeader>
       <CardContent className="app-stack-card" onBlur={onFieldBlur}>
         {feedback && (
           <SettingsFeedback

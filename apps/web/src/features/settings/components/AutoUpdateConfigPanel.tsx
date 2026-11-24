@@ -31,9 +31,9 @@ export default function AutoUpdateConfigPanel() {
 
   return (
     <section className="min-w-0" onBlur={flush}>
-      <div className="flex items-center justify-between gap-3.5">
+      <div className="flex min-h-11 items-center justify-between gap-3.5">
         <div className="min-w-0">
-          <h3 className="text-sm font-semibold text-foreground">自动更新</h3>
+          <h3 className="text-sm font-medium text-foreground">自动更新</h3>
         </div>
         <Switch
           checked={autoUpdate.enabled}
@@ -51,7 +51,7 @@ export default function AutoUpdateConfigPanel() {
             transition={{ duration: shouldReduceMotion ? 0.12 : 0.2 }}
           >
             <Separator className="mt-3.5" />
-            <div className="mt-3.5 grid gap-3.5 md:grid-cols-[12rem_minmax(0,1fr)] md:items-end xl:grid-cols-1 xl:items-stretch">
+            <div className="mt-3.5 flex flex-col gap-3.5">
               <ConfigFieldInput
                 id="auto-update-time"
                 type="text"
@@ -59,20 +59,19 @@ export default function AutoUpdateConfigPanel() {
                 value={autoUpdate.time}
                 onChange={event => updateAutoUpdate({ time: event.target.value })}
                 placeholder="HH:MM"
-                className="max-w-48"
               />
-              <div className="flex min-h-11 flex-wrap items-center gap-x-4.5 gap-y-2">
-                <ConfigFieldCheckbox
-                  checked={autoUpdate.updateCore}
-                  onCheckedChange={(checked: boolean) => applyUpdate({ updateCore: checked })}
-                  label="更新 MaaCore"
-                />
-                <ConfigFieldCheckbox
-                  checked={autoUpdate.updateCli}
-                  onCheckedChange={(checked: boolean) => applyUpdate({ updateCli: checked })}
-                  label="更新 MAA CLI"
-                />
-              </div>
+              <ConfigFieldCheckbox
+                id="auto-update-core"
+                checked={autoUpdate.updateCore}
+                onCheckedChange={(checked: boolean) => applyUpdate({ updateCore: checked })}
+                label="更新 MaaCore"
+              />
+              <ConfigFieldCheckbox
+                id="auto-update-cli"
+                checked={autoUpdate.updateCli}
+                onCheckedChange={(checked: boolean) => applyUpdate({ updateCli: checked })}
+                label="更新 MAA CLI"
+              />
             </div>
           </motion.div>
         )}

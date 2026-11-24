@@ -26,14 +26,12 @@ const describeLoadError = (error: unknown): string => (
 export function useSettingsInstanceOptions(
   owner: InstanceOptionsOwner = settingsInstanceOptionsOwner,
   profileName = 'default',
-  enabled = true,
 ): UseSettingsInstanceOptionsResult {
   const options = useMemo(
     () => instanceOptionsQueryOptions(profileName, owner),
     [owner, profileName],
   )
-  // 面板常驻挂载但只有可见 section 需要读取；未启用时不发起请求。
-  const query = useQuery({ ...options, enabled })
+  const query = useQuery(options)
   const { refetch } = query
   const state = useSyncExternalStore(owner.subscribe, owner.getState, owner.getState)
 

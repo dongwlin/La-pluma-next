@@ -25,11 +25,9 @@ const describeLoadError = (error: unknown): string => (
 
 export function useSettingsResourceSource(
   owner: ResourceSourceOwner = settingsResourceSourceOwner,
-  enabled = true,
 ): UseSettingsResourceSourceResult {
   const options = useMemo(() => resourceSourceQueryOptions(owner), [owner])
-  // 面板常驻挂载但只有可见 section 需要读取；未启用时不发起请求。
-  const query = useQuery({ ...options, enabled })
+  const query = useQuery(options)
   const { refetch } = query
   const queryClient = useQueryClient()
   const state = useSyncExternalStore(owner.subscribe, owner.getState, owner.getState)

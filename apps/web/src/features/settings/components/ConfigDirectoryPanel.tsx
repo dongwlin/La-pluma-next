@@ -23,12 +23,10 @@ export default function ConfigDirectoryPanel() {
     <Card>
       <CardContent className="flex flex-wrap items-center justify-between gap-3.5">
         <div className="min-w-0 flex-1">
-          <h2 className="text-base font-semibold text-foreground">配置目录</h2>
           {configDirStatus === 'error' ? (
             <SettingsFeedback
               tone="error"
               message={configDirError ?? '配置目录读取失败'}
-              className="mt-2"
               action={(
                 <Button
                   onClick={() => void reloadConfigDir()}
@@ -41,7 +39,7 @@ export default function ConfigDirectoryPanel() {
               )}
             />
           ) : (
-            <p className="mt-1 wrap-break-word font-mono text-xs leading-5 text-muted-foreground wrap-anywhere" aria-live="polite">
+            <p className="wrap-break-word font-mono text-xs leading-5 text-muted-foreground wrap-anywhere" aria-live="polite">
               {configDirStatus === 'loading' ? '正在读取目录...' : configDir}
             </p>
           )}
