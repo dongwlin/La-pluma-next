@@ -29,6 +29,7 @@ const baseProps = (logs: readonly LogEntry[]): ConsoleProps => ({
   onBackToRealtime: () => {},
   onClearFilters: () => {},
   onShowAllRuns: () => {},
+  onOpenHistory: () => {},
 })
 
 let container: HTMLDivElement
@@ -294,6 +295,20 @@ describe('LogConsole scroll following', () => {
     await act(async () => button?.click())
     expect(onClearFilters).toHaveBeenCalledOnce()
   })
+
+  it('switches large windows to the virtualized row surface', async () => {
+    class ResizeObserverMock {
+      observe() {}
+      unobserve() {}
+      disconnect() {}
+    }
+    ;(globalThis as typeof globalThis & { ResizeObserver: typeof ResizeObserver }).ResizeObserver =
+      ResizeObserverMock as unknown as typeof ResizeObserver
+
+    const logs = Array.from({ length: 130 }, (_, index) => entry(`第 ${index} 行`))
+    await renderConsole(logs)
+    expect(container.querySelector('[data-log-virtualized="true"]')).not.toBeNull()
+  })
 })
 
 describe('LogConsole record details', () => {
@@ -321,7 +336,7 @@ describe('LogConsole record details', () => {
     await renderConsole([record], {
       view: buildLogView([record], { events: 'all', level: 'all', search: '', collapseRepeats: true }),
     })
-    expect(container.querySelector('summary')?.textContent).toBe('原文与详情')
+    expect(container.querySelector('summary')?.textContent).toBe('原文')
     expect(container.querySelector('pre')?.textContent).toBe(record.sourceText)
     expect(container.textContent).toContain('2026-11-03T10:00:00.123Z')
     expect(container.textContent).toContain('Run：run-1 · Operation：op-1')

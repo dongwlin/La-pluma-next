@@ -48,6 +48,11 @@
     gap: 0.5rem;
   }
 
+  .log-console-heading-actions {
+    flex-wrap: wrap;
+    justify-content: flex-end;
+  }
+
   .log-toolbar-actions {
     flex-wrap: wrap;
     justify-content: flex-start;
@@ -89,10 +94,6 @@
     min-width: 0;
     padding: 0.625rem 0.875rem;
     border-bottom: 1px solid var(--log-row-divider);
-  }
-
-  .log-row:last-child {
-    border-bottom: 0;
   }
 
   .log-row-meta {
@@ -137,15 +138,8 @@
     color: var(--destructive);
   }
 
-  .log-history-content {
-    padding: 0;
-  }
-
   .log-history-list {
     display: grid;
-    max-height: 18rem;
-    overflow-y: auto;
-    overscroll-behavior: contain;
   }
 
   .log-history-row {
@@ -226,18 +220,38 @@
   }
 
   .log-raw {
-    margin-top: 0.375rem;
+    margin-top: 0.25rem;
   }
 
   .log-raw summary {
     display: inline-flex;
-    min-height: 2rem;
+    min-height: 1.5rem;
     align-items: center;
+    gap: 0.25rem;
     color: var(--muted-foreground);
     cursor: pointer;
     font-size: 0.6875rem;
     font-weight: 600;
+    list-style: none;
     user-select: none;
+  }
+
+  .log-raw summary::-webkit-details-marker {
+    display: none;
+  }
+
+  .log-raw summary svg {
+    transition: transform 160ms ease;
+  }
+
+  .log-raw[open] summary svg {
+    transform: rotate(90deg);
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .log-raw summary svg {
+      transition: none;
+    }
   }
 
   .log-raw summary:hover {

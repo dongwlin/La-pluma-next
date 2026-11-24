@@ -65,8 +65,15 @@ const historyFile = {
 
 const historyLine = (message: string) => `[2026-07-22 10:11:12][INFO] ${message}`
 
+const openHistory = async () => {
+  const trigger = Array.from(container.querySelectorAll<HTMLButtonElement>('button'))
+    .find(button => button.getAttribute('aria-label') === '历史日志文件')
+  await act(async () => trigger?.click())
+  await flush()
+}
+
 const historyRowButton = () =>
-  Array.from(container.querySelectorAll<HTMLButtonElement>('button'))
+  Array.from(document.body.querySelectorAll<HTMLButtonElement>('button'))
     .find(button => button.textContent?.includes(historyFile.name))
 
 const deferred = <T,>() => {
@@ -260,6 +267,7 @@ describe('LogViewer realtime lifecycle', () => {
       .mockReturnValueOnce(afterRestore.promise)
 
     await renderMode('visible')
+    await openHistory()
     const historyRow = historyRowButton()
     await act(async () => historyRow?.click())
     await flush()
@@ -295,6 +303,7 @@ describe('LogViewer realtime lifecycle', () => {
 
     await renderMode('visible')
     expect(mocks.getRealtimeLogs).toHaveBeenCalledTimes(1)
+    await openHistory()
     const historyRow = historyRowButton()
     await act(async () => historyRow?.click())
     await flush()
@@ -324,6 +333,7 @@ describe('LogViewer realtime lifecycle', () => {
     })
 
     await renderMode('visible')
+    await openHistory()
     const historyRow = historyRowButton()
     await act(async () => historyRow?.click())
     await flush()
@@ -334,13 +344,14 @@ describe('LogViewer realtime lifecycle', () => {
     await flush()
 
     expect(container.textContent).toContain('历史内容')
-    const listError = container.querySelector<HTMLElement>('[role="alert"]')
+    await openHistory()
+    const listError = document.body.querySelector<HTMLElement>('[role="alert"]')
     expect(listError?.textContent).toContain('列表刷新失败')
     expect(mocks.readLogFile).toHaveBeenCalledTimes(1)
 
     await act(async () => listError?.querySelector<HTMLButtonElement>('button')?.click())
     await flush()
-    expect(container.querySelector('[role="alert"]')).toBeNull()
+    expect(document.body.querySelector('[role="alert"]')).toBeNull()
     expect(container.textContent).toContain('历史内容')
   })
 
