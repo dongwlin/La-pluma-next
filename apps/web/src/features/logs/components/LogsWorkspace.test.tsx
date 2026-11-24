@@ -35,6 +35,7 @@ let viewingHistory = false
 let coverageNotice: string | null = null
 let trackedRun: AgentRun | null = null
 const clearScreen = vi.fn()
+const reloadFiles = vi.fn(async () => 'ready' as const)
 const notifications = vi.hoisted(() => ({
   notify: vi.fn(),
   dismissNotice: vi.fn(),
@@ -74,7 +75,7 @@ vi.mock('../hooks/useLogsSession', () => ({
       error: null,
       selectFile: () => {},
       backToRealtime: () => {},
-      reloadFiles: async () => 'ready' as const,
+      reloadFiles,
       retry: () => {},
       reconcileSelection: () => false,
     },
@@ -87,6 +88,7 @@ vi.mock('../hooks/useLogsSession', () => ({
 
 vi.mock('@/features/task-execution', () => ({
   useExecutionSnapshot: () => ({ trackedRun }),
+  isTerminalRunState: (state: string) => ['succeeded', 'failed', 'stopped', 'interrupted'].includes(state),
 }))
 
 let container: HTMLDivElement
@@ -125,6 +127,7 @@ describe('LogsWorkspace observation scope', () => {
     viewingHistory = false
     coverageNotice = null
     clearScreen.mockClear()
+    reloadFiles.mockClear()
     notifications.notify.mockClear()
     notifications.dismissNotice.mockClear()
   })
@@ -159,6 +162,16 @@ describe('LogsWorkspace observation scope', () => {
     expect(logText()).toContain('本次执行的输出')
     expect(logText()).not.toContain('新执行的输出')
     expect(container.querySelector('[aria-label="执行范围"]')?.textContent).toContain('Run · run-1')
+  })
+
+  it('reloads history files when the tracked run reaches a terminal state', async () => {
+    trackedRun = activeRun('run-1')
+    await renderWorkspace()
+    expect(reloadFiles).not.toHaveBeenCalled()
+
+    trackedRun = { ...activeRun('run-1'), state: 'succeeded' }
+    await renderWorkspace()
+    expect(reloadFiles).toHaveBeenCalledTimes(1)
   })
 
   it('returns to all logs explicitly and preserves pinned choice across file browsing', async () => {

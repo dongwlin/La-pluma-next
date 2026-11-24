@@ -34,7 +34,6 @@ const baseProps = (): ToolbarProps => ({
   viewingHistory: false,
   paused: false,
   onTogglePause: () => {},
-  actionBusy: false,
   canExport: true,
   onClear: () => {},
   onExport: () => {},
@@ -109,6 +108,7 @@ describe('LogsToolbar', () => {
   it('disables run scope and following for files and keeps event selection available', async () => {
     await renderToolbar({ viewingHistory: true })
     expect((container.querySelector('[aria-label="执行范围"]') as HTMLButtonElement)?.disabled).toBe(true)
+    expect(container.querySelector('[aria-label="执行范围"]')?.textContent).toContain('历史文件不区分 Run')
     expect((container.querySelector('[aria-label="事件范围"]') as HTMLButtonElement)?.disabled).toBe(false)
     expect(findSwitchByLabel('自动滚动')?.getAttribute('aria-disabled')).toBe('true')
   })

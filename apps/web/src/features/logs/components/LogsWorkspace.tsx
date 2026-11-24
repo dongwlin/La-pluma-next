@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { useExecutionSnapshot } from '@/features/task-execution'
+import { isTerminalRunState, useExecutionSnapshot } from '@/features/task-execution'
 import { ConfirmAlertDialog } from '@/shared/components'
 import {
   dismissNotice,
@@ -57,6 +57,14 @@ export default function LogsWorkspace() {
     search,
     collapseRepeats,
   }), [collapseRepeats, events, filter, runFilteredLogs, search])
+  const terminalRunId = execution.trackedRun && isTerminalRunState(execution.trackedRun.state)
+    ? execution.trackedRun.runId
+    : null
+
+  useEffect(() => {
+    if (!terminalRunId) return
+    void history.reloadFiles()
+  }, [history.reloadFiles, terminalRunId])
 
   const retryActiveLogs = useCallback(() => {
     if (viewingHistory) {
@@ -180,7 +188,6 @@ export default function LogsWorkspace() {
         viewingHistory={viewingHistory}
         paused={realtime.paused}
         onTogglePause={togglePause}
-        actionBusy={actionBusy}
         canExport={logView.selected.length > 0}
         onClear={clearLogs}
         onExport={exportLogs}
@@ -206,6 +213,7 @@ export default function LogsWorkspace() {
 
       <HistoryLogPicker
         files={history.files}
+        filesPhase={history.filesPhase}
         filesError={history.filesError}
         selectedFile={history.selectedFile}
         cleanupDisabled={actionBusy || history.files.length === 0 || viewingHistory}

@@ -282,6 +282,34 @@ describe('LogViewer recovery and controls', () => {
     expect(container.textContent).toContain('recovered')
   })
 
+  it('shows a loading state before the first history file list arrives', async () => {
+    const pending = deferred<ApiResponse<unknown>>()
+    mocks.getLogFiles.mockReturnValue(pending.promise)
+
+    await renderComponent()
+    expect(container.textContent).toContain('正在读取历史日志...')
+    expect(container.textContent).not.toContain('暂无历史日志文件')
+
+    pending.resolve({ success: true, data: [historyFile('maa.log')] })
+    await flush()
+    expect(container.textContent).toContain('maa.log')
+  })
+
+  it('keeps the loaded history list when a refresh fails', async () => {
+    const target = historyFile('maa.log')
+    mocks.getLogFiles
+      .mockResolvedValueOnce({ success: true, data: [target] })
+      .mockResolvedValueOnce({ success: false, message: '刷新列表失败' })
+
+    await renderComponent()
+    expect(findHistoryRow('maa.log')).toBeDefined()
+    await click(findAction('刷新历史日志列表')!)
+
+    expect(container.textContent).toContain('刷新列表失败')
+    expect(findHistoryRow('maa.log')).toBeDefined()
+    expect(mocks.getLogFiles).toHaveBeenCalledTimes(2)
+  })
+
   it('returns to realtime with a fresh read and no stale history content', async () => {
     const target = historyFile('maa.log')
     const returned = deferred<ApiResponse<unknown>>()

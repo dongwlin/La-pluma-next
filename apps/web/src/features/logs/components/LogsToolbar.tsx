@@ -23,7 +23,6 @@ interface LogsToolbarProps {
   readonly viewingHistory: boolean
   readonly paused: boolean
   readonly onTogglePause: () => void
-  readonly actionBusy: boolean
   readonly canExport: boolean
   readonly onClear: () => void
   readonly onExport: () => void
@@ -46,32 +45,32 @@ export default function LogsToolbar({
   viewingHistory,
   paused,
   onTogglePause,
-  actionBusy,
   canExport,
   onClear,
   onExport,
 }: LogsToolbarProps) {
+  const runOptions = viewingHistory
+    ? [{ value: '', label: '历史文件不区分 Run' }]
+    : [
+        { value: '', label: '全部执行与未关联日志' },
+        ...runIds.map(id => ({ value: id, label: `Run · ${id}` })),
+      ]
+
   return (
     <Card className="log-card log-toolbar-card gap-0 p-0!" data-region="toolbar">
       <CardContent className="log-toolbar">
         <div className="log-toolbar-controls">
           <Select
-            value={runId}
+            value={viewingHistory ? '' : runId}
             onValueChange={(next, details) => { if (details.reason !== 'none' && next !== null) onRunIdChange(next) }}
             disabled={viewingHistory}
-            items={[
-              { value: '', label: '全部执行与未关联日志' },
-              ...runIds.map(id => ({ value: id, label: `Run · ${id}` })),
-            ]}
+            items={runOptions}
           >
             <SelectTrigger aria-label="执行范围" className="col-span-2 w-full sm:col-auto sm:w-48">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              {[
-                { value: '', label: '全部执行与未关联日志' },
-                ...runIds.map(id => ({ value: id, label: `Run · ${id}` })),
-              ].map(item => (
+              {runOptions.map(item => (
                 <SelectItem key={item.value} value={item.value}>{item.label}</SelectItem>
               ))}
             </SelectContent>
@@ -162,7 +161,6 @@ export default function LogsToolbar({
                 onClick={onTogglePause}
                 variant="outline"
                 size="sm"
-                disabled={actionBusy}
                 aria-label={paused ? '继续读取日志' : '暂停读取日志'}
               >
                 {paused
@@ -176,7 +174,6 @@ export default function LogsToolbar({
                 onClick={onClear}
                 variant="outline"
                 size="sm"
-                disabled={actionBusy}
               >
                 <Trash2 className="h-4 w-4" aria-hidden="true" />
                 清屏
