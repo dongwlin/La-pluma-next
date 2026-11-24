@@ -1,8 +1,9 @@
 // 实例选项与连接配置分属同一 MAA profile 的不同 section：面板只在 instance
 // section 渲染，但草稿与读取反馈由模块级 owner 持有，切换 section 不丢草稿。
 
-import { Switch } from '@/shared/ui/switch'
 import { ConfigFieldSelect } from './ConfigFieldControls'
+import SwitchSettingRow from './SwitchSettingRow'
+import { FieldGroup } from '@/shared/ui/field'
 import { notify, SETTINGS_CONFIG_INSTANCE_NOTICE_ID } from '@/shared/notifications'
 import { useConfigDraftPanel } from '../hooks/useConfigDraftPanel'
 import { useSettingsInstanceOptions } from '../hooks/useSettingsInstanceOptions'
@@ -97,51 +98,38 @@ export default function InstanceOptionsPanel({ isActive }: InstanceOptionsPanelP
         hint="ADB 兼容性最好；MaaTouch 触控更接近真实点击"
       />
 
-      <div className="config-switch-list flex flex-col gap-3.5">
-        <div className="config-reconnect-row flex min-h-14 items-center justify-between gap-3.5 py-1">
-          <div className="min-w-0">
-            <div className="text-sm font-medium text-foreground">部署时暂停</div>
-            <div className="mt-1 text-xs leading-5 text-tertiary">开启后部署干员时暂停游戏，适用于部分特殊关卡</div>
-          </div>
-          <Switch
-            aria-label="部署时暂停"
-            checked={draft.deployment_with_pause}
-            onCheckedChange={(checked: boolean) => {
-              updateInstanceOptions({ deployment_with_pause: checked })
-            }}
-            disabled={!loaded}
-          />
-        </div>
-        <div className="config-reconnect-row flex min-h-14 items-center justify-between gap-3.5 py-1">
-          <div className="min-w-0">
-            <div className="text-sm font-medium text-foreground">ADB Lite</div>
-            <div className="mt-1 text-xs leading-5 text-tertiary">使用 AdbLite 减少 ADB 调用开销</div>
-          </div>
-          <Switch
-            aria-label="启用 ADB Lite"
-            checked={draft.adb_lite_enabled}
-            onCheckedChange={(checked: boolean) => {
-              updateInstanceOptions({ adb_lite_enabled: checked })
-            }}
-            disabled={!loaded}
-          />
-        </div>
-        <div className="config-reconnect-row flex min-h-14 items-center justify-between gap-3.5 py-1">
-          <div className="min-w-0">
-            <div className="text-sm font-medium text-foreground">退出时结束 ADB</div>
-            <div className="mt-1 text-xs leading-5 text-tertiary">任务结束后由 MAA 关闭自己启动的 ADB 进程</div>
-          </div>
-          <Switch
-            aria-label="退出时结束 ADB"
-            checked={draft.kill_adb_on_exit}
-            onCheckedChange={(checked: boolean) => {
-              updateInstanceOptions({ kill_adb_on_exit: checked })
-            }}
-            disabled={!loaded}
-          />
-        </div>
-      </div>
-
+      <FieldGroup className="gap-3.5!">
+        <SwitchSettingRow
+          id="instance-deployment-with-pause"
+          label="部署时暂停"
+          description="开启后部署干员时暂停游戏，适用于部分特殊关卡"
+          checked={draft.deployment_with_pause}
+          onCheckedChange={(checked: boolean) => {
+            updateInstanceOptions({ deployment_with_pause: checked })
+          }}
+          disabled={!loaded}
+        />
+        <SwitchSettingRow
+          id="instance-adb-lite"
+          label="ADB Lite"
+          description="使用 AdbLite 减少 ADB 调用开销"
+          checked={draft.adb_lite_enabled}
+          onCheckedChange={(checked: boolean) => {
+            updateInstanceOptions({ adb_lite_enabled: checked })
+          }}
+          disabled={!loaded}
+        />
+        <SwitchSettingRow
+          id="instance-kill-adb-on-exit"
+          label="退出时结束 ADB"
+          description="任务结束后由 MAA 关闭自己启动的 ADB 进程"
+          checked={draft.kill_adb_on_exit}
+          onCheckedChange={(checked: boolean) => {
+            updateInstanceOptions({ kill_adb_on_exit: checked })
+          }}
+          disabled={!loaded}
+        />
+      </FieldGroup>
     </ConfigEditorCard>
   )
 }

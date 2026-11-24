@@ -4,11 +4,11 @@ import ComponentUpdatePanel from './ComponentUpdatePanel'
 
 export default function SettingsUpdatesPanel() {
   return (
-    <Card className="config-update-card gap-0 p-0!">
+    <Card>
       <CardHeader className="border-b py-3.5">
-        <CardTitle role="heading" aria-level={3}>组件更新</CardTitle>
+        <CardTitle role="heading" aria-level={2}>组件更新</CardTitle>
       </CardHeader>
-      <CardContent className="app-stack-card py-4">
+      <CardContent className="app-stack-card">
         <AutoUpdateConfigPanel />
         <ComponentUpdatePanel />
       </CardContent>

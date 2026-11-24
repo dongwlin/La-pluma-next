@@ -1,5 +1,9 @@
 import { Cable, LoaderCircle, Search } from 'lucide-react'
+import { Badge } from '@/shared/ui/badge'
 import { Button } from '@/shared/ui/button'
+import { Item, ItemActions, ItemContent, ItemDescription, ItemTitle } from '@/shared/ui/item'
+import { EmptyState } from '@/shared/components'
+import SettingsFeedback from './SettingsFeedback'
 import { useSettingsDeviceConnection } from '../hooks/useSettingsDeviceConnection'
 import type { DiscoveredDevice } from '../model/deviceConnection'
 
@@ -11,6 +15,35 @@ export interface DeviceConnectionPanelProps {
   readonly onSelectDeviceStart: () => void
   /** 首次读取被采纳前不写入草稿，选择设备入口保持禁用。 */
   readonly disabled?: boolean
+}
+
+const deviceStateLabel = (device: DiscoveredDevice): string => {
+  switch (device.state) {
+    case 'device':
+      return '已连接'
+    case 'candidate':
+      return '可尝试连接'
+    case 'offline':
+      return '设备离线'
+    case 'unauthorized':
+      return '等待授权'
+    default:
+      return '状态未知'
+  }
+}
+
+const deviceStateClass = (device: DiscoveredDevice): string => {
+  switch (device.state) {
+    case 'device':
+      return 'status-success'
+    case 'candidate':
+      return 'status-info'
+    case 'offline':
+    case 'unauthorized':
+      return 'status-warning'
+    default:
+      return 'text-muted-foreground'
+  }
 }
 
 export default function DeviceConnectionPanel({
@@ -41,15 +74,13 @@ export default function DeviceConnectionPanel({
   }
 
   return (
-    <section className="surface-soft rounded-xl p-4" aria-label="模拟器查找与连接测试">
+    <section className="min-w-0" aria-label="模拟器查找与连接测试">
       <div className="flex flex-wrap items-start justify-between gap-3.5">
         <div className="flex min-w-0 items-start gap-3.5">
-          <span className="icon-well flex h-9 w-9 shrink-0 items-center justify-center rounded-lg brand-text">
-            <Cable size={18} aria-hidden="true" />
-          </span>
+          <Cable size={18} className="mt-0.5 shrink-0 text-muted-foreground" aria-hidden="true" />
           <div className="min-w-0">
             <h3 className="text-sm font-semibold text-foreground">模拟器连接</h3>
-            <p className="mt-1 text-xs leading-5 text-tertiary">查找本机模拟器，或测试当前连接地址。</p>
+            <p className="mt-1 text-xs leading-5 text-muted-foreground">查找本机模拟器，或测试当前连接地址。</p>
           </div>
         </div>
         <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto">
@@ -97,45 +128,58 @@ export default function DeviceConnectionPanel({
       )}
 
       {discoveredDevices.length > 0 && (
-        <div className="config-device-list mt-3 divide-y divide-border overflow-hidden rounded-lg bg-card shadow-[inset_0_0_0_1px_var(--border)]">
+        <div className="mt-3 overflow-hidden rounded-lg border border-border">
           {discoveredDevices.map(device => {
             const selectable = device.state === 'device' || device.state === 'candidate'
-            const stateLabel = device.state === 'device'
-              ? '已连接'
-              : device.state === 'candidate'
-                ? '可尝试连接'
-                : device.state === 'offline'
-                  ? '设备离线'
-                  : device.state === 'unauthorized'
-                    ? '等待授权'
-                    : '状态未知'
             return (
-              <button
+              <Item
                 key={`${device.source}-${device.address}`}
-                type="button"
-                disabled={disabled || !selectable || testingConnection}
-                onClick={() => void handleUseDiscoveredDevice(device)}
-                className="flex min-h-12 w-full items-center justify-between gap-3.5 px-3 py-2.5 text-left transition-colors hover:bg-primary-soft focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary disabled:cursor-not-allowed disabled:opacity-50"
+                render={(
+                  <button
+                    type="button"
+                    disabled={disabled || !selectable || testingConnection}
+                    onClick={() => void handleUseDiscoveredDevice(device)}
+                  />
+                )}
+                className="min-h-12 rounded-none border-0 border-b border-border px-3 py-2.5 text-left last:border-b-0 hover:bg-muted/60 focus-visible:ring-inset disabled:cursor-not-allowed disabled:opacity-50"
               >
-                <span className="min-w-0">
-                  <span className="block truncate text-sm font-medium text-foreground">{device.address}</span>
-                  <span className="mt-0.5 block truncate text-xs text-tertiary">{device.details || (device.source === 'adb' ? 'ADB 已识别设备' : device.source === 'emulator-adb' ? '模拟器内置 ADB' : '本机端口')}</span>
-                </span>
-                <span className="shrink-0 rounded-full bg-muted px-2 py-1 text-xs text-muted-foreground">{stateLabel}</span>
-              </button>
+                <ItemContent className="min-w-0">
+                  <ItemTitle className="block w-full truncate">{device.address}</ItemTitle>
+                  <ItemDescription className="line-clamp-1 text-xs">
+                    {device.details || (device.source === 'adb'
+                      ? 'ADB 已识别设备'
+                      : device.source === 'emulator-adb'
+                        ? '模拟器内置 ADB'
+                        : '本机端口')}
+                  </ItemDescription>
+                </ItemContent>
+                <ItemActions>
+                  <Badge variant="ghost" className={deviceStateClass(device)}>
+                    {deviceStateLabel(device)}
+                  </Badge>
+                </ItemActions>
+              </Item>
             )
           })}
         </div>
       )}
 
       {hasSearchedDevices && !discoveredDevices.length && (
-        <p className="mt-3 text-xs leading-5 text-tertiary">未找到已连接设备。启动模拟器后重新查找，或手动填写连接地址。</p>
+        <EmptyState
+          compact
+          className="mt-3"
+          icon={<Search className="h-5 w-5" aria-hidden="true" />}
+          title="未找到已连接设备"
+          description="启动模拟器后重新查找，或手动填写连接地址。"
+        />
       )}
 
       {connectionFeedback && (
-        <div className={`mt-3 rounded-lg px-3 py-2.5 text-xs ${connectionFeedback.success ? 'status-success' : 'status-danger'}`} role={connectionFeedback.success ? 'status' : 'alert'}>
-          {connectionFeedback.message}
-        </div>
+        <SettingsFeedback
+          tone={connectionFeedback.success ? 'success' : 'error'}
+          message={connectionFeedback.message}
+          className="mt-3"
+        />
       )}
     </section>
   )

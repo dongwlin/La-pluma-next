@@ -2,8 +2,8 @@
 // 也不清空草稿与保存/读取反馈。
 
 import { useCallback } from 'react'
-import { Switch } from '@/shared/ui/switch'
 import { ConfigFieldInput, ConfigFieldSelect } from './ConfigFieldControls'
+import SwitchSettingRow from './SwitchSettingRow'
 import { notify, SETTINGS_CONFIG_CONNECTION_NOTICE_ID } from '@/shared/notifications'
 import { useConfigDraftPanel } from '../hooks/useConfigDraftPanel'
 import { useSettingsConnectionConfig } from '../hooks/useSettingsConnectionConfig'
@@ -151,20 +151,16 @@ export default function ConnectionConfigPanel({ isActive }: ConnectionConfigPane
           hint="选择与服务器系统匹配的平台预设"
         />
       </div>
-      <div className="config-reconnect-row flex min-h-14 items-center justify-between gap-3.5 py-1">
-        <div className="min-w-0">
-          <div className="text-sm font-medium text-foreground">自动重连</div>
-          <div className="mt-1 text-xs leading-5 text-tertiary">连接中断后自动尝试恢复</div>
-        </div>
-        <Switch
-          aria-label="启用自动重连"
-          checked={configData.auto_reconnect !== false}
-          onCheckedChange={(checked: boolean) => {
-            updateConnectionConfig({ auto_reconnect: checked })
-          }}
-          disabled={!connectionLoaded}
-        />
-      </div>
+      <SwitchSettingRow
+        id="connection-auto-reconnect"
+        label="自动重连"
+        description="连接中断后自动尝试恢复"
+        checked={configData.auto_reconnect !== false}
+        onCheckedChange={(checked: boolean) => {
+          updateConnectionConfig({ auto_reconnect: checked })
+        }}
+        disabled={!connectionLoaded}
+      />
     </ConfigEditorCard>
   )
 }

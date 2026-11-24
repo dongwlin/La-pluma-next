@@ -288,7 +288,7 @@ La Pluma Next 是一个高密度的本地自动化控制台，不是营销页面
 - 页面内提供 skip links：`跳到主要内容` 指向 `#main-content`；`跳到主导航` 在桌面（`1024px` 及以上）指向侧栏 `#app-sidebar-navigation`，在移动/平板指向 tabbar `#app-tabbar-navigation`。链接默认移出视口，`:focus` 时固定显示在左上角并避开安全区；未聚焦时不占布局，不可用的那一个在对应断点 `display: none`，不进入焦点顺序。
 - 路由 pathname 变化后，焦点移到 `<main id="main-content" tabIndex="-1">`，并通过常驻的 `#page-announcement`（`role="status"`、`aria-live="polite"`、`aria-atomic="true"`）播报 `已切换到<页面名>`。首次挂载不聚焦、不播报；启动期 URL 归一化（replace）同样不触发。当前焦点位于 `role="dialog"` / `role="alertdialog"` 内时不抢焦点。`document.title` 继续使用同一页面标题源。
 - 移动 tabbar 的 `<footer>` 保持在 `<main>` 之后，以维持 landmark 与阅读顺序；不要为了 DOM 顺序把 footer 移到 main 之前，直达导航由 `跳到主导航` skip link 提供。
-- 主题由 `useUIStore` 的 `light`、`dark`、`system` 管理，并同步到文档根节点和 `.la-pluma-app`。组件或页面不要直接操作 `.dark`，也不要创建局部主题开关。
+- 明暗与主题由 `ThemeProvider` / `lpn-ui` 管理：顶栏 `ThemeToggle` 只切换 `light`、`dark`、`system`；主题（`themeId`）由设置页「外观」卡片切换。两者都同步到文档根节点和 `.la-pluma-app`。组件或页面不要直接操作 `.dark`，也不要创建局部主题开关。
 - `apps/web/index.html` 使用 `viewport-fit=cover`。`Layout` 通过统一 token 管理 navbar、移动 tabbar 和对应安全区高度；自定义 fixed/sticky 层只有在不属于这些 chrome 时才使用 `env(safe-area-inset-*)`，内容区不要重复叠加顶部或底部 inset。
 - `--layout-navbar-safe-height` 等于 navbar 高度加顶部安全区，是 navbar 最小高度、滚动宿主高度、内容顶部留白与滚动遮罩的共同来源；页面样式不要手写 navbar 高度或重新拼接 `env(safe-area-inset-top)`。
 - 内容 sticky 顶部偏移统一使用 `--layout-content-sticky-top`：桌面为 `1rem`，移动/平板壳层（小于 `1024px`，navbar 覆盖滚动宿主）为 `calc(var(--layout-navbar-safe-height) + 1rem)`。移动壳层内的 sticky 内容从 navbar 与安全区之下开始，滚动时保持在 tabbar 预留区域之上，不进入尾部渐隐遮罩。

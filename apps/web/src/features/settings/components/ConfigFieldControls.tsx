@@ -1,6 +1,8 @@
 import type { ComponentProps } from 'react'
 import { Checkbox } from '@/shared/ui/checkbox'
+import { Field, FieldDescription, FieldLabel } from '@/shared/ui/field'
 import { Input } from '@/shared/ui/input'
+import { Label } from '@/shared/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/shared/ui/select'
 
 export function ConfigFieldInput({
@@ -17,11 +19,11 @@ export function ConfigFieldInput({
 } & ComponentProps<'input'>) {
   const hintId = `${id}-hint`
   return (
-    <div className={className}>
-      <label htmlFor={id} className="mb-2 block text-sm font-medium text-muted-foreground">{label}</label>
+    <Field className={className}>
+      <FieldLabel htmlFor={id} className="text-muted-foreground">{label}</FieldLabel>
       <Input id={id} autoComplete="off" aria-describedby={hint ? hintId : undefined} {...inputProps} />
-      {hint && <p id={hintId} className="mt-2 text-xs text-tertiary">{hint}</p>}
-    </div>
+      {hint && <FieldDescription id={hintId} className="text-xs leading-5 text-muted-foreground">{hint}</FieldDescription>}
+    </Field>
   )
 }
 
@@ -48,8 +50,8 @@ export function ConfigFieldSelect({
 }: ConfigFieldSelectProps) {
   const hintId = `${id}-hint`
   return (
-    <div className={className}>
-      <label htmlFor={id} className="mb-2 block text-sm font-medium text-muted-foreground">{label}</label>
+    <Field className={className}>
+      <FieldLabel htmlFor={id} className="text-muted-foreground">{label}</FieldLabel>
       <Select
         items={items}
         value={value}
@@ -65,8 +67,8 @@ export function ConfigFieldSelect({
           ))}
         </SelectContent>
       </Select>
-      {hint && <p id={hintId} className="mt-2 text-xs text-tertiary">{hint}</p>}
-    </div>
+      {hint && <FieldDescription id={hintId} className="text-xs leading-5 text-muted-foreground">{hint}</FieldDescription>}
+    </Field>
   )
 }
 
@@ -82,9 +84,9 @@ export function ConfigFieldCheckbox({
   onCheckedChange: (checked: boolean) => void
 }) {
   return (
-    <label className="group flex min-h-11 cursor-pointer items-center gap-2 text-sm text-muted-foreground">
+    <Label className="group min-h-11 cursor-pointer gap-2 text-sm leading-5 font-normal text-muted-foreground">
       <Checkbox checked={checked} onCheckedChange={onCheckedChange} disabled={disabled} />
       <span className="transition-colors group-hover:text-primary">{label}</span>
-    </label>
+    </Label>
   )
 }

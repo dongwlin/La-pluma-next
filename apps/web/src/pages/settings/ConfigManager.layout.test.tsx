@@ -5,6 +5,7 @@ import { createRoot, type Root } from 'react-dom/client'
 import { QueryClientProvider, type QueryClient } from '@tanstack/react-query'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { createQueryClient } from '@/shared/query'
+import { ThemeProvider } from '@/shared/theme/ThemeProvider'
 import { getItemIconCacheVersion } from '@/features/game-data'
 import {
   subscribeResourceInvalidation,
@@ -144,15 +145,17 @@ const deferred = <T,>() => {
 }
 
 const page = (mode?: 'visible' | 'hidden') => (
-  <QueryClientProvider client={queryClient}>
-    {mode
-      ? (
-          <Activity mode={mode}>
-            <ConfigManager />
-          </Activity>
-        )
-      : <ConfigManager />}
-  </QueryClientProvider>
+  <ThemeProvider>
+    <QueryClientProvider client={queryClient}>
+      {mode
+        ? (
+            <Activity mode={mode}>
+              <ConfigManager />
+            </Activity>
+          )
+        : <ConfigManager />}
+    </QueryClientProvider>
+  </ThemeProvider>
 )
 
 const setInputValue = async (input: HTMLInputElement, value: string) => {
@@ -181,6 +184,16 @@ const addressInputWithValue = (value: string) => (
 describe('ConfigManager layout surfaces', () => {
   beforeEach(() => {
     localStorage.clear()
+    window.matchMedia = vi.fn().mockImplementation((query: string) => ({
+      matches: false,
+      media: query,
+      onchange: null,
+      addListener: vi.fn(),
+      removeListener: vi.fn(),
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+      dispatchEvent: vi.fn(),
+    }))
     mocks.getConfig.mockReset().mockResolvedValue({
       success: true,
       data: {
@@ -604,7 +617,9 @@ describe('ConfigManager layout surfaces', () => {
 
     expect(mocks.updateMaaCore).toHaveBeenCalledWith('beta')
     expect(mocks.notifyProgress).toHaveBeenCalledWith('正在切换到 Beta 渠道（大包下载最长可能需要约 15 分钟）...', 'settings-update')
-    expect(container.textContent).toContain('已切换到 Beta 渠道并同步最新资源')
+    expect(mocks.notify).toHaveBeenCalledWith('已切换到 Beta 渠道并同步最新资源', expect.any(String), {
+      id: 'settings-update',
+    })
     expect(mocks.getVersion).toHaveBeenCalledTimes(2)
     expect(invalidationEvents).toHaveLength(1)
   })
@@ -674,7 +689,9 @@ describe('ConfigManager layout surfaces', () => {
     await renderMode('visible')
     await settle()
 
-    expect(container.textContent).toContain('后台更新完成')
+    expect(mocks.notify).toHaveBeenCalledWith('后台更新完成', expect.any(String), {
+      id: 'settings-update',
+    })
     expect(buttonByText('更新 MaaCore')?.disabled).toBe(false)
     expect(mocks.getVersion).toHaveBeenCalledTimes(2)
   })
@@ -717,7 +734,6 @@ describe('ConfigManager layout surfaces', () => {
     await renderMode('visible')
     await settle()
 
-    expect(container.textContent).toContain('自动更新已启用，每天 05:30 执行')
     expect(container.textContent).toContain('设置会在保存后生效')
     expect(mocks.loadUserConfig).toHaveBeenCalledOnce()
   })
@@ -735,7 +751,6 @@ describe('ConfigManager layout surfaces', () => {
     await flush()
 
     const expected = '自动更新设置读取失败: 配置目录不可读，已显示此设备上次保存的设置，请保存后重试'
-    expect(container.textContent).toContain(expected)
     expect(container.querySelector<HTMLInputElement>('input[placeholder="HH:MM"]')?.value).toBe('06:00')
     expect(container.textContent).toContain('有尚未保存的更改')
     expect(mocks.notify).toHaveBeenCalledWith(expected, 'warning')
@@ -837,7 +852,9 @@ describe('ConfigManager layout surfaces', () => {
       git: { backend: 'git' },
       mirrorchyan: expect.objectContaining({ checkInterval: 600 }),
     }))
-    expect(container.textContent).toContain('资源源配置保存成功')
+    expect(mocks.notify).toHaveBeenCalledWith('资源源配置保存成功', 'success', {
+      id: 'settings-config:resource-source',
+    })
     expect(mocks.getResourceSource).toHaveBeenCalledTimes(2)
   })
 
@@ -853,7 +870,9 @@ describe('ConfigManager layout surfaces', () => {
     expect(mocks.saveConfig).toHaveBeenCalledWith('default', {
       instance_options: expect.any(Object),
     })
-    expect(container.textContent).toContain('实例选项保存成功')
+    expect(mocks.notify).toHaveBeenCalledWith('实例选项保存成功', 'success', {
+      id: 'settings-config:instance',
+    })
   })
 
   it('reports an initial connection read failure and recovers through the retry entry', async () => {
@@ -912,7 +931,6 @@ describe('ConfigManager layout surfaces', () => {
     expect(mocks.saveConfig).toHaveBeenCalledOnce()
     expect(Array.from(container.querySelectorAll<HTMLInputElement>('input'))
       .find(input => input.value === '127.0.0.1:6666')).toBeDefined()
-    expect(container.textContent).toContain('当前更改尚未保存')
     expect(buttonByText('保存')?.disabled).toBe(false)
     expect(mocks.notify).toHaveBeenCalledWith('此前连接配置已保存，当前更改尚未保存', 'warning', {
       id: 'settings-config:connection',

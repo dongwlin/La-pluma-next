@@ -1,8 +1,10 @@
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion'
 import { Clock3, LoaderCircle, Save } from 'lucide-react'
 import { Button } from '@/shared/ui/button'
+import { Separator } from '@/shared/ui/separator'
 import { Switch } from '@/shared/ui/switch'
 import { ConfigFieldCheckbox, ConfigFieldInput } from './ConfigFieldControls'
+import SettingsFeedback from './SettingsFeedback'
 import { notify } from '@/shared/notifications'
 import { useSettingsAutoUpdate } from '../hooks/useSettingsAutoUpdate'
 
@@ -22,15 +24,13 @@ export default function AutoUpdateConfigPanel() {
   }
 
   return (
-    <section className="surface-soft rounded-xl p-4">
+    <section className="min-w-0">
       <div className="flex items-center justify-between gap-3.5">
         <div className="flex min-w-0 items-start gap-3.5">
-          <span className="icon-well flex h-9 w-9 shrink-0 items-center justify-center rounded-lg brand-text">
-            <Clock3 size={18} aria-hidden="true" />
-          </span>
+          <Clock3 size={18} className="mt-0.5 shrink-0 text-muted-foreground" aria-hidden="true" />
           <div className="min-w-0">
             <h3 className="text-sm font-semibold text-foreground">自动更新</h3>
-            <p className="mt-1 text-xs leading-5 text-tertiary">每天按设定时间更新所选组件</p>
+            <p className="mt-1 text-xs leading-5 text-muted-foreground">每天按设定时间更新所选组件</p>
           </div>
         </div>
         <Switch
@@ -47,50 +47,46 @@ export default function AutoUpdateConfigPanel() {
             animate={{ opacity: 1, y: 0 }}
             exit={shouldReduceMotion ? { opacity: 0 } : { opacity: 0, y: -6 }}
             transition={{ duration: shouldReduceMotion ? 0.12 : 0.2 }}
-            className="mt-4 grid gap-3.5 border-t border-border pt-4 md:grid-cols-[12rem_minmax(0,1fr)] md:items-end xl:grid-cols-1 xl:items-stretch"
           >
-            <ConfigFieldInput
-              id="auto-update-time"
-              type="text"
-              label="更新时间"
-              value={autoUpdate.time}
-              onChange={event => updateAutoUpdate({ time: event.target.value })}
-              placeholder="HH:MM"
-              className="max-w-48"
-            />
-            <div className="flex min-h-11 flex-wrap items-center gap-x-4.5 gap-y-2">
-              <ConfigFieldCheckbox
-                checked={autoUpdate.updateCore}
-                onCheckedChange={(checked: boolean) => updateAutoUpdate({ updateCore: checked })}
-                label="更新 MaaCore"
+            <Separator className="mt-3.5" />
+            <div className="mt-3.5 grid gap-3.5 md:grid-cols-[12rem_minmax(0,1fr)] md:items-end xl:grid-cols-1 xl:items-stretch">
+              <ConfigFieldInput
+                id="auto-update-time"
+                type="text"
+                label="更新时间"
+                value={autoUpdate.time}
+                onChange={event => updateAutoUpdate({ time: event.target.value })}
+                placeholder="HH:MM"
+                className="max-w-48"
               />
-              <ConfigFieldCheckbox
-                checked={autoUpdate.updateCli}
-                onCheckedChange={(checked: boolean) => updateAutoUpdate({ updateCli: checked })}
-                label="更新 MAA CLI"
-              />
+              <div className="flex min-h-11 flex-wrap items-center gap-x-4.5 gap-y-2">
+                <ConfigFieldCheckbox
+                  checked={autoUpdate.updateCore}
+                  onCheckedChange={(checked: boolean) => updateAutoUpdate({ updateCore: checked })}
+                  label="更新 MaaCore"
+                />
+                <ConfigFieldCheckbox
+                  checked={autoUpdate.updateCli}
+                  onCheckedChange={(checked: boolean) => updateAutoUpdate({ updateCli: checked })}
+                  label="更新 MAA CLI"
+                />
+              </div>
             </div>
           </motion.div>
         )}
       </AnimatePresence>
 
-      {autoUpdateFeedback && (
-        <div
-          className={`mt-4 rounded-lg px-3 py-2.5 text-xs leading-5 ${
-            autoUpdateFeedback.type === 'success'
-              ? 'status-success'
-              : autoUpdateFeedback.type === 'warning'
-                ? 'status-warning'
-                : 'status-danger'
-          }`}
-          role={autoUpdateFeedback.type === 'error' ? 'alert' : 'status'}
-        >
-          {autoUpdateFeedback.message}
-        </div>
+      {autoUpdateFeedback?.type === 'error' && (
+        <SettingsFeedback
+          tone="error"
+          message={autoUpdateFeedback.message}
+          className="mt-3.5"
+        />
       )}
 
-      <div className="mt-4 flex flex-wrap items-center justify-between gap-3.5 border-t border-border pt-4">
-        <p className="text-xs text-tertiary">{autoUpdateDirty ? '有尚未保存的更改' : '设置会在保存后生效'}</p>
+      <Separator className="my-3.5" />
+      <div className="flex flex-wrap items-center justify-between gap-3.5">
+        <p className="text-xs text-muted-foreground">{autoUpdateDirty ? '有尚未保存的更改' : '设置会在保存后生效'}</p>
         <Button
           type="button"
           variant="outline"

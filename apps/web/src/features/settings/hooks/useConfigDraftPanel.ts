@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { dismissNotice, notify, notifyProgress } from '@/shared/notifications'
-import type { SettingsFeedback } from '../components/ConfigEditorCard'
+import type { ConfigEditorFeedback } from '../components/ConfigEditorCard'
 import type { ConfigSaveOutcome } from '../model/configDraftOwner'
 
 export interface ConfigDraftPanelOptions<T extends Record<string, unknown>> {
@@ -15,8 +15,8 @@ export interface ConfigDraftPanelOptions<T extends Record<string, unknown>> {
 }
 
 /**
- * 设置页各 section 共用的草稿面板反馈：初始读取失败提示一次、加载完成后清除，
- * 保存前置与结果映射到页内反馈和全局状态提示。
+ * 设置页各 section 共用的草稿面板反馈：读取失败保留页内警示与全局提示，
+ * 保存成功/未保存警告只走全局状态，保存失败同时保留页内错误。
  */
 export function useConfigDraftPanel<T extends Record<string, unknown>>({
   label,
@@ -27,7 +27,7 @@ export function useConfigDraftPanel<T extends Record<string, unknown>>({
   saving,
   save,
 }: ConfigDraftPanelOptions<T>) {
-  const [feedback, setFeedback] = useState<SettingsFeedback | null>(null)
+  const [feedback, setFeedback] = useState<ConfigEditorFeedback | null>(null)
   const reportedLoadFailureRef = useRef<string | null>(null)
 
   const blockedSaveMessage = loadError
@@ -55,7 +55,6 @@ export function useConfigDraftPanel<T extends Record<string, unknown>>({
 
   const saveWithFeedback = useCallback(async () => {
     if (!loaded) {
-      setFeedback({ type: 'warning', message: blockedSaveMessage })
       notify(blockedSaveMessage, 'warning', { id: noticeId })
       return
     }
@@ -79,13 +78,9 @@ export function useConfigDraftPanel<T extends Record<string, unknown>>({
 
     if (outcome.status === 'saved') {
       if (outcome.superseded) {
-        const message = `此前${label}已保存，当前更改尚未保存`
-        setFeedback({ type: 'warning', message })
-        notify(message, 'warning', { id: noticeId })
+        notify(`此前${label}已保存，当前更改尚未保存`, 'warning', { id: noticeId })
       } else {
-        const message = `${label}保存成功`
-        setFeedback({ type: 'success', message })
-        notify(message, 'success', { id: noticeId })
+        notify(`${label}保存成功`, 'success', { id: noticeId })
       }
       return
     }

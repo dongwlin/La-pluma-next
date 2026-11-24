@@ -1,7 +1,9 @@
 import { useState } from 'react'
 import { Download, LoaderCircle, RefreshCw } from 'lucide-react'
+import { Badge } from '@/shared/ui/badge'
 import { Button } from '@/shared/ui/button'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/shared/ui/select'
+import SettingsFeedback from './SettingsFeedback'
 import { notify, notifyProgress, SETTINGS_UPDATE_CHANNEL_NOTICE_ID } from '@/shared/notifications'
 import { saveUpdateChannel } from '../api'
 import { resolveCoreChannel } from '../model/updateCommandPolicy'
@@ -100,12 +102,12 @@ export default function ComponentUpdatePanel() {
   }
 
   return (
-    <>
+    <div className="app-stack-card">
       <div className="grid gap-3.5 md:grid-cols-2 xl:grid-cols-1">
-        <section className="surface-soft flex min-w-0 flex-col rounded-xl p-4">
+        <section className="flex min-w-0 flex-col">
           <div className="flex flex-wrap items-center gap-2">
             <h3 className="text-base font-semibold text-foreground">MaaCore</h3>
-            {versionInfo && <span className="text-sm brand-text">{versionInfo.core}</span>}
+            {versionInfo && <span className="text-sm text-muted-foreground">{versionInfo.core}</span>}
             <Select
               items={CORE_CHANNEL_OPTIONS}
               value={coreChannel}
@@ -125,20 +127,23 @@ export default function ComponentUpdatePanel() {
           <p className="mt-1 text-xs leading-5 text-muted-foreground">核心组件与游戏资源</p>
           {versionInfo?.resource && (
             <div className="mt-3 flex flex-wrap items-center gap-2 text-xs">
-              <span className="text-tertiary">
+              <span className="text-muted-foreground">
                 资源更新：{versionInfo.resource.lastUpdated
                   ? new Date(versionInfo.resource.lastUpdated.replace(' ', 'T')).toLocaleString('zh-CN', { hour12: false })
                   : '未知'}
               </span>
-              <span className={`rounded-full px-2 py-1 font-medium ${versionInfo.resource.status === 'current' ? 'status-success' : 'status-warning'}`}>
+              <Badge
+                variant="ghost"
+                className={versionInfo.resource.status === 'current' ? 'status-success' : 'status-warning'}
+              >
                 {versionInfo.resource.status === 'current' ? '资源正常' : '需要同步'}
-              </span>
+              </Badge>
             </div>
           )}
           {versionInfo?.resource && versionInfo.resource.status !== 'current' && (
             <p className="mt-2 text-xs leading-5 text-warning">{versionInfo.resource.message}</p>
           )}
-          <div className="mt-auto grid gap-2 pt-4 sm:grid-cols-2">
+          <div className="mt-auto grid gap-2 pt-3.5 sm:grid-cols-2">
             <Button
               onClick={handleUpdateCore}
               disabled={updateBusy || channelSavingBusy || updatingCore}
@@ -183,10 +188,10 @@ export default function ComponentUpdatePanel() {
           </div>
         </section>
 
-        <section className="surface-soft flex min-w-0 flex-col rounded-xl p-4">
+        <section className="flex min-w-0 flex-col">
           <div className="flex flex-wrap items-center gap-2">
             <h3 className="text-base font-semibold text-foreground">MAA CLI</h3>
-            {versionInfo && <span className="text-sm brand-text">{versionInfo.cli}</span>}
+            {versionInfo && <span className="text-sm text-muted-foreground">{versionInfo.cli}</span>}
             <Select
               items={CLI_CHANNEL_OPTIONS}
               value={cliChannel}
@@ -204,7 +209,7 @@ export default function ComponentUpdatePanel() {
             </Select>
           </div>
           <p className="mt-1 text-xs leading-5 text-muted-foreground">命令行工具与任务运行入口</p>
-          <div className="mt-auto pt-4">
+          <div className="mt-auto pt-3.5">
             <Button
               onClick={handleUpdateCli}
               disabled={updateBusy || channelSavingBusy || updatingCli}
@@ -225,42 +230,40 @@ export default function ComponentUpdatePanel() {
       </div>
 
       {updateOperation && (
-        <div className="mt-3">
-          <Button
-            type="button"
-            onClick={handleCancelUpdate}
-            disabled={updateCanceling}
-            aria-busy={updateCanceling || undefined}
-            variant="outline"
-            className="w-full"
-          >
-            {updateCanceling
-              ? <><LoaderCircle className="animate-spin" aria-hidden="true" />停止中</>
-              : '停止更新'}
-          </Button>
-        </div>
+        <Button
+          type="button"
+          onClick={handleCancelUpdate}
+          disabled={updateCanceling}
+          aria-busy={updateCanceling || undefined}
+          variant="outline"
+          className="w-full"
+        >
+          {updateCanceling
+            ? <><LoaderCircle className="animate-spin" aria-hidden="true" />停止中</>
+            : '停止更新'}
+        </Button>
       )}
 
-      {updateFeedback && (
-        <div className={`rounded-lg px-3 py-2.5 text-xs leading-5 ${updateFeedback.type === 'success' ? 'status-success' : 'status-warning'}`} role={updateFeedback.type === 'error' ? 'alert' : 'status'}>
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <p>{updateFeedback.message}</p>
-            {updateFeedback.resourceRetry && (
-              <Button
-                type="button"
-                onClick={handleHotUpdate}
-                disabled={updateBusy || channelSavingBusy}
-                variant="ghost"
-                size="sm"
-                className="min-h-11! lg:min-h-0!"
-              >
-                <RefreshCw size={16} aria-hidden="true" />
-                重试资源同步
-              </Button>
-            )}
-          </div>
-        </div>
+      {updateFeedback?.type === 'error' && (
+        <SettingsFeedback
+          tone="error"
+          message={updateFeedback.message}
+          action={updateFeedback.resourceRetry
+            ? (
+                <Button
+                  type="button"
+                  onClick={handleHotUpdate}
+                  disabled={updateBusy || channelSavingBusy}
+                  variant="outline"
+                  size="sm"
+                >
+                  <RefreshCw size={16} aria-hidden="true" />
+                  重试资源同步
+                </Button>
+              )
+            : undefined}
+        />
       )}
-    </>
+    </div>
   )
 }

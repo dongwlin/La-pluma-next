@@ -1,5 +1,6 @@
-import { Switch } from '@/shared/ui/switch'
 import { ConfigFieldCheckbox, ConfigFieldInput, ConfigFieldSelect } from './ConfigFieldControls'
+import SwitchSettingRow from './SwitchSettingRow'
+import { FieldGroup } from '@/shared/ui/field'
 import { notify, SETTINGS_CONFIG_RESOURCE_SOURCE_NOTICE_ID } from '@/shared/notifications'
 import { useConfigDraftPanel } from '../hooks/useConfigDraftPanel'
 import { useSettingsResourceSource } from '../hooks/useSettingsResourceSource'
@@ -179,39 +180,30 @@ export default function ResourceSourcePanel({ isActive }: ResourceSourcePanelPro
         </>
       )}
 
-      <div className="config-switch-list flex flex-col gap-3.5">
-        <div className="config-reconnect-row flex min-h-14 items-center justify-between gap-3.5 py-1">
-          <div className="min-w-0">
-            <div className="text-sm font-medium text-foreground">自动更新资源</div>
-            <div className="mt-1 text-xs leading-5 text-tertiary">由 maa-cli 在运行前按需同步 MaaResource</div>
-          </div>
-          <Switch
-            aria-label="自动更新资源"
-            checked={draft.autoUpdate}
-            onCheckedChange={(checked: boolean) => {
-              update({ autoUpdate: checked })
-              setConfigFeedback(null)
-            }}
-            disabled={!loaded}
-          />
-        </div>
-        <div className="config-reconnect-row flex min-h-14 items-center justify-between gap-3.5 py-1">
-          <div className="min-w-0">
-            <div className="text-sm font-medium text-foreground">更新失败时告警</div>
-            <div className="mt-1 text-xs leading-5 text-tertiary">资源自动更新失败时输出警告而不是静默跳过</div>
-          </div>
-          <Switch
-            aria-label="更新失败时告警"
-            checked={draft.warnOnUpdateFailure}
-            onCheckedChange={(checked: boolean) => {
-              update({ warnOnUpdateFailure: checked })
-              setConfigFeedback(null)
-            }}
-            disabled={!loaded}
-          />
-        </div>
-      </div>
-
+      <FieldGroup className="gap-3.5!">
+        <SwitchSettingRow
+          id="resource-auto-update"
+          label="自动更新资源"
+          description="由 maa-cli 在运行前按需同步 MaaResource"
+          checked={draft.autoUpdate}
+          onCheckedChange={(checked: boolean) => {
+            update({ autoUpdate: checked })
+            setConfigFeedback(null)
+          }}
+          disabled={!loaded}
+        />
+        <SwitchSettingRow
+          id="resource-warn-on-update-failure"
+          label="更新失败时告警"
+          description="资源自动更新失败时输出警告而不是静默跳过"
+          checked={draft.warnOnUpdateFailure}
+          onCheckedChange={(checked: boolean) => {
+            update({ warnOnUpdateFailure: checked })
+            setConfigFeedback(null)
+          }}
+          disabled={!loaded}
+        />
+      </FieldGroup>
     </ConfigEditorCard>
   )
 }
