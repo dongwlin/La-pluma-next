@@ -22,13 +22,16 @@
 | section 导航与布局 | `features/settings/components/SettingsWorkspace.tsx` | section 订阅、工作区网格与面板组合 |
 | 配置 section 分段 | `features/settings/components/ConfigSectionNav.tsx` | 组合共享 `SegmentedTabNav`：tablist/tab 语义、方向键移动焦点、Enter/Space 激活与流体高亮 |
 | section 展示文案 | `features/settings/components/configSectionViews.tsx` | 名称、说明与图标；不持有存储或事件 |
+| 外观主题 | `features/settings/components/AppearanceCard.tsx` | 读取 `useTheme()` 的 `themeId`/`resolvedMode`，通过 `setThemeId` 切换主题；选项来自 `THEMES`，不新增主题存储 |
+| 表单与开关行 | `features/settings/components/ConfigFieldControls.tsx`、`SwitchSettingRow.tsx` | `Field`/`Label` 组合标签、说明与控件；开关行统一 44px 触达高度与说明排版 |
+| 页内反馈 | `features/settings/components/SettingsFeedback.tsx` | 错误用 `Alert`（可带重试 action），成功/警告用 `role="status"` 语义块；不重复全局通知正文 |
 | connection 表单、保存与读取反馈 | `features/settings/components/ConnectionConfigPanel.tsx` | Query/草稿适配、保存/重置、迟到读取提示；非 connection section 返回 null |
 | 模拟器查找与连接测试 | `features/settings/components/DeviceConnectionPanel.tsx` | 命令 owner 订阅、设备列表、独立 loading/反馈 |
 | resource 资源源表单 | `features/settings/components/ResourceSourcePanel.tsx` | Git / MirrorChyan 来源、自动更新开关与 MirrorChyan CDK |
 | instance 实例选项表单 | `features/settings/components/InstanceOptionsPanel.tsx` | 触控模式与三项实例开关 |
 | 配置编辑卡外壳 | `features/settings/components/ConfigEditorCard.tsx` | 标题、保存 / 重置按钮与页内反馈，三个 section 共用 |
 | 配置目录 | `features/settings/components/ConfigDirectoryPanel.tsx` | 路径三态、重试与“打开目录” |
-| 组件更新卡片容器 | `features/settings/components/SettingsUpdatesPanel.tsx` | 共享标题与 0 间距内容布局 |
+| 组件更新卡片容器 | `features/settings/components/SettingsUpdatesPanel.tsx` | 共享标题与 `app-stack-card` 内容布局；不再注入页面级间距 CSS |
 | 自动更新策略 | `features/settings/components/AutoUpdateConfigPanel.tsx` | 自动更新草稿、本地回退、完整提交与反馈 |
 | 版本与组件更新 | `features/settings/components/ComponentUpdatePanel.tsx` | 版本 Query、core/渠道/CLI/资源命令与反馈 |
 
@@ -37,7 +40,7 @@
 - 不改变 connection 字段、wire 与保存时机；自动更新仍先写 user config 再应用调度。
 - 不改变 Query key、读取时机、失败/重试、失效作用域与展示文案。
 - 不改变设备发现/连接测试的取消、迟到响应与草稿回填语义；取消仍跟随页面/Activity，而不是 section。
-- 不改变配置面板的字段结构、表单 id、保存语义或默认态视觉；section 导航改为共享 tablist，不更新视觉基线。
+- 不改变配置面板的字段结构、表单 id、保存语义或默认态行为；section 导航继续使用共享 tablist。页面视觉已按设置页治理调整，视觉基线冻结至 RW-019。
 
 ### 2. 组合与订阅边界
 
@@ -53,6 +56,7 @@ ConfigManager（app-page > app-stack-section > SettingsWorkspace）
    ├─ SegmentedTabPanel(instance, keepMounted)
    │  └─ InstanceOptionsPanel（instance Query/草稿/保存反馈，非当前 section 返回 null）
    ├─ ConfigDirectoryPanel（目录 Query + 打开目录，位于 tab 面板之外）
+   ├─ AppearanceCard（themeId 单选项，来自 THEMES）
    └─ SettingsUpdatesPanel（卡片壳）
       ├─ AutoUpdateConfigPanel（自动更新草稿/保存）
       └─ ComponentUpdatePanel（版本 Query + 更新命令/反馈）
@@ -109,18 +113,22 @@ ConfigManager（app-page > app-stack-section > SettingsWorkspace）
 
 | 反馈 | 渲染位置 | 来源 |
 | --- | --- | --- |
-| 连接读取/保存失败、`superseded` 警告 | `.config-editor-card` 内 | `ConnectionConfigPanel` 本地反馈 + owner 结果 |
-| 设备查找/连接测试失败 | 设备分组内 | `DeviceConnectionOwner.discovery/test` |
-| 目录读取失败与重试 | 目录卡片内 | `config-directory` Query 状态 |
-| 自动更新读取/保存/调度失败 | 更新卡片自动更新分组 | `AutoUpdateConfigOwner` |
-| 组件更新失败与资源重试 | 更新卡片底部 | `SettingsUpdateOwner` |
+| 连接读取失败 | 编辑卡 `CardContent` 内 `Alert` + “重新读取” | `ConnectionConfigPanel` 本地反馈 + Query 初始失败 |
+| 连接保存失败 | 编辑卡 `CardContent` 内 `Alert`；同一结果也发全局 toast | `ConfigDraftOwner` 结果 |
+| `superseded` 警告、保存成功 | 仅全局 toast（固定 notice id） | `ConfigDraftOwner` 结果 |
+| 设备查找/连接测试失败 | 设备分组内 `Alert`；连接成功用 `role="status"` | `DeviceConnectionOwner.discovery/test` |
+| 目录读取失败与重试 | 目录卡片内 `Alert` + `AlertAction` | `config-directory` Query 状态 |
+| 自动更新读取/保存/调度失败 | 更新卡片自动更新分组内 `Alert` | `AutoUpdateConfigOwner` |
+| 自动更新成功/本地回退警告 | 仅全局 toast | `AutoUpdateConfigOwner` 结果 |
+| 组件更新失败与资源重试 | 更新卡片底部 `Alert` + `AlertAction` | `SettingsUpdateOwner` |
+| 组件更新成功 | 仅全局 toast | `SettingsUpdateOwner` 结果 |
 
 各面板只渲染自己的反馈；一个用例的失败不会写入另一个面板的页内状态。全局通知仍由各面板在明确结果后调用 `notify` / `notifyProgress` 发送。
 
 ### 6. 兼容与维护约束
 
 - Query key、读取时机、失效作用域、失败保旧、设备命令 wire、更新顺序与自动更新本地键均未变。
-- 保持三个 section 编辑卡的 DOM、标签关联与视觉约束；section 切换、草稿保留与保存反馈由下列回归测试覆盖。
+- 保持三个 section 编辑卡的标签关联与行为契约；DOM 已迁移为 `Card` / `Field` / `Alert` 结构，section 切换、草稿保留与保存反馈由下列回归测试覆盖。
 - 唯一可见的生命期差异：section 切换不再卸载设备 hook，而是卸载设备面板；在途命令不取消（与迁移前语义一致），恢复后从 owner 显示结果。
 
 ## 配置编辑与保存
@@ -202,7 +210,7 @@ ConfigManager（app-page > app-stack-section > SettingsWorkspace）
 
 - 首次服务端读取被采纳前（`loaded=false`）不可保存：`ConfigDraftOwner.save()` 返回 `ignored` 且不发送写请求，避免把页面默认值写回服务端；三个面板同时禁用“保存”、表单控件与“重置”，并提示“正在读取，加载完成后才能保存”或读取失败原因。
 - 同一时刻只允许一次保存；保存中再次调用返回 `ignored`，页面不重复提示。
-- 保存期间仍可编辑。响应返回时只有 revision 未变才把当前草稿视为已保存；否则返回 `superseded`，页面按自身 section 提示“此前连接配置/实例选项/资源源配置已保存，当前更改尚未保存”，并保留新草稿。
+- 保存期间仍可编辑。响应返回时只有 revision 未变才把当前草稿视为已保存；否则返回 `superseded`，通过固定 notice id 提示“此前连接配置/实例选项/资源源配置已保存，当前更改尚未保存”，并保留新草稿。
 - 保存成功清除 dirty、更新 `persisted` 与 `lastSavedAt`，并推进 revision 使保存前的读取失效；保存失败保留草稿与 `failed`/`error`，下一次保存重试同一份最新草稿。
 - 服务端只返回成功信封，不回写 profile；页面按已发送快照确认，不伪造服务端归一化结果。
 
@@ -249,7 +257,7 @@ section 只控制渲染哪个面板：三个编辑面板在所有 section 下保
 - `useSettingsConnectionConfig()` / `useSettingsInstanceOptions()` / `useSettingsResourceSource()` 返回各自的 `draft`、`dirty`、`syncState`、`error`、`loaded`、`loadError`、`update`、`restoreDefaults`、`save`、`reload`；三个面板只渲染表单、按钮 loading 与反馈，卡片外壳共用 `ConfigEditorCard`。隐藏面板向 hook 传 `enabled: false`，不触发读取。
 - 页面删除的职责：`configData` state、`loadConfig()`、`connectionRevisionRef`、`connectionSaveInFlightRef`、section `localStorage` 读写与 window 监听。
 - 连接、实例与资源源表单字段都通过 `update(patch)` 写入各自 owner；编辑清空页内反馈与保存错误。
-- 保存按钮 loading 取 `syncState === 'saving'`，重置按钮在保存中禁用；保存结果按 `saved`/`superseded`/`failed` 分别提示。
+- 保存按钮 loading 取 `syncState === 'saving'`，重置按钮在保存中禁用；保存结果按 `saved`/`superseded`/`failed` 分别提示：成功与 `superseded` 只发全局 toast，读取/保存失败在卡内显示 `Alert` 并可重试读取。
 - 自动更新的读取/本地回退、touched/revision、保存后 `setupAutoUpdate` 与反馈由 `AutoUpdateConfigOwner` 和 `useSettingsAutoUpdate()` 持有；归一化与时间校验仍在 `model/configNormalization.ts`，见[设置组件更新与自动更新](#组件更新与自动更新)。
 - 设备发现、连接测试、版本、配置目录与打开目录归[设置设备连接与系统资源](#设备连接与系统资源)；组件更新与自动更新归[设置组件更新与自动更新](#组件更新与自动更新)。
 
@@ -259,7 +267,7 @@ section 只控制渲染哪个面板：三个编辑面板在所有 section 下保
 - Query 快照只存在于内存，浏览器刷新随缓存丢失；key 与参数清单见[Query 缓存与键规范](../../architecture/query-cache.md)。没有新增 localStorage 数据。
 - 载荷校验比迁移前严格：已知字段类型不合法时整份读取失败并显示错误，而旧页面会把异常值放入受控输入。未知 connection 字段仍原样保留。
 - 已知字段缺失时显示页面默认值，而旧页面会显示空输入；这是归一化模型的要求，正常服务端载荷（`getConfig` 自带默认值）不受影响。
-- 默认渲染结构、DOM 与 CSS 未改变；失败/`superseded` 提示只在非默认状态出现，视觉基线不因该逻辑调整更新。
+- 默认渲染结构已迁移到 shadcn `Card` / `Field` / `Item` / `Alert` / `Badge`；失败/`superseded` 提示只在非默认状态出现，行为契约不因结构调整改变。视觉基线冻结至 RW-019，本页不在本轮更新截图。
 
 ## 设备连接与系统资源
 
@@ -363,7 +371,8 @@ section 只控制渲染哪个面板：三个编辑面板在所有 section 下保
 
 - 端点、请求体与响应体未改变；未修改服务端。设备发现仍是 GET、连接测试与打开目录仍是 POST。
 - 新增 Query key 只存在于内存，浏览器刷新随缓存丢失；没有新增 localStorage 数据。
-- 默认渲染结构、DOM、CSS 与文案未改变；失败/取消状态仍走原有提示区域，视觉基线不因该逻辑调整更新。
+- 设备列表行使用 shadcn `Item`（渲染为 button），状态标签使用 `Badge`；空结果显示 `EmptyState compact`。端点、请求体与响应体未改变，失败/取消状态仍走原有提示区域。
+- 视觉基线冻结至 RW-019；本页不在本轮更新截图。
 - 行为差异：
   - 设备发现与连接测试请求现在在 Activity 隐藏/卸载时 abort；迁移前会继续完成并写页面 state。section 切换不取消命令（与迁移前一致），但设备面板会卸载并在恢复 connection 后从 owner 读取结果。
   - 非数组/坏设备条目被跳过而不是抛错；未知状态/来源回退为“状态未知”/ADB。
@@ -408,26 +417,26 @@ section 只控制渲染哪个面板：三个编辑面板在所有 section 下保
 规则：
 
 - 任意一条命令运行期间再次发起（含同一命令）返回 `status: 'ignored'`，不发第二个请求；页面据此禁用全部更新按钮，只让实际运行的按钮显示 loading，并显示“停止更新”。
-- 开始运行时清空页内反馈（CLI 更新除外）；成功返回 `succeeded`，失败返回 `failed`，被停止返回 `canceled`；Run 中断或记录失效按未知处理，不写成成功。
+- 开始运行时清空 owner 反馈（CLI 更新除外）；成功返回 `succeeded`，失败返回 `failed`，被停止返回 `canceled`；Run 中断或记录失效按未知处理，不写成成功。
 - 命令失败不自动重发。core/资源热更新在部分失败时把 `resourceRetry` 置为 true，页面显示“重试资源同步”按钮；该按钮调用资源热更新，仍是用户显式动作。
 - 等待 Run 终态只由服务端状态结算，没有前端本地等待上限：控制器身份失效（服务端按 `runId` 查不到，`identity` 为 `unknown`）时按未知结算，写入“无法确认更新结果”的失败反馈、清空 `running` 槽位并解除身份；Run 仍活动时继续观察并保留 `running` 槽位与“停止更新”入口，维护命令可跑到服务端上限（默认 15 分钟、最长 1 小时）。页面刷新后 `observeTrackedRun` 从控制器的持久化身份恢复本域仍在运行的更新，重新占用槽位并保留停止入口，终态仍以服务端 Run 为准。
 - 寿命不跟随页面：Activity 隐藏或页面重挂载不取消在途命令；完成后仍写 owner 状态并更新全局提示。
 
 #### 2.2 失败与重试条件
 
-| 结果 | 页内反馈 | 全局提示 | 资源重试入口 |
+| 结果 | 页内展示 | 全局提示 | 资源重试入口 |
 | --- | --- | --- | --- |
-| core / 渠道切换成功 | success，`result.message` 或 `MaaCore 和资源已更新` | 同一文案 | 否 |
-| core / 渠道切换成功但渠道配置未持久化（`channelPersisted === false`） | success，文案明确“已更新，但渠道配置未能持久化” | 同一文案 | 否 |
-| core / 渠道切换失败，`errorInfo.details`（兼容旧 `error.details`）的 `failedStep === 'resources'` 或 `coreUpdated === true` | error | 服务端文案 | 是 |
-| core / 渠道切换失败，其它路径 | error | 服务端文案 | 否 |
-| CLI 成功 | 不产生页内反馈（保留此前的更新反馈） | `MAA CLI 更新成功` | 否 |
-| CLI 失败 | 不产生页内反馈 | `更新失败: <原因>` | 否 |
-| 资源热更新失败（含内层失败、网络失败） | error | 服务端/本地文案 | 是 |
-| 资源热更新并发冲突（服务端 409 `AGENT_MAA_RESOURCE_UPDATE_IN_PROGRESS`） | error，展示服务端“已有资源更新正在进行（runId、状态）…”提示 | 同一文案 | 是；首个更新结束后重试 |
-| 更新被停止 | 无页内反馈 | `更新已取消` | 否；版本仍可能变化，成功后重取 |
-| Run 中断/记录失效 | error（CLI 除外） | `无法确认更新结果...` | 资源热更新为是 |
-| 网络异常 | error（CLI 除外） | `网络错误: <原因>` | 资源热更新为是 |
+| core / 渠道切换成功 | 不展示（仅 toast） | `result.message` 或 `MaaCore 和资源已更新` | 否 |
+| core / 渠道切换成功但渠道配置未持久化（`channelPersisted === false`） | 不展示（仅 toast） | 文案明确“已更新，但渠道配置未能持久化” | 否 |
+| core / 渠道切换失败，`errorInfo.details`（兼容旧 `error.details`）的 `failedStep === 'resources'` 或 `coreUpdated === true` | `Alert` + 重试 action | 服务端文案 | 是 |
+| core / 渠道切换失败，其它路径 | `Alert` | 服务端文案 | 否 |
+| CLI 成功 | 不展示 | `MAA CLI 更新成功` | 否 |
+| CLI 失败 | 不展示 | `更新失败: <原因>` | 否 |
+| 资源热更新失败（含内层失败、网络失败） | `Alert` + 重试 action | 服务端/本地文案 | 是 |
+| 资源热更新并发冲突（服务端 409 `AGENT_MAA_RESOURCE_UPDATE_IN_PROGRESS`） | `Alert` + 重试 action，展示服务端“已有资源更新正在进行（runId、状态）…”提示 | 同一文案 | 是；首个更新结束后重试 |
+| 更新被停止 | 不展示 | `更新已取消` | 否；版本仍可能变化，成功后重取 |
+| Run 中断/记录失效 | `Alert`（CLI 除外） | `无法确认更新结果...` | 资源热更新为是 |
+| 网络异常 | `Alert`（CLI 除外） | `网络错误: <原因>` | 资源热更新为是 |
 
 渠道切换目标由 `resolveCoreChannelSwitch(currentCore)` 决定：版本字符串包含 `beta`/`alpha` 时切到正式版，否则切到 Beta；版本尚未读取时默认 Beta。成功文案使用 `Beta`/`正式版` 标签。
 
@@ -468,7 +477,7 @@ section 只控制渲染哪个面板：三个编辑面板在所有 section 下保
 
 任意 `update(patch)` 都：
 
-- 合并当前草稿，`dirty=true`，清空页内反馈；
+- 合并当前草稿，`dirty=true`，清空 owner 反馈；
 - 推进本地 revision；
 - 立即把草稿写入 `autoUpdateConfig` 本地键（本设备 fallback，不代表服务端已确认）。
 
@@ -498,7 +507,7 @@ section 只控制渲染哪个面板：三个编辑面板在所有 section 下保
 | 自动更新 `autoUpdate`/`dirty`/`saving`/`feedback`、touched/revision、本地回退、保存 + 调度 | `AutoUpdateConfigOwner` + `useSettingsAutoUpdate()` |
 | 自动更新页内/全局提示 | owner 反馈；hook 转发到全局通知 |
 
-按钮语义：core/资源按钮显示各自 loading，切换渠道按钮只禁用不 loading，CLI 按钮显示自己的 loading；全部更新按钮在任意命令运行期间禁用。命令运行期间额外渲染一个“停止更新”按钮（`canceling` 时显示停止中），其余默认渲染结构、DOM、CSS 与文案未改变。
+按钮语义：core/资源按钮显示各自 loading，切换渠道按钮只禁用不 loading，CLI 按钮显示自己的 loading；全部更新按钮在任意命令运行期间禁用。命令运行期间额外渲染一个“停止更新”按钮（`canceling` 时显示停止中）。成功只走全局 toast；失败在卡片底部显示 `Alert`，资源重试放在 `AlertAction`。
 
 ### 6. 兼容与维护约束
 
@@ -521,7 +530,7 @@ section 只控制渲染哪个面板：三个编辑面板在所有 section 下保
 - 更新互斥与失效：单槽位重复发起返回 `ignored`，命令等待 Run 终态后才完成，停止只作用于本次 `runId`；core/热更新发布资源失效并推进图标 epoch，CLI 只重取版本；自动更新保存 = 写 user config + 应用调度，跨 Activity 隐藏继续完成，迟到读取不覆盖编辑。
 - 草稿隔离：connection/instance/resource 三个 owner 各自持有草稿与保存状态，隐藏面板的 Query 不发起读取；设备/更新/版本状态与全局通知不重渲染连接表单。
 
-视觉基线只覆盖默认 connection 页面；connection 表单新增「连接预设」后已更新 6 张 config 基线，resource/instance 表单态不在截图内。仓库内保留 section 切换、草稿保留与保存反馈的行为回归。
+视觉基线只覆盖默认 connection 页面；connection 表单新增「连接预设」后曾更新 6 张 config 基线，随后设置页治理（外观卡、Field/Item/Alert 替换、删除 settings.css）冻结基线，留待 RW-019 统一重生成。仓库内保留 section 切换、草稿保留与保存反馈的行为回归。
 
 ### 验证命令
 
