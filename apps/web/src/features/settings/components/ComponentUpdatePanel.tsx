@@ -3,6 +3,7 @@ import { Download, LoaderCircle, RefreshCw } from 'lucide-react'
 import { Badge } from '@/shared/ui/badge'
 import { Button } from '@/shared/ui/button'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/shared/ui/select'
+import { Separator } from '@/shared/ui/separator'
 import { notify, notifyProgress, SETTINGS_UPDATE_CHANNEL_NOTICE_ID } from '@/shared/notifications'
 import { saveUpdateChannel } from '../api'
 import { resolveCoreChannel } from '../model/updateCommandPolicy'
@@ -25,6 +26,12 @@ const CLI_CHANNEL_OPTIONS = CLI_UPDATE_CHANNELS.map(value => ({
   value,
   label: CLI_UPDATE_CHANNEL_LABELS[value],
 }))
+
+const formatResourceTime = (value: string | null) => (
+  value
+    ? new Date(value.replace(' ', 'T')).toLocaleString('zh-CN', { hour12: false })
+    : '未知'
+)
 
 export default function ComponentUpdatePanel() {
   const [channelSaving, setChannelSaving] = useState<UpdateChannelScope | null>(null)
@@ -94,136 +101,133 @@ export default function ComponentUpdatePanel() {
     }
   }
 
+  const resource = versionInfo?.resource
+
   return (
     <div className="app-stack-card">
-      <div className="grid gap-3.5 md:grid-cols-2 xl:grid-cols-1">
-        <section className="flex min-w-0 flex-col">
-          <div className="flex flex-wrap items-center gap-2">
-            <h3 className="text-sm font-medium text-foreground">MaaCore</h3>
-            {versionInfo && <span className="text-sm text-muted-foreground">{versionInfo.core}</span>}
-            <Select
-              items={CORE_CHANNEL_OPTIONS}
-              value={coreChannel}
-              onValueChange={(value, details) => { if (details.reason !== 'none' && value !== null) void handleChannelChange('core', value) }}
-              disabled={channelSavingBusy}
-            >
-              <SelectTrigger aria-label="MaaCore 更新渠道" className="ml-auto w-32">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {CORE_CHANNEL_OPTIONS.map(item => (
-                  <SelectItem key={item.value} value={item.value}>{item.label}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-          {versionInfo?.resource && (
-            <div className="mt-3 flex flex-wrap items-center gap-2 text-xs">
-              <span className="text-muted-foreground">
-                资源更新：{versionInfo.resource.lastUpdated
-                  ? new Date(versionInfo.resource.lastUpdated.replace(' ', 'T')).toLocaleString('zh-CN', { hour12: false })
-                  : '未知'}
-              </span>
-              <Badge
-                variant="ghost"
-                className={versionInfo.resource.status === 'current' ? 'status-success' : 'status-warning'}
-              >
-                {versionInfo.resource.status === 'current' ? '资源正常' : '需要同步'}
-              </Badge>
-            </div>
-          )}
-          {versionInfo?.resource && versionInfo.resource.status !== 'current' && (
-            <p className="mt-2 text-xs leading-5 text-warning">{versionInfo.resource.message}</p>
-          )}
-          <div className="mt-auto grid gap-2 pt-3.5 sm:grid-cols-2">
-            <Button
-              onClick={handleUpdateCore}
-              disabled={updateBusy || channelSavingBusy || updatingCore}
-              aria-busy={updatingCore || undefined}
-              className="w-full"
-            >
-              {updatingCore
-                ? <><LoaderCircle className="animate-spin" aria-hidden="true" />更新中</>
-                : (
-                  <>
-                    <Download size={16} aria-hidden="true" />
-                    更新 MaaCore
-                  </>
-                )}
-            </Button>
-            <Button
-              onClick={handleHotUpdate}
-              disabled={updateBusy || channelSavingBusy || hotUpdating}
-              aria-busy={hotUpdating || undefined}
-              variant="outline"
-              className="w-full sm:col-span-2"
-            >
-              {hotUpdating
-                ? <><LoaderCircle className="animate-spin" aria-hidden="true" />同步中</>
-                : (
-                  <>
-                    <RefreshCw size={16} aria-hidden="true" />
-                    仅同步游戏资源
-                  </>
-                )}
-            </Button>
-          </div>
+      <div className="flex flex-col gap-3.5">
+        <section className="flex flex-wrap items-center gap-2">
+          <h3 className="text-sm font-medium text-foreground">MAA CLI</h3>
+          {versionInfo && <span className="text-sm text-muted-foreground">{versionInfo.cli}</span>}
+          <Select
+            items={CLI_CHANNEL_OPTIONS}
+            value={cliChannel}
+            onValueChange={(value, details) => { if (details.reason !== 'none' && value !== null) void handleChannelChange('cli', value) }}
+            disabled={channelSavingBusy}
+          >
+            <SelectTrigger aria-label="MAA CLI 更新渠道" className="ml-auto w-32">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {CLI_CHANNEL_OPTIONS.map(item => (
+                <SelectItem key={item.value} value={item.value}>{item.label}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         </section>
 
-        <section className="flex min-w-0 flex-col">
-          <div className="flex flex-wrap items-center gap-2">
-            <h3 className="text-sm font-medium text-foreground">MAA CLI</h3>
-            {versionInfo && <span className="text-sm text-muted-foreground">{versionInfo.cli}</span>}
-            <Select
-              items={CLI_CHANNEL_OPTIONS}
-              value={cliChannel}
-              onValueChange={(value, details) => { if (details.reason !== 'none' && value !== null) void handleChannelChange('cli', value) }}
-              disabled={channelSavingBusy}
-            >
-              <SelectTrigger aria-label="MAA CLI 更新渠道" className="ml-auto w-32">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {CLI_CHANNEL_OPTIONS.map(item => (
-                  <SelectItem key={item.value} value={item.value}>{item.label}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-          <div className="mt-auto pt-3.5">
-            <Button
-              onClick={handleUpdateCli}
-              disabled={updateBusy || channelSavingBusy || updatingCli}
-              aria-busy={updatingCli || undefined}
-              className="w-full"
-            >
-              {updatingCli
-                ? <><LoaderCircle className="animate-spin" aria-hidden="true" />更新中</>
-                : (
-                  <>
-                    <Download size={16} aria-hidden="true" />
-                    更新 MAA CLI
-                  </>
-                )}
-            </Button>
-          </div>
+        <section className="flex flex-wrap items-center gap-2">
+          <h3 className="text-sm font-medium text-foreground">MaaCore</h3>
+          {versionInfo && <span className="text-sm text-muted-foreground">{versionInfo.core}</span>}
+          <Select
+            items={CORE_CHANNEL_OPTIONS}
+            value={coreChannel}
+            onValueChange={(value, details) => { if (details.reason !== 'none' && value !== null) void handleChannelChange('core', value) }}
+            disabled={channelSavingBusy}
+          >
+            <SelectTrigger aria-label="MaaCore 更新渠道" className="ml-auto w-32">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {CORE_CHANNEL_OPTIONS.map(item => (
+                <SelectItem key={item.value} value={item.value}>{item.label}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         </section>
+
+        {resource && (
+          <section className="flex flex-wrap items-center gap-2">
+            <h3 className="text-sm font-medium text-foreground">游戏资源</h3>
+            <span className="text-sm text-muted-foreground">{formatResourceTime(resource.lastUpdated)}</span>
+            <Badge
+              variant="ghost"
+              className={`ml-auto ${resource.status === 'current' ? 'status-success' : 'status-warning'}`}
+            >
+              {resource.status === 'current' ? '资源正常' : '需要同步'}
+            </Badge>
+          </section>
+        )}
+
+        {resource && resource.status !== 'current' && (
+          <p className="text-xs leading-5 text-warning">{resource.message}</p>
+        )}
       </div>
 
-      {updateOperation && (
+      <Separator />
+
+      <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center">
         <Button
-          type="button"
-          onClick={handleCancelUpdate}
-          disabled={updateCanceling}
-          aria-busy={updateCanceling || undefined}
-          variant="outline"
-          className="w-full"
+          onClick={handleUpdateCli}
+          disabled={updateBusy || channelSavingBusy || updatingCli}
+          aria-busy={updatingCli || undefined}
+          className="w-full sm:w-auto"
         >
-          {updateCanceling
-            ? <><LoaderCircle className="animate-spin" aria-hidden="true" />停止中</>
-            : '停止更新'}
+          {updatingCli
+            ? <><LoaderCircle className="animate-spin" aria-hidden="true" />更新中</>
+            : (
+              <>
+                <Download size={16} aria-hidden="true" />
+                更新 MAA CLI
+              </>
+            )}
         </Button>
-      )}
+        <Button
+          onClick={handleUpdateCore}
+          disabled={updateBusy || channelSavingBusy || updatingCore}
+          aria-busy={updatingCore || undefined}
+          className="w-full sm:w-auto"
+        >
+          {updatingCore
+            ? <><LoaderCircle className="animate-spin" aria-hidden="true" />更新中</>
+            : (
+              <>
+                <Download size={16} aria-hidden="true" />
+                更新 MaaCore
+              </>
+            )}
+        </Button>
+        <Button
+          onClick={handleHotUpdate}
+          disabled={updateBusy || channelSavingBusy || hotUpdating}
+          aria-busy={hotUpdating || undefined}
+          variant="outline"
+          className="w-full sm:w-auto"
+        >
+          {hotUpdating
+            ? <><LoaderCircle className="animate-spin" aria-hidden="true" />更新中</>
+            : (
+              <>
+                <RefreshCw size={16} aria-hidden="true" />
+                更新游戏资源
+              </>
+            )}
+        </Button>
+        {updateOperation && (
+          <Button
+            type="button"
+            onClick={handleCancelUpdate}
+            disabled={updateCanceling}
+            aria-busy={updateCanceling || undefined}
+            variant="outline"
+            className="w-full sm:ml-auto sm:w-auto"
+          >
+            {updateCanceling
+              ? <><LoaderCircle className="animate-spin" aria-hidden="true" />停止中</>
+              : '停止更新'}
+          </Button>
+        )}
+      </div>
     </div>
   )
 }

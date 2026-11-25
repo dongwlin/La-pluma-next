@@ -242,6 +242,13 @@ describe('ConfigManager layout surfaces', () => {
         cli: '0.7.3',
         core: 'v5.0.0',
         raw: 'v5.0.0',
+        resource: {
+          lastUpdated: '2026-11-12 01:26:35',
+          modifiedAt: null,
+          ageDays: 1,
+          status: 'current',
+          message: '资源正常',
+        },
         updateChannels: { core: 'stable', cli: 'stable' },
       },
     })
@@ -342,6 +349,34 @@ describe('ConfigManager layout surfaces', () => {
     expect(container.textContent).toContain('/tmp/la-pluma')
     expect(container.querySelector('[role="switch"][aria-label="启用自动更新"]')).not.toBeNull()
     expect(container.textContent).toContain('v5.0.0')
+  })
+
+  it('renders component and resource rows above the shared action bar', async () => {
+    await act(async () => root.render(page()))
+    await flush()
+
+    const updatesSection = Array.from(container.querySelectorAll<HTMLElement>('section[aria-labelledby]'))
+      .find(section => section.querySelector('h2')?.textContent?.trim() === '组件更新')
+    expect(updatesSection).toBeDefined()
+
+    const headings = Array.from(updatesSection!.querySelectorAll('h3'))
+      .map(heading => heading.textContent?.trim())
+    expect(headings).toEqual(['自动更新', 'MAA CLI', 'MaaCore', '游戏资源'])
+    expect(updatesSection!.textContent).toContain('资源正常')
+
+    const actionLabels = ['更新 MAA CLI', '更新 MaaCore', '更新游戏资源']
+    const renderedActions = Array.from(updatesSection!.querySelectorAll('button'))
+      .map(button => button.textContent?.trim())
+      .filter(label => actionLabels.includes(label!))
+    expect(renderedActions).toEqual(actionLabels)
+    expect(buttonByText('切换测试版')).toBeUndefined()
+    expect(buttonByText('切换正式版')).toBeUndefined()
+
+    const resourceHeading = Array.from(updatesSection!.querySelectorAll('h3'))
+      .find(heading => heading.textContent?.trim() === '游戏资源')!
+    const firstAction = buttonByText('更新 MAA CLI')!
+    expect(resourceHeading.compareDocumentPosition(firstAction) & Node.DOCUMENT_POSITION_FOLLOWING)
+      .toBeTruthy()
   })
 
   it('shows a retryable config-directory error instead of an endless loading label', async () => {

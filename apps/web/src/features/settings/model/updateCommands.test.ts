@@ -161,7 +161,7 @@ describe('SettingsUpdateOwner', () => {
     expect(owner.getState().running).toBeNull()
     expect(owner.getState().feedback).toEqual({
       type: 'success',
-      message: '资源文件更新成功',
+      message: '游戏资源已更新',
       resourceRetry: false,
     })
   })
@@ -225,7 +225,7 @@ describe('SettingsUpdateOwner', () => {
     // CLI 更新不清空此前的资源更新反馈。
     expect(owner.getState().feedback).toEqual({
       type: 'success',
-      message: '资源文件更新成功',
+      message: '游戏资源已更新',
       resourceRetry: false,
     })
 
