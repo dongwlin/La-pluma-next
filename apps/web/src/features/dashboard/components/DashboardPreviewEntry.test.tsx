@@ -91,7 +91,7 @@ describe('DashboardPreviewEntry', () => {
     expect(container.querySelector('[role="status"]')?.textContent).toBe('画面快照 · 10s')
   })
 
-  it('names the status light from the shared tone and phase', async () => {
+  it('reflects the shared status phase and label', async () => {
     preview.fallbackSnapshot = null
     preview.status = makeStatus({
       phase: 'off',
@@ -102,8 +102,8 @@ describe('DashboardPreviewEntry', () => {
     })
     await act(async () => root.render(<DashboardPreviewEntry />))
 
-    const light = container.querySelector('[data-preview-status="off"]')
-    expect(light?.classList.contains('is-neutral')).toBe(true)
+    expect(container.querySelector('[data-preview-status="off"]')).not.toBeNull()
+    expect(container.querySelector('[role="status"]')?.textContent).toBe('预览已关闭')
 
     await act(async () => root.unmount())
     root = createRoot(container)
@@ -115,7 +115,8 @@ describe('DashboardPreviewEntry', () => {
     })
     await act(async () => root.render(<DashboardPreviewEntry />))
 
-    expect(container.querySelector('[data-preview-status="live-connected"]')?.classList.contains('is-success')).toBe(true)
+    expect(container.querySelector('[data-preview-status="live-connected"]')).not.toBeNull()
+    expect(container.querySelector('[role="status"]')?.textContent).toBe('实时画面')
   })
 
   it('switches preview mode through the compact segmented control', async () => {

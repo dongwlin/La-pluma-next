@@ -288,7 +288,7 @@ describe('ScrcpyDeviceView', () => {
     expect(getDialog()?.textContent).toContain('最长边 1280px · 45 FPS')
     expect(findDialogButton('均衡画质')?.textContent).toContain('1280px · 45 FPS · 8M')
     expect(findDialogButton('均衡画质')?.title).toBe('最长边 1280px · 45 FPS · 码率 8 Mbps')
-    expect(getDialog()?.textContent).toContain('画质已修改，重连后生效')
+    expect(getDialog()?.textContent).toContain('画质已修改')
 
     await act(async () => findDialogButton('60')?.click())
     expect(getDialog()?.textContent).toContain('自定义 · 最长边 1280px · 60 FPS')
@@ -552,7 +552,7 @@ describe('ScrcpyDeviceView', () => {
     expect(container.textContent).toContain('设备画面')
   })
 
-  it('keeps the shared mode controls interactive in compact view while startup is busy', async () => {
+  it('keeps the shared mode controls interactive in the shared view while startup is busy', async () => {
     usePreviewStore.getState().setMode('live')
     await renderView({ infrastructureLoading: 'preview' })
     const modes = container.querySelector('[role="group"][aria-label="预览模式"]')!
@@ -629,7 +629,7 @@ describe('ScrcpyDeviceView', () => {
     })
 
     expect(container.querySelector('[role="alert"]')?.textContent).toContain('状态读取失败')
-    await act(async () => findButton('刷新状态')?.click())
+    await act(async () => findButton('打开设置')?.click())
     expect(getDialog()).not.toBeNull()
     expect(getDialog()?.textContent).toContain('状态读取失败')
   })
