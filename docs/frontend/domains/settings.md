@@ -524,7 +524,7 @@ owner 的完整提交语义不变，同一时刻只有一次：
 | 自动更新 `autoUpdate`/`dirty`/`saving`/`feedback`、touched/revision、本地回退、保存 + 调度 | `AutoUpdateConfigOwner` + `useSettingsAutoUpdate()` |
 | 自动更新提示 | 失败：带重试 action 的 toast；成功：静默；非法时间：仅 toast |
 
-信息区按 MAA CLI、MaaCore、游戏资源三行排列；游戏资源使用独立一行展示更新时间与状态，不再挂在 MaaCore 下方。按钮语义：core/资源/CLI 按钮显示各自 loading；全部更新按钮在任意命令运行期间禁用。所有动作统一放在卡片底部动作区，顺序为 MAA CLI、MaaCore、游戏资源；命令运行期间在同一区域追加“停止更新”（`canceling` 时显示停止中）。成功与失败都只走全局 toast，资源重试作为 toast action；卡片内不再渲染失败 `Alert`。
+信息区按 MAA CLI、MaaCore、游戏资源三行排列；游戏资源使用独立一行展示更新时间与状态，不再挂在 MaaCore 下方。自动更新行与三行信息统一使用 `Field` 横排行（`min-h-11`，44px），控件保持 32px；动作区使用同样的 44px 行高与 `size="sm"` 按钮。按钮语义：core/资源/CLI 按钮显示各自 loading；全部更新按钮在任意命令运行期间禁用。所有动作统一放在卡片底部动作区，顺序为 MAA CLI、MaaCore、游戏资源；命令运行期间在同一区域追加“停止更新”（`canceling` 时显示停止中）。成功与失败都只走全局 toast，资源重试作为 toast action；卡片内不再渲染失败 `Alert`。
 
 ### 6. 兼容与维护约束
 
