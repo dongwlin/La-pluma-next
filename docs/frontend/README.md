@@ -69,7 +69,7 @@ Activity 隐藏保留页面 React 状态并清理 Effects；它与真正卸载�
 
 ## 预览偏好与信令凭据
 
-`PreviewSessionProvider` 位于页面 Activity 边界之外，统一持有实时会话、截图采样与预览基础设施操作。总览、日常、作业、肉鸽、养成、数据和日志页经 `usePreviewSession` 绑定同一 MediaStream；切换到设置页也保留连接，不重复启动服务。日常、作业、肉鸽、养成、数据和日志使用相同的 `DeviceMonitorPanel`，宽屏右侧占工作区三分之一，窄屏改为纵向排列。工具栏“预览设置”打开模态窗承载连接与服务、画质与按需采样的连接详情，不再有常显控制轨或 full 变体。显式关闭、后端不可用或应用真正卸载会立即释放当前连接；文档隐藏时，已建立的 live 连接进入 3 分钟缓冲，启动中的 live 立即中止，snapshot 立即暂停并在恢复可见时重拍。
+`PreviewSessionProvider` 位于页面 Activity 边界之外，统一持有实时会话、截图采样与预览基础设施操作。总览、日常、作业、肉鸽、养成、数据和日志页经 `usePreviewSession` 绑定同一 MediaStream；切换到设置页也保留连接，不重复启动服务。日常、作业、肉鸽、养成、数据和日志使用相同的 `DeviceMonitorPanel`，宽屏右侧占工作区三分之一，窄屏改为纵向排列。工具栏“预览设置”打开模态窗承载连接与服务、画质与按需采样的连接详情，不再有常显控制轨或独立的完整控制台布局。显式关闭、后端不可用或应用真正卸载会立即释放当前连接；文档隐藏时，已建立的 live 连接进入 3 分钟缓冲，启动中的 live 立即中止，snapshot 立即暂停并在恢复可见时重拍。
 
 [`previewStore`](../../apps/web/src/features/device-mirror/store/previewStore.ts)以 `preview-storage` version 2 持久化 `mode`、`quality`、`fps`、`maxSize`、`bitrateMbps`。`off`、`snapshot`、`live` 的选择本身即偏好：新应用加载时恢复上次合法模式（`off` 也合法），导航切页保留运行时偏好。v1 旧数据仅在旧 `autoStart === true` 时沿用其中的 `mode`（该字段随版本 2 移除），否则升级后首次加载从 `off` 开始，此后选择直接持久化。多标签页之间不做实时同步：每次偏好动作只把本次涉及的字段合并进最新落盘值——`setMode` 只写模式，预设画质写整组数值，自定义画质只写 `quality` 与被修改的数值字段——因此另一标签页的无关改动不会回退字段，各标签页在刷新后收敛到同一份偏好，同一瞬间的双页并发写入仍以最后落盘者为准。预设画质使用预设数值，自定义值须通过字段范围校验。恢复、迁移与坏值回退见[偏好测试](../../apps/web/src/features/device-mirror/store/previewStore.test.ts)。
 

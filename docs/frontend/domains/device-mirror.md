@@ -18,7 +18,7 @@
 - `DeviceMonitorLayout` 输出 `data-device-monitor-layout` 与 `data-monitor-area`；`data-region="monitor"` 只由 `DeviceMonitorPanel` 的卡片输出，每个页面恰好一个。
 - 自动化与作业在配置读取中或读取失败时仍渲染 `DeviceMonitorLayout`（`standard`），把 `ConfigLoadCard` 放进主列；设备画面不因配置门禁消失。
 - 设备画面标题是卡片内的 `h2`，monitor 列使用 `aside[aria-label="设备画面"]`。
-- 宽屏（`1360px` 及以上）使用三列工作台；小于该宽度时保持纵向排列，`1280px` 与移动端的预览位置保持既有契约，不在本域内改写。
+- `standard` 在 `1360px` 及以上使用主列 + monitor + support 的三列布局，小于该宽度时保持纵向排列；`workbench`/`mode` 的页面网格仍由各自页面样式提供。`1280px` 与移动端的预览位置保持既有契约，不在本域内改写。
 
 ## 所有权与生命周期
 
@@ -76,7 +76,7 @@
 
 ## 预览设置模态窗
 
-工具栏“预览设置”以 `DialogFrame` 打开模态窗，取代旧的常显控制轨与 full 变体：
+工具栏“预览设置”以 `DialogFrame` 打开模态窗，取代旧的常显控制轨与独立完整布局：
 
 - **连接与服务**：当前状态、服务/Agent/组件操作、断开/取消启动、安装/重装组件；停止服务或 Agent 会断开其他观看者。
 - **画质设置**：预设、帧率、最长边、码率；画质修改在与“重连预览”同一页脚区域提示“画质已修改，重连后生效”。
