@@ -12,7 +12,7 @@ import { DialogBody, DialogFrame } from '@/shared/components'
 import { dismissNotice, notify, PREVIEW_QUALITY_NOTICE_ID } from '@/shared/notifications'
 import { fpsOptions, qualityPresets, type QualityPreset } from '../constants'
 import { usePreviewStore } from '../store/previewStore'
-import type { PreviewLiveStatus, PreviewStatus } from '../model/previewStatus'
+import type { PreviewLiveStatus } from '../model/previewStatus'
 import type { usePreviewSession } from '../hooks/usePreviewSession'
 import type { usePreviewInfrastructureView } from '../hooks/usePreviewInfrastructureView'
 
@@ -20,7 +20,6 @@ interface PreviewSettingsDialogProps {
   open: boolean
   onOpenChange: (open: boolean) => void
   session: ReturnType<typeof usePreviewSession>
-  status: PreviewStatus
   infrastructure: ReturnType<typeof usePreviewInfrastructureView>
 }
 
@@ -49,7 +48,6 @@ export function PreviewSettingsDialog({
   open,
   onOpenChange,
   session,
-  status,
   infrastructure,
 }: PreviewSettingsDialogProps) {
   const baseId = useId().replace(/:/g, '')
@@ -172,13 +170,6 @@ export function PreviewSettingsDialog({
             <Plug className="size-4 text-muted-foreground" aria-hidden="true" />
             连接与服务
           </h3>
-          <div className="flex items-center justify-between gap-3 rounded-lg border border-border px-3 py-2">
-            <span className="text-xs text-muted-foreground">当前状态</span>
-            <span className="flex min-w-0 items-center gap-2 text-xs font-medium">
-              <span className={`preview-status-light is-${status.tone}`} aria-hidden="true" />
-              <span className="truncate">{status.label}</span>
-            </span>
-          </div>
           {infrastructureError && (
             <Alert variant="destructive">
               <AlertTitle>预览服务状态异常</AlertTitle>

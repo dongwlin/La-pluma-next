@@ -407,7 +407,6 @@ export default function ScrcpyDeviceView({ infrastructure }: ScrcpyDeviceViewPro
       open={settingsOpen}
       onOpenChange={setSettingsOpen}
       session={webrtc}
-      status={status}
       infrastructure={infrastructure}
     />
     <Dialog open={immersiveMode} onOpenChange={open => { if (!open) exitImmersive() }}>
