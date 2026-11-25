@@ -1,5 +1,4 @@
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion'
-import { Separator } from '@/shared/ui/separator'
 import { Switch } from '@/shared/ui/switch'
 import { ConfigFieldCheckbox, ConfigFieldInput } from './ConfigFieldControls'
 import { notify } from '@/shared/notifications'
@@ -40,7 +39,6 @@ export default function AutoUpdateConfigPanel() {
             exit={shouldReduceMotion ? { opacity: 0 } : { opacity: 0, y: -6 }}
             transition={{ duration: shouldReduceMotion ? 0.12 : 0.2 }}
           >
-            <Separator className="mt-3.5" />
             <div className="mt-3.5 flex flex-col gap-3.5">
               <ConfigFieldInput
                 id="auto-update-time"

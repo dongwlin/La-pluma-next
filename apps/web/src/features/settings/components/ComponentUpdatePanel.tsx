@@ -3,7 +3,6 @@ import { Download, LoaderCircle, RefreshCw } from 'lucide-react'
 import { Badge } from '@/shared/ui/badge'
 import { Button } from '@/shared/ui/button'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/shared/ui/select'
-import { Separator } from '@/shared/ui/separator'
 import { notify, notifyProgress, SETTINGS_UPDATE_CHANNEL_NOTICE_ID } from '@/shared/notifications'
 import { saveUpdateChannel } from '../api'
 import { resolveCoreChannel } from '../model/updateCommandPolicy'
@@ -163,8 +162,6 @@ export default function ComponentUpdatePanel() {
           <p className="text-xs leading-5 text-warning">{resource.message}</p>
         )}
       </div>
-
-      <Separator />
 
       <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center">
         <Button
