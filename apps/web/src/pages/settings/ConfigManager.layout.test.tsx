@@ -610,19 +610,52 @@ describe('ConfigManager layout surfaces', () => {
     expect(mocks.getVersion).toHaveBeenCalledTimes(2)
   })
 
-  it('switches the core channel using the current version and publishes resources', async () => {
+  it('forces the selected core channel when it differs from the installed build', async () => {
+    mocks.getVersion
+      .mockResolvedValueOnce({
+        success: true,
+        data: {
+          cli: '0.7.3',
+          core: 'v5.0.0',
+          raw: 'v5.0.0',
+          updateChannels: { core: 'stable', cli: 'stable' },
+        },
+      })
+      .mockResolvedValue({
+        success: true,
+        data: {
+          cli: '0.7.3',
+          core: 'v5.0.0',
+          raw: 'v5.0.0',
+          updateChannels: { core: 'beta', cli: 'stable' },
+        },
+      })
+
     await act(async () => root.render(page()))
     await flush()
 
-    await act(async () => buttonByText('切换测试版')?.click())
+    const coreSelect = container.querySelector('[aria-label="MaaCore 更新渠道"]')
+    expect(coreSelect).not.toBeNull()
+    await act(async () => (coreSelect as HTMLElement).click())
+    const betaOption = optionInTriggerPopup(coreSelect as HTMLElement, 'Beta')
+    expect(betaOption).toBeTruthy()
+    await act(async () => (betaOption as HTMLElement).click())
+    await settle()
+
+    expect(mocks.saveUpdateChannel).toHaveBeenCalledWith('core', 'beta')
+    expect(mocks.getVersion).toHaveBeenCalledTimes(2)
+
+    await act(async () => buttonByText('更新 MaaCore')?.click())
     await flush()
 
     expect(mocks.updateMaaCore).toHaveBeenCalledWith('beta')
-    expect(mocks.notifyProgress).toHaveBeenCalledWith('正在切换到 Beta 渠道（大包下载最长可能需要约 15 分钟）...', 'settings-update')
+    expect(mocks.notifyProgress).toHaveBeenCalledWith(
+      '正在切换到 Beta 渠道（大包下载最长可能需要约 15 分钟）...',
+      'settings-update',
+    )
     expect(mocks.notify).toHaveBeenCalledWith('已切换到 Beta 渠道并同步最新资源', expect.any(String), {
       id: 'settings-update',
     })
-    expect(mocks.getVersion).toHaveBeenCalledTimes(2)
     expect(invalidationEvents).toHaveLength(1)
   })
 

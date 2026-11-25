@@ -39,7 +39,6 @@ export default function ComponentUpdatePanel() {
     busy: updateBusy,
     canceling: updateCanceling,
     updateCore,
-    switchCoreChannel,
     updateCli,
     updateResources,
     cancelUpdate,
@@ -48,16 +47,17 @@ export default function ComponentUpdatePanel() {
   const updatingCli = updateOperation === 'cli'
   const hotUpdating = updateOperation === 'resources'
 
+  const installedCoreChannel = resolveCoreChannel(versionInfo?.core)
+  const coreChannel: CoreUpdateChannel = versionInfo?.updateChannels?.core ?? installedCoreChannel
+  const cliChannel: CliUpdateChannel = versionInfo?.updateChannels?.cli ?? 'stable'
+  const channelSavingBusy = channelSaving !== null
+
   const handleUpdateCore = () => {
-    void updateCore()
+    void updateCore(coreChannel === installedCoreChannel ? undefined : coreChannel)
   }
 
   const handleUpdateCli = () => {
     void updateCli()
-  }
-
-  const handleToggleCoreVersion = () => {
-    void switchCoreChannel(versionInfo?.core)
   }
 
   const handleHotUpdate = () => {
@@ -67,11 +67,6 @@ export default function ComponentUpdatePanel() {
   const handleCancelUpdate = () => {
     void cancelUpdate()
   }
-
-  const installedCoreChannel = resolveCoreChannel(versionInfo?.core)
-  const coreChannel: CoreUpdateChannel = versionInfo?.updateChannels?.core ?? installedCoreChannel
-  const cliChannel: CliUpdateChannel = versionInfo?.updateChannels?.cli ?? 'stable'
-  const channelSavingBusy = channelSaving !== null
 
   const handleChannelChange = async (scope: UpdateChannelScope, channel: string) => {
     setChannelSaving(scope)
@@ -157,16 +152,6 @@ export default function ComponentUpdatePanel() {
                     更新 MaaCore
                   </>
                 )}
-            </Button>
-            <Button
-              type="button"
-              onClick={handleToggleCoreVersion}
-              disabled={updateBusy || channelSavingBusy}
-              variant="secondary"
-              className="w-full"
-            >
-              <RefreshCw size={16} aria-hidden="true" />
-              {installedCoreChannel === 'beta' ? '切换正式版' : '切换测试版'}
             </Button>
             <Button
               onClick={handleHotUpdate}

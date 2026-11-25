@@ -57,31 +57,18 @@ export interface UpdateCommandOutcome {
   readonly versionChanged: boolean
 }
 
-export interface CoreChannelSwitch {
-  readonly version: CoreUpdateChannel
-  readonly label: (typeof CORE_UPDATE_CHANNEL_LABELS)[CoreUpdateChannel]
-}
-
-export const coreChannelLabel = (version: CoreUpdateChannel): CoreChannelSwitch['label'] => (
+export const coreChannelLabel = (
+  version: CoreUpdateChannel,
+): (typeof CORE_UPDATE_CHANNEL_LABELS)[CoreUpdateChannel] => (
   CORE_UPDATE_CHANNEL_LABELS[version]
 )
 
 /** 由已安装版本推断当前渠道；版本读取失败（`null`）时按正式版处理。 */
-export const resolveCoreChannel = (currentCore: string | null | undefined): CoreUpdateChannel => (
-  typeof currentCore === 'string' && (currentCore.includes('beta') || currentCore.includes('alpha'))
-    ? 'beta'
-    : 'stable'
-)
-
-/**
- * 根据当前 core 版本决定切换目标：beta/alpha 切回正式版，其余切到 Beta。
- * 版本读取失败（`null`）时沿用迁移前的默认目标 Beta。
- */
-export const resolveCoreChannelSwitch = (
-  currentCore: string | null | undefined,
-): CoreChannelSwitch => {
-  const version: CoreUpdateChannel = resolveCoreChannel(currentCore) === 'beta' ? 'stable' : 'beta'
-  return { version, label: coreChannelLabel(version) }
+export const resolveCoreChannel = (currentCore: string | null | undefined): CoreUpdateChannel => {
+  if (typeof currentCore !== 'string') return 'stable'
+  if (currentCore.includes('alpha')) return 'alpha'
+  if (currentCore.includes('beta')) return 'beta'
+  return 'stable'
 }
 
 export const readUpdateFailureDetails = (
