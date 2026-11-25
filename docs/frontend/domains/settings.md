@@ -28,7 +28,7 @@
 | 表单与开关行 | `features/settings/components/ConfigFieldControls.tsx`、`SwitchSettingRow.tsx` | 单行设置行：标签在左、控件在右；统一 44px 触达高度与提示排版 |
 | 页内反馈 | `features/settings/components/SettingsFeedback.tsx` | 错误用 `Alert`（可带重试 action），成功/警告用 `role="status"` 语义块；不重复全局通知正文 |
 | connection 表单、自动保存与读取反馈 | `features/settings/components/ConnectionConfigPanel.tsx` | Query/草稿适配、自动保存、迟到读取提示 |
-| 模拟器查找与连接测试 | `features/settings/components/DeviceConnectionPanel.tsx` | 命令 owner 订阅、设备列表、独立 loading/反馈 |
+| 设备查找与连接测试 | `features/settings/components/DeviceConnectionPanel.tsx` | 命令 owner 订阅、查找弹窗入口与连接测试 toast；设备列表由 `DeviceConnectionDialog` 渲染 |
 | resource 资源源表单 | `features/settings/components/ResourceSourcePanel.tsx` | Git / MirrorChyan 来源、自动更新开关与 MirrorChyan CDK；MAA 运行中只读 |
 | instance 实例选项表单 | `features/settings/components/InstanceOptionsPanel.tsx` | 触控模式与三项实例开关 |
 | 配置编辑卡外壳 | `features/settings/components/ConfigEditorCard.tsx` | 页内错误与失焦冲刷入口，三个配置区块共用 |
@@ -42,7 +42,7 @@
 
 - 不改变 connection 字段与 wire；保存保持 600ms 防抖自动提交，失焦、Activity 隐藏、卸载与 `pagehide` 立即冲刷。自动更新仍先写 user config 再应用调度。
 - 不改变 Query key、失败/重试、失效作用域与展示文案；三个配置 Query 在页面挂载时一起读取。
-- 不改变设备发现/连接测试的取消、迟到响应与草稿回填语义；取消仍跟随页面/Activity，而不是区块可见性或滚动位置。
+- 不改变设备发现/连接测试的迟到响应与草稿回填语义；查找弹窗关闭会取消在途查找，页面/Activity 则取消两条链；区块可见性与滚动位置不触发取消。
 - 不改变配置面板的字段结构与表单 id；保存保持自动保存，成功静默，失败保留页内 `Alert` 与带重试的 error toast；资源源在 MAA 运行中只读。页内导航使用右侧目录与滚动高亮。页面视觉已按设置页治理调整，视觉基线冻结至后续统一重生成。
 
 ### 2. 组合与订阅边界
@@ -52,7 +52,8 @@ ConfigManager（app-page > app-stack-section > SettingsWorkspace）
 └─ SettingsWorkspace（区块布局、滚动导航、设备命令的 Activity 清理）
    ├─ SettingsSection(connection)
    │  └─ ConnectionConfigPanel（connection Query/草稿/保存反馈）
-   │     └─ DeviceConnectionPanel（设备命令订阅 + 列表/反馈）
+   │     └─ DeviceConnectionPanel（设备命令订阅 + 查找弹窗入口/测试 toast）
+   │        └─ DeviceConnectionDialog（查找弹窗、设备列表与选择）
    ├─ SettingsSection(resource)
    │  └─ ResourceSourcePanel（resource Query/草稿/保存反馈）
    ├─ SettingsSection(instance)
@@ -71,7 +72,7 @@ ConfigManager（app-page > app-stack-section > SettingsWorkspace）
 - **页面无请求。** `ConfigManager` 不导入 API、Query、领域所有者或 localStorage，只组合页面壳与工作区。
 - **目录状态只有一份。** `SettingsWorkspace` 是唯一调用 `useSettingsSectionNavigation()` 的位置；当前区块由滚动位置派生，点击目录只滚动并更新高亮。目录项使用 `aria-current="location"`；页面不再使用 tablist/tabpanel、`aria-controls` 或 roving focus。
 - **六个区块同时可见。** 三个配置面板始终挂载并渲染，不再有隐藏面板的 `enabled: false` 门控；进入页面即订阅 `settings/maa-config`、`settings/resource-source`、`settings/maa-instance-options`，滚动或目录跳转不重建 Query，也不清空草稿或读取/保存反馈。
-- **设备面板常驻，命令不随滚动取消。** `DeviceConnectionPanel` 始终订阅 `DeviceConnectionOwner`；滚动或目录跳转不会卸载面板，owner 继续持有在途命令与已完成结果。取消只由 Activity 隐藏或页面真正卸载触发。
+- **设备面板常驻，命令不随滚动取消。** `DeviceConnectionPanel` 始终订阅 `DeviceConnectionOwner`；滚动或目录跳转不会卸载面板，owner 继续持有在途命令与已完成结果。查找弹窗关闭会显式取消在途查找；Activity 隐藏或页面真正卸载则由 `useDeviceConnectionActivityCleanup` 取消两条链。
 - **更新用例分成两个面板。** `SettingsUpdatesPanel` 只提供卡片壳；`AutoUpdateConfigPanel` 订阅 `AutoUpdateConfigOwner`，`ComponentUpdatePanel` 订阅版本 Query 与 `SettingsUpdateOwner`。自动更新草稿/保存状态不会重渲染组件更新按钮，组件更新/版本状态也不会重渲染自动更新表单。
 - **目录 Query 只有一个观察者。** 配置目录卡片是 `settings/config-directory` 的唯一观察者；滚动或目录跳转不产生目录请求，失败后的重试入口仍只在目录卡片。
 
@@ -80,7 +81,7 @@ ConfigManager（app-page > app-stack-section > SettingsWorkspace）
 | 状态变化 | 会重渲染 | 不会重渲染 |
 | --- | --- | --- |
 | connection 草稿编辑 | `ConnectionConfigPanel`、其内的设备面板（adb 路径/地址 props） | 更新卡片内两个面板、`ConfigDirectoryPanel` |
-| 设备发现/连接测试状态 | `DeviceConnectionPanel` | `ConnectionConfigPanel` 的表单、更新/目录面板 |
+| 设备发现/连接测试状态 | `DeviceConnectionPanel`、`DeviceConnectionDialog` | `ConnectionConfigPanel` 的表单、更新/目录面板 |
 | 版本读取/重取 | `ComponentUpdatePanel` | 连接、设备、目录、自动更新面板 |
 | 组件更新命令状态 | `ComponentUpdatePanel` | 连接、设备、目录、自动更新面板 |
 | 自动更新草稿/保存状态 | `AutoUpdateConfigPanel` | 连接、设备、目录、组件更新面板 |
@@ -285,7 +286,7 @@ ConfigManager（app-page > app-stack-section > SettingsWorkspace）
 | 版本读取 | `features/settings/model/systemResources.ts` 的 `versionQueryOptions()` | `settings/version` Query | 更新命令 |
 | 配置目录读取 | 同文件的 `configDirectoryQueryOptions()` | `settings/config-directory` Query | 打开目录 |
 | 打开配置目录 | `features/settings/hooks/useSettingsConfigDirectory.ts` 的 `open()` | 显式命令 `POST /agent/actions/open-config-directory` | Query、自动重取 |
-| 页面反馈与自动保存提示 | `components/DeviceConnectionPanel.tsx`、`ConfigDirectoryPanel.tsx`、`ResourceSourcePanel.tsx`、`InstanceOptionsPanel.tsx` | 只渲染 owner/Query 状态；资源源额外订阅运行状态 | 命令状态机、请求取消 |
+| 页面反馈与自动保存提示 | `components/DeviceConnectionPanel.tsx`、`components/DeviceConnectionDialog.tsx`、`ConfigDirectoryPanel.tsx`、`ResourceSourcePanel.tsx`、`InstanceOptionsPanel.tsx` | 只渲染 owner/Query 状态并发出全局通知；资源源额外订阅运行状态 | 命令状态机、请求取消 |
 
 设备发现会探测本机 ADB 与常见模拟器端口，连接测试会尝试 `adb connect`；两者在 Agent 契约中属于低风险写入，不应做成可自动重取的只读 Query。打开配置目录同样有副作用，只保留显式入口。
 
@@ -297,27 +298,31 @@ ConfigManager（app-page > app-stack-section > SettingsWorkspace）
 
 | 状态 | 含义 |
 | --- | --- |
-| `discovery.phase` | `idle` / `running` / `succeeded` / `failed` / `cancelled`；只控制“查找模拟器”按钮的 loading |
+| `discovery.phase` | `idle` / `running` / `succeeded` / `failed` / `cancelled`；只控制“查找设备”按钮与查找弹窗的 loading |
 | `discovery.devices` | `devices` 与 `candidates` 按响应顺序拼接；查找进行中保留上一次列表 |
 | `discovery.message` | 可直接展示的提示；服务端 `message` 或本地失败说明 |
 | `discovery.error` | 请求失败或内层 `success=false` 的原因；成功与取消为 `null` |
-| `discovery.searched` | 是否完成过一次查找；取消不算完成，页面据此显示空结果提示 |
+| `discovery.searched` | 是否完成过一次查找；取消不算完成，弹窗据此显示空结果提示 |
 | `test.phase` | 同上的测试生命周期；只控制“测试连接”与设备行按钮 |
 | `test.address` / `test.success` / `test.message` | 最近一次测试目标与连接结果；未建立连接但请求完成时 `error=null` |
 | `test.draftRevision` | 发起测试时的草稿 revision |
-| `test.superseded` | 测试期间草稿已推进；结果仍展示，但不代表当前表单目标 |
+| `test.superseded` | 测试期间草稿已推进；结果仍通过 toast 展示，但不代表当前表单目标 |
 
 规则：
 
 - 两条链各自只有一次在途请求。重复发起同一类操作会 `abort()` 旧请求；旧响应不写状态，返回 `cancelled`。
-- 一个操作的进行或失败不改写另一个操作的 loading。查找开始会清空连接测试的页内反馈：已结束的测试回到 `idle`，在途测试保持 `running` 且不被取消；连接测试完成仍会在查找进行中写入自己的结果（迁移前行为）。
+- 一个操作的进行或失败不改写另一个操作的 loading。查找开始会清空连接测试的最近结果状态：已结束的测试回到 `idle`，在途测试保持 `running` 且不被取消；连接测试完成仍会在查找进行中写入自己的结果（迁移前行为）。
 - 取消不展示为失败。`AbortError` 不写入 `message`/`error`；`phase` 变为 `cancelled`。
 - 取消查找不把 `searched` 置为 true；从未完成过查找时，取消后恢复页面不会出现伪造的“未找到设备”（此前已完成过查找时空结果提示保持迁移前行为）。
 - 设备行只接受非空 `address`；未知 `state`/`source` 分别回退 `unknown`/`adb`，坏条目跳过，不再像迁移前那样在非数组载荷上抛错。
 - 内层 `success=false`（例如 ADB 不可用）是领域失败：`phase=failed`、`error`/`message` 取服务端文案，载荷中归一后的设备仍会展示（服务端通常返回空数组）；HTTP/API 信封失败清空设备；传输失败使用 `查找设备失败: <原因>`。连接测试的请求失败使用 `连接测试失败: <原因>`。
-- 连接未建立（`success=false` 但请求完成）仍是已完成的测试结果：`phase=succeeded`、`test.success=false`，页面沿用 `status-danger` 反馈。
+- 连接未建立（`success=false` 但请求完成）仍是已完成的测试结果：`phase=succeeded`、`test.success=false`，页面以 error toast 反馈。
+- 查找反馈只在 `DeviceConnectionDialog` 内呈现：查找中、失败、取消与空结果都在弹窗内展示，不使用 toast；弹窗关闭会取消在途查找。
+- 连接测试结果只通过固定 id `settings-connection-test` 的全局 toast 呈现：成功用 success，未建立连接与请求失败用 error，取消不提示。面板用 ref 记住已提示的结果对象，Activity 恢复不重复发同一条 toast。
 
-#### 2.2 选择发现结果与草稿版本
+#### 2.2 查找弹窗、选择结果与草稿版本
+
+查找入口是面板的“查找设备”按钮：点击同时打开 `DeviceConnectionDialog` 并立即发起查找；关闭弹窗（X、Esc、遮罩或页脚“关闭”）会取消在途查找。再次打开会重新查找，查找期间保留上一次列表。
 
 选择设备时：
 
@@ -332,6 +337,7 @@ ConfigManager（app-page > app-stack-section > SettingsWorkspace）
 `useSettingsDeviceConnection()` 只做订阅与动作转发；取消动作由 `SettingsWorkspace` 的 `useDeviceConnectionActivityCleanup()` 在 Effect cleanup 中调用：
 
 - Activity 隐藏或页面卸载会 abort 两条链的本地等待；不会调用服务端停止接口，也不撤销已发生的探测/`adb connect`。
+- 关闭查找弹窗只取消 discovery 链的本地等待，不影响在途连接测试；连接测试继续由模块级 owner 结算并通过 toast 反馈。
 - 滚动或目录跳转不触发取消：设备面板常驻，在途请求继续，结果写入模块级 owner。
 - 已完成的结果保存在模块级 owner 中，恢复后继续展示；不自动重发，用户可再次查找或测试。
 - hook 恢复时重新订阅；真正卸载后 owner 仍是同一实例，未完成请求已被取消，不会在后台回填页面。
@@ -352,18 +358,18 @@ ConfigManager（app-page > app-stack-section > SettingsWorkspace）
 - 配置目录首次读取中显示“正在读取目录...”；从未成功读取且失败时显示 `配置目录读取失败: <原因>` 与“重试”按钮，重试走 `refetchQueries` 同一 key。
 - 后台刷新失败保留最近一次成功路径；只有从未成功读取过才显示错误，避免 Activity 恢复后的后台失败清空可用路径。
 - 打开目录入口是配置目录卡片按钮，调用 `useSettingsConfigDirectory().open()`；成功提示“已打开配置目录”，失败提示 `打开失败: <原因>`，不触发 Query 重取。
-- 滚动或目录跳转不取消在途设备命令，也不清空设备列表、测试反馈、版本与目录路径；设备面板常驻，状态保存在模块级 owner 与 Query 缓存中。设备命令的取消只由 Activity 隐藏或页面真正卸载触发（`SettingsWorkspace` 的 `useDeviceConnectionActivityCleanup`），不是区块可见性或滚动位置。
+- 滚动或目录跳转不取消在途设备命令，也不清空设备列表、最近测试结果、版本与目录路径；设备面板常驻，状态保存在模块级 owner 与 Query 缓存中。查找弹窗关闭会显式取消在途查找；Activity 隐藏或页面真正卸载则由 `SettingsWorkspace` 的 `useDeviceConnectionActivityCleanup` 取消两条链，区块可见性与滚动位置不触发取消。
 - 配置目录只有卡片一个观察者；滚动或目录跳转不产生目录请求，失败后的重试入口仍只在目录卡片。
 
 ### 4. 面板接线与遗留清理
 
-`ConfigManager` 只组合页面壳与 `SettingsWorkspace`；设备发现、连接测试、版本、配置目录与打开目录由 hooks 持有，当前分别由设备、更新与目录面板订阅。`ConfigManager` 与各面板都不直接导入 `discoverDevices`、`testConnection`、`getVersion`、`getConfigDir`、`openConfigDir`，也不保存设备列表、查找/测试 loading、测试反馈、版本、目录路径/状态/错误的页面 state。对这些资源，面板只保留渲染与全局通知；组件更新与自动更新由 模块级所有者持有，见[设置组件更新与自动更新](#组件更新与自动更新)。
+`ConfigManager` 只组合页面壳与 `SettingsWorkspace`；设备发现、连接测试、版本、配置目录与打开目录由 hooks 持有，当前分别由设备、更新与目录面板订阅。`ConfigManager` 与各面板都不直接导入 `discoverDevices`、`testConnection`、`getVersion`、`getConfigDir`、`openConfigDir`，也不保存设备列表、查找/测试 loading、最近测试结果、版本、目录路径/状态/错误的页面 state。对这些资源，面板只保留渲染与全局通知；组件更新与自动更新由 模块级所有者持有，见[设置组件更新与自动更新](#组件更新与自动更新)。
 
 | 页面原职责 | 新归属 |
 | --- | --- |
 | `handleDiscoverDevices` / `handleTestConnection` / `handleUseDiscoveredDevice` | `DeviceConnectionPanel` → `useSettingsDeviceConnection()` 动作 |
-| 设备列表、查找提示、`hasSearchedDevices`、`discoveringDevices` | `DeviceConnectionOwner.discovery` |
-| 测试 loading 与 `connectionFeedback` | `DeviceConnectionOwner.test` |
+| 设备列表、查找提示、`hasSearchedDevices`、`discoveringDevices` | `DeviceConnectionOwner.discovery`；`DeviceConnectionDialog` 渲染 |
+| 测试 loading 与最近测试结果 | `DeviceConnectionOwner.test`；结果通过 `settings-connection-test` toast 展示 |
 | `loadVersion` 与 `versionInfo` state | `SettingsUpdatesPanel` → `useSettingsVersion()` + `settings/version` |
 | `loadConfigDir`、目录三态与重试 | `ConfigDirectoryPanel` → `useSettingsConfigDirectory()` + `settings/config-directory` |
 | `handleOpenConfigDir` 的 API/错误分支 | `useSettingsConfigDirectory().open()`；目录卡片唯一入口 |
@@ -374,7 +380,8 @@ ConfigManager（app-page > app-stack-section > SettingsWorkspace）
 
 - 端点、请求体与响应体未改变；未修改服务端。设备发现仍是 GET、连接测试与打开目录仍是 POST。
 - 新增 Query key 只存在于内存，浏览器刷新随缓存丢失；没有新增 localStorage 数据。
-- 设备列表行使用 shadcn `Item`（渲染为 button），状态标签使用 `Badge`；空结果显示 `EmptyState compact`。端点、请求体与响应体未改变，失败/取消状态仍走原有提示区域。
+- 查找弹窗使用 `DialogFrame` / `DialogBody` / `DialogFrameFooter`；设备列表行使用 shadcn `Item`（渲染为 button），状态标签使用 `Badge`；空结果显示 `EmptyState compact`。查找失败、取消与空结果在弹窗内展示，连接测试结果走 `settings-connection-test` toast；端点、请求体与响应体未改变。
+- 设备发现反馈不再内联在连接卡片中；关闭查找弹窗会取消在途查找。连接测试反馈不再使用卡内 `SettingsFeedback`，改为全局 toast。
 - 视觉基线冻结至后续统一重生成；本页不在本轮更新截图。
 - 行为差异：
   - 设备发现与连接测试请求现在在 Activity 隐藏/卸载时 abort；迁移前会继续完成并写页面 state。滚动与目录跳转不取消命令，设备面板常驻。
