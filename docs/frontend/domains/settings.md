@@ -298,12 +298,12 @@ ConfigManager（app-page > app-stack-section > SettingsWorkspace）
 
 | 状态 | 含义 |
 | --- | --- |
-| `discovery.phase` | `idle` / `running` / `succeeded` / `failed` / `cancelled`；只控制“查找设备”按钮与查找弹窗的 loading |
+| `discovery.phase` | `idle` / `running` / `succeeded` / `failed` / `cancelled`；只控制“查找设备”按钮禁用态（不改文案、不加图标）与查找弹窗的 loading |
 | `discovery.devices` | `devices` 与 `candidates` 按响应顺序拼接；查找进行中保留上一次列表 |
 | `discovery.message` | 可直接展示的提示；服务端 `message` 或本地失败说明 |
 | `discovery.error` | 请求失败或内层 `success=false` 的原因；成功与取消为 `null` |
 | `discovery.searched` | 是否完成过一次查找；取消不算完成，弹窗据此显示空结果提示 |
-| `test.phase` | 同上的测试生命周期；只控制“测试连接”与设备行按钮 |
+| `test.phase` | 同上的测试生命周期；只控制“测试连接”按钮禁用态（不改文案、不加图标）与设备行按钮 |
 | `test.address` / `test.success` / `test.message` | 最近一次测试目标与连接结果；未建立连接但请求完成时 `error=null` |
 | `test.draftRevision` | 发起测试时的草稿 revision |
 | `test.superseded` | 测试期间草稿已推进；结果仍通过 toast 展示，但不代表当前表单目标 |
@@ -317,6 +317,7 @@ ConfigManager（app-page > app-stack-section > SettingsWorkspace）
 - 设备行只接受非空 `address`；未知 `state`/`source` 分别回退 `unknown`/`adb`，坏条目跳过，不再像迁移前那样在非数组载荷上抛错。
 - 内层 `success=false`（例如 ADB 不可用）是领域失败：`phase=failed`、`error`/`message` 取服务端文案，载荷中归一后的设备仍会展示（服务端通常返回空数组）；HTTP/API 信封失败清空设备；传输失败使用 `查找设备失败: <原因>`。连接测试的请求失败使用 `连接测试失败: <原因>`。
 - 连接未建立（`success=false` 但请求完成）仍是已完成的测试结果：`phase=succeeded`、`test.success=false`，页面以 error toast 反馈。
+- 设备面板的“查找设备”与“测试连接”按钮在请求期间只设置 `disabled` 与 `aria-busy`，保持文案与图标不变；查找进行时的可见反馈由查找弹窗内的状态行承担。
 - 查找反馈只在 `DeviceConnectionDialog` 内呈现：查找中、失败、取消与空结果都在弹窗内展示，不使用 toast；弹窗关闭会取消在途查找。
 - 连接测试结果只通过固定 id `settings-connection-test` 的全局 toast 呈现：成功用 success，未建立连接与请求失败用 error，取消不提示。面板用 ref 记住已提示的结果对象，Activity 恢复不重复发同一条 toast。
 

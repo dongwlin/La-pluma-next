@@ -379,7 +379,7 @@ La Pluma Next 是一个高密度的本地自动化控制台，不是营销页面
 - **Danger:** 使用 `destructive` variant（`bg-destructive/10` + `text-destructive`），语义必须与操作后果一致。
 - **Ghost:** 透明底、文字继承 `foreground`；hover 使用 `bg-muted`。
 - **Focus:** `focus-visible:border-ring` 与 `focus-visible:ring-3 focus-visible:ring-ring/50`；所有可点击元素都必须有明确的 `focus-visible` 状态。
-- **Disabled / Loading:** disabled 使用 `pointer-events-none`、`opacity-50`，关闭点击与 hover；loading 由调用点用 `disabled` + `aria-busy` 表达，并以 `LoaderCircle` 和进行中文案替换内容。不要在调用处叠加 `h-*`、`px-*`、`py-*` 缩小标准控件。
+- **Disabled / Loading:** disabled 使用 `pointer-events-none`、`opacity-50`，关闭点击与 hover；loading 默认由调用点用 `disabled` + `aria-busy` 表达，并以 `LoaderCircle` 和进行中文案替换内容。需要保持文案稳定的局部命令按钮（如设备面板的查找与测试按钮、渠道切换）可只禁用并设置 `aria-busy`，不替换文案、不加图标。不要在调用处叠加 `h-*`、`px-*`、`py-*` 缩小标准控件。
 
 ### Inputs / Fields
 - **Style:** 32px 高（`h-8`）、`rounded-lg`（12px）的 shadcn `Input`；`bg-transparent`、边框与状态色使用 shadcn 语义 token，深色模式由生成物的 `dark:bg-input/30` 叠加。
