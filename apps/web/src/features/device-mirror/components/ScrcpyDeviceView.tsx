@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { cn } from 'cn'
 import { ArrowLeft, Home, Maximize2, Minimize2, PanelsTopLeft, SlidersHorizontal, Smartphone } from 'lucide-react'
 import { Alert, AlertDescription, AlertTitle } from '@/shared/ui/alert'
 import { Badge } from '@/shared/ui/badge'
@@ -48,7 +49,7 @@ function DeviceNavigationButtons({
             disabled={!connected || !automationAvailable}
             aria-label={label}
             className={immersive
-              ? 'size-11 rounded-full border border-white/20 bg-white/10 text-white hover:bg-white/20'
+              ? 'size-11 rounded-full border border-white/30 bg-black/50 text-white hover:bg-black/70'
               : 'size-11 rounded-full text-muted-foreground hover:text-primary'}
           >
             <Icon aria-hidden="true" strokeWidth={1.8} />
@@ -274,48 +275,43 @@ export default function ScrcpyDeviceView({ infrastructure }: ScrcpyDeviceViewPro
 
   return (
     <>
-    <div className="scrcpy-device-layout is-compact">
-      <div className="space-y-3 min-w-0">
-        <div className="scrcpy-view-header is-compact flex items-center justify-between gap-3.5">
-          <div className="min-w-0">
-            <div className="scrcpy-view-title-row flex items-center gap-2">
-              <span
-                className={`preview-status-light is-${status.tone}`}
-                aria-hidden="true"
-              />
-              <span className="scrcpy-view-title text-sm font-semibold text-gray-900 dark:text-white!">设备画面</span>
-              <span className="scrcpy-view-status text-xs text-gray-500 dark:text-gray-400" role="status" aria-live="polite" aria-atomic="true">
-                {status.label}
-              </span>
-            </div>
-          </div>
-          <PreviewModeSegmented unavailable={!automationAvailable} />
+    <div className="flex min-w-0 flex-col">
+      <div className="scrcpy-view-header flex items-center justify-between gap-3.5">
+        <div className="flex min-w-0 flex-1 items-center gap-2">
+          <span
+            className={`preview-status-light is-${status.tone}`}
+            aria-hidden="true"
+          />
+          <span className="truncate text-base font-semibold text-foreground">设备画面</span>
+          <span className="ml-auto min-w-0 truncate text-xs font-medium text-tertiary" role="status" aria-live="polite" aria-atomic="true">
+            {status.label}
+          </span>
         </div>
+        <PreviewModeSegmented unavailable={!automationAvailable} />
+      </div>
 
-        {status.error && status.hasFrame && (
-          <Alert variant="destructive">
-            <AlertTitle>{status.error.title}</AlertTitle>
-            <AlertDescription>{status.error.message}</AlertDescription>
-            {status.retry && (
-              <div className="mt-1.5">
-                <Button type="button" variant="secondary" size="sm" className="min-h-11" onClick={retryPreview}>
-                  {status.retry.label}
-                </Button>
-              </div>
-            )}
-          </Alert>
+      {status.error && status.hasFrame && (
+        <Alert variant="destructive" className="mx-4 mb-3">
+          <AlertTitle>{status.error.title}</AlertTitle>
+          <AlertDescription>{status.error.message}</AlertDescription>
+          {status.retry && (
+            <div className="mt-1.5">
+              <Button type="button" variant="secondary" size="sm" className="min-h-11" onClick={retryPreview}>
+                {status.retry.label}
+              </Button>
+            </div>
+          )}
+        </Alert>
+      )}
+
+      <div
+        className={cn(
+          'scrcpy-video-frame status-border-beam relative flex aspect-video items-center justify-center overflow-hidden',
+          previewBusy && 'is-active',
+          status.hasFrame ? 'is-connected bg-black' : 'is-empty ring-1 ring-inset ring-border',
         )}
-
-        <div
-          className={`scrcpy-video-frame status-border-beam relative aspect-video overflow-hidden flex items-center justify-center shadow-xs ${
-            previewBusy ? 'is-active ' : ''
-          }${
-            status.hasFrame
-              ? 'is-connected bg-black'
-              : 'is-empty ring-1 ring-inset ring-border'
-          }`}
-          aria-busy={previewBusy}
-        >
+        aria-busy={previewBusy}
+      >
           <video
             ref={videoRef}
             autoPlay
@@ -361,7 +357,7 @@ export default function ScrcpyDeviceView({ infrastructure }: ScrcpyDeviceViewPro
             />
           )}
         </div>
-        <div className="scrcpy-preview-toolbar flex items-center justify-center gap-2 bg-transparent px-2 py-1" role="toolbar" aria-label="模拟器导航">
+        <div className="scrcpy-preview-toolbar flex items-center justify-center" role="toolbar" aria-label="模拟器导航">
           <DeviceNavigationButtons
             connected={webrtc.status === 'connected'}
             automationAvailable={automationAvailable}
@@ -407,7 +403,6 @@ export default function ScrcpyDeviceView({ infrastructure }: ScrcpyDeviceViewPro
         </div>
 
       </div>
-    </div>
     <PreviewSettingsDialog
       open={settingsOpen}
       onOpenChange={setSettingsOpen}
@@ -469,7 +464,7 @@ export default function ScrcpyDeviceView({ infrastructure }: ScrcpyDeviceViewPro
                   size="icon"
                   onClick={exitImmersive}
                   aria-label="退出全屏"
-                  className="size-11 rounded-full border border-white/20 bg-white/10 text-white hover:bg-white/20"
+                  className="size-11 rounded-full border border-white/30 bg-black/50 text-white hover:bg-black/70"
                 >
                   <Minimize2 aria-hidden="true" strokeWidth={1.8} />
                 </Button>

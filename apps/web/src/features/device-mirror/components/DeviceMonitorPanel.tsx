@@ -5,7 +5,7 @@ import ScreenMonitor from './ScreenMonitor'
 export function DeviceMonitorPanel({ className = '' }: { className?: string }) {
   return (
     <Card className={`device-monitor-surface ${className} gap-0 p-0!`} data-region="monitor">
-      <div className="scrcpy-device-container task-monitor-panel is-compact">
+      <div className="scrcpy-device-container">
         <ScreenMonitor />
       </div>
     </Card>

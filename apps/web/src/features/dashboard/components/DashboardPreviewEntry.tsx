@@ -1,4 +1,5 @@
 import { memo } from 'react'
+import { cn } from 'cn'
 import { Smartphone } from 'lucide-react'
 import { Alert, AlertDescription, AlertTitle } from '@/shared/ui/alert'
 import { Badge } from '@/shared/ui/badge'
@@ -18,7 +19,7 @@ const DashboardPreviewEntry = memo(function DashboardPreviewEntry() {
   return (
     <Card
       data-dashboard-preview-card
-      className={`status-border-beam gap-0 p-0! ${isConnecting ? 'is-active' : ''}`}
+      className={cn('status-border-beam gap-0 p-0!', isConnecting && 'is-active')}
       aria-busy={isConnecting}
     >
       <div className="dashboard-preview-header flex items-center justify-between gap-3.5 px-4 py-2 border-b border-border">
@@ -55,7 +56,7 @@ const DashboardPreviewEntry = memo(function DashboardPreviewEntry() {
       )}
       <div
         data-dashboard-preview-frame
-        className={`dashboard-preview-frame relative aspect-video w-full overflow-hidden transition-colors duration-200 ${hasFrame ? 'bg-black' : 'is-empty'}`}
+        className={cn('dashboard-preview-frame relative aspect-video w-full overflow-hidden transition-colors duration-200', hasFrame ? 'bg-black' : 'is-empty')}
       >
         <video
           ref={videoRef}
@@ -63,7 +64,7 @@ const DashboardPreviewEntry = memo(function DashboardPreviewEntry() {
           muted
           playsInline
           aria-hidden="true"
-          className={`relative h-full w-full bg-black object-contain transition-opacity duration-200 ${liveVisible ? 'opacity-100' : 'opacity-0'}`}
+          className={cn('relative h-full w-full bg-black object-contain transition-opacity duration-200', liveVisible ? 'opacity-100' : 'opacity-0')}
         />
         {retainedSnapshot.snapshot && (
           <img
@@ -71,7 +72,7 @@ const DashboardPreviewEntry = memo(function DashboardPreviewEntry() {
             alt="模拟器画面快照"
             draggable={false}
             aria-hidden={!retainedSnapshot.visible}
-            className={`dashboard-preview-snapshot-image absolute inset-0 h-full w-full select-none object-contain pointer-events-none transition-opacity duration-200 ${retainedSnapshot.visible ? 'opacity-100' : 'opacity-0'}`}
+            className={cn('dashboard-preview-snapshot-image absolute inset-0 h-full w-full select-none object-contain pointer-events-none transition-opacity duration-200', retainedSnapshot.visible ? 'opacity-100' : 'opacity-0')}
           />
         )}
         {status.snapshotStale && retainedSnapshot.visible && (
@@ -91,7 +92,7 @@ const DashboardPreviewEntry = memo(function DashboardPreviewEntry() {
               {status.retry.label}
             </Button>
           ) : undefined}
-          className={`dashboard-preview-empty absolute inset-0 px-4 transition-opacity duration-200 ${hasFrame ? 'pointer-events-none opacity-0' : 'opacity-100'}`}
+          className={cn('dashboard-preview-empty absolute inset-0 px-4 transition-opacity duration-200', hasFrame ? 'pointer-events-none opacity-0' : 'opacity-100')}
         />
       </div>
     </Card>
