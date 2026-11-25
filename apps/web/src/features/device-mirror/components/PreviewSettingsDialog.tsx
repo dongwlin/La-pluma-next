@@ -45,7 +45,6 @@ export function PreviewSettingsDialog({
   const connectionHeadingId = `${baseId}-connection`
   const qualityHeadingId = `${baseId}-quality`
   const detailsHeadingId = `${baseId}-details`
-  const bitrateId = `${baseId}-bitrate`
   const maxSizeId = `${baseId}-max-size`
   const quality = usePreviewStore(state => state.quality)
   const customFps = usePreviewStore(state => state.fps)
@@ -337,16 +336,15 @@ export function PreviewSettingsDialog({
 
             <Field>
               <div className="flex items-center justify-between gap-2">
-                <FieldLabel htmlFor={bitrateId}>
+                <FieldLabel>
                   <Gauge className="size-3.5" aria-hidden="true" />码率
                 </FieldLabel>
-                <output htmlFor={bitrateId} className="inline-flex items-baseline gap-1 text-xs text-muted-foreground">
+                <output className="inline-flex items-baseline gap-1 text-xs text-muted-foreground">
                   <strong className="text-sm font-bold text-foreground">{customBitrateMbps}</strong>
                   <span>Mbps</span>
                 </output>
               </div>
               <Slider
-                id={bitrateId}
                 min={1}
                 max={32}
                 step={0.5}
