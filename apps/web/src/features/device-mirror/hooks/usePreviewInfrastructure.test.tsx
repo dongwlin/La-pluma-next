@@ -166,8 +166,12 @@ describe('usePreviewInfrastructure automation availability guard', () => {
     await act(async () => root.render(<InfrastructureHarness />))
     await flush()
 
+    await act(async () => usePreviewStore.getState().setMode('live'))
     await click('agent')
+    expect(usePreviewStore.getState().mode).toBe('off')
+    await act(async () => usePreviewStore.getState().setMode('live'))
     await click('server')
+    expect(usePreviewStore.getState().mode).toBe('off')
 
     expect(apiMocks.stopWebrtcServer).toHaveBeenCalledOnce()
     expect(apiMocks.stopWebrtcAgent).toHaveBeenCalledOnce()
