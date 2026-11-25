@@ -20,7 +20,7 @@ export function PreviewModeSegmented({ unavailable = false }: { unavailable?: bo
         disabled: unavailable && option.value !== 'off',
       }))}
       onChange={setMode}
-      itemClassName="min-w-11"
+      itemClassName="min-h-7 min-w-11 text-xs sm:text-xs pointer-coarse:min-h-8"
     />
   )
 }

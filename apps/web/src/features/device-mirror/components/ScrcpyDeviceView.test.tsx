@@ -13,7 +13,9 @@ import { usePreviewStore } from '../store/previewStore'
 ;(globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true
 
 const availabilityMock = vi.hoisted(() => ({ isAvailable: true }))
+const toastMock = vi.hoisted(() => ({ info: vi.fn(), dismiss: vi.fn() }))
 vi.mock('@/features/runtime-status', () => ({ useAutomationAvailability: () => availabilityMock }))
+vi.mock('sonner', () => ({ toast: toastMock }))
 vi.mock('../api', () => ({
   getWebrtcStatus: vi.fn().mockResolvedValue({ success: true, data: { installed: true, built: true, serverRunning: false, agentRunning: false } }),
   startWebrtc: vi.fn().mockResolvedValue({ success: true, data: { signalingUrl: '/webrtc-signaling' } }),
@@ -221,7 +223,7 @@ describe('ScrcpyDeviceView', () => {
     expect(getDialog()?.textContent).toContain('连接详情')
     expect(webrtcOptions.current?.statsEnabled).toBe(true)
 
-    await act(async () => findDialogButton('关闭')?.click())
+    await act(async () => findDialogButton('关闭对话框')?.click())
     await act(async () => { await new Promise(resolve => setTimeout(resolve, 20)) })
 
     expect(getDialog()).toBeNull()
@@ -299,13 +301,42 @@ describe('ScrcpyDeviceView', () => {
     expect(getDialog()?.textContent).not.toContain('最长边 1280px · 45 FPS')
     expect(findDialogButton('均衡画质')?.textContent).toContain('1280px · 45 FPS · 8M')
     expect(findDialogButton('均衡画质')?.title).toBe('最长边 1280px · 45 FPS · 码率 8 Mbps')
-    expect(getDialog()?.textContent).toContain('画质已修改')
+    expect(toastMock.info).toHaveBeenCalledWith(
+      '画质已修改，下次连接实时预览时生效',
+      expect.objectContaining({ id: 'preview-quality' }),
+    )
 
     await act(async () => findDialogButton('60')?.click())
     expect(getDialog()?.textContent).toContain('自定义 · 最长边 1280px · 60 FPS')
     expect(findDialogButton('均衡画质')?.textContent).toContain('1280px · 45 FPS · 8M')
     expect(getDialog()?.querySelector('[role="group"][aria-label="视频帧率"]')).not.toBeNull()
     expect(findDialogButton('60')?.getAttribute('aria-label')).toBe('60 FPS')
+  })
+
+  it('offers a reconnect action in the quality toast while live', async () => {
+    usePreviewStore.getState().setMode('live')
+    webrtcMock.status = 'connected'
+    await renderView()
+    await openSettings()
+
+    await act(async () => findDialogButton('均衡画质')?.click())
+    expect(toastMock.info).toHaveBeenCalledWith(
+      '画质已修改，重连后生效',
+      expect.objectContaining({
+        id: 'preview-quality',
+        action: expect.objectContaining({ label: '重连' }),
+      }),
+    )
+
+    const toastCalls = vi.mocked(toastMock.info).mock.calls
+    const options = toastCalls[toastCalls.length - 1]?.[1] as {
+      action?: { onClick: () => void }
+    } | undefined
+    const connectCalls = webrtcMock.connect.mock.calls.length
+    await act(async () => options?.action?.onClick())
+
+    expect(webrtcMock.connect.mock.calls.length).toBe(connectCalls + 1)
+    expect(toastMock.dismiss).toHaveBeenCalledWith('preview-quality')
   })
 
   it('keeps recovery controls available while blocking new device actions', async () => {

@@ -1,16 +1,16 @@
-import { useId, useState } from 'react'
+import { useEffect, useId, useRef } from 'react'
 import { Gauge, LoaderCircle, Package, Plug, RotateCw, Server, SlidersHorizontal, Smartphone, Unplug } from 'lucide-react'
 import { Alert, AlertDescription, AlertTitle } from '@/shared/ui/alert'
 import { Badge } from '@/shared/ui/badge'
 import { Button } from '@/shared/ui/button'
-import { DialogClose } from '@/shared/ui/dialog'
 import { Field, FieldDescription, FieldGroup, FieldLabel, FieldTitle } from '@/shared/ui/field'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/shared/ui/select'
 import { Separator } from '@/shared/ui/separator'
 import { Slider } from '@/shared/ui/slider'
 import { ToggleGroup, ToggleGroupItem } from '@/shared/ui/toggle-group'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/shared/ui/tooltip'
-import { DialogBody, DialogFrame, DialogFrameFooter } from '@/shared/components'
+import { DialogBody, DialogFrame } from '@/shared/components'
+import { dismissNotice, notify, PREVIEW_QUALITY_NOTICE_ID } from '@/shared/notifications'
 import { fpsOptions, qualityPresets, SNAPSHOT_INTERVAL_SECONDS, type QualityPreset } from '../constants'
 import { usePreviewStore } from '../store/previewStore'
 import type { PreviewLiveStatus, PreviewStatus } from '../model/previewStatus'
@@ -66,7 +66,15 @@ export function PreviewSettingsDialog({
   const setCustomFps = usePreviewStore(state => state.setCustomFps)
   const setCustomMaxSize = usePreviewStore(state => state.setCustomMaxSize)
   const setCustomBitrateMbps = usePreviewStore(state => state.setCustomBitrateMbps)
-  const [settingsDirty, setSettingsDirty] = useState(false)
+  const qualityDirtyRef = useRef(false)
+
+  useEffect(() => {
+    if (open) qualityDirtyRef.current = false
+  }, [open])
+
+  useEffect(() => {
+    if (session.status === 'connected') dismissNotice(PREVIEW_QUALITY_NOTICE_ID)
+  }, [session.status])
 
   const {
     automationAvailable,
@@ -127,9 +135,32 @@ export function PreviewSettingsDialog({
     ['触控', session.inputReady ? '就绪' : session.status === 'connected' ? '等待触控信息' : '--'],
   ]
 
+  const reconnect = () => {
+    if (!automationAvailable) return
+    session.connect()
+    qualityDirtyRef.current = false
+    dismissNotice(PREVIEW_QUALITY_NOTICE_ID)
+  }
+
+  const notifyQualityChange = () => {
+    if (qualityDirtyRef.current) return
+    qualityDirtyRef.current = true
+    const appliesAfterReconnect = session.mode === 'live'
+    notify(
+      appliesAfterReconnect ? '画质已修改，重连后生效' : '画质已修改，下次连接实时预览时生效',
+      'info',
+      {
+        id: PREVIEW_QUALITY_NOTICE_ID,
+        ...(appliesAfterReconnect
+          ? { duration: 8000, action: { label: '重连', onClick: reconnect } }
+          : {}),
+      },
+    )
+  }
+
   const applyPreset = (preset: QualityPreset) => {
     setQuality(preset)
-    setSettingsDirty(true)
+    notifyQualityChange()
   }
 
   const disconnectLabel = previewBusy ? '取消启动' : '断开'
@@ -140,12 +171,6 @@ export function PreviewSettingsDialog({
     ? automationUnavailableMessage
     : session.mode !== 'live' ? '切换到实时预览后可重连' : '重连预览'
 
-  const reconnect = () => {
-    if (!automationAvailable) return
-    session.connect()
-    setSettingsDirty(false)
-  }
-
   return (
     <DialogFrame
       open={open}
@@ -153,38 +178,6 @@ export function PreviewSettingsDialog({
       title="预览设置"
       size="lg"
       closeClassName="min-h-11 min-w-11"
-      footer={(
-        <DialogFrameFooter align="between">
-          <div className="flex min-w-0 flex-wrap items-center gap-3">
-            <Tooltip>
-              <TooltipTrigger render={<span className="contents" />}>
-                <Button
-                  type="button"
-                  variant="secondary"
-                  size="sm"
-                  className="min-h-11"
-                  onClick={reconnect}
-                  disabled={session.mode !== 'live' || !automationAvailable || infrastructureBusy}
-                  aria-busy={infrastructureLoading === 'preview' || undefined}
-                >
-                  {infrastructureLoading === 'preview'
-                    ? <><LoaderCircle data-icon="inline-start" className="animate-spin" aria-hidden="true" />加载中···</>
-                    : <><RotateCw data-icon="inline-start" aria-hidden="true" />重连预览</>}
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent>{reconnectHint}</TooltipContent>
-            </Tooltip>
-            {settingsDirty && (
-              <span className="text-xs leading-5 text-primary">
-                {session.mode === 'live' ? '画质已修改，重连后生效' : '画质已修改，下次连接实时预览时生效'}
-              </span>
-            )}
-          </div>
-          <DialogClose render={<Button variant="outline" className="min-h-11" />}>
-            关闭
-          </DialogClose>
-        </DialogFrameFooter>
-      )}
     >
       <DialogBody className="flex flex-col gap-4">
         <section aria-labelledby={connectionHeadingId} className="flex flex-col gap-3">
@@ -269,18 +262,36 @@ export function PreviewSettingsDialog({
                   variant="outline"
                   size="sm"
                   className="min-h-11"
-                  onClick={() => { void onInstall?.() }}
-                  disabled={!automationAvailable || infrastructureBusy || !infrastructureKnown}
+                  onClick={reconnect}
+                  disabled={session.mode !== 'live' || !automationAvailable || infrastructureBusy}
+                  aria-busy={infrastructureLoading === 'preview' || undefined}
                 >
-                  <Package data-icon="inline-start" aria-hidden="true" />
-                  {installLabel}
+                  {infrastructureLoading === 'preview'
+                    ? <><LoaderCircle data-icon="inline-start" className="animate-spin" aria-hidden="true" />加载中···</>
+                    : <><RotateCw data-icon="inline-start" aria-hidden="true" />重连预览</>}
                 </Button>
               </TooltipTrigger>
-              <TooltipContent>
-                {!automationAvailable ? automationUnavailableMessage : installLabel}
-              </TooltipContent>
+              <TooltipContent>{reconnectHint}</TooltipContent>
             </Tooltip>
           </div>
+          <Tooltip>
+            <TooltipTrigger render={<span className="contents" />}>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="min-h-11 w-full"
+                onClick={() => { void onInstall?.() }}
+                disabled={!automationAvailable || infrastructureBusy || !infrastructureKnown}
+              >
+                <Package data-icon="inline-start" aria-hidden="true" />
+                {installLabel}
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>
+              {!automationAvailable ? automationUnavailableMessage : installLabel}
+            </TooltipContent>
+          </Tooltip>
         </section>
 
         <Separator />
@@ -336,7 +347,7 @@ export function PreviewSettingsDialog({
                   const fps = Number(next[0])
                   if (!Number.isFinite(fps) || fps === customFps) return
                   setCustomFps(fps)
-                  setSettingsDirty(true)
+                  notifyQualityChange()
                 }}
                 multiple={false}
                 spacing={1}
@@ -363,7 +374,7 @@ export function PreviewSettingsDialog({
                 onValueChange={(next, details) => {
                   if (!next || details.reason === 'none') return
                   setCustomMaxSize(Number(next))
-                  setSettingsDirty(true)
+                  notifyQualityChange()
                 }}
               >
                 <SelectTrigger id={maxSizeId} className="min-h-11 w-32">
@@ -397,7 +408,7 @@ export function PreviewSettingsDialog({
                   const bitrate = Array.isArray(next) ? next[0] : next
                   if (bitrate === undefined || bitrate === customBitrateMbps) return
                   setCustomBitrateMbps(bitrate)
-                  setSettingsDirty(true)
+                  notifyQualityChange()
                 }}
                 className="py-3"
               />

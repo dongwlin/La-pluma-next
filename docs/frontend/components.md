@@ -189,7 +189,7 @@ const FORMATION_OPTIONS: readonly SegmentedControlOption<FormationMode>[] = [
 />
 ```
 
-Props：`ariaLabel`、`value`、`options`（每项 `value`、`label`、可选 `disabled`）、`onChange`、`fullWidth`、`disabled`、`className`、`itemClassName`。`itemClassName` 用于调用点补充分段项的局部尺寸（例如设备预览要求每项至少 44px 宽），不改变共享默认档位。控件使用 `role="group"` 与 `aria-pressed`，单选且始终保留一个选中项；点击已选项不会清空选择。按钮保持 `min-h-11` 触达高度，选中态沿用 `brand-action` 视觉。
+Props：`ariaLabel`、`value`、`options`（每项 `value`、`label`、可选 `disabled`）、`onChange`、`fullWidth`、`disabled`、`className`、`itemClassName`。`itemClassName` 用于调用点补充分段项的局部尺寸，不改变共享默认档位：设备预览用它把模式分段降到 32px 高、12px 字号（粗指针 36px），同时保留每项 44px 宽度。控件使用 `role="group"` 与 `aria-pressed`，单选且始终保留一个选中项；点击已选项不会清空选择。按钮默认 `min-h-11`，选中态沿用 `brand-action` 视觉。
 
 ---
 
