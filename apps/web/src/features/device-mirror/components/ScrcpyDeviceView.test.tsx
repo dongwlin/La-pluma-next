@@ -130,6 +130,9 @@ describe('ScrcpyDeviceView', () => {
     expect(findDialogButton('启动服务')?.disabled).toBe(true)
     expect(findDialogButton('连接 Agent')?.disabled).toBe(true)
     expect(findDialogButton('安装组件')?.disabled).toBe(true)
+    expect(findDialogButton('启动服务')?.getAttribute('title')).toBeNull()
+    expect(findDialogButton('连接 Agent')?.getAttribute('title')).toBeNull()
+    expect(findDialogButton('安装组件')?.getAttribute('title')).toBeNull()
 
     await act(async () => {
       findButton('实时')?.click()
@@ -274,10 +277,17 @@ describe('ScrcpyDeviceView', () => {
     const dialog = getDialog()
 
     expect(dialog?.textContent).toContain('网络 RTT')
+    expect(dialog?.textContent).toContain('已连接')
+    expect(dialog?.textContent).toContain('实时')
     expect(dialog?.textContent).toContain('等待触控信息')
     expect(dialog?.textContent).toContain('640×360')
     expect(dialog?.textContent).toContain('0 ms')
     expect(dialog?.textContent).toContain('0 kbps')
+
+    webrtcMock.inputReady = true
+    await renderView()
+    expect(getDialog()?.textContent).toContain('就绪')
+    expect(getDialog()?.textContent).not.toContain('等待触控信息')
   })
 
   it('applies presets and manual quality changes inside the settings dialog', async () => {
@@ -285,13 +295,15 @@ describe('ScrcpyDeviceView', () => {
     await openSettings()
 
     await act(async () => findDialogButton('均衡画质')?.click())
-    expect(getDialog()?.textContent).toContain('最长边 1280px · 45 FPS')
+    expect(getDialog()?.textContent).not.toContain('自定义 · 最长边')
+    expect(getDialog()?.textContent).not.toContain('最长边 1280px · 45 FPS')
     expect(findDialogButton('均衡画质')?.textContent).toContain('1280px · 45 FPS · 8M')
     expect(findDialogButton('均衡画质')?.title).toBe('最长边 1280px · 45 FPS · 码率 8 Mbps')
     expect(getDialog()?.textContent).toContain('画质已修改')
 
     await act(async () => findDialogButton('60')?.click())
     expect(getDialog()?.textContent).toContain('自定义 · 最长边 1280px · 60 FPS')
+    expect(findDialogButton('均衡画质')?.textContent).toContain('1280px · 45 FPS · 8M')
     expect(getDialog()?.querySelector('[role="group"][aria-label="视频帧率"]')).not.toBeNull()
     expect(findDialogButton('60')?.getAttribute('aria-label')).toBe('60 FPS')
   })
@@ -339,6 +351,7 @@ describe('ScrcpyDeviceView', () => {
   })
 
   it('shows input readiness and never starts a gesture while the input channel is unavailable', async () => {
+    usePreviewStore.getState().setMode('live')
     webrtcMock.status = 'connected'
     await renderView({ infrastructureStatus: { installed: true, built: true, serverRunning: true, agentRunning: true } })
 
@@ -550,6 +563,18 @@ describe('ScrcpyDeviceView', () => {
   it('labels the preview card as 设备画面', async () => {
     await renderView()
     expect(container.textContent).toContain('设备画面')
+  })
+
+  it('hides the header status text while the preview is off and restores it otherwise', async () => {
+    await renderView()
+    expect(container.querySelector('[role="status"]')).toBeNull()
+    expect(container.textContent).toContain('预览已关闭')
+
+    await act(async () => usePreviewStore.getState().setMode('live'))
+    webrtcMock.status = 'connecting'
+    await renderView()
+
+    expect(container.querySelector('[role="status"]')?.textContent).toBe('正在连接实时画面')
   })
 
   it('keeps the shared mode controls interactive in the shared view while startup is busy', async () => {

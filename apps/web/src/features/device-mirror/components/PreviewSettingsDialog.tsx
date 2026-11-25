@@ -9,10 +9,11 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Separator } from '@/shared/ui/separator'
 import { Slider } from '@/shared/ui/slider'
 import { ToggleGroup, ToggleGroupItem } from '@/shared/ui/toggle-group'
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/shared/ui/tooltip'
 import { DialogBody, DialogFrame, DialogFrameFooter } from '@/shared/components'
 import { fpsOptions, qualityPresets, SNAPSHOT_INTERVAL_SECONDS, type QualityPreset } from '../constants'
 import { usePreviewStore } from '../store/previewStore'
-import type { PreviewStatus } from '../model/previewStatus'
+import type { PreviewLiveStatus, PreviewStatus } from '../model/previewStatus'
 import type { usePreviewSession } from '../hooks/usePreviewSession'
 import type { usePreviewInfrastructureView } from '../hooks/usePreviewInfrastructureView'
 
@@ -28,6 +29,17 @@ const maxSizeItems = [640, 960, 1280, 1600, 1920].map(size => ({
   value: String(size),
   label: `${size}px`,
 }))
+
+const signalingStatusLabels: Record<PreviewLiveStatus, string> = {
+  idle: '未连接',
+  connecting: '连接中',
+  signaling: '信令中',
+  waiting_offer: '等待画面',
+  connecting_webrtc: '建立 WebRTC',
+  connected: '已连接',
+  disconnected: '已断开',
+  error: '连接失败',
+}
 
 function formatStatistic(value: number | null | undefined, unit: string) {
   if (value === undefined || value === null || !Number.isFinite(value)) return '--'
@@ -105,20 +117,28 @@ export function PreviewSettingsDialog({
   ] as const
 
   const stats: [string, string | number][] = [
-    ['信令', session.status],
+    ['信令', signalingStatusLabels[session.status]],
     ['ICE', session.stats?.iceState || '--'],
-    ['视频', session.stats?.videoLive ? 'live' : '--'],
+    ['视频', session.stats?.videoLive ? '实时' : '--'],
     ['分辨率', session.stats?.width ? `${session.stats.width}×${session.stats.height}` : '--'],
     ['FPS', session.stats?.fps ?? '--'],
     ['码率', formatStatistic(session.stats?.bitrate, 'kbps')],
     ['网络 RTT', formatStatistic(session.stats?.rtt, 'ms')],
-    ['触控', session.inputReady ? 'ready' : session.status === 'connected' ? '等待触控信息' : '--'],
+    ['触控', session.inputReady ? '就绪' : session.status === 'connected' ? '等待触控信息' : '--'],
   ]
 
   const applyPreset = (preset: QualityPreset) => {
     setQuality(preset)
     setSettingsDirty(true)
   }
+
+  const disconnectLabel = previewBusy ? '取消启动' : '断开'
+  const installLabel = infrastructureLoading === 'install'
+    ? '安装中'
+    : infrastructureStatus?.built ? '重装组件' : '安装组件'
+  const reconnectHint = !automationAvailable
+    ? automationUnavailableMessage
+    : session.mode !== 'live' ? '切换到实时预览后可重连' : '重连预览'
 
   const reconnect = () => {
     if (!automationAvailable) return
@@ -136,20 +156,24 @@ export function PreviewSettingsDialog({
       footer={(
         <DialogFrameFooter align="between">
           <div className="flex min-w-0 flex-wrap items-center gap-3">
-            <Button
-              type="button"
-              variant="secondary"
-              size="sm"
-              className="min-h-11"
-              onClick={reconnect}
-              disabled={session.mode !== 'live' || !automationAvailable || infrastructureBusy}
-              aria-busy={infrastructureLoading === 'preview' || undefined}
-              title={session.mode !== 'live' ? '切换到实时预览后可重连' : undefined}
-            >
-              {infrastructureLoading === 'preview'
-                ? <><LoaderCircle data-icon="inline-start" className="animate-spin" aria-hidden="true" />加载中···</>
-                : <><RotateCw data-icon="inline-start" aria-hidden="true" />重连预览</>}
-            </Button>
+            <Tooltip>
+              <TooltipTrigger render={<span className="contents" />}>
+                <Button
+                  type="button"
+                  variant="secondary"
+                  size="sm"
+                  className="min-h-11"
+                  onClick={reconnect}
+                  disabled={session.mode !== 'live' || !automationAvailable || infrastructureBusy}
+                  aria-busy={infrastructureLoading === 'preview' || undefined}
+                >
+                  {infrastructureLoading === 'preview'
+                    ? <><LoaderCircle data-icon="inline-start" className="animate-spin" aria-hidden="true" />加载中···</>
+                    : <><RotateCw data-icon="inline-start" aria-hidden="true" />重连预览</>}
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>{reconnectHint}</TooltipContent>
+            </Tooltip>
             {settingsDirty && (
               <span className="text-xs leading-5 text-primary">
                 {session.mode === 'live' ? '画质已修改，重连后生效' : '画质已修改，下次连接实时预览时生效'}
@@ -197,49 +221,65 @@ export function PreviewSettingsDialog({
             {serviceActions.map(action => {
               const Icon = action.icon
               return (
-                <Button
-                  key={action.key}
-                  type="button"
-                  variant="secondary"
-                  size="sm"
-                  className="min-h-11"
-                  onClick={() => {
-                    if (!action.onClick || (!automationAvailable && !action.allowWhenUnavailable)) return
-                    void action.onClick()
-                  }}
-                  disabled={action.disabled}
-                  title={action.disabled && !automationAvailable ? automationUnavailableMessage : undefined}
-                >
-                  <Icon data-icon="inline-start" aria-hidden="true" />
-                  {action.loading ? '处理中' : action.label}
-                </Button>
+                <Tooltip key={action.key}>
+                  <TooltipTrigger render={<span className="contents" />}>
+                    <Button
+                      type="button"
+                      variant="secondary"
+                      size="sm"
+                      className="min-h-11"
+                      onClick={() => {
+                        if (!action.onClick || (!automationAvailable && !action.allowWhenUnavailable)) return
+                        void action.onClick()
+                      }}
+                      disabled={action.disabled}
+                    >
+                      <Icon data-icon="inline-start" aria-hidden="true" />
+                      {action.loading ? '处理中' : action.label}
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent>
+                    {action.disabled && !automationAvailable ? automationUnavailableMessage : action.label}
+                  </TooltipContent>
+                </Tooltip>
               )
             })}
           </div>
           <div className="grid grid-cols-2 gap-2">
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              className="min-h-11"
-              onClick={session.disconnect}
-              disabled={!canDisconnect}
-            >
-              <Unplug data-icon="inline-start" aria-hidden="true" />
-              {previewBusy ? '取消启动' : '断开'}
-            </Button>
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              className="min-h-11"
-              onClick={() => { void onInstall?.() }}
-              disabled={!automationAvailable || infrastructureBusy || !infrastructureKnown}
-              title={!automationAvailable ? automationUnavailableMessage : undefined}
-            >
-              <Package data-icon="inline-start" aria-hidden="true" />
-              {infrastructureLoading === 'install' ? '安装中' : infrastructureStatus?.built ? '重装组件' : '安装组件'}
-            </Button>
+            <Tooltip>
+              <TooltipTrigger render={<span className="contents" />}>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="min-h-11"
+                  onClick={session.disconnect}
+                  disabled={!canDisconnect}
+                >
+                  <Unplug data-icon="inline-start" aria-hidden="true" />
+                  {disconnectLabel}
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>{disconnectLabel}</TooltipContent>
+            </Tooltip>
+            <Tooltip>
+              <TooltipTrigger render={<span className="contents" />}>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="min-h-11"
+                  onClick={() => { void onInstall?.() }}
+                  disabled={!automationAvailable || infrastructureBusy || !infrastructureKnown}
+                >
+                  <Package data-icon="inline-start" aria-hidden="true" />
+                  {installLabel}
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>
+                {!automationAvailable ? automationUnavailableMessage : installLabel}
+              </TooltipContent>
+            </Tooltip>
           </div>
         </section>
 
@@ -251,9 +291,11 @@ export function PreviewSettingsDialog({
               <SlidersHorizontal className="size-4 text-muted-foreground" aria-hidden="true" />
               画质设置
             </h3>
-            <span className="text-xs text-muted-foreground">
-              {quality === 'custom' ? '自定义 · ' : ''}最长边 {customMaxSize}px · {customFps} FPS
-            </span>
+            {quality === 'custom' && (
+              <span className="text-xs text-muted-foreground">
+                自定义 · 最长边 {customMaxSize}px · {customFps} FPS
+              </span>
+            )}
           </div>
 
           <FieldGroup className="gap-3">

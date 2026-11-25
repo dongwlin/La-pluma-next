@@ -103,7 +103,8 @@ describe('DashboardPreviewEntry', () => {
     await act(async () => root.render(<DashboardPreviewEntry />))
 
     expect(container.querySelector('[data-preview-status="off"]')).not.toBeNull()
-    expect(container.querySelector('[role="status"]')?.textContent).toBe('预览已关闭')
+    expect(container.querySelector('[role="status"]')).toBeNull()
+    expect(container.textContent).toContain('预览已关闭')
 
     await act(async () => root.unmount())
     root = createRoot(container)

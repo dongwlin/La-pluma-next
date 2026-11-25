@@ -29,14 +29,16 @@ const DashboardPreviewEntry = memo(function DashboardPreviewEntry() {
             aria-hidden="true"
           />
           <span className="truncate text-xs font-medium text-muted-foreground">画面预览</span>
-          <span
-            className="truncate text-xs text-muted-foreground"
-            role="status"
-            aria-live="polite"
-            aria-atomic="true"
-          >
-            {status.label}
-          </span>
+          {status.phase !== 'off' && (
+            <span
+              className="truncate text-xs text-muted-foreground"
+              role="status"
+              aria-live="polite"
+              aria-atomic="true"
+            >
+              {status.label}
+            </span>
+          )}
         </div>
         <PreviewModeSegmented unavailable={!available} />
       </div>

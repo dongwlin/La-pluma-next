@@ -285,9 +285,11 @@ export default function ScrcpyDeviceView({ infrastructure }: ScrcpyDeviceViewPro
             aria-hidden="true"
           />
           <h2 className="truncate text-base font-semibold text-foreground">设备画面</h2>
-          <span className="ml-auto min-w-0 truncate text-xs font-medium text-tertiary" role="status" aria-live="polite" aria-atomic="true">
-            {status.label}
-          </span>
+          {status.phase !== 'off' && (
+            <span className="ml-auto min-w-0 truncate text-xs font-medium text-tertiary" role="status" aria-live="polite" aria-atomic="true">
+              {status.label}
+            </span>
+          )}
         </div>
         <PreviewModeSegmented unavailable={!automationAvailable} />
       </div>
