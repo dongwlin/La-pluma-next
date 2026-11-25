@@ -128,7 +128,7 @@ export class SettingsUpdateOwner {
     })
   }
 
-  /** 更新游戏资源；任何失败都可以直接重试资源同步。 */
+  /** 更新资源；任何失败都可以直接重试资源同步。 */
   async updateResources(): Promise<UpdateCommandOutcome> {
     return this.run('resources', async () => {
       const { response, terminal } = await this.submitAndWait(
@@ -142,7 +142,7 @@ export class SettingsUpdateOwner {
         const outcome = terminalExecution(terminal, TERMINAL_FAILURE_POLICIES.resources)
         if (outcome) return outcome
       }
-      return succeededExecution('游戏资源已更新', true, true)
+      return succeededExecution('资源已更新', true, true)
     })
   }
 

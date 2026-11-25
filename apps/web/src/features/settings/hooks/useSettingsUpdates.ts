@@ -109,7 +109,7 @@ export function useSettingsUpdates(
   ), [owner, run])
 
   const updateResources = useCallback(() => (
-    run('正在更新游戏资源...', () => owner.updateResources())
+    run('正在更新资源...', () => owner.updateResources())
   ), [owner, run])
 
   useEffect(() => {

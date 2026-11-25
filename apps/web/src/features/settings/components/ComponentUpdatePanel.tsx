@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Download, LoaderCircle, RefreshCw } from 'lucide-react'
+import { Download, LoaderCircle } from 'lucide-react'
 import { Badge } from '@/shared/ui/badge'
 import { Button } from '@/shared/ui/button'
 import { Field } from '@/shared/ui/field'
@@ -205,7 +205,6 @@ export default function ComponentUpdatePanel() {
           onClick={handleHotUpdate}
           disabled={updateBusy || channelSavingBusy || hotUpdating}
           aria-busy={hotUpdating || undefined}
-          variant="outline"
           size="sm"
           className="w-full sm:w-auto"
         >
@@ -213,8 +212,8 @@ export default function ComponentUpdatePanel() {
             ? <><LoaderCircle className="animate-spin" aria-hidden="true" />更新中</>
             : (
               <>
-                <RefreshCw size={16} aria-hidden="true" />
-                更新游戏资源
+                <Download size={16} aria-hidden="true" />
+                更新资源
               </>
             )}
         </Button>

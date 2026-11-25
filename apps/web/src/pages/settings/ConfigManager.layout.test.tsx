@@ -365,7 +365,7 @@ describe('ConfigManager layout surfaces', () => {
     expect(updatesSection!.textContent).toContain('自动更新')
     expect(updatesSection!.textContent).toContain('资源正常')
 
-    const actionLabels = ['更新 MAA CLI', '更新 MaaCore', '更新游戏资源']
+    const actionLabels = ['更新 MAA CLI', '更新 MaaCore', '更新资源']
     const renderedActions = Array.from(updatesSection!.querySelectorAll('button'))
       .map(button => button.textContent?.trim())
       .filter(label => actionLabels.includes(label!))
