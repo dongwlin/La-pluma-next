@@ -52,9 +52,9 @@
 
 依赖图按 import 说明符建边，不区分 `import type` 与内联 `type` 说明符；因此 `features/a/model/**` 对 `features/a/components/**` 的纯类型导入也会触发 `model-component-dependency`。这是保守策略：类型依赖同样意味着模型与组件层耦合，共享类型应放到 `model` 或 `shared`。
 
-### 2.2 与 ESLint 的分工
+### 2.2 与 oxlint 的分工
 
-`apps/web/eslint.config.js` 继续负责编辑器内的快速反馈：拦截 `@/features/<domain>/...` 深路径、features/shared 反向依赖 app 或 pages、shared 依赖 features/pages，以及 pages 反向依赖 app。页面测试（`src/pages/**/*.test.tsx`）允许深路径到被测域内部以构造领域状态，不进入产物；CLI 的生产依赖图同样跳过测试文件。CLI 额外解析相对路径、目录 index 与动态 import，因此能发现 ESLint 字符串规则看不到的公开面绕过与真实域环。两处规则的权威事实都来自 `app → pages → features → shared`，新增边界时先更新本文与脚本，再考虑 ESLint 的即时提示。
+`apps/web/.oxlintrc.json` 继续负责编辑器内的快速反馈：拦截 `@/features/<domain>/...` 深路径、features/shared 反向依赖 app 或 pages、shared 依赖 features/pages，以及 pages 反向依赖 app。页面测试（`src/pages/**/*.test.tsx`）允许深路径到被测域内部以构造领域状态，不进入产物；CLI 的生产依赖图同样跳过测试文件。CLI 额外解析相对路径、目录 index 与动态 import，因此能发现 oxlint 字符串规则看不到的公开面绕过与真实域环。两处规则的权威事实都来自 `app → pages → features → shared`，新增边界时先更新本文与脚本，再考虑 oxlint 的即时提示。
 
 ## 3. 页面职责
 

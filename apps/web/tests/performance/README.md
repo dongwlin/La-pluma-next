@@ -74,5 +74,5 @@ node apps/web/scripts/performance-docker.ts
 
 ```sh
 pnpm --filter la-pluma-next-client type-check
-pnpm --filter la-pluma-next-client exec eslint tests/performance scripts/performance-build.ts scripts/performance-docker.ts tests/visual/static-server.ts
+pnpm --filter la-pluma-next-client exec oxlint --deny-warnings tests/performance scripts/performance-build.ts scripts/performance-docker.ts tests/visual/static-server.ts
 ```

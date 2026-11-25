@@ -93,6 +93,6 @@ La-pluma-next/
 pnpm --filter la-pluma-next-client guardrails
 ```
 
-规则、允许方向与已知限制见[依赖与职责护栏](../development/guardrails.md)。ESLint 继续负责编辑器内的深路径与分层即时报错，CLI 额外覆盖相对路径绕过、真实域环、页面职责与布局/样式/测试护栏。
+规则、允许方向与已知限制见[依赖与职责护栏](../development/guardrails.md)。oxlint 继续负责编辑器内的深路径与分层即时报错，CLI 额外覆盖相对路径绕过、真实域环、页面职责与布局/样式/测试护栏。
 
 开发流程与常用检查见 [开发文档](../development/README.md)。

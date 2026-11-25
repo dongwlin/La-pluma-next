@@ -104,7 +104,7 @@ pnpm screenshots:readme
 - **构建链路**：依赖为 `tailwindcss@^4` + `@tailwindcss/vite`，由 Vite 插件处理样式；`autoprefixer`、`postcss` 与 `apps/web/postcss.config.js` 已退役，不再有 `@config` 指令与 `apps/web/tailwind.config.js`。
 - **层序与 token 单源**：语义 token 只在 `index.css` 的 `:root`、`html.dark, #app-root.dark` 与对比度/透明度媒体查询中定义；布局几何与结构 token（`--layout-*`）只由 `layout.css` 定义；`ios-theme.css` 只保留 `--glass-*` 材质 token 与 chrome 视觉。项目语义 token 以 `index.css` 显式定义为准，不依赖 v4 默认色板。层序声明、`page` 层归属与 utilities 优先级详见 [设计规范](../../DESIGN.md) 的「层序与 token 单源」。
 - **档位即规范**：圆角由 `index.css` 的 `--radius` 经标准派生档位生效、间距沿用 v4 原生档位与 .5 步进、content 自动检测，以 [设计规范](../../DESIGN.md)「档位即规范」为唯一依据。
-- **canonical 类名**：`eslint-plugin-tailwindcss` 的 `enforces-canonical-classname` 在 `apps/web/eslint.config.js` 中对 `src/**/*.{ts,tsx}` 启用（只开这一条），由 `lint` 拦截非规范写法：CSS 变量写 `bg-(--muted)` 而非 `bg-[var(--muted)]`；`break-words` 写 `wrap-break-word`，`[overflow-wrap:anywhere]` 写 `wrap-anywhere`，两者同时出现时保留两个类。
+- **canonical 类名**：没有 lint 自动检查，按约定与评审核对：CSS 变量写 `bg-(--muted)` 而非 `bg-[var(--muted)]`；`break-words` 写 `wrap-break-word`，`[overflow-wrap:anywhere]` 写 `wrap-anywhere`，两者同时出现时保留两个类。
 - **v3→v4 类名**：`shadow-sm→shadow-xs`、`backdrop-blur-sm→backdrop-blur-xs`、`outline-none→outline-hidden`、`flex-shrink-0→shrink-0`，`!` 前缀改后缀（如 `dark:text-white!` 仍有效）；**`shadow-md` 及以上档位在 v4 中数值与 v3 相同，不要按 "shadow-lg→shadow-md" 的通用口诀改名**。`ring`、裸 `border`/`divide` 已显式给色。
 - **preflight 对齐**：v4 移除了按钮 `cursor: pointer` 与 `:disabled` 的 default cursor，并把 placeholder 改为 currentColor/50%、默认 border-color 改为 currentColor；`index.css` 的 base 层保留了 v3 等价规则（按钮 pointer、disabled default、placeholder gray-400、border gray-200），避免 cursor 这类截图捕获不到的行为回归。
 - **浏览器下限**：Tailwind v4 依赖原生 cascade layers、`color-mix()`、OKLCH 与 `@property`，前端最低支持 **Safari 16.4+ / Chrome 111+ / Firefox 128+**。低于该下限的浏览器不再保证样式正确。
@@ -151,10 +151,9 @@ pnpm screenshots:readme
 
 `apps/web/` 下的应用代码、构建脚本与测试一律使用 TypeScript。`tsc -b` 通过两个 project 覆盖：`tsconfig.app.json` 检查 `src`，`tsconfig.node.json` 检查 `vite.config.ts`、`scripts/**`、`tests/visual/**`、`tests/integration/**`、`tests/performance/**`。Node 侧脚本直接以 `node xxx.ts` 运行（Node 24 原生类型擦除，脚本只使用可擦除语法：不用 `enum`、`namespace` 与构造器参数属性）。
 
-只有两个 `.js` 文件是有意保留的：
+只有一个 `.js` 文件是有意保留的：
 
 - `apps/web/public/legacy-page-cache-cleanup.js`：`public/` 由 Vite 原样复制，再经 workbox `importScripts` 注入 Service Worker，不经过构建管线，无法写成 TS。
-- `apps/web/eslint.config.js`：ESLint 9 加载 TypeScript 配置需要额外的 `jiti` 依赖，且它依赖的 `globals` 包没有类型声明；工具启动配置留在 JS，不进入应用代码。
 
 ## 常用检查
 
@@ -190,8 +189,6 @@ pnpm --filter la-pluma-next-client stylelint:ratchet
 pnpm visual
 ```
 
-`lint` 与 `stylelint:ratchet` 复用本地缓存（`.eslintcache`、`.stylelintcache`，已忽略）；客户端 Vitest 默认最多 4 个 worker，服务端测试默认最多 4 个并发进程，分别用 `LA_PLUMA_TEST_WORKERS` 与 `LA_PLUMA_TEST_CONCURRENCY` 调整。并发只降低同时运行的进程数，不改变逐文件进程隔离。
+`stylelint:ratchet` 复用本地缓存（`.stylelintcache`，已忽略；oxlint 不写缓存）；客户端 Vitest 默认最多 4 个 worker，服务端测试默认最多 4 个并发进程，分别用 `LA_PLUMA_TEST_WORKERS` 与 `LA_PLUMA_TEST_CONCURRENCY` 调整。并发只降低同时运行的进程数，不改变逐文件进程隔离。
 
 `verify:fast` 的测试以 `origin/main` 为固定基线，分支上的提交仍会被覆盖；只检查未提交改动时直接运行 `pnpm --filter la-pluma-next-client exec vitest run --changed`。基线 ref 不存在时命令会报错，需先 fetch 或显式传入可用 ref。
-
-`eslint-plugin-react-hooks` 固定在 7.0.1：7.1 的 `recommended` 新增了 React Compiler 规则（如 `set-state-in-effect`、`purity`），现有代码仍有 19 处命中。等这些写法单独迁移后再放宽版本范围。
