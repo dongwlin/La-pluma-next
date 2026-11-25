@@ -1,5 +1,4 @@
 import { useEffect, useRef, useState } from 'react'
-import { LoaderCircle } from 'lucide-react'
 import { Button } from '@/shared/ui/button'
 import { notify, SETTINGS_CONNECTION_TEST_NOTICE_ID } from '@/shared/notifications'
 import DeviceConnectionDialog from './DeviceConnectionDialog'
@@ -75,9 +74,7 @@ export default function DeviceConnectionPanel({
             onClick={openDiscovery}
             className="shrink-0"
           >
-            {discoveringDevices
-              ? <><LoaderCircle className="animate-spin" aria-hidden="true" />查找中</>
-              : '查找设备'}
+            查找设备
           </Button>
           <Button
             type="button"
@@ -88,9 +85,7 @@ export default function DeviceConnectionPanel({
             onClick={() => void testConnection(adbPath, address)}
             className="shrink-0"
           >
-            {testingConnection
-              ? <><LoaderCircle className="animate-spin" aria-hidden="true" />测试中</>
-              : '测试连接'}
+            测试连接
           </Button>
         </div>
       </div>

@@ -1179,7 +1179,7 @@ describe('ConfigManager layout surfaces', () => {
     await act(async () => buttonByText('测试连接')?.click())
     await flush()
 
-    expect(buttonByText('测试中')).toBeDefined()
+    expect(buttonByText('测试连接')?.disabled).toBe(true)
     expect(buttonByText('查找设备')?.disabled).toBe(false)
 
     const pendingDiscovery = deferred<{ success: boolean; data: unknown }>()
@@ -1187,7 +1187,7 @@ describe('ConfigManager layout surfaces', () => {
     await act(async () => buttonByText('查找设备')?.click())
     await flush()
 
-    expect(buttonByText('查找中')).toBeDefined()
+    expect(buttonByText('查找设备')?.disabled).toBe(true)
     expect(dialog()?.textContent).toContain('正在查找设备')
 
     pendingTest.resolve({
@@ -1201,7 +1201,7 @@ describe('ConfigManager layout surfaces', () => {
       'success',
       { id: SETTINGS_CONNECTION_TEST_NOTICE_ID },
     )
-    expect(buttonByText('查找中')).toBeDefined()
+    expect(buttonByText('查找设备')?.disabled).toBe(true)
 
     pendingDiscovery.resolve({
       success: true,
@@ -1251,7 +1251,7 @@ describe('ConfigManager layout surfaces', () => {
     await act(async () => buttonByText('查找设备')?.click())
     await flush()
     const signal = mocks.discoverDevices.mock.calls[0]![1] as AbortSignal
-    expect(buttonByText('查找中')).toBeDefined()
+    expect(buttonByText('查找设备')?.disabled).toBe(true)
 
     await act(async () => dialogButtonByText('关闭')?.click())
     await flush()
