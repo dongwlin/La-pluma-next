@@ -178,5 +178,6 @@ describe('DashboardPreviewEntry', () => {
     expect(container.querySelector('img')?.getAttribute('src')).toBe(preview.fallbackSnapshot)
     expect(container.textContent).toContain('上次成功画面 · 可能已过期')
     expect(container.querySelector('[role="alert"]')?.textContent).toContain('截图超时')
+    expect(Array.from(container.querySelectorAll('button')).filter(button => button.textContent === '重试')).toHaveLength(1)
   })
 })

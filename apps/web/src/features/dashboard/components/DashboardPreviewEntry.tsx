@@ -78,12 +78,12 @@ const DashboardPreviewEntry = memo(function DashboardPreviewEntry() {
         )}
         <EmptyState
           compact
-          role={status.error ? 'alert' : undefined}
+          role={!hasFrame && status.error ? 'alert' : undefined}
           aria-hidden={hasFrame}
           icon={<Smartphone className="size-5" strokeWidth={1.6} />}
           title={status.emptyTitle}
           description={status.error?.message}
-          action={status.retry ? (
+          action={!hasFrame && status.retry ? (
             <Button onClick={retry} variant="secondary" size="sm" className="min-h-11">
               {status.retry.label}
             </Button>
