@@ -1,7 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { ArrowLeft, Home, Maximize2, Minimize2, PanelsTopLeft, SlidersHorizontal, Smartphone } from 'lucide-react'
+import { Alert, AlertDescription, AlertTitle } from '@/shared/ui/alert'
+import { Badge } from '@/shared/ui/badge'
 import { Button } from '@/shared/ui/button'
 import { Dialog, DialogContent, DialogTitle } from '@/shared/ui/dialog'
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/shared/ui/tooltip'
+import { EmptyState } from '@/shared/components'
 import { usePreviewSession } from '../hooks/usePreviewSession'
 import { usePreviewSnapshot } from '../hooks/usePreviewSnapshot'
 import { derivePreviewStatus, type PreviewLiveStatus } from '../model/previewStatus'
@@ -33,19 +37,26 @@ function DeviceNavigationButtons({
   onCommand: (command: string) => void
 }) {
   return deviceNavigationActions.map(({ label, command, Icon }) => (
-    <button
-      key={label}
-      type="button"
-      onClick={() => onCommand(command)}
-      disabled={!connected || !automationAvailable}
-      title={!automationAvailable ? automationUnavailableMessage : label}
-      aria-label={label}
-      className={immersive
-        ? 'group flex h-11 w-11 items-center justify-center rounded-full border border-white/20 bg-white/10 text-white backdrop-blur-xs transition hover:bg-white/20 disabled:cursor-not-allowed disabled:opacity-35'
-        : 'device-preview-glass-button control-surface flex h-11 min-h-11 w-11 min-w-11 items-center justify-center rounded-full text-muted-foreground transition-colors hover:text-primary disabled:cursor-not-allowed disabled:opacity-35'}
-    >
-      <Icon className="h-3.5 w-3.5" strokeWidth={1.8} />
-    </button>
+    <Tooltip key={label}>
+      <TooltipTrigger
+        render={(
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            onClick={() => onCommand(command)}
+            disabled={!connected || !automationAvailable}
+            aria-label={label}
+            className={immersive
+              ? 'size-11 rounded-full border border-white/20 bg-white/10 text-white hover:bg-white/20'
+              : 'size-11 rounded-full text-muted-foreground hover:text-primary'}
+          >
+            <Icon aria-hidden="true" strokeWidth={1.8} />
+          </Button>
+        )}
+      />
+      <TooltipContent>{!automationAvailable ? automationUnavailableMessage : label}</TooltipContent>
+    </Tooltip>
   ))
 }
 
@@ -282,20 +293,17 @@ export default function ScrcpyDeviceView({ infrastructure }: ScrcpyDeviceViewPro
         </div>
 
         {status.error && status.hasFrame && (
-          <div
-            role="alert"
-            className="status-warning flex flex-wrap items-center gap-2 rounded-lg px-3 py-2 text-xs leading-5"
-          >
-            <span className="min-w-0 flex-1">
-              <span className="font-medium">{status.error.title}</span>
-              <span className="ml-1 text-muted-foreground">{status.error.message}</span>
-            </span>
+          <Alert variant="destructive">
+            <AlertTitle>{status.error.title}</AlertTitle>
+            <AlertDescription>{status.error.message}</AlertDescription>
             {status.retry && (
-              <Button type="button" variant="secondary" size="sm" onClick={retryPreview}>
-                {status.retry.label}
-              </Button>
+              <div className="mt-1.5">
+                <Button type="button" variant="secondary" size="sm" className="min-h-11" onClick={retryPreview}>
+                  {status.retry.label}
+                </Button>
+              </div>
             )}
-          </div>
+          </Alert>
         )}
 
         <div
@@ -324,9 +332,9 @@ export default function ScrcpyDeviceView({ infrastructure }: ScrcpyDeviceViewPro
           />
           {snapshot.image && <img src={snapshot.image} alt="模拟器画面快照" className="pointer-events-none absolute inset-0 h-full w-full object-contain" />}
           {status.snapshotStale && (
-            <span className="pointer-events-none absolute left-2 top-2 rounded-md bg-black/70 px-2 py-1 text-xs text-white/90">
+            <Badge variant="secondary" className="absolute left-2 top-2 border-white/20 bg-black/70 text-white">
               上次成功画面 · 可能已过期
-            </span>
+            </Badge>
           )}
           {webrtc.status === 'connected' && !webrtc.inputReady && !immersiveMode && (
             <div
@@ -338,31 +346,19 @@ export default function ScrcpyDeviceView({ infrastructure }: ScrcpyDeviceViewPro
             </div>
           )}
           {!status.hasFrame && (
-            <div
-              className="scrcpy-empty-state absolute inset-0 flex items-center justify-center px-6 text-center"
+            <EmptyState
+              compact
               role={status.error ? 'alert' : undefined}
-            >
-              <div className="scrcpy-empty-content w-full max-w-sm">
-                <div className="device-preview-empty-icon mx-auto mb-3 flex h-11 w-11 items-center justify-center rounded-lg">
-                  <Smartphone className="h-5 w-5" strokeWidth={1.6} aria-hidden="true" />
-                </div>
-                <div className="scrcpy-empty-title mb-1 text-sm font-semibold text-foreground">
-                  {status.emptyTitle}
-                </div>
-                {(status.error || !automationAvailable) && (
-                  <div className="scrcpy-empty-description mx-auto max-w-md text-xs leading-5 text-muted-foreground">
-                    {status.error?.message ?? automationUnavailableMessage}
-                  </div>
-                )}
-                {status.retry && (
-                  <div className="mt-3">
-                    <Button type="button" variant="secondary" size="sm" onClick={retryPreview}>
-                      {status.retry.label}
-                    </Button>
-                  </div>
-                )}
-              </div>
-            </div>
+              icon={<Smartphone className="size-5" strokeWidth={1.6} />}
+              title={status.emptyTitle}
+              description={status.error?.message ?? (!automationAvailable ? automationUnavailableMessage : undefined)}
+              action={status.retry ? (
+                <Button type="button" variant="secondary" size="sm" className="min-h-11" onClick={retryPreview}>
+                  {status.retry.label}
+                </Button>
+              ) : undefined}
+              className="scrcpy-empty-state absolute inset-0"
+            />
           )}
         </div>
         <div className="scrcpy-preview-toolbar flex items-center justify-center gap-2 bg-transparent px-2 py-1" role="toolbar" aria-label="模拟器导航">
@@ -372,26 +368,42 @@ export default function ScrcpyDeviceView({ infrastructure }: ScrcpyDeviceViewPro
             automationUnavailableMessage={automationUnavailableMessage}
             onCommand={sendDeviceCommand}
           />
-          <button
-            type="button"
-            onClick={fullscreen}
-            disabled={webrtc.status !== 'connected'}
-            title="全屏"
-            aria-label="全屏"
-            className="device-preview-glass-button control-surface flex h-11 min-h-11 w-11 min-w-11 items-center justify-center rounded-full text-muted-foreground transition-colors hover:text-primary disabled:cursor-not-allowed disabled:opacity-35"
-          >
-            <Maximize2 className="h-3.5 w-3.5" strokeWidth={1.8} />
-          </button>
-          <button
-            type="button"
-            onClick={() => setSettingsOpen(true)}
-            title="预览设置"
-            aria-label="打开预览设置"
-            aria-haspopup="dialog"
-            className="device-preview-glass-button control-surface flex h-11 min-h-11 w-11 min-w-11 items-center justify-center rounded-full text-muted-foreground"
-          >
-            <SlidersHorizontal className="h-3.5 w-3.5" strokeWidth={1.8} />
-          </button>
+          <Tooltip>
+            <TooltipTrigger
+              render={(
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  onClick={fullscreen}
+                  disabled={webrtc.status !== 'connected'}
+                  aria-label="全屏"
+                  className="size-11 rounded-full text-muted-foreground hover:text-primary"
+                >
+                  <Maximize2 aria-hidden="true" strokeWidth={1.8} />
+                </Button>
+              )}
+            />
+            <TooltipContent>全屏</TooltipContent>
+          </Tooltip>
+          <Tooltip>
+            <TooltipTrigger
+              render={(
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  onClick={() => setSettingsOpen(true)}
+                  aria-label="打开预览设置"
+                  aria-haspopup="dialog"
+                  className="size-11 rounded-full text-muted-foreground hover:text-primary"
+                >
+                  <SlidersHorizontal aria-hidden="true" strokeWidth={1.8} />
+                </Button>
+              )}
+            />
+            <TooltipContent>预览设置</TooltipContent>
+          </Tooltip>
         </div>
 
       </div>
@@ -448,15 +460,23 @@ export default function ScrcpyDeviceView({ infrastructure }: ScrcpyDeviceViewPro
             immersive
             onCommand={sendDeviceCommand}
           />
-          <button
-            type="button"
-            onClick={exitImmersive}
-            title="退出全屏"
-            aria-label="退出全屏"
-            className="group flex h-11 w-11 items-center justify-center rounded-full border border-white/20 bg-white/10 text-white backdrop-blur-xs transition hover:bg-white/20 disabled:opacity-35 disabled:cursor-not-allowed"
-          >
-            <Minimize2 className="h-3.5 w-3.5" strokeWidth={1.8} />
-          </button>
+          <Tooltip>
+            <TooltipTrigger
+              render={(
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  onClick={exitImmersive}
+                  aria-label="退出全屏"
+                  className="size-11 rounded-full border border-white/20 bg-white/10 text-white hover:bg-white/20"
+                >
+                  <Minimize2 aria-hidden="true" strokeWidth={1.8} />
+                </Button>
+              )}
+            />
+            <TooltipContent>退出全屏</TooltipContent>
+          </Tooltip>
         </div>
       </DialogContent>
     </Dialog>

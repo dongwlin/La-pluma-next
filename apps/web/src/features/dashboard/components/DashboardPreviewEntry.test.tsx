@@ -121,22 +121,22 @@ describe('DashboardPreviewEntry', () => {
   it('switches preview mode through the compact segmented control', async () => {
     await act(async () => root.render(<DashboardPreviewEntry />))
 
-    const group = container.querySelector('[role="radiogroup"][aria-label="预览模式"]')
+    const group = container.querySelector('[role="group"][aria-label="预览模式"]')
     expect(group).not.toBeNull()
     const live = Array.from(group?.querySelectorAll('button') || []).find(button => button.textContent === '实时')
-    expect(live?.getAttribute('aria-checked')).toBe('false')
+    expect(live?.getAttribute('aria-pressed')).toBe('false')
 
     await act(async () => live?.click())
 
     expect(usePreviewStore.getState().mode).toBe('live')
-    expect(container.querySelector('[role="radiogroup"][aria-label="预览模式"]')?.getAttribute('data-active-index')).toBe('2')
+    expect(live?.getAttribute('aria-pressed')).toBe('true')
   })
 
   it('disables snapshot and live modes while automation is unavailable', async () => {
     preview.available = false
     await act(async () => root.render(<DashboardPreviewEntry />))
 
-    const buttons = Array.from(container.querySelectorAll<HTMLButtonElement>('[role="radio"]'))
+    const buttons = Array.from(container.querySelectorAll<HTMLButtonElement>('[aria-pressed]'))
     expect(buttons.find(button => button.textContent === '关闭')?.disabled).toBe(false)
     expect(buttons.find(button => button.textContent === '快照')?.disabled).toBe(true)
     expect(buttons.find(button => button.textContent === '实时')?.disabled).toBe(true)

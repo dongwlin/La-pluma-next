@@ -1,8 +1,14 @@
 import { useId, useState } from 'react'
 import { Gauge, LoaderCircle, Package, Plug, RotateCw, Server, SlidersHorizontal, Smartphone, Unplug } from 'lucide-react'
+import { Alert, AlertDescription, AlertTitle } from '@/shared/ui/alert'
+import { Badge } from '@/shared/ui/badge'
 import { Button } from '@/shared/ui/button'
 import { DialogClose } from '@/shared/ui/dialog'
+import { Field, FieldDescription, FieldGroup, FieldLabel } from '@/shared/ui/field'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/shared/ui/select'
 import { Separator } from '@/shared/ui/separator'
+import { Slider } from '@/shared/ui/slider'
+import { ToggleGroup, ToggleGroupItem } from '@/shared/ui/toggle-group'
 import { DialogBody, DialogFrame, DialogFrameFooter } from '@/shared/components'
 import { fpsOptions, qualityPresets, SNAPSHOT_INTERVAL_SECONDS, type QualityPreset } from '../constants'
 import { usePreviewStore } from '../store/previewStore'
@@ -17,6 +23,11 @@ interface PreviewSettingsDialogProps {
   status: PreviewStatus
   infrastructure: ReturnType<typeof usePreviewInfrastructureView>
 }
+
+const maxSizeItems = [640, 960, 1280, 1600, 1920].map(size => ({
+  value: String(size),
+  label: `${size}px`,
+}))
 
 function formatStatistic(value: number | null | undefined, unit: string) {
   if (value === undefined || value === null || !Number.isFinite(value)) return '--'
@@ -35,6 +46,7 @@ export function PreviewSettingsDialog({
   const qualityHeadingId = `${baseId}-quality`
   const detailsHeadingId = `${baseId}-details`
   const bitrateId = `${baseId}-bitrate`
+  const maxSizeId = `${baseId}-max-size`
   const quality = usePreviewStore(state => state.quality)
   const customFps = usePreviewStore(state => state.fps)
   const customMaxSize = usePreviewStore(state => state.maxSize)
@@ -121,6 +133,7 @@ export function PreviewSettingsDialog({
       onOpenChange={onOpenChange}
       title="预览设置"
       size="lg"
+      closeClassName="min-h-11 min-w-11"
       footer={(
         <DialogFrameFooter align="between">
           <div className="flex min-w-0 flex-wrap items-center gap-3">
@@ -134,8 +147,8 @@ export function PreviewSettingsDialog({
               aria-busy={infrastructureLoading === 'preview' || undefined}
             >
               {infrastructureLoading === 'preview'
-                ? <><LoaderCircle className="animate-spin" aria-hidden="true" />加载中···</>
-                : <><RotateCw aria-hidden="true" />重连预览</>}
+                ? <><LoaderCircle data-icon="inline-start" className="animate-spin" aria-hidden="true" />加载中···</>
+                : <><RotateCw data-icon="inline-start" aria-hidden="true" />重连预览</>}
             </Button>
             {settingsDirty && (
               <span className="text-xs leading-5 text-primary">
@@ -164,19 +177,21 @@ export function PreviewSettingsDialog({
           </div>
           <p className="text-xs leading-5 text-muted-foreground">停止服务或 Agent 会断开其他观看者。</p>
           {infrastructureError && (
-            <div role="alert" className="status-warning flex flex-wrap items-center gap-2 rounded-lg px-3 py-2 text-xs leading-5">
-              <span className="min-w-0 flex-1">{infrastructureError}</span>
-              <Button
-                type="button"
-                variant="secondary"
-                size="sm"
-                className="min-h-11"
-                onClick={onRefreshInfrastructure}
-                disabled={!onRefreshInfrastructure}
-              >
-                刷新状态
-              </Button>
-            </div>
+            <Alert variant="destructive">
+              <AlertTitle>预览服务状态异常</AlertTitle>
+              <AlertDescription>{infrastructureError}</AlertDescription>
+              <div className="mt-1.5">
+                <Button
+                  type="button"
+                  variant="secondary"
+                  size="sm"
+                  className="min-h-11"
+                  onClick={onRefreshInfrastructure}
+                >
+                  刷新状态
+                </Button>
+              </div>
+            </Alert>
           )}
           <div className="grid grid-cols-2 gap-2">
             {serviceActions.map(action => {
@@ -195,7 +210,7 @@ export function PreviewSettingsDialog({
                   disabled={action.disabled}
                   title={action.disabled && !automationAvailable ? automationUnavailableMessage : undefined}
                 >
-                  <Icon aria-hidden="true" />
+                  <Icon data-icon="inline-start" aria-hidden="true" />
                   {action.loading ? '处理中' : action.label}
                 </Button>
               )
@@ -210,7 +225,7 @@ export function PreviewSettingsDialog({
               onClick={session.disconnect}
               disabled={!canDisconnect}
             >
-              <Unplug aria-hidden="true" />
+              <Unplug data-icon="inline-start" aria-hidden="true" />
               {previewBusy ? '取消启动' : '断开'}
             </Button>
             <Button
@@ -222,7 +237,7 @@ export function PreviewSettingsDialog({
               disabled={!automationAvailable || infrastructureBusy || !infrastructureKnown}
               title={!automationAvailable ? automationUnavailableMessage : undefined}
             >
-              <Package aria-hidden="true" />
+              <Package data-icon="inline-start" aria-hidden="true" />
               {infrastructureLoading === 'install' ? '安装中' : infrastructureStatus?.built ? '重装组件' : '安装组件'}
             </Button>
           </div>
@@ -241,84 +256,112 @@ export function PreviewSettingsDialog({
             </span>
           </div>
 
-          <div role="group" aria-label="画质预设" className="grid grid-cols-2 gap-1 rounded-lg bg-muted/60 p-1">
-            {Object.entries(qualityPresets).map(([key, preset]) => (
-              <button
-                key={key}
-                type="button"
-                onClick={() => applyPreset(key as QualityPreset)}
-                aria-pressed={quality === key}
-                aria-label={`${preset.label}画质`}
-                title={`最长边 ${preset.maxSize}px · ${preset.fps} FPS · 码率 ${preset.bitrateMbps} Mbps`}
-                className={`flex min-h-11 flex-col items-start justify-center gap-0.5 rounded-md px-2 py-1.5 text-left transition-colors ${quality === key ? 'bg-primary-soft text-primary-strong' : 'text-muted-foreground hover:bg-card hover:text-foreground'}`}
+          <FieldGroup className="gap-3">
+            <Field>
+              <FieldLabel>画质预设</FieldLabel>
+              <ToggleGroup
+                aria-label="画质预设"
+                value={quality === 'custom' ? [] : [quality]}
+                onValueChange={(next) => {
+                  const preset = next[0] as QualityPreset | undefined
+                  if (preset && preset !== quality) applyPreset(preset)
+                }}
+                multiple={false}
+                spacing={1}
+                className="grid w-full grid-cols-2"
               >
-                <span className="text-xs font-medium">{preset.label}</span>
-                <small className="text-xs text-muted-foreground">{preset.maxSize}px · {preset.fps} FPS · {preset.bitrateMbps}M</small>
-              </button>
-            ))}
-          </div>
+                {Object.entries(qualityPresets).map(([key, preset]) => (
+                  <ToggleGroupItem
+                    key={key}
+                    value={key as QualityPreset}
+                    aria-label={`${preset.label}画质`}
+                    title={`最长边 ${preset.maxSize}px · ${preset.fps} FPS · 码率 ${preset.bitrateMbps} Mbps`}
+                    className="h-auto min-h-11 flex-col items-start justify-center gap-0.5 rounded-lg px-2 py-1.5 text-left aria-pressed:bg-primary-soft aria-pressed:text-primary-strong"
+                  >
+                    <span className="text-xs font-medium">{preset.label}</span>
+                    <small className="text-xs font-normal text-muted-foreground">{preset.maxSize}px · {preset.fps} FPS · {preset.bitrateMbps}M</small>
+                  </ToggleGroupItem>
+                ))}
+              </ToggleGroup>
+            </Field>
 
-          <div className="grid gap-1.5">
-            <span className="text-xs font-medium text-muted-foreground">帧率</span>
-            <div role="group" aria-label="视频帧率" className="grid grid-cols-4 gap-1 rounded-lg bg-muted/60 p-1">
-              {fpsOptions.map(fps => (
-                <button
-                  key={fps}
-                  type="button"
-                  onClick={() => {
-                    setCustomFps(fps)
-                    setSettingsDirty(true)
-                  }}
-                  aria-pressed={customFps === fps}
-                  aria-label={`${fps} FPS`}
-                  className={`min-h-11 rounded-md text-xs font-medium transition-colors ${customFps === fps ? 'bg-primary-soft text-primary-strong' : 'text-muted-foreground hover:bg-card hover:text-foreground'}`}
-                >
-                  {fps}
-                </button>
-              ))}
-            </div>
-          </div>
+            <Field>
+              <FieldLabel>帧率</FieldLabel>
+              <ToggleGroup
+                aria-label="视频帧率"
+                value={[String(customFps)]}
+                onValueChange={(next) => {
+                  const fps = Number(next[0])
+                  if (!Number.isFinite(fps) || fps === customFps) return
+                  setCustomFps(fps)
+                  setSettingsDirty(true)
+                }}
+                multiple={false}
+                spacing={1}
+                className="grid w-full grid-cols-4"
+              >
+                {fpsOptions.map(fps => (
+                  <ToggleGroupItem
+                    key={fps}
+                    value={String(fps)}
+                    aria-label={`${fps} FPS`}
+                    className="min-h-11 rounded-lg text-xs aria-pressed:bg-primary-soft aria-pressed:text-primary-strong"
+                  >
+                    {fps}
+                  </ToggleGroupItem>
+                ))}
+              </ToggleGroup>
+            </Field>
 
-          <label className="grid gap-1.5 text-xs font-medium text-muted-foreground">
-            最长边
-            <select
-              aria-label="视频最长边"
-              value={customMaxSize}
-              className="control-surface min-h-11 rounded-lg px-3 text-foreground"
-              onChange={event => {
-                setCustomMaxSize(Number(event.target.value))
-                setSettingsDirty(true)
-              }}
-            >
-              {[640, 960, 1280, 1600, 1920].map(size => <option key={size} value={size}>{size}px</option>)}
-            </select>
-          </label>
+            <Field orientation="horizontal" className="items-center justify-between gap-3">
+              <FieldLabel htmlFor={maxSizeId}>最长边</FieldLabel>
+              <Select
+                items={maxSizeItems}
+                value={String(customMaxSize)}
+                onValueChange={(next, details) => {
+                  if (!next || details.reason === 'none') return
+                  setCustomMaxSize(Number(next))
+                  setSettingsDirty(true)
+                }}
+              >
+                <SelectTrigger id={maxSizeId} className="min-h-11 w-32">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {maxSizeItems.map(item => (
+                    <SelectItem key={item.value} value={item.value}>{item.label}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </Field>
 
-          <div className="grid gap-1.5">
-            <div className="flex items-center justify-between gap-2">
-              <span className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
-                <Gauge className="size-3.5" aria-hidden="true" />码率
-              </span>
-              <output htmlFor={bitrateId} className="inline-flex items-baseline gap-1 text-xs text-muted-foreground">
-                <strong className="text-sm font-bold text-foreground">{customBitrateMbps}</strong>
-                <span>Mbps</span>
-              </output>
-            </div>
-            <input
-              id={bitrateId}
-              type="range"
-              min={1}
-              max={32}
-              step={0.5}
-              value={customBitrateMbps}
-              aria-label="视频码率"
-              className="h-11 w-full accent-primary"
-              onChange={(event) => {
-                setCustomBitrateMbps(Number(event.target.value))
-                setSettingsDirty(true)
-              }}
-            />
-          </div>
+            <Field>
+              <div className="flex items-center justify-between gap-2">
+                <FieldLabel htmlFor={bitrateId}>
+                  <Gauge className="size-3.5" aria-hidden="true" />码率
+                </FieldLabel>
+                <output htmlFor={bitrateId} className="inline-flex items-baseline gap-1 text-xs text-muted-foreground">
+                  <strong className="text-sm font-bold text-foreground">{customBitrateMbps}</strong>
+                  <span>Mbps</span>
+                </output>
+              </div>
+              <Slider
+                id={bitrateId}
+                min={1}
+                max={32}
+                step={0.5}
+                value={[customBitrateMbps]}
+                thumbAriaLabel="视频码率"
+                onValueChange={(next) => {
+                  const bitrate = Array.isArray(next) ? next[0] : next
+                  if (bitrate === undefined || bitrate === customBitrateMbps) return
+                  setCustomBitrateMbps(bitrate)
+                  setSettingsDirty(true)
+                }}
+                className="py-3"
+              />
+            </Field>
+          </FieldGroup>
         </section>
 
         <Separator />
@@ -328,10 +371,10 @@ export function PreviewSettingsDialog({
             <Gauge className="size-4 text-muted-foreground" aria-hidden="true" />
             连接详情
           </h3>
-          <div className="flex flex-wrap gap-1.5 text-xs text-muted-foreground">
-            <span className="rounded-full bg-muted px-2 py-1">组件：{componentStatusLabel}</span>
-            <span className="rounded-full bg-muted px-2 py-1">服务：{serverStatusLabel}</span>
-            <span className="rounded-full bg-muted px-2 py-1">Agent：{agentStatusLabel}</span>
+          <div className="flex flex-wrap gap-1.5">
+            <Badge variant="secondary">组件：{componentStatusLabel}</Badge>
+            <Badge variant="secondary">服务：{serverStatusLabel}</Badge>
+            <Badge variant="secondary">Agent：{agentStatusLabel}</Badge>
           </div>
           <div className="grid grid-cols-2 gap-1 rounded-lg border border-border p-1 text-xs sm:grid-cols-4">
             {stats.map(([label, value]) => (
@@ -341,9 +384,9 @@ export function PreviewSettingsDialog({
               </div>
             ))}
           </div>
-          <p className="text-xs leading-5 text-muted-foreground">
+          <FieldDescription>
             连接详情仅在打开预览设置时采样；网络 RTT 为 ICE 往返时间，不含设备输入处理与画面反馈。快照模式每 {SNAPSHOT_INTERVAL_SECONDS}s 更新一次。
-          </p>
+          </FieldDescription>
         </section>
       </DialogBody>
     </DialogFrame>

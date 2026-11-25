@@ -86,7 +86,7 @@ describe('DashboardFlowSection preview lifecycle', () => {
     await act(async () => frame?.click())
     expect(onOpenAutomation).not.toHaveBeenCalled()
 
-    const live = Array.from(container.querySelectorAll<HTMLButtonElement>('[role="radio"]'))
+    const live = Array.from(container.querySelectorAll<HTMLButtonElement>('[aria-pressed]'))
       .find(button => button.textContent === '实时')
     await act(async () => live?.click())
 

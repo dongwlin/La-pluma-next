@@ -411,7 +411,7 @@ describe('ScrcpyDeviceView', () => {
 
     await renderView({ infrastructureStatus: { installed: true, built: true, serverRunning: true, agentRunning: true } })
     const fullscreenButton = findButton('全屏')!
-    fullscreenButton.focus()
+    await act(async () => fullscreenButton.focus())
     await act(async () => fullscreenButton.click())
     await act(async () => { await new Promise(resolve => setTimeout(resolve, 20)) })
 
@@ -521,7 +521,7 @@ describe('ScrcpyDeviceView', () => {
   it('keeps the shared mode controls interactive in compact view while startup is busy', async () => {
     usePreviewStore.getState().setMode('live')
     await renderView({ infrastructureLoading: 'preview' })
-    const modes = container.querySelector('[role="radiogroup"][aria-label="预览模式"]')!
+    const modes = container.querySelector('[role="group"][aria-label="预览模式"]')!
     const off = Array.from(modes.querySelectorAll('button')).find(button => button.textContent === '关闭')!
     expect(off.disabled).toBe(false)
     await act(async () => off.click())
