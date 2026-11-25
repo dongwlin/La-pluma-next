@@ -6,10 +6,10 @@ import { fpsOptions, qualityPresets } from '../constants'
 
 const defaults = {
   mode: 'off' as const,
-  quality: 'power' as const,
-  fps: 15,
+  quality: 'smooth' as const,
+  fps: 30,
   maxSize: 640,
-  bitrateMbps: 1.5,
+  bitrateMbps: 4,
 }
 
 function savePreferences(state: unknown, version = 2) {
@@ -35,16 +35,16 @@ describe('shared preview preferences', () => {
     window.localStorage.clear()
   })
 
-  it('starts stopped with the power preset and offers low frame rates', () => {
+  it('starts stopped with the smooth preset and offers low frame rates', () => {
     expect(usePreviewStore.getState()).toMatchObject(defaults)
     expect(usePreviewStore.getState()).not.toHaveProperty('autoStart')
     expect(fpsOptions).toEqual([10, 15, 30, 45, 60, 90, 120])
     expect(buildScrcpyOptions(usePreviewStore.getState())).toEqual({
-      max_fps: 15,
+      max_fps: 30,
       max_size: 640,
-      bitrate: 1500000,
-      min_bitrate: 1000000,
-      max_bitrate: 3000000,
+      bitrate: 4000000,
+      min_bitrate: 1400000,
+      max_bitrate: 8000000,
       bwe: true,
       audio: false,
       snapshot_interval: 10,
@@ -55,7 +55,7 @@ describe('shared preview preferences', () => {
     const firstConsumer = usePreviewStore.getState()
     firstConsumer.setQuality('balanced')
     expect(usePreviewStore.getState()).toMatchObject({
-      quality: 'balanced', fps: 45, maxSize: 1280, bitrateMbps: 8,
+      quality: 'balanced', fps: 30, maxSize: 1280, bitrateMbps: 8,
     })
     expect(buildScrcpyOptions(usePreviewStore.getState()).max_bitrate).toBe(16000000)
 
@@ -69,7 +69,7 @@ describe('shared preview preferences', () => {
       bitrate: 1000000, min_bitrate: 1000000, max_bitrate: 1000000,
     })
 
-    firstConsumer.setQuality('power')
+    firstConsumer.setQuality('smooth')
     firstConsumer.setQuality('custom')
     expect(usePreviewStore.getState()).toMatchObject({ ...defaults, quality: 'custom' })
   })
@@ -94,7 +94,7 @@ describe('shared preview preferences', () => {
       version: 2,
       state: { ...defaults, mode: 'live', quality: 'ultra', fps: 60, maxSize: 1920, bitrateMbps: 20 },
     })
-    expect(usePreviewStore.getState()).toMatchObject({ mode: 'live', quality: 'power', fps: 15 })
+    expect(usePreviewStore.getState()).toMatchObject({ mode: 'live', quality: 'smooth', fps: 30 })
   })
 
   it('keeps the other tab mode when only the quality changes', async () => {
@@ -127,7 +127,7 @@ describe('shared preview preferences', () => {
     usePreviewStore.getState().setQuality('balanced')
 
     expect(savedPreferences().state).toEqual({
-      mode: 'live', quality: 'balanced', fps: 45, maxSize: 1280, bitrateMbps: 8,
+      mode: 'live', quality: 'balanced', fps: 30, maxSize: 1280, bitrateMbps: 8,
     })
   })
 
@@ -207,6 +207,12 @@ describe('shared preview preferences', () => {
     savePreferences({ ...defaults, mode: 'unexpected' })
     await usePreviewStore.persist.rehydrate()
     expect(usePreviewStore.getState()).toMatchObject(defaults)
+  })
+
+  it('falls back to the smooth preset when a retired preset is stored', async () => {
+    savePreferences({ ...defaults, mode: 'live', quality: 'power', fps: 15, maxSize: 640, bitrateMbps: 1.5 })
+    await usePreviewStore.persist.rehydrate()
+    expect(usePreviewStore.getState()).toMatchObject({ ...defaults, mode: 'live' })
   })
 
   it('migrates auto-starting preferences to the saved mode', async () => {

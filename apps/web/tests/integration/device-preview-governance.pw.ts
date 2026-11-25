@@ -55,7 +55,7 @@ for (const viewport of [{ width: 1440, height: 900 }, { width: 390, height: 844 
     for (const name of ['启动服务', '连接 Agent', '断开', '重装组件']) {
       await expectTouchTarget(dialog.getByRole('button', { name, exact: true }), `服务 ${name}`)
     }
-    for (const name of ['省电画质', '流畅画质', '均衡画质', '清晰画质', '超清画质']) {
+    for (const name of ['流畅画质', '均衡画质', '清晰画质', '超清画质']) {
       await expectTouchTarget(dialog.getByRole('button', { name, exact: true }), `预设 ${name}`)
     }
     for (const fps of [10, 15, 30, 45, 60, 90, 120]) {

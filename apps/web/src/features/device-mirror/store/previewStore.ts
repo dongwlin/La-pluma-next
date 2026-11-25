@@ -25,10 +25,10 @@ const PREVIEW_STORAGE_VERSION = 2
 
 const defaultPreferences: PreviewPreferences = {
   mode: 'off',
-  quality: 'power',
-  fps: qualityPresets.power.fps,
-  maxSize: qualityPresets.power.maxSize,
-  bitrateMbps: qualityPresets.power.bitrateMbps,
+  quality: 'smooth',
+  fps: qualityPresets.smooth.fps,
+  maxSize: qualityPresets.smooth.maxSize,
+  bitrateMbps: qualityPresets.smooth.bitrateMbps,
 }
 
 function isPreviewMode(value: unknown): value is PreviewMode {
