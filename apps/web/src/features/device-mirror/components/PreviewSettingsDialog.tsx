@@ -3,7 +3,7 @@ import { Gauge, LoaderCircle, Package, Plug, RotateCw, Server, SlidersHorizontal
 import { Alert, AlertDescription, AlertTitle } from '@/shared/ui/alert'
 import { Badge } from '@/shared/ui/badge'
 import { Button } from '@/shared/ui/button'
-import { Field, FieldDescription, FieldGroup, FieldLabel, FieldTitle } from '@/shared/ui/field'
+import { Field, FieldGroup, FieldLabel, FieldTitle } from '@/shared/ui/field'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/shared/ui/select'
 import { Separator } from '@/shared/ui/separator'
 import { Slider } from '@/shared/ui/slider'
@@ -11,7 +11,7 @@ import { ToggleGroup, ToggleGroupItem } from '@/shared/ui/toggle-group'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/shared/ui/tooltip'
 import { DialogBody, DialogFrame } from '@/shared/components'
 import { dismissNotice, notify, PREVIEW_QUALITY_NOTICE_ID } from '@/shared/notifications'
-import { fpsOptions, qualityPresets, SNAPSHOT_INTERVAL_SECONDS, type QualityPreset } from '../constants'
+import { fpsOptions, qualityPresets, type QualityPreset } from '../constants'
 import { usePreviewStore } from '../store/previewStore'
 import type { PreviewLiveStatus, PreviewStatus } from '../model/previewStatus'
 import type { usePreviewSession } from '../hooks/usePreviewSession'
@@ -192,7 +192,6 @@ export function PreviewSettingsDialog({
               <span className="truncate">{status.label}</span>
             </span>
           </div>
-          <p className="text-xs leading-5 text-muted-foreground">停止服务或 Agent 会断开其他观看者。</p>
           {infrastructureError && (
             <Alert variant="destructive">
               <AlertTitle>预览服务状态异常</AlertTitle>
@@ -436,9 +435,6 @@ export function PreviewSettingsDialog({
               </div>
             ))}
           </div>
-          <FieldDescription>
-            连接详情仅在打开预览设置时采样；网络 RTT 为 ICE 往返时间，不含设备输入处理与画面反馈。快照模式每 {SNAPSHOT_INTERVAL_SECONDS}s 更新一次。
-          </FieldDescription>
         </section>
       </DialogBody>
     </DialogFrame>
