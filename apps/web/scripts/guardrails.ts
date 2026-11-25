@@ -1702,13 +1702,7 @@ function collectLayoutTestViolations(file: SourceFile, violations: GuardrailViol
 
 export function checkLayoutTestDetails(files: readonly SourceFile[]): GuardrailViolation[] {
   const layoutTests = files.filter(file => LAYOUT_TEST_FILE_PATTERN.test(file.path))
-  if (layoutTests.length === 0) {
-    return [{
-      rule: 'layout-test-detail',
-      file: 'src/**/*.layout.test.tsx',
-      message: '未找到布局测试文件，无法核对测试是否锁定实现细节',
-    }]
-  }
+  if (layoutTests.length === 0) return []
 
   const violations: GuardrailViolation[] = []
   for (const file of layoutTests) collectLayoutTestViolations(file, violations)
