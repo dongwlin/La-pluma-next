@@ -4,10 +4,10 @@ import { Smartphone } from 'lucide-react'
 import { Alert, AlertDescription, AlertTitle } from '@/shared/ui/alert'
 import { Badge } from '@/shared/ui/badge'
 import { Button } from '@/shared/ui/button'
-import { Card } from '@/shared/ui/card'
 import { EmptyState } from '@/shared/components'
 import { useDashboardPreview } from '../hooks/useDashboardPreview'
 import { useRetainedSnapshot } from '../hooks/useRetainedSnapshot'
+import { DashboardPreviewCard, DashboardPreviewFrame } from './DashboardPreviewShell'
 import { PreviewModeSegmented } from '@/features/device-mirror'
 
 const DashboardPreviewEntry = memo(function DashboardPreviewEntry() {
@@ -17,9 +17,8 @@ const DashboardPreviewEntry = memo(function DashboardPreviewEntry() {
   const hasFrame = status.hasFrame
 
   return (
-    <Card
-      data-dashboard-preview-card
-      className={cn('status-border-beam gap-0 p-0!', isConnecting && 'is-active')}
+    <DashboardPreviewCard
+      className={cn(isConnecting && 'is-active')}
       aria-busy={isConnecting}
     >
       <div className="dashboard-preview-header flex items-center justify-between gap-3.5 px-4 py-2 border-b border-border">
@@ -54,10 +53,7 @@ const DashboardPreviewEntry = memo(function DashboardPreviewEntry() {
           )}
         </Alert>
       )}
-      <div
-        data-dashboard-preview-frame
-        className={cn('dashboard-preview-frame relative aspect-video w-full overflow-hidden transition-colors duration-200', hasFrame ? 'bg-black' : 'is-empty')}
-      >
+      <DashboardPreviewFrame className={hasFrame ? 'bg-black' : 'is-empty'}>
         <video
           ref={videoRef}
           autoPlay
@@ -94,8 +90,8 @@ const DashboardPreviewEntry = memo(function DashboardPreviewEntry() {
           ) : undefined}
           className={cn('dashboard-preview-empty absolute inset-0 px-4 transition-opacity duration-200', hasFrame ? 'pointer-events-none opacity-0' : 'opacity-100')}
         />
-      </div>
-    </Card>
+      </DashboardPreviewFrame>
+    </DashboardPreviewCard>
   )
 })
 

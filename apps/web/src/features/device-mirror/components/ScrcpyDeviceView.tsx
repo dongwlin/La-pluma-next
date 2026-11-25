@@ -11,7 +11,7 @@ import { usePreviewSession } from '../hooks/usePreviewSession'
 import { usePreviewSnapshot } from '../hooks/usePreviewSnapshot'
 import { derivePreviewStatus, type PreviewLiveStatus } from '../model/previewStatus'
 import type { usePreviewInfrastructureView } from '../hooks/usePreviewInfrastructureView'
-import { PreviewModeSegmented } from './PreviewModeControls'
+import { PreviewModeSegmented } from './PreviewModeSegmented'
 import { PreviewSettingsDialog } from './PreviewSettingsDialog'
 
 interface ScrcpyDeviceViewProps {
@@ -282,7 +282,7 @@ export default function ScrcpyDeviceView({ infrastructure }: ScrcpyDeviceViewPro
             className={`preview-status-light is-${status.tone}`}
             aria-hidden="true"
           />
-          <span className="truncate text-base font-semibold text-foreground">设备画面</span>
+          <h2 className="truncate text-base font-semibold text-foreground">设备画面</h2>
           <span className="ml-auto min-w-0 truncate text-xs font-medium text-tertiary" role="status" aria-live="polite" aria-atomic="true">
             {status.label}
           </span>

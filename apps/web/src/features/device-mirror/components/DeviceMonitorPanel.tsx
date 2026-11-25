@@ -43,9 +43,9 @@ export function DeviceMonitorLayout(props: DeviceMonitorLayoutProps) {
         {props.sequence}
         {props.editor}
         <div className="automation-support-column" data-monitor-area="support">
-          <div className="device-monitor-column" data-monitor-area="monitor">
+          <aside className="device-monitor-column" aria-label="设备画面" data-monitor-area="monitor">
             <DeviceMonitorPanel className="device-monitor-panel" />
-          </div>
+          </aside>
           {props.support}
         </div>
       </div>
@@ -67,18 +67,12 @@ export function DeviceMonitorLayout(props: DeviceMonitorLayoutProps) {
   return (
     <div className="task-monitor-layout" data-device-monitor-layout="standard">
       <div className="task-monitor-main" data-monitor-area="main">{props.children}</div>
-      {props.support != null ? (
-        <div className="task-monitor-support" data-monitor-area="support">
-          <aside className="task-monitor-column" aria-label="设备画面" data-monitor-area="monitor">
-            <DeviceMonitorPanel />
-          </aside>
-          {props.support}
-        </div>
-      ) : (
+      <div className="task-monitor-support" data-monitor-area="support">
         <aside className="task-monitor-column" aria-label="设备画面" data-monitor-area="monitor">
           <DeviceMonitorPanel />
         </aside>
-      )}
+        {props.support}
+      </div>
     </div>
   )
 }
