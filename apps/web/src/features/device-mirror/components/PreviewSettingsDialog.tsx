@@ -4,7 +4,7 @@ import { Alert, AlertDescription, AlertTitle } from '@/shared/ui/alert'
 import { Badge } from '@/shared/ui/badge'
 import { Button } from '@/shared/ui/button'
 import { DialogClose } from '@/shared/ui/dialog'
-import { Field, FieldDescription, FieldGroup, FieldLabel } from '@/shared/ui/field'
+import { Field, FieldDescription, FieldGroup, FieldLabel, FieldTitle } from '@/shared/ui/field'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/shared/ui/select'
 import { Separator } from '@/shared/ui/separator'
 import { Slider } from '@/shared/ui/slider'
@@ -257,7 +257,7 @@ export function PreviewSettingsDialog({
 
           <FieldGroup className="gap-3">
             <Field>
-              <FieldLabel>画质预设</FieldLabel>
+              <FieldTitle>画质预设</FieldTitle>
               <ToggleGroup
                 aria-label="画质预设"
                 value={quality === 'custom' ? [] : [quality]}
@@ -285,7 +285,7 @@ export function PreviewSettingsDialog({
             </Field>
 
             <Field>
-              <FieldLabel>帧率</FieldLabel>
+              <FieldTitle>帧率</FieldTitle>
               <ToggleGroup
                 aria-label="视频帧率"
                 value={[String(customFps)]}
@@ -336,9 +336,9 @@ export function PreviewSettingsDialog({
 
             <Field>
               <div className="flex items-center justify-between gap-2">
-                <FieldLabel>
+                <FieldTitle>
                   <Gauge className="size-3.5" aria-hidden="true" />码率
-                </FieldLabel>
+                </FieldTitle>
                 <output className="inline-flex items-baseline gap-1 text-xs text-muted-foreground">
                   <strong className="text-sm font-bold text-foreground">{customBitrateMbps}</strong>
                   <span>Mbps</span>
