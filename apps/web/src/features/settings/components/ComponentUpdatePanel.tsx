@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { Download, LoaderCircle, RefreshCw } from 'lucide-react'
 import { Badge } from '@/shared/ui/badge'
 import { Button } from '@/shared/ui/button'
+import { Field, FieldDescription } from '@/shared/ui/field'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/shared/ui/select'
 import { notify, notifyProgress, SETTINGS_UPDATE_CHANNEL_NOTICE_ID } from '@/shared/notifications'
 import { saveUpdateChannel } from '../api'
@@ -104,16 +105,20 @@ export default function ComponentUpdatePanel() {
 
   return (
     <>
-      <section className="flex flex-wrap items-center gap-2">
-        <h3 className="text-sm font-medium text-foreground">MAA CLI</h3>
-        {versionInfo && <span className="text-sm text-muted-foreground">{versionInfo.cli}</span>}
+      <Field orientation="horizontal" className="min-h-11 gap-3.5">
+        <div className="flex min-w-0 flex-1 flex-col gap-0.5">
+          <h3 className="text-sm font-medium text-foreground">MAA CLI</h3>
+          {versionInfo && (
+            <FieldDescription className="leading-5">{versionInfo.cli}</FieldDescription>
+          )}
+        </div>
         <Select
           items={CLI_CHANNEL_OPTIONS}
           value={cliChannel}
           onValueChange={(value, details) => { if (details.reason !== 'none' && value !== null) void handleChannelChange('cli', value) }}
           disabled={channelSavingBusy}
         >
-          <SelectTrigger aria-label="MAA CLI 更新渠道" className="ml-auto w-32">
+          <SelectTrigger aria-label="MAA CLI 更新渠道" className="min-w-0 flex-1 sm:max-w-72">
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
@@ -122,18 +127,22 @@ export default function ComponentUpdatePanel() {
             ))}
           </SelectContent>
         </Select>
-      </section>
+      </Field>
 
-      <section className="flex flex-wrap items-center gap-2">
-        <h3 className="text-sm font-medium text-foreground">MaaCore</h3>
-        {versionInfo && <span className="text-sm text-muted-foreground">{versionInfo.core}</span>}
+      <Field orientation="horizontal" className="min-h-11 gap-3.5">
+        <div className="flex min-w-0 flex-1 flex-col gap-0.5">
+          <h3 className="text-sm font-medium text-foreground">MaaCore</h3>
+          {versionInfo && (
+            <FieldDescription className="leading-5">{versionInfo.core}</FieldDescription>
+          )}
+        </div>
         <Select
           items={CORE_CHANNEL_OPTIONS}
           value={coreChannel}
           onValueChange={(value, details) => { if (details.reason !== 'none' && value !== null) void handleChannelChange('core', value) }}
           disabled={channelSavingBusy}
         >
-          <SelectTrigger aria-label="MaaCore 更新渠道" className="ml-auto w-32">
+          <SelectTrigger aria-label="MaaCore 更新渠道" className="min-w-0 flex-1 sm:max-w-72">
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
@@ -142,30 +151,35 @@ export default function ComponentUpdatePanel() {
             ))}
           </SelectContent>
         </Select>
-      </section>
+      </Field>
 
       {resource && (
-        <section className="flex flex-wrap items-center gap-2">
-          <h3 className="text-sm font-medium text-foreground">游戏资源</h3>
-          <span className="text-sm text-muted-foreground">{formatResourceTime(resource.lastUpdated)}</span>
+        <Field orientation="horizontal" className="min-h-11 gap-3.5">
+          <div className="flex min-w-0 flex-1 flex-col gap-0.5">
+            <h3 className="text-sm font-medium text-foreground">游戏资源</h3>
+            <FieldDescription className="leading-5">
+              {formatResourceTime(resource.lastUpdated)}
+            </FieldDescription>
+          </div>
           <Badge
             variant="ghost"
-            className={`ml-auto ${resource.status === 'current' ? 'status-success' : 'status-warning'}`}
+            className={`shrink-0 ${resource.status === 'current' ? 'status-success' : 'status-warning'}`}
           >
             {resource.status === 'current' ? '资源正常' : '需要同步'}
           </Badge>
-        </section>
+        </Field>
       )}
 
       {resource && resource.status !== 'current' && (
         <p className="text-xs leading-5 text-warning">{resource.message}</p>
       )}
 
-      <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center">
+      <div className="flex min-h-11 flex-col justify-center gap-2 sm:flex-row sm:flex-wrap sm:items-center">
         <Button
           onClick={handleUpdateCli}
           disabled={updateBusy || channelSavingBusy || updatingCli}
           aria-busy={updatingCli || undefined}
+          size="sm"
           className="w-full sm:w-auto"
         >
           {updatingCli
@@ -181,6 +195,7 @@ export default function ComponentUpdatePanel() {
           onClick={handleUpdateCore}
           disabled={updateBusy || channelSavingBusy || updatingCore}
           aria-busy={updatingCore || undefined}
+          size="sm"
           className="w-full sm:w-auto"
         >
           {updatingCore
@@ -197,6 +212,7 @@ export default function ComponentUpdatePanel() {
           disabled={updateBusy || channelSavingBusy || hotUpdating}
           aria-busy={hotUpdating || undefined}
           variant="outline"
+          size="sm"
           className="w-full sm:w-auto"
         >
           {hotUpdating
@@ -215,6 +231,7 @@ export default function ComponentUpdatePanel() {
             disabled={updateCanceling}
             aria-busy={updateCanceling || undefined}
             variant="outline"
+            size="sm"
             className="w-full sm:ml-auto sm:w-auto"
           >
             {updateCanceling

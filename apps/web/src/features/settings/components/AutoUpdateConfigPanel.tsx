@@ -1,4 +1,5 @@
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion'
+import { Field } from '@/shared/ui/field'
 import { Switch } from '@/shared/ui/switch'
 import { ConfigFieldCheckbox, ConfigFieldInput } from './ConfigFieldControls'
 import { notify } from '@/shared/notifications'
@@ -20,8 +21,8 @@ export default function AutoUpdateConfigPanel() {
 
   return (
     <section className="min-w-0" onBlur={flush}>
-      <div className="flex min-h-11 items-center justify-between gap-3.5">
-        <div className="min-w-0">
+      <Field orientation="horizontal" className="min-h-11 gap-3.5">
+        <div className="flex min-w-0 flex-1 flex-col gap-0.5">
           <h3 className="text-sm font-medium text-foreground">自动更新</h3>
         </div>
         <Switch
@@ -29,7 +30,7 @@ export default function AutoUpdateConfigPanel() {
           onCheckedChange={checked => applyUpdate({ enabled: checked })}
           aria-label="启用自动更新"
         />
-      </div>
+      </Field>
 
       <AnimatePresence initial={false}>
         {autoUpdate.enabled && (
