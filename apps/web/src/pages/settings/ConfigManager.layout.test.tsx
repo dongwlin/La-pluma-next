@@ -453,7 +453,7 @@ describe('ConfigManager layout surfaces', () => {
 
     expect(mocks.setupAutoUpdate).not.toHaveBeenCalled()
     expect(timeInput.value).toBe('06:15')
-    expect(container.querySelector('[role="alert"]')?.textContent).toContain('自动更新设置保存失败: 配置目录不可写')
+    expect(container.querySelector('[role="alert"]')).toBeNull()
     expect(mocks.notify).toHaveBeenCalledWith('自动更新设置保存失败: 配置目录不可写', 'error', expect.objectContaining({
       id: 'settings-auto-update',
       action: expect.objectContaining({ label: '重试保存' }),
@@ -560,7 +560,7 @@ describe('ConfigManager layout surfaces', () => {
     await settle()
   })
 
-  it('offers a resource retry when a core update fails at the resource step', async () => {
+  it('offers a resource retry through the update toast action', async () => {
     mocks.updateMaaCore.mockResolvedValue({
       success: false,
       message: '资源同步失败',
@@ -578,13 +578,17 @@ describe('ConfigManager layout surfaces', () => {
     expect(invalidationEvents).toEqual([])
     expect(mocks.updateMaaCore).toHaveBeenCalledOnce()
     expect(mocks.getVersion).toHaveBeenCalledOnce()
+    expect(container.querySelector('[role="alert"]')).toBeNull()
 
-    const retryButton = Array.from(container.querySelectorAll<HTMLButtonElement>('button'))
-      .find(button => button.textContent?.trim() === '重试资源同步')
-    expect(retryButton).toBeDefined()
-    expect(retryButton?.disabled).toBe(false)
+    const failureCall = mocks.notify.mock.calls
+      .find(([message]) => message === '资源同步失败')
+    expect(failureCall?.[2]).toMatchObject({
+      id: 'settings-update',
+      action: expect.objectContaining({ label: '重试资源同步' }),
+    })
 
-    await act(async () => retryButton?.click())
+    const action = failureCall?.[2]?.action as { onClick: () => void }
+    await act(async () => action.onClick())
     await flush()
     expect(mocks.hotUpdateResources).toHaveBeenCalledOnce()
     expect(invalidationEvents).toHaveLength(1)
@@ -693,7 +697,10 @@ describe('ConfigManager layout surfaces', () => {
     expect(mocks.getVersion).toHaveBeenCalledOnce()
     expect(invalidationEvents).toEqual([])
     expect(getItemIconCacheVersion()).toBe(iconVersionBefore)
-    expect(container.querySelector('[role="alert"]')?.textContent).toContain('下载失败')
+    expect(container.querySelector('[role="alert"]')).toBeNull()
+    expect(mocks.notify).toHaveBeenCalledWith('下载失败', 'error', {
+      id: 'settings-update',
+    })
     expect(buttonByText('重试资源同步')).toBeUndefined()
   })
 
@@ -794,9 +801,8 @@ describe('ConfigManager layout surfaces', () => {
     await act(async () => root.render(page()))
     await flush()
 
-    const alert = container.querySelector('[role="alert"]')
-    expect(alert?.textContent).toContain('自动更新设置读取失败: 配置目录不可读')
-    expect(alert?.querySelector('button')).toBeNull()
+    expect(container.querySelector('[role="alert"]')).toBeNull()
+    expect(mocks.notify).toHaveBeenCalledWith('自动更新设置读取失败: 配置目录不可读', 'error')
     expect(mocks.saveUserConfig).not.toHaveBeenCalled()
     expect(mocks.setupAutoUpdate).not.toHaveBeenCalled()
   })
@@ -821,8 +827,7 @@ describe('ConfigManager layout surfaces', () => {
     })
     await flush()
 
-    expect(container.querySelector('[role="alert"]')?.textContent).toContain('自动更新设置应用失败: 无法创建定时任务')
-    expect(buttonByText('重试保存')).toBeDefined()
+    expect(container.querySelector('[role="alert"]')).toBeNull()
     expect(mocks.notify).toHaveBeenCalledWith('自动更新设置应用失败: 无法创建定时任务', 'error', expect.objectContaining({
       id: 'settings-auto-update',
       action: expect.objectContaining({ label: '重试保存' }),
@@ -1104,7 +1109,7 @@ describe('ConfigManager layout surfaces', () => {
       .find(input => input.value === '127.0.0.1:5555')).toBeDefined()
   })
 
-  it('keeps connection and update feedback inside their own panels', async () => {
+  it('keeps connection feedback inline while update failures use the global toast', async () => {
     mocks.saveConfig.mockResolvedValue({ success: false, message: '磁盘只读' })
     mocks.updateMaaCore.mockResolvedValue({
       success: false,
@@ -1124,11 +1129,10 @@ describe('ConfigManager layout surfaces', () => {
 
     const alerts = Array.from(container.querySelectorAll<HTMLElement>('[role="alert"]'))
     const editorAlert = alerts.find(alert => alert.textContent?.includes('连接配置保存失败'))
-    const updateAlert = alerts.find(alert => alert.textContent?.includes('下载失败'))
     expect(editorAlert?.textContent).toContain('连接配置保存失败: 磁盘只读')
-    expect(updateAlert?.textContent).toContain('下载失败')
     expect(editorAlert?.textContent).not.toContain('下载失败')
-    expect(updateAlert?.textContent).not.toContain('磁盘只读')
+    expect(alerts.find(alert => alert.textContent?.includes('下载失败'))).toBeUndefined()
+    expect(mocks.notify).toHaveBeenCalledWith('下载失败', 'error', { id: 'settings-update' })
   })
 
   it('opens the discovery dialog, searches with the draft adb path, and backfills the selected device', async () => {

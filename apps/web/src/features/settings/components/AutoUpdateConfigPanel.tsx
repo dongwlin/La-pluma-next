@@ -1,11 +1,8 @@
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion'
-import { Button } from '@/shared/ui/button'
 import { Separator } from '@/shared/ui/separator'
 import { Switch } from '@/shared/ui/switch'
 import { ConfigFieldCheckbox, ConfigFieldInput } from './ConfigFieldControls'
-import SettingsFeedback from './SettingsFeedback'
 import { notify } from '@/shared/notifications'
-import { INVALID_UPDATE_TIME_MESSAGE } from '../model/autoUpdateConfig'
 import { useSettingsAutoUpdate } from '../hooks/useSettingsAutoUpdate'
 import type { AutoUpdateConfig } from '../types'
 
@@ -13,21 +10,14 @@ export default function AutoUpdateConfigPanel() {
   const shouldReduceMotion = useReducedMotion()
   const {
     draft: autoUpdate,
-    feedback: autoUpdateFeedback,
     update: updateAutoUpdate,
     flush,
-    retrySave,
   } = useSettingsAutoUpdate(notify)
 
   const applyUpdate = (patch: Partial<AutoUpdateConfig>) => {
     updateAutoUpdate(patch)
     flush()
   }
-  const errorMessage = autoUpdateFeedback?.type === 'error'
-    && autoUpdateFeedback.message !== INVALID_UPDATE_TIME_MESSAGE
-    ? autoUpdateFeedback.message
-    : null
-  const canRetrySave = errorMessage !== null && !errorMessage.startsWith('自动更新设置读取失败')
 
   return (
     <section className="min-w-0" onBlur={flush}>
@@ -76,26 +66,6 @@ export default function AutoUpdateConfigPanel() {
           </motion.div>
         )}
       </AnimatePresence>
-
-      {errorMessage && (
-        <SettingsFeedback
-          tone="error"
-          message={errorMessage}
-          action={canRetrySave
-            ? (
-                <Button
-                  type="button"
-                  onClick={retrySave}
-                  variant="outline"
-                  size="sm"
-                >
-                  重试保存
-                </Button>
-              )
-            : undefined}
-          className="mt-3.5"
-        />
-      )}
     </section>
   )
 }

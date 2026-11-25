@@ -3,7 +3,6 @@ import { Download, LoaderCircle, RefreshCw } from 'lucide-react'
 import { Badge } from '@/shared/ui/badge'
 import { Button } from '@/shared/ui/button'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/shared/ui/select'
-import SettingsFeedback from './SettingsFeedback'
 import { notify, notifyProgress, SETTINGS_UPDATE_CHANNEL_NOTICE_ID } from '@/shared/notifications'
 import { saveUpdateChannel } from '../api'
 import { resolveCoreChannel } from '../model/updateCommandPolicy'
@@ -35,7 +34,6 @@ export default function ComponentUpdatePanel() {
   } = useSettingsVersion()
   const {
     running: updateOperation,
-    feedback: updateFeedback,
     busy: updateBusy,
     canceling: updateCanceling,
     updateCore,
@@ -225,27 +223,6 @@ export default function ComponentUpdatePanel() {
             ? <><LoaderCircle className="animate-spin" aria-hidden="true" />停止中</>
             : '停止更新'}
         </Button>
-      )}
-
-      {updateFeedback?.type === 'error' && (
-        <SettingsFeedback
-          tone="error"
-          message={updateFeedback.message}
-          action={updateFeedback.resourceRetry
-            ? (
-                <Button
-                  type="button"
-                  onClick={handleHotUpdate}
-                  disabled={updateBusy || channelSavingBusy}
-                  variant="outline"
-                  size="sm"
-                >
-                  <RefreshCw size={16} aria-hidden="true" />
-                  重试资源同步
-                </Button>
-              )
-            : undefined}
-        />
       )}
     </div>
   )
