@@ -103,7 +103,7 @@ export default function ComponentUpdatePanel() {
   const resource = versionInfo?.resource
 
   return (
-    <div className="app-stack-card">
+    <>
       <div className="flex flex-col gap-3.5">
         <section className="flex flex-wrap items-center gap-2">
           <h3 className="text-sm font-medium text-foreground">MAA CLI</h3>
@@ -225,6 +225,6 @@ export default function ComponentUpdatePanel() {
           </Button>
         )}
       </div>
-    </div>
+    </>
   )
 }

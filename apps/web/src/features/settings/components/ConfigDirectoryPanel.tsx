@@ -44,18 +44,16 @@ export default function ConfigDirectoryPanel() {
             </p>
           )}
         </div>
-        <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto">
-          <Button
-            onClick={handleOpenConfigDir}
-            variant="outline"
-            size="sm"
-            className="flex-1 sm:flex-none"
-            disabled={configDirStatus !== 'ready' || !configDir}
-          >
-            <FolderOpen size={16} aria-hidden="true" />
-            打开目录
-          </Button>
-        </div>
+        <Button
+          onClick={handleOpenConfigDir}
+          variant="outline"
+          size="sm"
+          className="w-full sm:w-auto"
+          disabled={configDirStatus !== 'ready' || !configDir}
+        >
+          <FolderOpen size={16} aria-hidden="true" />
+          打开目录
+        </Button>
       </CardContent>
     </Card>
   )

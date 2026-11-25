@@ -1,6 +1,5 @@
 import { ConfigFieldSelect } from './ConfigFieldControls'
 import SwitchSettingRow from './SwitchSettingRow'
-import { FieldGroup } from '@/shared/ui/field'
 import { SETTINGS_CONFIG_INSTANCE_NOTICE_ID } from '@/shared/notifications'
 import { useAutoSave } from '../hooks/useAutoSave'
 import { useConfigDraftPanel } from '../hooks/useConfigDraftPanel'
@@ -91,35 +90,33 @@ export default function InstanceOptionsPanel() {
         items={TOUCH_MODE_OPTIONS}
       />
 
-      <FieldGroup className="gap-3.5!">
-        <SwitchSettingRow
-          id="instance-deployment-with-pause"
-          label="部署时暂停"
-          checked={draft.deployment_with_pause}
-          onCheckedChange={(checked: boolean) => {
-            updateInstanceOptionsNow({ deployment_with_pause: checked })
-          }}
-          disabled={!loaded}
-        />
-        <SwitchSettingRow
-          id="instance-adb-lite"
-          label="ADB Lite"
-          checked={draft.adb_lite_enabled}
-          onCheckedChange={(checked: boolean) => {
-            updateInstanceOptionsNow({ adb_lite_enabled: checked })
-          }}
-          disabled={!loaded}
-        />
-        <SwitchSettingRow
-          id="instance-kill-adb-on-exit"
-          label="退出时结束 ADB"
-          checked={draft.kill_adb_on_exit}
-          onCheckedChange={(checked: boolean) => {
-            updateInstanceOptionsNow({ kill_adb_on_exit: checked })
-          }}
-          disabled={!loaded}
-        />
-      </FieldGroup>
+      <SwitchSettingRow
+        id="instance-deployment-with-pause"
+        label="部署时暂停"
+        checked={draft.deployment_with_pause}
+        onCheckedChange={(checked: boolean) => {
+          updateInstanceOptionsNow({ deployment_with_pause: checked })
+        }}
+        disabled={!loaded}
+      />
+      <SwitchSettingRow
+        id="instance-adb-lite"
+        label="ADB Lite"
+        checked={draft.adb_lite_enabled}
+        onCheckedChange={(checked: boolean) => {
+          updateInstanceOptionsNow({ adb_lite_enabled: checked })
+        }}
+        disabled={!loaded}
+      />
+      <SwitchSettingRow
+        id="instance-kill-adb-on-exit"
+        label="退出时结束 ADB"
+        checked={draft.kill_adb_on_exit}
+        onCheckedChange={(checked: boolean) => {
+          updateInstanceOptionsNow({ kill_adb_on_exit: checked })
+        }}
+        disabled={!loaded}
+      />
     </ConfigEditorCard>
   )
 }

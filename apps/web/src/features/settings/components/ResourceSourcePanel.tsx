@@ -1,7 +1,6 @@
 import { useState } from 'react'
 import { ConfigFieldCheckbox, ConfigFieldInput, ConfigFieldSelect } from './ConfigFieldControls'
 import SwitchSettingRow from './SwitchSettingRow'
-import { FieldGroup } from '@/shared/ui/field'
 import { SETTINGS_CONFIG_RESOURCE_SOURCE_NOTICE_ID } from '@/shared/notifications'
 import { isRunStatusBusy, useStatusStore } from '@/features/runtime-status'
 import { useAutoSave } from '../hooks/useAutoSave'
@@ -194,26 +193,24 @@ export default function ResourceSourcePanel() {
         </>
       )}
 
-      <FieldGroup className="gap-3.5!">
-        <SwitchSettingRow
-          id="resource-auto-update"
-          label="自动更新资源"
-          checked={draft.autoUpdate}
-          onCheckedChange={(checked: boolean) => {
-            updateNow({ autoUpdate: checked })
-          }}
-          disabled={!loaded || runBusy}
-        />
-        <SwitchSettingRow
-          id="resource-warn-on-update-failure"
-          label="更新失败时告警"
-          checked={draft.warnOnUpdateFailure}
-          onCheckedChange={(checked: boolean) => {
-            updateNow({ warnOnUpdateFailure: checked })
-          }}
-          disabled={!loaded || runBusy}
-        />
-      </FieldGroup>
+      <SwitchSettingRow
+        id="resource-auto-update"
+        label="自动更新资源"
+        checked={draft.autoUpdate}
+        onCheckedChange={(checked: boolean) => {
+          updateNow({ autoUpdate: checked })
+        }}
+        disabled={!loaded || runBusy}
+      />
+      <SwitchSettingRow
+        id="resource-warn-on-update-failure"
+        label="更新失败时告警"
+        checked={draft.warnOnUpdateFailure}
+        onCheckedChange={(checked: boolean) => {
+          updateNow({ warnOnUpdateFailure: checked })
+        }}
+        disabled={!loaded || runBusy}
+      />
     </ConfigEditorCard>
   )
 }
