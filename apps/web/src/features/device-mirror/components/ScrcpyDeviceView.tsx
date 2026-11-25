@@ -1,34 +1,16 @@
-import { useCallback, useEffect, useId, useRef, useState, type CSSProperties } from 'react'
-import { ArrowLeft, Gauge, Home, LoaderCircle, Maximize2, Minimize2, Package, PanelsTopLeft, Plug, RotateCw, Server, SlidersHorizontal, Smartphone, Unplug } from 'lucide-react'
+import { useCallback, useEffect, useRef, useState } from 'react'
+import { ArrowLeft, Home, Maximize2, Minimize2, PanelsTopLeft, SlidersHorizontal, Smartphone } from 'lucide-react'
 import { Button } from '@/shared/ui/button'
 import { Dialog, DialogContent, DialogTitle } from '@/shared/ui/dialog'
 import { usePreviewSession } from '../hooks/usePreviewSession'
 import { usePreviewSnapshot } from '../hooks/usePreviewSnapshot'
 import { derivePreviewStatus, type PreviewLiveStatus } from '../model/previewStatus'
-import { usePreviewStore } from '../store/previewStore'
-import { qualityPresets, fpsOptions, type QualityPreset } from '../constants'
-import PreviewModeControls, { PreviewModeSegmented } from './PreviewModeControls'
+import type { usePreviewInfrastructureView } from '../hooks/usePreviewInfrastructureView'
+import { PreviewModeSegmented } from './PreviewModeControls'
+import { PreviewSettingsDialog } from './PreviewSettingsDialog'
 
 interface ScrcpyDeviceViewProps {
-  enabled: boolean
-  automationAvailable?: boolean
-  automationUnavailableMessage?: string
-  variant?: 'full' | 'compact'
-  autoConnect?: boolean
-  onStatusChange?: (status: string, stats: any, error: string | null) => void
-  infrastructureStatus?: {
-    installed?: boolean
-    built?: boolean
-    serverRunning?: boolean
-    agentRunning?: boolean
-  } | null
-  infrastructureStatusState?: 'loading' | 'ready' | 'error'
-  infrastructureLoading?: string | null
-  infrastructureError?: string | null
-  onRefreshInfrastructure?: () => void
-  onInstall?: () => Promise<void> | void
-  onToggleServer?: () => Promise<void> | void
-  onToggleAgent?: () => Promise<void> | void
+  infrastructure: ReturnType<typeof usePreviewInfrastructureView>
 }
 
 const deviceNavigationActions = [
@@ -42,14 +24,12 @@ function DeviceNavigationButtons({
   automationAvailable,
   automationUnavailableMessage,
   immersive = false,
-  compact = false,
   onCommand,
 }: {
   connected: boolean
   automationAvailable: boolean
   automationUnavailableMessage: string
   immersive?: boolean
-  compact?: boolean
   onCommand: (command: string) => void
 }) {
   return deviceNavigationActions.map(({ label, command, Icon }) => (
@@ -62,7 +42,7 @@ function DeviceNavigationButtons({
       aria-label={label}
       className={immersive
         ? 'group flex h-11 w-11 items-center justify-center rounded-full border border-white/20 bg-white/10 text-white backdrop-blur-xs transition hover:bg-white/20 disabled:cursor-not-allowed disabled:opacity-35'
-        : `control-surface flex h-11 min-h-11 w-11 min-w-11 items-center justify-center rounded-full text-muted-foreground transition-colors hover:text-primary disabled:cursor-not-allowed disabled:opacity-35 ${compact ? 'device-preview-glass-button' : ''}`}
+        : 'device-preview-glass-button control-surface flex h-11 min-h-11 w-11 min-w-11 items-center justify-center rounded-full text-muted-foreground transition-colors hover:text-primary disabled:cursor-not-allowed disabled:opacity-35'}
     >
       <Icon className="h-3.5 w-3.5" strokeWidth={1.8} />
     </button>
@@ -75,25 +55,12 @@ interface TrackedPointer {
   target: HTMLVideoElement
 }
 
-function formatStatistic(value: number | null | undefined, unit: string) {
-  if (value === undefined || value === null || !Number.isFinite(value)) return '--'
-  return `${value} ${unit}`
-}
-
-export default function ScrcpyDeviceView({
-  automationAvailable = true,
-  automationUnavailableMessage = '后端服务暂不可用，请稍后重试',
-  variant = 'full',
-  onStatusChange,
-  infrastructureStatus,
-  infrastructureStatusState,
-  infrastructureLoading,
-  infrastructureError,
-  onRefreshInfrastructure,
-  onInstall,
-  onToggleServer,
-  onToggleAgent
-}: ScrcpyDeviceViewProps) {
+export default function ScrcpyDeviceView({ infrastructure }: ScrcpyDeviceViewProps) {
+  const {
+    automationAvailable,
+    automationUnavailableMessage = '后端服务暂不可用，请稍后重试',
+    infrastructureError,
+  } = infrastructure
   const videoRef = useRef<HTMLVideoElement | null>(null)
   const immersiveVideoRef = useRef<HTMLVideoElement | null>(null)
   const previousFocusRef = useRef<HTMLElement | null>(null)
@@ -101,20 +68,9 @@ export default function ScrcpyDeviceView({
   const trackedPointersRef = useRef(new Map<number, TrackedPointer>())
   const pendingPointerMovesRef = useRef(new Map<number, TrackedPointer>())
   const pointerMoveFrameRef = useRef<number | null>(null)
-  const quality = usePreviewStore(state => state.quality)
-  const customFps = usePreviewStore(state => state.fps)
-  const customMaxSize = usePreviewStore(state => state.maxSize)
-  const customBitrateMbps = usePreviewStore(state => state.bitrateMbps)
-  const setQuality = usePreviewStore(state => state.setQuality)
-  const setCustomFps = usePreviewStore(state => state.setCustomFps)
-  const setCustomMaxSize = usePreviewStore(state => state.setCustomMaxSize)
-  const setCustomBitrateMbps = usePreviewStore(state => state.setCustomBitrateMbps)
-  const [settingsDirty, setSettingsDirty] = useState(false)
+  const [settingsOpen, setSettingsOpen] = useState(false)
   const [immersiveMode, setImmersiveMode] = useState(false)
   const [immersiveVideoMounted, setImmersiveVideoMounted] = useState(false)
-  const [compactControlsOpen, setCompactControlsOpen] = useState(false)
-  const compactControlsId = `scrcpy-controls-${useId().replace(/:/g, '')}`
-  const bitrateProgress = ((customBitrateMbps - 1) / (32 - 1)) * 100
   const webrtc = usePreviewSession({
     videoRef,
   })
@@ -123,13 +79,7 @@ export default function ScrcpyDeviceView({
   useEffect(() => {
     sendTouchRef.current = webrtc.sendTouch
   }, [webrtc.sendTouch])
-  const isCompact = variant === 'compact'
-  const isConnecting = webrtc.isConnecting
-  const previewBusy = infrastructureLoading === 'preview' || isConnecting
-  const canDisconnect = webrtc.mode !== 'off' || previewBusy || !['idle', 'disconnected'].includes(webrtc.status)
-  const resolvedInfrastructureState = infrastructureStatusState || (infrastructureStatus ? 'ready' : 'loading')
-  const infrastructureKnown = infrastructureStatus !== null && infrastructureStatus !== undefined
-  const infrastructureBusy = infrastructureLoading !== null && infrastructureLoading !== undefined
+  const previewBusy = infrastructure.infrastructureLoading === 'preview' || webrtc.isConnecting
   const status = derivePreviewStatus({
     mode: webrtc.mode,
     available: automationAvailable,
@@ -140,6 +90,12 @@ export default function ScrcpyDeviceView({
     snapshotError: snapshot.error,
     infrastructureError: infrastructureError ?? null,
   })
+  const setStatsEnabled = webrtc.setStatsEnabled
+
+  useEffect(() => {
+    setStatsEnabled(settingsOpen)
+    return () => setStatsEnabled(false)
+  }, [setStatsEnabled, settingsOpen])
 
   const retryPreview = () => {
     switch (status.retry?.target) {
@@ -150,38 +106,15 @@ export default function ScrcpyDeviceView({
         webrtc.connect()
         break
       case 'infrastructure':
-        onRefreshInfrastructure?.()
+        setSettingsOpen(true)
         break
     }
-  }
-
-  const applyPreset = (preset: QualityPreset) => {
-    setQuality(preset)
-    setSettingsDirty(true)
-  }
-
-  const connectFromControl = () => {
-    if (!automationAvailable) return
-    webrtc.connect()
-    setSettingsDirty(false)
-  }
-
-  const runInfrastructureAction = (
-    action: (() => Promise<void> | void) | undefined,
-    allowWhenUnavailable = false
-  ) => {
-    if (!action || (!automationAvailable && !allowWhenUnavailable)) return
-    void action()
   }
 
   const sendDeviceCommand = (command: string) => {
     if (!automationAvailable) return
     webrtc.sendCommand(command)
   }
-
-  useEffect(() => {
-    onStatusChange?.(webrtc.status, webrtc.stats, webrtc.error)
-  }, [onStatusChange, webrtc.error, webrtc.stats, webrtc.status])
 
   const flushPointerMoves = useCallback(() => {
     pointerMoveFrameRef.current = null
@@ -328,32 +261,11 @@ export default function ScrcpyDeviceView({
     setImmersiveVideoMounted(node !== null)
   }, [])
 
-  const statusCards: [string, string | number, string?][] = [
-    ['信令', webrtc.status],
-    ['ICE', webrtc.stats?.iceState || '--'],
-    ['视频', webrtc.stats?.videoLive ? 'live' : '--'],
-    ['分辨率', webrtc.stats?.width ? `${webrtc.stats.width}×${webrtc.stats.height}` : '--'],
-    ['FPS', webrtc.stats?.fps ?? '--'],
-    ['码率', formatStatistic(webrtc.stats?.bitrate, 'kbps')],
-    ['网络 RTT', formatStatistic(webrtc.stats?.rtt, 'ms'), 'ICE 网络往返时间，不含设备输入处理与画面反馈时间'],
-    ['触控', webrtc.inputReady ? 'ready' : webrtc.status === 'connected' ? '等待触控信息' : '--']
-  ]
-  const unavailableInfrastructureLabel = resolvedInfrastructureState === 'loading' ? '检查中' : '未知'
-  const componentStatusLabel = infrastructureKnown
-    ? infrastructureStatus.built ? '已安装' : infrastructureStatus.installed ? '待构建' : '未安装'
-    : unavailableInfrastructureLabel
-  const serverStatusLabel = infrastructureKnown
-    ? infrastructureStatus.serverRunning ? '运行中' : '已停止'
-    : unavailableInfrastructureLabel
-  const agentStatusLabel = infrastructureKnown
-    ? infrastructureStatus.agentRunning ? '运行中' : '已停止'
-    : unavailableInfrastructureLabel
-
   return (
     <>
-    <div className={`scrcpy-device-layout ${isCompact ? 'is-compact' : ''}`}>
+    <div className="scrcpy-device-layout is-compact">
       <div className="space-y-3 min-w-0">
-        <div className={`scrcpy-view-header flex items-center justify-between gap-3.5 ${isCompact ? 'is-compact' : 'flex-wrap'}`}>
+        <div className="scrcpy-view-header is-compact flex items-center justify-between gap-3.5">
           <div className="min-w-0">
             <div className="scrcpy-view-title-row flex items-center gap-2">
               <span
@@ -366,24 +278,7 @@ export default function ScrcpyDeviceView({
               </span>
             </div>
           </div>
-          {isCompact ? (
-            <PreviewModeSegmented unavailable={!automationAvailable} />
-          ) : (
-            <div className="flex flex-wrap gap-2 text-xs justify-end">
-              <span className="surface-soft rounded-full px-2 py-1 text-muted-foreground">
-                组件：{componentStatusLabel}
-              </span>
-              <span className="surface-soft rounded-full px-2 py-1 text-muted-foreground">
-                服务：{serverStatusLabel}
-              </span>
-              <span className="surface-soft rounded-full px-2 py-1 text-muted-foreground">
-                Agent：{agentStatusLabel}
-              </span>
-              {status.error && (
-                <span className="px-2 py-1 rounded-full bg-red-100 dark:bg-red-500/10 dark:text-red-300 text-red-600">{status.error.message}</span>
-              )}
-            </div>
-          )}
+          <PreviewModeSegmented unavailable={!automationAvailable} />
         </div>
 
         {status.error && status.hasFrame && (
@@ -402,17 +297,6 @@ export default function ScrcpyDeviceView({
             )}
           </div>
         )}
-
-        {!isCompact && <PreviewModeControls unavailable={!automationAvailable} />}
-
-        {!isCompact && <div className="scrcpy-status-grid">
-          {statusCards.map(([label, value, description]) => (
-            <div key={label} title={description} className="surface-soft rounded-lg px-2 py-1.5">
-              <div className="text-tertiary">{label}</div>
-              <div className="truncate font-medium text-foreground">{value}</div>
-            </div>
-          ))}
-        </div>}
 
         <div
           className={`scrcpy-video-frame status-border-beam relative aspect-video overflow-hidden flex items-center justify-center shadow-xs ${
@@ -486,7 +370,6 @@ export default function ScrcpyDeviceView({
             connected={webrtc.status === 'connected'}
             automationAvailable={automationAvailable}
             automationUnavailableMessage={automationUnavailableMessage}
-            compact={isCompact}
             onCommand={sendDeviceCommand}
           />
           <button
@@ -495,213 +378,31 @@ export default function ScrcpyDeviceView({
             disabled={webrtc.status !== 'connected'}
             title="全屏"
             aria-label="全屏"
-            className={`control-surface flex h-11 min-h-11 w-11 min-w-11 items-center justify-center rounded-full text-muted-foreground transition-colors hover:text-primary disabled:cursor-not-allowed disabled:opacity-35 ${isCompact ? 'device-preview-glass-button' : ''}`}
+            className="device-preview-glass-button control-surface flex h-11 min-h-11 w-11 min-w-11 items-center justify-center rounded-full text-muted-foreground transition-colors hover:text-primary disabled:cursor-not-allowed disabled:opacity-35"
           >
             <Maximize2 className="h-3.5 w-3.5" strokeWidth={1.8} />
           </button>
-          {isCompact && (
-            <button
-              type="button"
-              onClick={() => setCompactControlsOpen(open => !open)}
-              title={compactControlsOpen ? '收起预览设置' : '预览设置'}
-              aria-label={compactControlsOpen ? '收起预览设置' : '打开预览设置'}
-              aria-expanded={compactControlsOpen}
-              aria-controls={compactControlsId}
-              className={`device-preview-glass-button control-surface flex h-11 min-h-11 w-11 min-w-11 items-center justify-center rounded-full text-muted-foreground${compactControlsOpen ? ' is-active' : ''}`}
-            >
-              <SlidersHorizontal className="h-3.5 w-3.5" strokeWidth={1.8} />
-            </button>
-          )}
+          <button
+            type="button"
+            onClick={() => setSettingsOpen(true)}
+            title="预览设置"
+            aria-label="打开预览设置"
+            aria-haspopup="dialog"
+            className="device-preview-glass-button control-surface flex h-11 min-h-11 w-11 min-w-11 items-center justify-center rounded-full text-muted-foreground"
+          >
+            <SlidersHorizontal className="h-3.5 w-3.5" strokeWidth={1.8} />
+          </button>
         </div>
 
       </div>
-
-      {(!isCompact || compactControlsOpen) && <aside id={compactControlsId} className={`scrcpy-control-rail surface-soft${isCompact ? ' is-compact' : ''}`}>
-        <section className="scrcpy-control-section">
-          <div className="scrcpy-control-header">
-            <div className="scrcpy-control-title">
-              <Plug className="h-4 w-4" strokeWidth={1.8} />
-              <span>连接与服务</span>
-            </div>
-            <span className="scrcpy-inline-status">
-              <span className={`preview-status-light is-${status.tone}`} aria-hidden="true" />
-              {status.label}
-            </span>
-          </div>
-
-          <p className="text-xs leading-5 text-muted-foreground">停止服务或 Agent 会断开其他观看者。</p>
-
-          {webrtc.status === 'connected' && (
-            <Button
-              size="sm"
-              variant="secondary"
-              className="scrcpy-preview-action w-full"
-              onClick={connectFromControl}
-              disabled={!automationAvailable || infrastructureBusy}
-              title={!automationAvailable ? automationUnavailableMessage : undefined}
-              aria-busy={infrastructureLoading === 'preview' || undefined}
-            >
-              {infrastructureLoading === 'preview'
-                ? <><LoaderCircle className="animate-spin" aria-hidden="true" />加载中...</>
-                : (
-                  <>
-                    <RotateCw className="h-3.5 w-3.5" strokeWidth={1.8} aria-hidden="true" />
-                    重连预览
-                  </>
-                )}
-            </Button>
-          )}
-
-          <div className="scrcpy-service-grid">
-            {[
-              { label: infrastructureStatus?.serverRunning ? '停止服务' : '启动服务', icon: Server, onClick: onToggleServer, disabled: !infrastructureKnown || infrastructureBusy || (!infrastructureStatus?.serverRunning && !automationAvailable), allowWhenUnavailable: !!infrastructureStatus?.serverRunning, loading: infrastructureLoading === 'server' },
-              { label: infrastructureStatus?.agentRunning ? '停止 Agent' : '连接 Agent', icon: Smartphone, onClick: onToggleAgent, disabled: !infrastructureKnown || infrastructureBusy || (infrastructureStatus?.agentRunning ? false : !infrastructureStatus?.serverRunning || !automationAvailable), allowWhenUnavailable: !!infrastructureStatus?.agentRunning, loading: infrastructureLoading === 'agent' }
-            ].map(action => {
-              const Icon = action.icon
-              return (
-                <button
-                  key={action.label}
-                  type="button"
-                  onClick={() => runInfrastructureAction(action.onClick, action.allowWhenUnavailable)}
-                  disabled={action.disabled}
-                  title={action.disabled && !automationAvailable ? automationUnavailableMessage : action.label}
-                  className="scrcpy-service-action control-surface min-h-11"
-                >
-                  <Icon className="h-3.5 w-3.5" strokeWidth={1.7} />
-                  <span>{action.loading ? '处理中' : action.label}</span>
-                </button>
-              )
-            })}
-          </div>
-
-          <div className="scrcpy-service-utilities">
-            <button
-              type="button"
-              onClick={webrtc.disconnect}
-              disabled={!canDisconnect}
-              className="scrcpy-utility-action min-h-11"
-            >
-              <Unplug className="h-3.5 w-3.5" strokeWidth={1.8} />
-              <span>{previewBusy ? '取消启动' : '断开'}</span>
-            </button>
-            <button
-              type="button"
-              onClick={() => runInfrastructureAction(onInstall)}
-              disabled={!automationAvailable || infrastructureBusy || !infrastructureKnown}
-              title={!automationAvailable ? automationUnavailableMessage : undefined}
-              className="scrcpy-utility-action min-h-11"
-            >
-              <Package className="h-3.5 w-3.5" strokeWidth={1.8} />
-              <span>{infrastructureLoading === 'install' ? '安装中' : infrastructureStatus?.built ? '重装组件' : '安装组件'}</span>
-            </button>
-          </div>
-        </section>
-
-        <section className="scrcpy-control-section">
-          <div className="scrcpy-quality-header">
-            <div className="scrcpy-control-title">
-              <SlidersHorizontal className="h-4 w-4" strokeWidth={1.8} />
-              <span>画质设置</span>
-            </div>
-            <span className="scrcpy-quality-current">{quality === 'custom' ? '自定义 · ' : ''}最长边 {customMaxSize}px · {customFps} FPS</span>
-          </div>
-
-          <div className="scrcpy-quality-content">
-            <div className="scrcpy-quality-body">
-              <div className="scrcpy-setting-group">
-                <div className="scrcpy-setting-label">画质预设</div>
-                <div className="scrcpy-preset-grid" role="group" aria-label="画质预设">
-                  {Object.entries(qualityPresets).map(([key, preset]) => (
-                    <button
-                      key={key}
-                      type="button"
-                      onClick={() => applyPreset(key as QualityPreset)}
-                      aria-pressed={quality === key}
-                      aria-label={`${preset.label}画质`}
-                      title={`最长边 ${preset.maxSize}px · ${preset.fps} FPS · 码率 ${preset.bitrateMbps} Mbps`}
-                      className={`scrcpy-preset-option ${quality === key ? 'is-active' : ''}`}
-                    >
-                      <span>{preset.label}</span>
-                      <small>{preset.maxSize}px · {preset.fps} FPS · {preset.bitrateMbps}M</small>
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              <div className="scrcpy-setting-group">
-                <div className="scrcpy-setting-label">帧率</div>
-                <div className="scrcpy-fps-segment" role="group" aria-label="视频帧率">
-                  {fpsOptions.map(fps => (
-                    <button
-                      key={fps}
-                      type="button"
-                      onClick={() => {
-                        setCustomFps(fps)
-                        setQuality('custom')
-                        setSettingsDirty(true)
-                      }}
-                      aria-pressed={customFps === fps}
-                      aria-label={`${fps} FPS`}
-                      className={`${customFps === fps ? 'is-active ' : ''}min-h-11!`}
-                    >
-                      {fps}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              <label className="scrcpy-setting-group text-xs text-muted-foreground">
-                最长边
-                <select aria-label="视频最长边" value={customMaxSize} className="control-surface min-h-11 rounded-md px-3 text-foreground" onChange={event => {
-                  setCustomMaxSize(Number(event.target.value))
-                  setSettingsDirty(true)
-                }}>
-                  {[640, 960, 1280, 1600, 1920].map(size => <option key={size} value={size}>{size}px</option>)}
-                </select>
-              </label>
-
-              <div className="scrcpy-bitrate-control">
-                <div className="scrcpy-bitrate-header">
-                  <span className="scrcpy-bitrate-label">
-                    <Gauge className="h-3.5 w-3.5" strokeWidth={1.8} />码率
-                  </span>
-                  <output htmlFor="scrcpy-bitrate" className="scrcpy-bitrate-value">
-                    <strong>{customBitrateMbps}</strong>
-                    <span>Mbps</span>
-                  </output>
-                </div>
-                <div
-                  className="scrcpy-bitrate-slider min-h-11"
-                  style={{ '--scrcpy-range-progress': `${bitrateProgress}%` } as CSSProperties}
-                >
-                  <div className="scrcpy-bitrate-track" aria-hidden="true">
-                    <span className="scrcpy-bitrate-fill" />
-                    <span className="scrcpy-bitrate-handle" />
-                  </div>
-                  <input
-                    id="scrcpy-bitrate"
-                    type="range"
-                    min={1}
-                    max={32}
-                    step={0.5}
-                    value={customBitrateMbps}
-                    aria-label="视频码率"
-                    onChange={(event) => {
-                      setCustomBitrateMbps(Number(event.target.value))
-                      setQuality('custom')
-                      setSettingsDirty(true)
-                    }}
-                  />
-                </div>
-              </div>
-              <p className={`text-xs leading-5 ${settingsDirty ? 'text-primary' : 'text-muted-foreground'}`} role="status">
-                {settingsDirty ? '画质已修改，重连预览后生效' : '画质调整会在下次连接时生效'}
-              </p>
-            </div>
-          </div>
-        </section>
-      </aside>}
     </div>
+    <PreviewSettingsDialog
+      open={settingsOpen}
+      onOpenChange={setSettingsOpen}
+      session={webrtc}
+      status={status}
+      infrastructure={infrastructure}
+    />
     <Dialog open={immersiveMode} onOpenChange={open => { if (!open) exitImmersive() }}>
       <DialogContent
         data-scrcpy-immersive-layer="true"

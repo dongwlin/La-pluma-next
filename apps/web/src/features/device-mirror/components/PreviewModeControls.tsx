@@ -76,11 +76,3 @@ export function PreviewModeSegmented({ unavailable = false }: PreviewModeSegment
     </div>
   )
 }
-
-export default function PreviewModeControls({ unavailable = false }: { unavailable?: boolean }) {
-  return (
-    <div className="flex flex-wrap items-center gap-3.5">
-      <PreviewModeSegmented unavailable={unavailable} />
-    </div>
-  )
-}

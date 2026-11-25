@@ -26,10 +26,11 @@ export function usePreviewSessionOwner({ automationAvailable = true, infrastruct
   const [attempt, setAttempt] = useState(0)
   const [starting, setStarting] = useState(false)
   const [startError, setStartError] = useState<string | null>(null)
+  const [statsEnabled, setStatsEnabled] = useState(false)
   const hiddenStopTimerRef = useRef<number | null>(null)
   const connectionActiveRef = useRef(false)
   const scrcpyOptions = useMemo(() => buildScrcpyOptions({ quality, fps, maxSize, bitrateMbps }), [quality, fps, maxSize, bitrateMbps])
-  const transport = useScrcpyWebRTC({ ...options, scrcpyOptions })
+  const transport = useScrcpyWebRTC({ ...options, scrcpyOptions, statsEnabled })
   const disconnectTransport = transport.disconnect
   const transportStatus = transport.status
 
@@ -141,5 +142,6 @@ export function usePreviewSessionOwner({ automationAvailable = true, infrastruct
     starting,
     isConnecting: starting || (mode === 'live' && visible && automationAvailable && infrastructureBusy) || CONNECTING_STATUSES.has(transport.status),
     error: startError || transport.error,
+    setStatsEnabled,
   }
 }
