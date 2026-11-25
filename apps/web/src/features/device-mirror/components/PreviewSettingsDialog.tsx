@@ -142,8 +142,9 @@ export function PreviewSettingsDialog({
               size="sm"
               className="min-h-11"
               onClick={reconnect}
-              disabled={!automationAvailable || infrastructureBusy}
+              disabled={session.mode !== 'live' || !automationAvailable || infrastructureBusy}
               aria-busy={infrastructureLoading === 'preview' || undefined}
+              title={session.mode !== 'live' ? '切换到实时预览后可重连' : undefined}
             >
               {infrastructureLoading === 'preview'
                 ? <><LoaderCircle data-icon="inline-start" className="animate-spin" aria-hidden="true" />加载中···</>
@@ -151,7 +152,7 @@ export function PreviewSettingsDialog({
             </Button>
             {settingsDirty && (
               <span className="text-xs leading-5 text-primary">
-                画质已修改，重连后生效
+                {session.mode === 'live' ? '画质已修改，重连后生效' : '画质已修改，下次连接实时预览时生效'}
               </span>
             )}
           </div>

@@ -123,6 +123,8 @@ export default function ScrcpyDeviceView({ infrastructure }: ScrcpyDeviceViewPro
     }
   }
 
+  const retryLabel = status.retry?.target === 'infrastructure' ? '打开设置' : status.retry?.label
+
   const sendDeviceCommand = (command: string) => {
     if (!automationAvailable) return
     webrtc.sendCommand(command)
@@ -297,7 +299,7 @@ export default function ScrcpyDeviceView({ infrastructure }: ScrcpyDeviceViewPro
           {status.retry && (
             <div className="mt-1.5">
               <Button type="button" variant="secondary" size="sm" className="min-h-11" onClick={retryPreview}>
-                {status.retry.label}
+                {retryLabel}
               </Button>
             </div>
           )}
@@ -346,7 +348,7 @@ export default function ScrcpyDeviceView({ infrastructure }: ScrcpyDeviceViewPro
               description={status.error?.message ?? (!automationAvailable ? automationUnavailableMessage : undefined)}
               action={status.retry ? (
                 <Button type="button" variant="secondary" size="sm" className="min-h-11" onClick={retryPreview}>
-                  {status.retry.label}
+                  {retryLabel}
                 </Button>
               ) : undefined}
               className="scrcpy-empty-state absolute inset-0"

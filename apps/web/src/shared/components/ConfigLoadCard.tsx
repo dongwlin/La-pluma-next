@@ -47,6 +47,7 @@ export default function ConfigLoadCard({
             type="button"
             variant="secondary"
             size="sm"
+            className="min-h-11"
             onClick={onRetry}
           >
             {retryLabel}

@@ -675,6 +675,7 @@ export function useScrcpyWebRTC({
 
   useEffect(() => {
     if (!statsEnabled || !mediaStream) {
+      prevStatsRef.current = null
       setStats(null)
       return
     }
@@ -706,7 +707,6 @@ export function useScrcpyWebRTC({
       // 避免宿主组件与面板按固定频率重渲染。
       setStats(previous => isSameVideoStats(previous, nextStats) ? previous : nextStats)
     }
-    // 诊断面板打开后才开始轮询，关闭后停止并清空旧值。
     const timer = window.setInterval(() => { void sample() }, 1000)
     return () => {
       cancelled = true
