@@ -293,7 +293,7 @@ describe('ConfigManager panel subscriptions', () => {
     expect(initial.updates).toBeGreaterThan(0)
     expect(initial.autoUpdate).toBeGreaterThan(0)
 
-    await act(async () => buttonByText('查找模拟器')?.click())
+    await act(async () => buttonByText('查找设备')?.click())
     await flush()
 
     const afterDevice = snapshot()
