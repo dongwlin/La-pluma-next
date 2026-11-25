@@ -226,6 +226,39 @@ describe('ScrcpyDeviceView', () => {
     expect(document.activeElement).toBe(trigger)
   })
 
+  it('closes the preview settings dialog with Escape', async () => {
+    await renderView()
+    await openSettings()
+    expect(getDialog()).not.toBeNull()
+
+    await act(async () => document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })))
+    await act(async () => { await new Promise(resolve => setTimeout(resolve, 20)) })
+
+    expect(getDialog()).toBeNull()
+  })
+
+  it('keeps bitrate ids unique when multiple previews open their settings', async () => {
+    await act(async () => root.render(
+      <>
+        <ScrcpyDeviceView infrastructure={makeInfrastructure()} />
+        <ScrcpyDeviceView infrastructure={makeInfrastructure()} />
+      </>,
+    ))
+    const settingsButtons = Array.from(container.querySelectorAll('button'))
+      .filter(button => button.getAttribute('aria-label') === '打开预览设置')
+    expect(settingsButtons).toHaveLength(2)
+
+    await act(async () => {
+      settingsButtons[0]?.click()
+      settingsButtons[1]?.click()
+    })
+
+    const ranges = Array.from(document.body.querySelectorAll<HTMLInputElement>('input[type="range"]'))
+    expect(ranges).toHaveLength(2)
+    expect(new Set(ranges.map(input => input.id)).size).toBe(2)
+    expect(document.querySelectorAll('#scrcpy-bitrate')).toHaveLength(0)
+  })
+
   it('shows diagnostics only while the settings dialog is open', async () => {
     webrtcMock.status = 'connected'
     webrtcMock.stats = {
