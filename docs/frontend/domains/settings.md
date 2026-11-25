@@ -423,7 +423,7 @@ ConfigManager（app-page > app-stack-section > SettingsWorkspace）
 | `running: 'core'` | 普通 core 更新（不传版本，服务端 `maa update` 并同步资源） |
 | `running: 'core-channel'` | 更新到选中且不同于已装渠道的目标（`install <channel> --force` 并同步资源） |
 | `running: 'cli'` | CLI 更新 |
-| `running: 'resources'` | 更新游戏资源 |
+| `running: 'resources'` | 更新资源 |
 | `running: null` | 空闲 |
 
 规则：
