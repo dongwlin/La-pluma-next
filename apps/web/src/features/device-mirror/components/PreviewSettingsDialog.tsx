@@ -214,12 +214,12 @@ export function PreviewSettingsDialog({
               const Icon = action.icon
               return (
                 <Tooltip key={action.key}>
-                  <TooltipTrigger render={<span className="contents" />}>
+                  <TooltipTrigger render={<span className="flex" />}>
                     <Button
                       type="button"
                       variant="secondary"
                       size="sm"
-                      className="min-h-11"
+                      className="min-h-11 w-full"
                       onClick={() => {
                         if (!action.onClick || (!automationAvailable && !action.allowWhenUnavailable)) return
                         void action.onClick()
@@ -239,12 +239,12 @@ export function PreviewSettingsDialog({
           </div>
           <div className="grid grid-cols-2 gap-2">
             <Tooltip>
-              <TooltipTrigger render={<span className="contents" />}>
+              <TooltipTrigger render={<span className="flex" />}>
                 <Button
                   type="button"
                   variant="outline"
                   size="sm"
-                  className="min-h-11"
+                  className="min-h-11 w-full"
                   onClick={session.disconnect}
                   disabled={!canDisconnect}
                 >
@@ -255,12 +255,12 @@ export function PreviewSettingsDialog({
               <TooltipContent>{disconnectLabel}</TooltipContent>
             </Tooltip>
             <Tooltip>
-              <TooltipTrigger render={<span className="contents" />}>
+              <TooltipTrigger render={<span className="flex" />}>
                 <Button
                   type="button"
                   variant="outline"
                   size="sm"
-                  className="min-h-11"
+                  className="min-h-11 w-full"
                   onClick={reconnect}
                   disabled={session.mode !== 'live' || !automationAvailable || infrastructureBusy}
                   aria-busy={infrastructureLoading === 'preview' || undefined}
@@ -274,7 +274,7 @@ export function PreviewSettingsDialog({
             </Tooltip>
           </div>
           <Tooltip>
-            <TooltipTrigger render={<span className="contents" />}>
+            <TooltipTrigger render={<span className="flex" />}>
               <Button
                 type="button"
                 variant="outline"

@@ -70,6 +70,23 @@ for (const viewport of [{ width: 1440, height: 900 }, { width: 390, height: 844 
     await qualityToast.getByRole('button', { name: '关闭通知', exact: true }).click()
     await expect(qualityToast).toHaveCount(0)
 
+    const installButton = dialog.getByRole('button', { name: '重装组件', exact: true })
+    await installButton.hover()
+    const tooltip = page.locator('[data-slot="tooltip-content"]')
+    await expect(tooltip).toBeVisible()
+    const installBox = await installButton.boundingBox()
+    const tooltipBox = await tooltip.boundingBox()
+    expect(installBox, '重装组件应可见').not.toBeNull()
+    expect(tooltipBox, '重装组件提示应可见').not.toBeNull()
+    expect(
+      Math.abs((tooltipBox!.x + tooltipBox!.width / 2) - (installBox!.x + installBox!.width / 2)),
+      '提示应与触发按钮水平居中',
+    ).toBeLessThanOrEqual(24)
+    expect(tooltipBox!.y, '提示不应落在视口左上角').toBeGreaterThan(0)
+    expect(tooltipBox!.y + tooltipBox!.height, '提示应位于触发按钮上方').toBeLessThanOrEqual(installBox!.y + 8)
+    await page.mouse.move(0, 0)
+    await expect(tooltip).toBeHidden()
+
     expect(await preview.evaluate(element => element.scrollWidth - element.clientWidth)).toBeLessThanOrEqual(1)
     expect(await dialog.evaluate(element => element.scrollWidth - element.clientWidth)).toBeLessThanOrEqual(1)
 
