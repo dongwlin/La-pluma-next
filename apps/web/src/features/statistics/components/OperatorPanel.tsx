@@ -201,7 +201,6 @@ export default function OperatorPanel({ isActive, command }: OperatorPanelProps)
   useEffect(() => {
     const currentOperIds = new Set(filteredOperators.map(op => op.id))
 
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- 有界缓存清理
     setLoadedImages(prev => {
       const loadedIds = Object.keys(prev)
 

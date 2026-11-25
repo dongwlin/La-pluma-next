@@ -128,7 +128,6 @@ export default function OperatorPicker({
   }
 
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect
     setVisibleOperatorLimit(OPERATOR_RENDER_BATCH_SIZE)
   }, [filters.status, filters.rarity, filters.needsElite2, professionFilter, searchTerm])
 
