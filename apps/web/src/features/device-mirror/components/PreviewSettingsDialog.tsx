@@ -1,7 +1,6 @@
 import { useEffect, useId, useRef } from 'react'
 import { Gauge, LoaderCircle, Package, Plug, RotateCw, Server, SlidersHorizontal, Smartphone, Unplug } from 'lucide-react'
 import { Alert, AlertDescription, AlertTitle } from '@/shared/ui/alert'
-import { Badge } from '@/shared/ui/badge'
 import { Button } from '@/shared/ui/button'
 import { Field, FieldGroup, FieldLabel, FieldTitle } from '@/shared/ui/field'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/shared/ui/select'
@@ -80,7 +79,6 @@ export function PreviewSettingsDialog({
     automationAvailable,
     automationUnavailableMessage,
     infrastructureStatus,
-    infrastructureStatusState,
     infrastructureLoading,
     infrastructureError,
     onRefreshInfrastructure,
@@ -88,21 +86,10 @@ export function PreviewSettingsDialog({
     onToggleServer,
     onToggleAgent,
   } = infrastructure
-  const resolvedInfrastructureState = infrastructureStatusState || (infrastructureStatus ? 'ready' : 'loading')
   const infrastructureKnown = infrastructureStatus !== null && infrastructureStatus !== undefined
   const infrastructureBusy = infrastructureLoading !== null && infrastructureLoading !== undefined
   const previewBusy = infrastructureLoading === 'preview' || session.isConnecting
   const canDisconnect = session.mode !== 'off' || previewBusy || !['idle', 'disconnected'].includes(session.status)
-  const unavailableInfrastructureLabel = resolvedInfrastructureState === 'loading' ? '检查中' : '未知'
-  const componentStatusLabel = infrastructureKnown
-    ? infrastructureStatus.built ? '已安装' : infrastructureStatus.installed ? '待构建' : '未安装'
-    : unavailableInfrastructureLabel
-  const serverStatusLabel = infrastructureKnown
-    ? infrastructureStatus.serverRunning ? '运行中' : '已停止'
-    : unavailableInfrastructureLabel
-  const agentStatusLabel = infrastructureKnown
-    ? infrastructureStatus.agentRunning ? '运行中' : '已停止'
-    : unavailableInfrastructureLabel
   const serviceActions = [
     {
       key: 'server',
@@ -422,11 +409,6 @@ export function PreviewSettingsDialog({
             <Gauge className="size-4 text-muted-foreground" aria-hidden="true" />
             连接详情
           </h3>
-          <div className="flex flex-wrap gap-1.5">
-            <Badge variant="secondary">组件：{componentStatusLabel}</Badge>
-            <Badge variant="secondary">服务：{serverStatusLabel}</Badge>
-            <Badge variant="secondary">Agent：{agentStatusLabel}</Badge>
-          </div>
           <div className="grid grid-cols-2 gap-1 rounded-lg border border-border p-1 text-xs sm:grid-cols-4">
             {stats.map(([label, value]) => (
               <div key={label} className="rounded-md px-2 py-1.5">

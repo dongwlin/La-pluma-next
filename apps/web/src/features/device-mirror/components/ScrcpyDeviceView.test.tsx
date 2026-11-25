@@ -405,9 +405,9 @@ describe('ScrcpyDeviceView', () => {
     expect(container.querySelector('[role="alert"]')?.textContent).toContain('状态读取失败')
 
     await openSettings()
-    expect(getDialog()?.textContent).toContain('组件：未知')
-    expect(getDialog()?.textContent).toContain('服务：未知')
-    expect(getDialog()?.textContent).not.toContain('组件：未安装')
+    expect(getDialog()?.textContent).not.toContain('未安装')
+    expect(findDialogButton('启动服务')?.disabled).toBe(true)
+    expect(findDialogButton('安装组件')?.disabled).toBe(true)
   })
 
   it('tracks pointers independently, coalesces moves per frame, and releases every pointer', async () => {
