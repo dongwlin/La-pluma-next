@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { Download, LoaderCircle, RefreshCw } from 'lucide-react'
 import { Badge } from '@/shared/ui/badge'
 import { Button } from '@/shared/ui/button'
-import { Field, FieldDescription } from '@/shared/ui/field'
+import { Field } from '@/shared/ui/field'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/shared/ui/select'
 import { notify, notifyProgress, SETTINGS_UPDATE_CHANNEL_NOTICE_ID } from '@/shared/notifications'
 import { saveUpdateChannel } from '../api'
@@ -106,11 +106,9 @@ export default function ComponentUpdatePanel() {
   return (
     <>
       <Field orientation="horizontal" className="min-h-11 gap-3.5">
-        <div className="flex min-w-0 flex-1 flex-col gap-0.5">
+        <div className="flex min-w-0 flex-1 flex-wrap items-baseline gap-2">
           <h3 className="text-sm font-medium text-foreground">MAA CLI</h3>
-          {versionInfo && (
-            <FieldDescription className="leading-5">{versionInfo.cli}</FieldDescription>
-          )}
+          {versionInfo && <span className="text-sm text-muted-foreground">{versionInfo.cli}</span>}
         </div>
         <Select
           items={CLI_CHANNEL_OPTIONS}
@@ -130,11 +128,9 @@ export default function ComponentUpdatePanel() {
       </Field>
 
       <Field orientation="horizontal" className="min-h-11 gap-3.5">
-        <div className="flex min-w-0 flex-1 flex-col gap-0.5">
+        <div className="flex min-w-0 flex-1 flex-wrap items-baseline gap-2">
           <h3 className="text-sm font-medium text-foreground">MaaCore</h3>
-          {versionInfo && (
-            <FieldDescription className="leading-5">{versionInfo.core}</FieldDescription>
-          )}
+          {versionInfo && <span className="text-sm text-muted-foreground">{versionInfo.core}</span>}
         </div>
         <Select
           items={CORE_CHANNEL_OPTIONS}
@@ -155,11 +151,9 @@ export default function ComponentUpdatePanel() {
 
       {resource && (
         <Field orientation="horizontal" className="min-h-11 gap-3.5">
-          <div className="flex min-w-0 flex-1 flex-col gap-0.5">
+          <div className="flex min-w-0 flex-1 flex-wrap items-baseline gap-2">
             <h3 className="text-sm font-medium text-foreground">游戏资源</h3>
-            <FieldDescription className="leading-5">
-              {formatResourceTime(resource.lastUpdated)}
-            </FieldDescription>
+            <span className="text-sm text-muted-foreground">{formatResourceTime(resource.lastUpdated)}</span>
           </div>
           <Badge
             variant="ghost"
@@ -174,7 +168,7 @@ export default function ComponentUpdatePanel() {
         <p className="text-xs leading-5 text-warning">{resource.message}</p>
       )}
 
-      <div className="flex min-h-11 flex-col justify-center gap-2 sm:flex-row sm:flex-wrap sm:items-center">
+      <div className="flex min-h-11 flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center sm:justify-end">
         <Button
           onClick={handleUpdateCli}
           disabled={updateBusy || channelSavingBusy || updatingCli}
@@ -232,7 +226,7 @@ export default function ComponentUpdatePanel() {
             aria-busy={updateCanceling || undefined}
             variant="outline"
             size="sm"
-            className="w-full sm:ml-auto sm:w-auto"
+            className="w-full sm:w-auto"
           >
             {updateCanceling
               ? <><LoaderCircle className="animate-spin" aria-hidden="true" />停止中</>

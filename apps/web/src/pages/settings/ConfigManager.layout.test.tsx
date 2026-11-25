@@ -347,7 +347,7 @@ describe('ConfigManager layout surfaces', () => {
     expect(container.querySelector('#resource-source')).not.toBeNull()
     expect(container.querySelector('#instance-touch-mode')).not.toBeNull()
     expect(container.textContent).toContain('/tmp/la-pluma')
-    expect(container.querySelector('[role="switch"][aria-label="启用自动更新"]')).not.toBeNull()
+    expect(container.querySelector('[role="switch"][aria-label="自动更新"]')).not.toBeNull()
     expect(container.textContent).toContain('v5.0.0')
   })
 
@@ -361,7 +361,8 @@ describe('ConfigManager layout surfaces', () => {
 
     const headings = Array.from(updatesSection!.querySelectorAll('h3'))
       .map(heading => heading.textContent?.trim())
-    expect(headings).toEqual(['自动更新', 'MAA CLI', 'MaaCore', '游戏资源'])
+    expect(headings).toEqual(['MAA CLI', 'MaaCore', '游戏资源'])
+    expect(updatesSection!.textContent).toContain('自动更新')
     expect(updatesSection!.textContent).toContain('资源正常')
 
     const actionLabels = ['更新 MAA CLI', '更新 MaaCore', '更新游戏资源']
