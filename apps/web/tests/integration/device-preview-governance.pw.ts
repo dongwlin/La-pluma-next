@@ -24,6 +24,9 @@ for (const viewport of [{ width: 1440, height: 900 }, { width: 390, height: 844 
     const scenario = createScenarioState()
     scenario.runState = 'succeeded'
     await installIntegrationScenario(page, scenario)
+    await page.route('**/api/agent/screen/screenshot', route => route.fulfill({
+      json: { success: false, error: { code: 'SCREENSHOT_FAILED', message: '截图失败' } },
+    }))
     await page.goto('/app/logs')
 
     const preview = page.locator('[data-region="monitor"]:visible')
@@ -56,6 +59,12 @@ for (const viewport of [{ width: 1440, height: 900 }, { width: 390, height: 844 
 
     await page.keyboard.press('Escape')
     await expect(dialog).toBeHidden()
+
+    await preview.getByRole('button', { name: '快照', exact: true }).click()
+    const retry = preview.getByRole('button', { name: '重试', exact: true })
+    await expect(retry).toBeVisible()
+    await expectTouchTarget(retry, '错误重试')
+
     await expectScenarioHealthy(page)
   })
 }
