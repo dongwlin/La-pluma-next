@@ -333,11 +333,7 @@ export default function ScrcpyDeviceView({ infrastructure }: ScrcpyDeviceViewPro
             </Badge>
           )}
           {webrtc.status === 'connected' && !webrtc.inputReady && !immersiveMode && (
-            <div
-              className="pointer-events-none absolute bottom-2 left-1/2 -translate-x-1/2 rounded-md bg-black/70 px-2.5 py-1.5 text-xs text-white/90"
-              role="status"
-              aria-live="polite"
-            >
+            <div className="pointer-events-none absolute bottom-2 left-1/2 -translate-x-1/2 rounded-md bg-black/70 px-2.5 py-1.5 text-xs text-white/90">
               触控连接中，画面暂不可操作
             </div>
           )}

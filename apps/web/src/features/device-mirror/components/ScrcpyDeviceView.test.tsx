@@ -343,6 +343,7 @@ describe('ScrcpyDeviceView', () => {
     await renderView({ infrastructureStatus: { installed: true, built: true, serverRunning: true, agentRunning: true } })
 
     expect(container.textContent).toContain('触控连接中，画面暂不可操作')
+    expect(container.querySelectorAll('[role="status"]')).toHaveLength(1)
     const video = container.querySelector('video')!
     const event = new MouseEvent('pointerdown', { bubbles: true, clientX: 20, clientY: 20, button: 0 })
     Object.defineProperty(event, 'pointerId', { value: 1 })
