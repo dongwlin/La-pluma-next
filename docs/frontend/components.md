@@ -511,6 +511,31 @@ Props：
 
 ---
 
+### ConfigLoadCard
+
+**文件位置**：`apps/web/src/shared/components/ConfigLoadCard.tsx`
+
+**适用场景**：工作区配置读取中或读取失败时占住主列，同时保留 `DeviceMonitorLayout` 的设备画面。自动化与作业共用同一张加载/失败卡，避免两页各写一份固定高度面板。
+
+```tsx
+import { ConfigLoadCard } from '@/shared/components'
+
+<DeviceMonitorLayout variant="standard">
+  <ConfigLoadCard
+    failed={loadState === 'failed'}
+    title="自动化配置"
+    loadingMessage="正在读取自动化配置…"
+    failedMessage="自动化配置暂时不可用"
+    error={loadError}
+    onRetry={() => void reload({ force: true })}
+  />
+</DeviceMonitorLayout>
+```
+
+Props：`failed`、`title`（同时作为状态区无障碍名称）、`loadingMessage`、`failedMessage`、`error`、`retryLabel`（默认“重新加载”）与 `onRetry`。读取中输出 `role="status"`，失败输出 `role="alert"`；卡片高度固定，主列内容不因加载态跳变。
+
+---
+
 ### DialogFrame / DialogBody / DialogFrameFooter
 
 **文件位置**：`apps/web/src/shared/components/DialogFrame.tsx`
