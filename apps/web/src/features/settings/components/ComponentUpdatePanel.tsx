@@ -104,64 +104,62 @@ export default function ComponentUpdatePanel() {
 
   return (
     <>
-      <div className="flex flex-col gap-3.5">
+      <section className="flex flex-wrap items-center gap-2">
+        <h3 className="text-sm font-medium text-foreground">MAA CLI</h3>
+        {versionInfo && <span className="text-sm text-muted-foreground">{versionInfo.cli}</span>}
+        <Select
+          items={CLI_CHANNEL_OPTIONS}
+          value={cliChannel}
+          onValueChange={(value, details) => { if (details.reason !== 'none' && value !== null) void handleChannelChange('cli', value) }}
+          disabled={channelSavingBusy}
+        >
+          <SelectTrigger aria-label="MAA CLI 更新渠道" className="ml-auto w-32">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {CLI_CHANNEL_OPTIONS.map(item => (
+              <SelectItem key={item.value} value={item.value}>{item.label}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </section>
+
+      <section className="flex flex-wrap items-center gap-2">
+        <h3 className="text-sm font-medium text-foreground">MaaCore</h3>
+        {versionInfo && <span className="text-sm text-muted-foreground">{versionInfo.core}</span>}
+        <Select
+          items={CORE_CHANNEL_OPTIONS}
+          value={coreChannel}
+          onValueChange={(value, details) => { if (details.reason !== 'none' && value !== null) void handleChannelChange('core', value) }}
+          disabled={channelSavingBusy}
+        >
+          <SelectTrigger aria-label="MaaCore 更新渠道" className="ml-auto w-32">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {CORE_CHANNEL_OPTIONS.map(item => (
+              <SelectItem key={item.value} value={item.value}>{item.label}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </section>
+
+      {resource && (
         <section className="flex flex-wrap items-center gap-2">
-          <h3 className="text-sm font-medium text-foreground">MAA CLI</h3>
-          {versionInfo && <span className="text-sm text-muted-foreground">{versionInfo.cli}</span>}
-          <Select
-            items={CLI_CHANNEL_OPTIONS}
-            value={cliChannel}
-            onValueChange={(value, details) => { if (details.reason !== 'none' && value !== null) void handleChannelChange('cli', value) }}
-            disabled={channelSavingBusy}
+          <h3 className="text-sm font-medium text-foreground">游戏资源</h3>
+          <span className="text-sm text-muted-foreground">{formatResourceTime(resource.lastUpdated)}</span>
+          <Badge
+            variant="ghost"
+            className={`ml-auto ${resource.status === 'current' ? 'status-success' : 'status-warning'}`}
           >
-            <SelectTrigger aria-label="MAA CLI 更新渠道" className="ml-auto w-32">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {CLI_CHANNEL_OPTIONS.map(item => (
-                <SelectItem key={item.value} value={item.value}>{item.label}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+            {resource.status === 'current' ? '资源正常' : '需要同步'}
+          </Badge>
         </section>
+      )}
 
-        <section className="flex flex-wrap items-center gap-2">
-          <h3 className="text-sm font-medium text-foreground">MaaCore</h3>
-          {versionInfo && <span className="text-sm text-muted-foreground">{versionInfo.core}</span>}
-          <Select
-            items={CORE_CHANNEL_OPTIONS}
-            value={coreChannel}
-            onValueChange={(value, details) => { if (details.reason !== 'none' && value !== null) void handleChannelChange('core', value) }}
-            disabled={channelSavingBusy}
-          >
-            <SelectTrigger aria-label="MaaCore 更新渠道" className="ml-auto w-32">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {CORE_CHANNEL_OPTIONS.map(item => (
-                <SelectItem key={item.value} value={item.value}>{item.label}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </section>
-
-        {resource && (
-          <section className="flex flex-wrap items-center gap-2">
-            <h3 className="text-sm font-medium text-foreground">游戏资源</h3>
-            <span className="text-sm text-muted-foreground">{formatResourceTime(resource.lastUpdated)}</span>
-            <Badge
-              variant="ghost"
-              className={`ml-auto ${resource.status === 'current' ? 'status-success' : 'status-warning'}`}
-            >
-              {resource.status === 'current' ? '资源正常' : '需要同步'}
-            </Badge>
-          </section>
-        )}
-
-        {resource && resource.status !== 'current' && (
-          <p className="text-xs leading-5 text-warning">{resource.message}</p>
-        )}
-      </div>
+      {resource && resource.status !== 'current' && (
+        <p className="text-xs leading-5 text-warning">{resource.message}</p>
+      )}
 
       <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center">
         <Button
