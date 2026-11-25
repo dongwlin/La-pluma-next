@@ -12,13 +12,18 @@ vi.mock('../hooks/useDashboardPreview', () => ({
   useDashboardPreview: () => ({
     videoRef: { current: null },
     fallbackSnapshot: null,
-    showLivePreview: false,
     isConnecting: false,
-    connectionState: 'off',
-    statusText: '预览已关闭',
-    headerStatusText: '预览已关闭',
+    status: {
+      phase: 'off',
+      label: '预览已关闭',
+      emptyTitle: '预览已关闭',
+      tone: 'neutral',
+      error: null,
+      retry: null,
+      hasFrame: false,
+      snapshotStale: false,
+    },
     retry: vi.fn(),
-    error: null,
     available: true,
   }),
 }))

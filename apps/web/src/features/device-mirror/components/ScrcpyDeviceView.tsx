@@ -4,6 +4,7 @@ import { Button } from '@/shared/ui/button'
 import { Dialog, DialogContent, DialogTitle } from '@/shared/ui/dialog'
 import { usePreviewSession } from '../hooks/usePreviewSession'
 import { usePreviewSnapshot } from '../hooks/usePreviewSnapshot'
+import { derivePreviewStatus, type PreviewLiveStatus } from '../model/previewStatus'
 import { usePreviewStore } from '../store/previewStore'
 import { qualityPresets, fpsOptions, type QualityPreset } from '../constants'
 import PreviewModeControls, { PreviewModeSegmented } from './PreviewModeControls'
@@ -24,20 +25,10 @@ interface ScrcpyDeviceViewProps {
   infrastructureStatusState?: 'loading' | 'ready' | 'error'
   infrastructureLoading?: string | null
   infrastructureError?: string | null
+  onRefreshInfrastructure?: () => void
   onInstall?: () => Promise<void> | void
   onToggleServer?: () => Promise<void> | void
   onToggleAgent?: () => Promise<void> | void
-}
-
-const statusLabel: Record<string, string> = {
-  idle: '未连接',
-  connecting: '连接中',
-  signaling: '信令中',
-  waiting_offer: '等待画面',
-  connecting_webrtc: '建立 WebRTC',
-  connected: '已连接',
-  disconnected: '已断开',
-  error: '连接失败'
 }
 
 const deviceNavigationActions = [
@@ -98,6 +89,7 @@ export default function ScrcpyDeviceView({
   infrastructureStatusState,
   infrastructureLoading,
   infrastructureError,
+  onRefreshInfrastructure,
   onInstall,
   onToggleServer,
   onToggleAgent
@@ -138,15 +130,30 @@ export default function ScrcpyDeviceView({
   const resolvedInfrastructureState = infrastructureStatusState || (infrastructureStatus ? 'ready' : 'loading')
   const infrastructureKnown = infrastructureStatus !== null && infrastructureStatus !== undefined
   const infrastructureBusy = infrastructureLoading !== null && infrastructureLoading !== undefined
-  const visibleError = (webrtc.mode === 'live' ? webrtc.error : snapshot.error) || infrastructureError
-  const previewStatusLabel = webrtc.mode === 'off' ? '预览已关闭' : webrtc.paused ? '后台已暂停' : webrtc.mode === 'snapshot' ? '画面快照 · 10s' : webrtc.starting ? '正在启动' : statusLabel[webrtc.status] || webrtc.status
-  const statusDotClass = visibleError
-    ? 'bg-red-400'
-    : webrtc.status === 'connected'
-    ? 'bg-emerald-400'
-    : isConnecting
-        ? 'bg-amber-400'
-        : 'bg-gray-400'
+  const status = derivePreviewStatus({
+    mode: webrtc.mode,
+    available: automationAvailable,
+    paused: webrtc.paused,
+    liveStatus: webrtc.status as PreviewLiveStatus,
+    liveError: webrtc.error,
+    snapshotHasImage: Boolean(snapshot.image),
+    snapshotError: snapshot.error,
+    infrastructureError: infrastructureError ?? null,
+  })
+
+  const retryPreview = () => {
+    switch (status.retry?.target) {
+      case 'snapshot':
+        snapshot.retry()
+        break
+      case 'live':
+        webrtc.connect()
+        break
+      case 'infrastructure':
+        onRefreshInfrastructure?.()
+        break
+    }
+  }
 
   const applyPreset = (preset: QualityPreset) => {
     setQuality(preset)
@@ -322,7 +329,7 @@ export default function ScrcpyDeviceView({
   }, [])
 
   const statusCards: [string, string | number, string?][] = [
-    ['信令', statusLabel[webrtc.status] || webrtc.status],
+    ['信令', webrtc.status],
     ['ICE', webrtc.stats?.iceState || '--'],
     ['视频', webrtc.stats?.videoLive ? 'live' : '--'],
     ['分辨率', webrtc.stats?.width ? `${webrtc.stats.width}×${webrtc.stats.height}` : '--'],
@@ -350,17 +357,13 @@ export default function ScrcpyDeviceView({
           <div className="min-w-0">
             <div className="scrcpy-view-title-row flex items-center gap-2">
               <span
-                className={`scrcpy-view-status-dot h-2 w-2 rounded-full ${statusDotClass}`}
-                role="img"
-                aria-label={previewStatusLabel}
-                title={previewStatusLabel}
+                className={`preview-status-light is-${status.tone}`}
+                aria-hidden="true"
               />
               <span className="scrcpy-view-title text-sm font-semibold text-gray-900 dark:text-white!">设备画面</span>
-              {!isCompact && (
-                <span className="scrcpy-view-status text-xs text-gray-500 dark:text-gray-400" role="status" aria-live="polite">
-                  {previewStatusLabel}
-                </span>
-              )}
+              <span className="scrcpy-view-status text-xs text-gray-500 dark:text-gray-400" role="status" aria-live="polite" aria-atomic="true">
+                {status.label}
+              </span>
             </div>
           </div>
           {isCompact ? (
@@ -376,12 +379,29 @@ export default function ScrcpyDeviceView({
               <span className="surface-soft rounded-full px-2 py-1 text-muted-foreground">
                 Agent：{agentStatusLabel}
               </span>
-              {visibleError && (
-                <span className="px-2 py-1 rounded-full bg-red-100 dark:bg-red-500/10 dark:text-red-300 text-red-600">{visibleError}</span>
+              {status.error && (
+                <span className="px-2 py-1 rounded-full bg-red-100 dark:bg-red-500/10 dark:text-red-300 text-red-600">{status.error.message}</span>
               )}
             </div>
           )}
         </div>
+
+        {status.error && status.hasFrame && (
+          <div
+            role="alert"
+            className="status-warning flex flex-wrap items-center gap-2 rounded-lg px-3 py-2 text-xs leading-5"
+          >
+            <span className="min-w-0 flex-1">
+              <span className="font-medium">{status.error.title}</span>
+              <span className="ml-1 text-muted-foreground">{status.error.message}</span>
+            </span>
+            {status.retry && (
+              <Button type="button" variant="secondary" size="sm" onClick={retryPreview}>
+                {status.retry.label}
+              </Button>
+            )}
+          </div>
+        )}
 
         {!isCompact && <PreviewModeControls unavailable={!automationAvailable} />}
 
@@ -398,7 +418,7 @@ export default function ScrcpyDeviceView({
           className={`scrcpy-video-frame status-border-beam relative aspect-video overflow-hidden flex items-center justify-center shadow-xs ${
             previewBusy ? 'is-active ' : ''
           }${
-            webrtc.status === 'connected'
+            status.hasFrame
               ? 'is-connected bg-black'
               : 'is-empty ring-1 ring-inset ring-border'
           }`}
@@ -419,7 +439,12 @@ export default function ScrcpyDeviceView({
             onLostPointerCapture={onLostPointerCapture}
           />
           {snapshot.image && <img src={snapshot.image} alt="模拟器画面快照" className="pointer-events-none absolute inset-0 h-full w-full object-contain" />}
-          {webrtc.status === 'connected' && !webrtc.inputReady && (
+          {status.snapshotStale && (
+            <span className="pointer-events-none absolute left-2 top-2 rounded-md bg-black/70 px-2 py-1 text-xs text-white/90">
+              上次成功画面 · 可能已过期
+            </span>
+          )}
+          {webrtc.status === 'connected' && !webrtc.inputReady && !immersiveMode && (
             <div
               className="pointer-events-none absolute bottom-2 left-1/2 -translate-x-1/2 rounded-md bg-black/70 px-2.5 py-1.5 text-xs text-white/90"
               role="status"
@@ -428,22 +453,28 @@ export default function ScrcpyDeviceView({
               触控连接中，画面暂不可操作
             </div>
           )}
-          {webrtc.status !== 'connected' && !snapshot.image && (
+          {!status.hasFrame && (
             <div
               className="scrcpy-empty-state absolute inset-0 flex items-center justify-center px-6 text-center"
-              role={visibleError ? 'alert' : 'status'}
-              aria-live="polite"
+              role={status.error ? 'alert' : undefined}
             >
               <div className="scrcpy-empty-content w-full max-w-sm">
                 <div className="device-preview-empty-icon mx-auto mb-3 flex h-11 w-11 items-center justify-center rounded-lg">
                   <Smartphone className="h-5 w-5" strokeWidth={1.6} aria-hidden="true" />
                 </div>
                 <div className="scrcpy-empty-title mb-1 text-sm font-semibold text-foreground">
-                  {webrtc.mode === 'off' ? '预览已关闭' : visibleError ? '预览启动失败' : previewBusy ? '正在连接实时画面' : webrtc.mode === 'snapshot' ? '正在获取快照' : '等待实时画面'}
+                  {status.emptyTitle}
                 </div>
-                {(visibleError || !automationAvailable) && (
+                {(status.error || !automationAvailable) && (
                   <div className="scrcpy-empty-description mx-auto max-w-md text-xs leading-5 text-muted-foreground">
-                    {visibleError || automationUnavailableMessage}
+                    {status.error?.message ?? automationUnavailableMessage}
+                  </div>
+                )}
+                {status.retry && (
+                  <div className="mt-3">
+                    <Button type="button" variant="secondary" size="sm" onClick={retryPreview}>
+                      {status.retry.label}
+                    </Button>
                   </div>
                 )}
               </div>
@@ -492,9 +523,9 @@ export default function ScrcpyDeviceView({
               <Plug className="h-4 w-4" strokeWidth={1.8} />
               <span>连接与服务</span>
             </div>
-            <span className="scrcpy-inline-status" role="status" aria-live="polite">
-              <span className={`h-1.5 w-1.5 rounded-full ${statusDotClass}`} />
-              {previewStatusLabel}
+            <span className="scrcpy-inline-status">
+              <span className={`preview-status-light is-${status.tone}`} aria-hidden="true" />
+              {status.label}
             </span>
           </div>
 

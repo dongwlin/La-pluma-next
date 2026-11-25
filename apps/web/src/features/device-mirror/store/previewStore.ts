@@ -1,6 +1,6 @@
 import { create } from 'zustand'
 import { createJSONStorage, persist, type StateStorage } from 'zustand/middleware'
-import { qualityPresets, type QualityPreset, type QualitySelection } from '../constants'
+import { qualityPresets, SNAPSHOT_INTERVAL_SECONDS, type QualityPreset, type QualitySelection } from '../constants'
 
 export type PreviewMode = 'off' | 'snapshot' | 'live'
 
@@ -168,7 +168,7 @@ export function buildScrcpyOptions({ fps, maxSize, bitrateMbps, quality }: Pick<
     max_bitrate: Math.round(Math.max(bitrateMbps, preset?.maxBitrateMbps ?? bitrateMbps) * 1000000),
     bwe: true,
     audio: false,
-    snapshot_interval: 10,
+    snapshot_interval: SNAPSHOT_INTERVAL_SECONDS,
   }
 }
 

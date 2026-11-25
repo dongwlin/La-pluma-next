@@ -9,29 +9,23 @@
     transition: background-color 180ms ease, opacity 180ms ease, box-shadow 180ms ease;
   }
 
-  .preview-status-light.is-connecting {
-    background: var(--primary);
-    opacity: 1;
-    animation: preview-status-pulse 1.6s ease-in-out infinite;
-  }
-
-  .preview-status-light.is-snapshot {
+  .preview-status-light.is-info {
     background: var(--primary);
     opacity: 1;
   }
 
-  .preview-status-light.is-live {
+  .preview-status-light.is-success {
     background: var(--success);
     opacity: 1;
     box-shadow: 0 0 0 3px color-mix(in srgb, var(--success) 16%, transparent);
   }
 
-  .preview-status-light.is-idle {
+  .preview-status-light.is-warning {
     background: var(--warning);
     opacity: 1;
   }
 
-  .preview-status-light.is-error {
+  .preview-status-light.is-danger {
     background: var(--destructive);
     opacity: 1;
   }

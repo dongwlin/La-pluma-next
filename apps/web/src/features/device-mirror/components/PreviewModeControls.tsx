@@ -57,7 +57,7 @@ export function PreviewModeSegmented({ unavailable = false }: PreviewModeSegment
       <span className="preview-mode-segmented-thumb" aria-hidden="true" />
       {modes.map(option => {
         const selected = mode === option.value
-        const disabled = unavailable && option.value !== 'off' && !selected
+        const disabled = unavailable && option.value !== 'off'
         return (
           <button
             key={option.value}

@@ -14,7 +14,7 @@ import { usePreviewStore } from '../store/previewStore'
 
 const availabilityMock = vi.hoisted(() => ({ isAvailable: true }))
 vi.mock('@/features/runtime-status', () => ({ useAutomationAvailability: () => availabilityMock }))
-vi.mock('../api', () => ({ getWebrtcStatus: vi.fn().mockResolvedValue({ success: true, data: { installed: true, built: true, serverRunning: false, agentRunning: false } }), startWebrtc: vi.fn().mockResolvedValue({ success: true, data: { signalingUrl: '/webrtc-signaling' } }) }))
+vi.mock('../api', () => ({ getWebrtcStatus: vi.fn().mockResolvedValue({ success: true, data: { installed: true, built: true, serverRunning: false, agentRunning: false } }), startWebrtc: vi.fn().mockResolvedValue({ success: true, data: { signalingUrl: '/webrtc-signaling' } }), captureScreen: vi.fn().mockResolvedValue({ success: true, data: { image: 'provider-snapshot' } }) }))
 
 const webrtcMock = vi.hoisted(() => ({
   status: 'idle',
@@ -30,6 +30,16 @@ const webrtcMock = vi.hoisted(() => ({
 
 vi.mock('../hooks/useScrcpyWebRTC', () => ({
   useScrcpyWebRTC: () => webrtcMock,
+}))
+
+const snapshotMock = vi.hoisted(() => ({
+  image: null as string | null,
+  error: null as string | null,
+  retry: vi.fn(),
+}))
+
+vi.mock('../hooks/usePreviewSnapshot', () => ({
+  usePreviewSnapshot: () => snapshotMock,
 }))
 
 let container: HTMLDivElement
@@ -50,6 +60,9 @@ describe('ScrcpyDeviceView automation availability', () => {
     webrtcMock.inputReady = false
     webrtcMock.mediaStream = null
     webrtcMock.sendTouch.mockReturnValue(true)
+    snapshotMock.image = null
+    snapshotMock.error = null
+    snapshotMock.retry.mockReset()
     vi.clearAllMocks()
     container = document.createElement('div')
     document.body.appendChild(container)
@@ -554,6 +567,91 @@ describe('ScrcpyDeviceView automation availability', () => {
     expect(off.disabled).toBe(false)
     await act(async () => off.click())
     expect(usePreviewStore.getState().mode).toBe('off')
+  })
+
+  it('keeps one status live region and surfaces live failures with a retry', async () => {
+    usePreviewStore.getState().setMode('live')
+    webrtcMock.status = 'error'
+    webrtcMock.error = '启动失败'
+    await act(async () => root.render(<ScrcpyDeviceView variant="compact" />))
+    await act(async () => { await Promise.resolve() })
+
+    expect(container.querySelectorAll('[role="status"]')).toHaveLength(1)
+    expect(container.textContent).toContain('实时预览失败')
+    expect(container.textContent).toContain('启动失败')
+    const retry = findButton('重试')
+    expect(retry).not.toBeUndefined()
+    const starts = vi.mocked(startWebrtc).mock.calls.length
+
+    await act(async () => {
+      retry?.click()
+      await Promise.resolve()
+      await Promise.resolve()
+    })
+
+    expect(vi.mocked(startWebrtc).mock.calls.length).toBe(starts + 1)
+    expect(usePreviewStore.getState().mode).toBe('live')
+  })
+
+  it('offers an immediate reconnect after the live connection drops', async () => {
+    usePreviewStore.getState().setMode('live')
+    webrtcMock.status = 'disconnected'
+    await act(async () => root.render(<ScrcpyDeviceView />))
+    await act(async () => { await Promise.resolve() })
+
+    expect(container.textContent).toContain('实时预览已断开')
+    const reconnect = findButton('重新连接')
+    expect(reconnect).not.toBeUndefined()
+    const starts = vi.mocked(startWebrtc).mock.calls.length
+
+    await act(async () => {
+      reconnect?.click()
+      await Promise.resolve()
+      await Promise.resolve()
+    })
+
+    expect(vi.mocked(startWebrtc).mock.calls.length).toBe(starts + 1)
+  })
+
+  it('keeps the previous snapshot visible but marks it stale when capture fails', async () => {
+    usePreviewStore.getState().setMode('snapshot')
+    snapshotMock.image = 'data:image/png;base64,stale'
+    snapshotMock.error = '截图超时'
+    await act(async () => root.render(<ScrcpyDeviceView />))
+
+    expect(container.querySelector('img')?.getAttribute('src')).toBe('data:image/png;base64,stale')
+    expect(container.textContent).toContain('上次成功画面 · 可能已过期')
+    expect(container.querySelector('[role="alert"]')?.textContent).toContain('截图超时')
+    expect(container.textContent).not.toContain('画面快照 · 10s')
+
+    await act(async () => findButton('重试')?.click())
+    expect(snapshotMock.retry).toHaveBeenCalledOnce()
+  })
+
+  it('shows infrastructure failures with a refresh action when no frame exists', async () => {
+    const onRefreshInfrastructure = vi.fn()
+    await act(async () => root.render(
+      <ScrcpyDeviceView
+        infrastructureStatus={null}
+        infrastructureStatusState="error"
+        infrastructureError="状态读取失败"
+        onRefreshInfrastructure={onRefreshInfrastructure}
+      />
+    ))
+
+    expect(container.querySelector('[role="alert"]')?.textContent).toContain('状态读取失败')
+    await act(async () => findButton('刷新状态')?.click())
+    expect(onRefreshInfrastructure).toHaveBeenCalledOnce()
+  })
+
+  it('disables the already-selected mode when the backend is unavailable', async () => {
+    usePreviewStore.getState().setMode('live')
+    await act(async () => root.render(<ScrcpyDeviceView automationAvailable={false} automationUnavailableMessage="后端服务暂不可用" />))
+
+    expect(findButton('实时')?.disabled).toBe(true)
+    expect(findButton('快照')?.disabled).toBe(true)
+    expect(findButton('关闭')?.disabled).toBe(false)
+    expect(container.textContent).toContain('自动化服务不可用')
   })
 
 })
