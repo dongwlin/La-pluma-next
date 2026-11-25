@@ -39,9 +39,12 @@ export default function ConfigDirectoryPanel() {
               )}
             />
           ) : (
-            <p className="wrap-break-word font-mono text-xs leading-5 text-muted-foreground wrap-anywhere" aria-live="polite">
-              {configDirStatus === 'loading' ? '正在读取目录...' : configDir}
-            </p>
+            <div className="flex min-w-0 items-start gap-2">
+              <FolderOpen size={16} aria-hidden="true" className="mt-0.5 shrink-0 text-muted-foreground" />
+              <p className="min-w-0 wrap-break-word font-mono text-xs leading-5 text-muted-foreground wrap-anywhere" aria-live="polite">
+                {configDirStatus === 'loading' ? '正在读取目录...' : configDir}
+              </p>
+            </div>
           )}
         </div>
         <Button
@@ -51,7 +54,6 @@ export default function ConfigDirectoryPanel() {
           className="w-full sm:w-auto"
           disabled={configDirStatus !== 'ready' || !configDir}
         >
-          <FolderOpen size={16} aria-hidden="true" />
           打开目录
         </Button>
       </CardContent>

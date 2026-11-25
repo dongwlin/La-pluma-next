@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Download, LoaderCircle } from 'lucide-react'
+import { LoaderCircle } from 'lucide-react'
 import { Badge } from '@/shared/ui/badge'
 import { Button } from '@/shared/ui/button'
 import { Field } from '@/shared/ui/field'
@@ -173,49 +173,37 @@ export default function ComponentUpdatePanel() {
           onClick={handleUpdateCli}
           disabled={updateBusy || channelSavingBusy || updatingCli}
           aria-busy={updatingCli || undefined}
+          variant="outline"
           size="sm"
           className="w-full sm:w-auto"
         >
           {updatingCli
             ? <><LoaderCircle className="animate-spin" aria-hidden="true" />更新中</>
-            : (
-              <>
-                <Download size={16} aria-hidden="true" />
-                更新 MAA CLI
-              </>
-            )}
+            : '更新 MAA CLI'}
         </Button>
         <Button
           onClick={handleUpdateCore}
           disabled={updateBusy || channelSavingBusy || updatingCore}
           aria-busy={updatingCore || undefined}
+          variant="outline"
           size="sm"
           className="w-full sm:w-auto"
         >
           {updatingCore
             ? <><LoaderCircle className="animate-spin" aria-hidden="true" />更新中</>
-            : (
-              <>
-                <Download size={16} aria-hidden="true" />
-                更新 MaaCore
-              </>
-            )}
+            : '更新 MaaCore'}
         </Button>
         <Button
           onClick={handleHotUpdate}
           disabled={updateBusy || channelSavingBusy || hotUpdating}
           aria-busy={hotUpdating || undefined}
+          variant="outline"
           size="sm"
           className="w-full sm:w-auto"
         >
           {hotUpdating
             ? <><LoaderCircle className="animate-spin" aria-hidden="true" />更新中</>
-            : (
-              <>
-                <Download size={16} aria-hidden="true" />
-                更新资源
-              </>
-            )}
+            : '更新资源'}
         </Button>
         {updateOperation && (
           <Button
