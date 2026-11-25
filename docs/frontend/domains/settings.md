@@ -26,7 +26,7 @@
 | 滚动定位与兼容事件 | `features/settings/hooks/useSettingsSectionNavigation.ts` | 监听滚动宿主、计算当前区块、跳转与兼容事件；不持有草稿 |
 | 外观主题 | `features/settings/components/AppearanceCard.tsx` | 读取 `useTheme()` 的 `themeId`/`resolvedMode`，通过 `setThemeId` 切换主题；选项来自 `THEMES`，不新增主题存储 |
 | 表单与开关行 | `features/settings/components/ConfigFieldControls.tsx`、`SwitchSettingRow.tsx` | 单行设置行：标签在左、控件在右；统一 44px 触达高度与提示排版 |
-| 页内反馈 | `features/settings/components/SettingsFeedback.tsx` | 错误用 `Alert`（可带重试 action），成功/警告用 `role="status"` 语义块；不重复全局通知正文 |
+| 配置面板页内反馈 | `features/settings/components/SettingsFeedback.tsx` | 错误用 `Alert`（可带重试 action），成功/警告用 `role="status"` 语义块；不重复全局通知正文；组件更新与自动更新不使用该组件 |
 | connection 表单、自动保存与读取反馈 | `features/settings/components/ConnectionConfigPanel.tsx` | Query/草稿适配、自动保存、迟到读取提示 |
 | 设备查找与连接测试 | `features/settings/components/DeviceConnectionPanel.tsx` | 命令 owner 订阅、查找弹窗入口与连接测试 toast；设备列表由 `DeviceConnectionDialog` 渲染 |
 | resource 资源源表单 | `features/settings/components/ResourceSourcePanel.tsx` | Git / MirrorChyan 来源、自动更新开关与 MirrorChyan CDK；MAA 运行中只读 |
@@ -124,15 +124,16 @@ ConfigManager（app-page > app-stack-section > SettingsWorkspace）
 | 连接读取失败 | 编辑卡 `CardContent` 内 `Alert` + “重新读取” | `ConnectionConfigPanel` 本地反馈 + Query 初始失败 |
 | 连接保存失败 | 编辑卡 `CardContent` 内 `Alert` + “重试保存”；同一结果也发带重试 action 的全局 error toast | `ConfigDraftOwner` 结果 |
 | 自动保存成功、`superseded` | 无提示；`superseded` 由后续自动保存补齐 | `ConfigDraftOwner` 结果 |
-| 设备查找/连接测试失败 | 设备分组内 `Alert`；连接成功用 `role="status"` | `DeviceConnectionOwner.discovery/test` |
+| 设备查找失败/取消/空结果 | 查找弹窗内展示 | `DeviceConnectionOwner.discovery` |
+| 连接测试结果 | 全局 toast（成功/失败） | `DeviceConnectionOwner.test` |
 | 目录读取失败与重试 | 目录卡片内 `Alert` + `AlertAction` | `config-directory` Query 状态 |
-| 自动更新读取/保存/调度失败 | 更新卡片自动更新分组内 `Alert` + “重试保存”；保存/调度失败同时发 error toast | `AutoUpdateConfigOwner` |
+| 自动更新读取/保存/调度失败 | 仅全局 error toast；保存/调度失败带“重试保存” action | `AutoUpdateConfigOwner` |
 | 自动更新非法时间 | 仅 error toast，不发请求 | `useAutoSave` 的 `canSave` 前置拦截 |
 | 自动更新保存成功 | 无提示；本地回退 warning 仍走全局 toast | `AutoUpdateConfigOwner` 结果 |
-| 组件更新失败与资源重试 | 更新卡片底部 `Alert` + `AlertAction` | `SettingsUpdateOwner` |
+| 组件更新失败与资源重试 | 仅全局 error toast；资源重试作为 toast action | `SettingsUpdateOwner` |
 | 组件更新成功 | 仅全局 toast | `SettingsUpdateOwner` 结果 |
 
-各面板只渲染自己的反馈；一个用例的失败不会写入另一个面板的页内状态。自动保存成功不发通知；失败由反馈 hook 发送带重试 action 的 error toast，读取失败仍只提示一次。
+配置面板只渲染自己的页内反馈；一个用例的失败不会写入另一个面板的页内状态。组件更新与自动更新失败只写全局 toast，不再渲染页内 `Alert`。自动保存成功不发通知；失败由反馈 hook 发送带重试 action 的 error toast，读取失败仍只提示一次。
 
 ### 6. 兼容与维护约束
 
@@ -420,38 +421,38 @@ ConfigManager（app-page > app-stack-section > SettingsWorkspace）
 | 状态 | 含义 |
 | --- | --- |
 | `running: 'core'` | 普通 core 更新（不传版本，服务端 `maa update` 并同步资源） |
-| `running: 'core-channel'` | 切换到 Beta/正式版（`install <channel> --force` 并同步资源） |
+| `running: 'core-channel'` | 更新到选中且不同于已装渠道的目标（`install <channel> --force` 并同步资源） |
 | `running: 'cli'` | CLI 更新 |
-| `running: 'resources'` | 仅同步游戏资源 |
+| `running: 'resources'` | 更新游戏资源 |
 | `running: null` | 空闲 |
 
 规则：
 
 - 任意一条命令运行期间再次发起（含同一命令）返回 `status: 'ignored'`，不发第二个请求；页面据此禁用全部更新按钮，只让实际运行的按钮显示 loading，并显示“停止更新”。
 - 开始运行时清空 owner 反馈（CLI 更新除外）；成功返回 `succeeded`，失败返回 `failed`，被停止返回 `canceled`；Run 中断或记录失效按未知处理，不写成成功。
-- 命令失败不自动重发。core/资源热更新在部分失败时把 `resourceRetry` 置为 true，页面显示“重试资源同步”按钮；该按钮调用资源热更新，仍是用户显式动作。
+- 命令失败不自动重发。core/资源热更新在部分失败时把 `resourceRetry` 置为 true，error toast 显示“重试资源同步” action；该 action 调用资源热更新，仍是用户显式动作。
 - 等待 Run 终态只由服务端状态结算，没有前端本地等待上限：控制器身份失效（服务端按 `runId` 查不到，`identity` 为 `unknown`）时按未知结算，写入“无法确认更新结果”的失败反馈、清空 `running` 槽位并解除身份；Run 仍活动时继续观察并保留 `running` 槽位与“停止更新”入口，维护命令可跑到服务端上限（默认 15 分钟、最长 1 小时）。页面刷新后 `observeTrackedRun` 从控制器的持久化身份恢复本域仍在运行的更新，重新占用槽位并保留停止入口，终态仍以服务端 Run 为准。
 - 寿命不跟随页面：Activity 隐藏或页面重挂载不取消在途命令；完成后仍写 owner 状态并更新全局提示。
 
 #### 2.2 失败与重试条件
 
-| 结果 | 页内展示 | 全局提示 | 资源重试入口 |
+| 结果 | 卡片内展示 | 全局提示 | 资源重试入口 |
 | --- | --- | --- | --- |
-| core / 渠道切换成功 | 不展示（仅 toast） | `result.message` 或 `MaaCore 和资源已更新` | 否 |
-| core / 渠道切换成功但渠道配置未持久化（`channelPersisted === false`） | 不展示（仅 toast） | 文案明确“已更新，但渠道配置未能持久化” | 否 |
-| core / 渠道切换失败，`errorInfo.details`（兼容旧 `error.details`）的 `failedStep === 'resources'` 或 `coreUpdated === true` | `Alert` + 重试 action | 服务端文案 | 是 |
-| core / 渠道切换失败，其它路径 | `Alert` | 服务端文案 | 否 |
+| core / 渠道切换成功 | 不展示 | `result.message` 或 `MaaCore 和资源已更新` | 否 |
+| core / 渠道切换成功但渠道配置未持久化（`channelPersisted === false`） | 不展示 | 文案明确“已更新，但渠道配置未能持久化” | 否 |
+| core / 渠道切换失败，`errorInfo.details`（兼容旧 `error.details`）的 `failedStep === 'resources'` 或 `coreUpdated === true` | 不展示 | 服务端文案；toast 带重试 action | 是 |
+| core / 渠道切换失败，其它路径 | 不展示 | 服务端文案 | 否 |
 | CLI 成功 | 不展示 | `MAA CLI 更新成功` | 否 |
 | CLI 失败 | 不展示 | `更新失败: <原因>` | 否 |
-| 资源热更新失败（含内层失败、网络失败） | `Alert` + 重试 action | 服务端/本地文案 | 是 |
-| 资源热更新并发冲突（服务端 409 `AGENT_MAA_RESOURCE_UPDATE_IN_PROGRESS`） | `Alert` + 重试 action，展示服务端“已有资源更新正在进行（runId、状态）…”提示 | 同一文案 | 是；首个更新结束后重试 |
+| 资源热更新失败（含内层失败、网络失败） | 不展示 | 服务端/本地文案；toast 带重试 action | 是 |
+| 资源热更新并发冲突（服务端 409 `AGENT_MAA_RESOURCE_UPDATE_IN_PROGRESS`） | 不展示 | 服务端“已有资源更新正在进行（runId、状态）…”提示；toast 带重试 action | 是；首个更新结束后重试 |
 | 更新被停止 | 不展示 | `更新已取消` | 否；版本仍可能变化，成功后重取 |
-| Run 中断/记录失效 | `Alert`（CLI 除外） | `无法确认更新结果...` | 资源热更新为是 |
-| 网络异常 | `Alert`（CLI 除外） | `网络错误: <原因>` | 资源热更新为是 |
+| Run 中断/记录失效 | 不展示 | `无法确认更新结果...` | 资源热更新为是 |
+| 网络异常 | 不展示 | `网络错误: <原因>` | 资源热更新为是 |
 
-渠道切换目标由 `resolveCoreChannelSwitch(currentCore)` 决定：版本字符串包含 `beta`/`alpha` 时切到正式版，否则切到 Beta；版本尚未读取时默认 Beta。成功文案使用 `Beta`/`正式版` 标签。
+更新 MaaCore 时，组件比较已保存的 core 渠道与已装版本推断的渠道（`resolveCoreChannel`，可区分 stable/beta/alpha）：不同则把选中渠道传给 update-core，服务端走 `install <channel> --force` 并回写渠道；相同则不传版本，服务端走 `maa update`。成功文案使用目标渠道标签。
 
-资源重试入口的判定条件 `failedStep === 'resources' || coreUpdated === true` 不再只兼容旧服务端与旧 Run 记录：core/渠道切换命令已成功、但资源状态无法确认时，服务端写入 `{ version, failedStep: 'resources', coreUpdated: true }`；core 命令成功后版本刷新失败写入 `{ version, failedStep: 'runtime', coreUpdated: true }`。两者都满足该判定，页面因此显示“重试资源同步”按钮。只有 core 命令本身失败才写 `{ version, failedStep: 'core', coreUpdated: false }`，不提供该入口；独立的资源热更新失败同样提供该按钮，升级前写入的旧 Run 沿用同一判定。
+资源重试入口的判定条件 `failedStep === 'resources' || coreUpdated === true` 不再只兼容旧服务端与旧 Run 记录：core/渠道切换命令已成功、但资源状态无法确认时，服务端写入 `{ version, failedStep: 'resources', coreUpdated: true }`；core 命令成功后版本刷新失败写入 `{ version, failedStep: 'runtime', coreUpdated: true }`。两者都满足该判定，error toast 因此显示“重试资源同步” action。只有 core 命令本身失败才写 `{ version, failedStep: 'core', coreUpdated: false }`，不提供该入口；独立的资源热更新失败同样提供该 action，升级前写入的旧 Run 沿用同一判定。
 
 成功载荷的 `steps` 由实测状态派生（`steps.core.success`、`steps.resources.success` 均为布尔值，不再固定为 `true`），`channelPersisted` 标记请求的渠道是否已写入 `cli.toml`。`channelPersisted === false` 时更新本身仍算成功，但文案必须说明“已更新，但渠道配置未能持久化”，不得声称已切换到目标渠道，后续不带版本的更新可能仍沿用原渠道。
 
@@ -504,7 +505,7 @@ owner 的完整提交语义不变，同一时刻只有一次：
 2. `setupAutoUpdate(config)`。`result.success` 且（禁用时或响应 data 的 `success !== false`）才算完整成功。
 3. 完整成功且 revision 未变：写本地 fallback、清除 touched、推进 revision（使保存前发出的读取失效）、`dirty=false`；成功不发 toast。
 4. 完整成功但保存期间出现新编辑：返回 `superseded`，保留新草稿与 dirty，静默等待下一次排程提交。
-5. 配置已保存而调度失败：返回 `failed`，提示 `自动更新设置应用失败: <原因>`，配置不回滚，页内 `Alert` 与带“重试保存”的 error toast 同时出现。
+5. 配置已保存而调度失败：返回 `failed`，提示 `自动更新设置应用失败: <原因>`，配置不回滚，只发带“重试保存”的 error toast。
 
 保存期间允许继续编辑；Activity 隐藏或页面重挂载不会中断已提交的保存。owner 是模块级对象，保存完成后即使页面隐藏也会写入状态。
 
@@ -521,13 +522,13 @@ owner 的完整提交语义不变，同一时刻只有一次：
 | core/渠道/CLI/资源命令与开始/结束提示 | `useSettingsUpdates()` |
 | 更新成功后的版本重取 | `useSettingsUpdates()` 调用 `useSettingsVersion().reload()`（`invalidateQueries`） |
 | 自动更新 `autoUpdate`/`dirty`/`saving`/`feedback`、touched/revision、本地回退、保存 + 调度 | `AutoUpdateConfigOwner` + `useSettingsAutoUpdate()` |
-| 自动更新页内/全局提示 | 失败：owner 反馈 + 带重试 action 的 toast；成功：静默；非法时间：仅 toast |
+| 自动更新提示 | 失败：带重试 action 的 toast；成功：静默；非法时间：仅 toast |
 
-按钮语义：core/资源按钮显示各自 loading，切换渠道按钮只禁用不 loading，CLI 按钮显示自己的 loading；全部更新按钮在任意命令运行期间禁用。命令运行期间额外渲染一个“停止更新”按钮（`canceling` 时显示停止中）。成功只走全局 toast；失败在卡片底部显示 `Alert`，资源重试放在 `AlertAction`。
+信息区按 MAA CLI、MaaCore、游戏资源三行排列；游戏资源使用独立一行展示更新时间与状态，不再挂在 MaaCore 下方。按钮语义：core/资源/CLI 按钮显示各自 loading；全部更新按钮在任意命令运行期间禁用。所有动作统一放在卡片底部动作区，顺序为 MAA CLI、MaaCore、游戏资源；命令运行期间在同一区域追加“停止更新”（`canceling` 时显示停止中）。成功与失败都只走全局 toast，资源重试作为 toast action；卡片内不再渲染失败 `Alert`。
 
 ### 6. 兼容与维护约束
 
-- 三类更新命令的路径未变，请求体新增 `waitForCompletion:false`，响应新增 `runId`/`run`/`pollUrl`/`stopUrl`，同时保留既有领域字段；更新渠道与资源源另用 `GET /agent/update-channels`、`POST /agent/actions/update-channel` 与 `GET/POST /agent/config/resource-source` 配置端点（不创建 Run）。update-core 仍在不传版本时使用 `maa update`，切渠道传 `beta`/`stable`；auto-update 仍先写 user config 再 POST `configure-auto-update`。
+- 三类更新命令的路径未变，请求体新增 `waitForCompletion:false`，响应新增 `runId`/`run`/`pollUrl`/`stopUrl`，同时保留既有领域字段；更新渠道与资源源另用 `GET /agent/update-channels`、`POST /agent/actions/update-channel` 与 `GET/POST /agent/config/resource-source` 配置端点（不创建 Run）。update-core 仍在不传版本时使用 `maa update`；选中渠道与已装渠道不同时传该渠道（stable/beta/alpha）以强制安装并回写渠道。auto-update 仍先写 user config 再 POST `configure-auto-update`。
 - localStorage 键 `autoUpdateConfig` 的写入时机与内容不变（成功加载、内容变化的编辑、保存成功；同值编辑跳过）；新增 `laPlumaItemIconVersion`，只保存物品图标缓存 epoch，不保存业务配置。
 - 本专题未新增 Query key；版本继续复用 `settings/version`；物品图标与头像仍不进入 Query。
 - 组件更新的图标缓存、版本同步与反馈时机见[成功后的版本与资源失效](#3-成功后的版本与资源失效)；自动更新草稿的读取、重挂载与保存裁决见[自动更新策略](#4-自动更新策略)。命令重试与生命周期以本专题第 2 节为准，Query 默认策略见[Query 缓存与键规范](../../architecture/query-cache.md)。
@@ -543,7 +544,7 @@ owner 的完整提交语义不变，同一时刻只有一次：
 - 草稿裁决：三个配置区块的初始读取与 refresh 不覆盖未保存编辑，保存期间编辑返回 `superseded`，后续自动保存补齐最新草稿；重置已移除。
 - 实例选项与资源源：实例保存只提交 `instance_options`、连接保存只提交 `connection`；资源源保存不发送空白凭据、`clearCdk` 写回 `cdk = false`、响应不回显明文。
 - 设备命令：取消跟随页面/Activity 而不是区块可见性，查找与测试 loading 互不影响，测试期间编辑标记 `test.superseded`，选择回填保留未知字段与最新编辑。
-- 更新互斥与失效：单槽位重复发起返回 `ignored`，命令等待 Run 终态后才完成，停止只作用于本次 `runId`；core/热更新发布资源失效并推进图标 epoch，CLI 只重取版本；自动更新自动保存 = 写 user config + 应用调度，成功静默、失败可重试、非法时间不请求，跨 Activity 隐藏继续完成，迟到读取不覆盖编辑。
+- 更新互斥与失效：单槽位重复发起返回 `ignored`，命令等待 Run 终态后才完成，停止只作用于本次 `runId`；core 更新在选中渠道与已装渠道不同时强制安装，core/热更新发布资源失效并推进图标 epoch，CLI 只重取版本；更新失败只走全局 toast，资源重试为 toast action；自动更新自动保存 = 写 user config + 应用调度，成功静默、失败可重试、非法时间不请求，跨 Activity 隐藏继续完成，迟到读取不覆盖编辑。
 - 草稿隔离：connection/instance/resource 三个 owner 各自持有草稿与保存状态，三个配置 Query 同时读取；设备/更新/版本状态与全局通知不重渲染连接表单。
 - 页内导航：六个区块标题、右侧目录、滚动高亮、锚点跳转与兼容事件由 `useSettingsSectionNavigation` 的行为测试覆盖；目录项使用 `aria-current="location"`。
 

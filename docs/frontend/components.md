@@ -216,7 +216,7 @@ import { LoaderCircle, RefreshCw, Save } from 'lucide-react'
 
 图标作为按钮的 children 直接渲染，并添加 `aria-hidden="true"`；图标尺寸由生成组件的内建规则处理，不要在调用处传旧的 `icon` prop 或覆盖图标与文字间距。无文字操作使用 `size="icon"` 档位，调用时必须同时提供 `title` 和 `aria-label`。
 
-loading 不是 `Button` 的 prop：调用点用 `disabled` 阻止重复提交，加 `aria-busy`，并用 `LoaderCircle` 与进行中文案替换原内容；不存在 `loadingText`。同一操作不要叠加第二个旋转图标。需要保持文案稳定的局部命令按钮（如设备面板的查找与测试按钮、渠道切换）可只禁用并设置 `aria-busy`，不替换文案、不加图标。
+loading 不是 `Button` 的 prop：调用点用 `disabled` 阻止重复提交，加 `aria-busy`，并用 `LoaderCircle` 与进行中文案替换原内容；不存在 `loadingText`。同一操作不要叠加第二个旋转图标。需要保持文案稳定的局部命令按钮（如设备面板的查找与测试按钮）可只禁用并设置 `aria-busy`，不替换文案、不加图标。
 
 工作流页的页面级主执行/停止按钮允许在调用点使用 `min-h-11`（44px）作为触达高度例外；它不是新的 `size` 档位，也不得用其它高度工具类改写其他控件度量。规则见[设计规范](../../DESIGN.md#buttons)。
 
