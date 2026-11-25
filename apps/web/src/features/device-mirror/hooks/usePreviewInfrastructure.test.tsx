@@ -138,7 +138,7 @@ describe('usePreviewInfrastructure automation availability guard', () => {
   beforeEach(() => {
     visibility = 'visible'
     Object.defineProperty(document, 'visibilityState', { configurable: true, get: () => visibility })
-    usePreviewStore.setState({ mode: 'off', quality: 'smooth', fps: 30, maxSize: 640, bitrateMbps: 4 })
+    usePreviewStore.setState({ mode: 'off', quality: 'smooth', customFps: 30, customMaxSize: 640, customBitrateMbps: 4 })
     availabilityMock.isAvailable = false
     availabilityMock.unavailableMessage = '正在检查后端服务，请稍候'
     transportMock.status = 'idle'

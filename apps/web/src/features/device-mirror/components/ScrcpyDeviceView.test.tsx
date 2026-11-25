@@ -89,7 +89,7 @@ describe('ScrcpyDeviceView', () => {
   beforeEach(() => {
     availabilityMock.isAvailable = true
     vi.mocked(getWebrtcStatus).mockReset().mockResolvedValue({ success: true, data: { installed: true, built: true, serverRunning: false, agentRunning: false } })
-    usePreviewStore.setState({ mode: 'off', quality: 'smooth', fps: 30, maxSize: 640, bitrateMbps: 4 })
+    usePreviewStore.setState({ mode: 'off', quality: 'smooth', customFps: 30, customMaxSize: 640, customBitrateMbps: 4 })
     vi.spyOn(HTMLMediaElement.prototype, 'play').mockResolvedValue(undefined)
     webrtcMock.status = 'idle'
     webrtcMock.error = null
@@ -296,24 +296,31 @@ describe('ScrcpyDeviceView', () => {
     await renderView()
     await openSettings()
 
-    expect(findDialogButton('流畅画质')?.textContent).toContain('640px · 30 FPS · 4M')
+    expect(findDialogButton('流畅画质')?.textContent).toContain('360p · 30 FPS · 4M')
+    expect(findDialogButton('高清画质')?.textContent).toContain('720p · 60 FPS · 12M')
+    expect(findDialogButton('超清画质')?.textContent).toContain('1080p · 60 FPS · 20M')
+    expect(findDialogButton('自定义画质')).not.toBeUndefined()
+    expect(findDialogButton('流畅画质')?.getAttribute('aria-pressed')).toBe('true')
     expect(findDialogButton('省电画质')).toBeUndefined()
+    expect(findDialogButton('均衡画质')).toBeUndefined()
+    expect(findDialogButton('清晰画质')).toBeUndefined()
 
-    await act(async () => findDialogButton('均衡画质')?.click())
+    await act(async () => findDialogButton('高清画质')?.click())
     expect(getDialog()?.textContent).not.toContain('自定义 · 最长边')
-    expect(getDialog()?.textContent).not.toContain('最长边 1280px · 30 FPS')
-    expect(findDialogButton('均衡画质')?.textContent).toContain('1280px · 30 FPS · 8M')
-    expect(findDialogButton('均衡画质')?.title).toBe('最长边 1280px · 30 FPS · 码率 8 Mbps')
+    expect(findDialogButton('高清画质')?.getAttribute('aria-pressed')).toBe('true')
+    expect(findDialogButton('高清画质')?.title).toBe('720p · 60 FPS · 码率 12 Mbps')
     expect(toastMock.info).toHaveBeenCalledWith(
       '画质已修改，下次连接实时预览时生效',
       expect.objectContaining({ id: 'preview-quality' }),
     )
 
-    await act(async () => findDialogButton('60')?.click())
-    expect(getDialog()?.textContent).toContain('自定义 · 最长边 1280px · 60 FPS')
-    expect(findDialogButton('均衡画质')?.textContent).toContain('1280px · 30 FPS · 8M')
+    await act(async () => findDialogButton('30')?.click())
+    expect(findDialogButton('自定义画质')?.getAttribute('aria-pressed')).toBe('true')
+    expect(findDialogButton('30')?.getAttribute('aria-pressed')).toBe('true')
+    expect(findDialogButton('高清画质')?.textContent).toContain('720p · 60 FPS · 12M')
+    expect(getDialog()?.textContent).not.toContain('自定义 · 最长边')
     expect(getDialog()?.querySelector('[role="group"][aria-label="视频帧率"]')).not.toBeNull()
-    expect(findDialogButton('60')?.getAttribute('aria-label')).toBe('60 FPS')
+    expect(findDialogButton('30')?.getAttribute('aria-label')).toBe('30 FPS')
   })
 
   it('offers a reconnect action in the quality toast while live', async () => {
@@ -322,7 +329,7 @@ describe('ScrcpyDeviceView', () => {
     await renderView()
     await openSettings()
 
-    await act(async () => findDialogButton('均衡画质')?.click())
+    await act(async () => findDialogButton('高清画质')?.click())
     expect(toastMock.info).toHaveBeenCalledWith(
       '画质已修改，重连后生效',
       expect.objectContaining({

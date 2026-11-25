@@ -1,11 +1,14 @@
 export const qualityPresets = {
   smooth: { label: '流畅', fps: 30, maxSize: 640, bitrateMbps: 4, maxBitrateMbps: 8 },
-  balanced: { label: '均衡', fps: 30, maxSize: 1280, bitrateMbps: 8, maxBitrateMbps: 16 },
-  crisp: { label: '清晰', fps: 60, maxSize: 1600, bitrateMbps: 14, maxBitrateMbps: 24 },
+  hd: { label: '高清', fps: 60, maxSize: 1280, bitrateMbps: 12, maxBitrateMbps: 16 },
   ultra: { label: '超清', fps: 60, maxSize: 1920, bitrateMbps: 20, maxBitrateMbps: 32 },
 } as const
 
-export const fpsOptions = [10, 15, 30, 45, 60, 90, 120] as const
+export function maxSizeToShortSide(maxSize: number): number {
+  return Math.round(maxSize * 9 / 16)
+}
+
+export const fpsOptions = [10, 15, 30, 45, 60, 90, 120, 240] as const
 
 export const SNAPSHOT_INTERVAL_SECONDS = 10
 

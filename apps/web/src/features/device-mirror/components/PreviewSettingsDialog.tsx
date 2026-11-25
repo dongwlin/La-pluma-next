@@ -9,8 +9,8 @@ import { ToggleGroup, ToggleGroupItem } from '@/shared/ui/toggle-group'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/shared/ui/tooltip'
 import { DialogBody, DialogFrame } from '@/shared/components'
 import { dismissNotice, notify, PREVIEW_QUALITY_NOTICE_ID } from '@/shared/notifications'
-import { fpsOptions, qualityPresets, type QualityPreset } from '../constants'
-import { usePreviewStore } from '../store/previewStore'
+import { fpsOptions, maxSizeToShortSide, qualityPresets, type QualitySelection } from '../constants'
+import { resolveQualitySelection, usePreviewStore } from '../store/previewStore'
 import type { PreviewLiveStatus } from '../model/previewStatus'
 import type { usePreviewSession } from '../hooks/usePreviewSession'
 import type { usePreviewInfrastructureView } from '../hooks/usePreviewInfrastructureView'
@@ -55,14 +55,15 @@ export function PreviewSettingsDialog({
   const detailsHeadingId = `${baseId}-details`
   const maxSizeId = `${baseId}-max-size`
   const quality = usePreviewStore(state => state.quality)
-  const customFps = usePreviewStore(state => state.fps)
-  const customMaxSize = usePreviewStore(state => state.maxSize)
-  const customBitrateMbps = usePreviewStore(state => state.bitrateMbps)
+  const customFps = usePreviewStore(state => state.customFps)
+  const customMaxSize = usePreviewStore(state => state.customMaxSize)
+  const customBitrateMbps = usePreviewStore(state => state.customBitrateMbps)
   const setQuality = usePreviewStore(state => state.setQuality)
   const setCustomFps = usePreviewStore(state => state.setCustomFps)
   const setCustomMaxSize = usePreviewStore(state => state.setCustomMaxSize)
   const setCustomBitrateMbps = usePreviewStore(state => state.setCustomBitrateMbps)
   const qualityDirtyRef = useRef(false)
+  const active = resolveQualitySelection({ quality, customFps, customMaxSize, customBitrateMbps })
 
   useEffect(() => {
     if (open) qualityDirtyRef.current = false
@@ -142,8 +143,8 @@ export function PreviewSettingsDialog({
     )
   }
 
-  const applyPreset = (preset: QualityPreset) => {
-    setQuality(preset)
+  const applyQuality = (next: QualitySelection) => {
+    setQuality(next)
     notifyQualityChange()
   }
 
@@ -271,27 +272,20 @@ export function PreviewSettingsDialog({
         </section>
 
         <section aria-labelledby={qualityHeadingId} className="flex flex-col gap-3">
-          <div className="flex flex-wrap items-baseline justify-between gap-2">
-            <h3 id={qualityHeadingId} className="flex items-center gap-2 text-sm font-medium">
-              <SlidersHorizontal className="size-4 text-muted-foreground" aria-hidden="true" />
-              画质设置
-            </h3>
-            {quality === 'custom' && (
-              <span className="text-xs text-muted-foreground">
-                自定义 · 最长边 {customMaxSize}px · {customFps} FPS
-              </span>
-            )}
-          </div>
+          <h3 id={qualityHeadingId} className="flex items-center gap-2 text-sm font-medium">
+            <SlidersHorizontal className="size-4 text-muted-foreground" aria-hidden="true" />
+            画质设置
+          </h3>
 
           <FieldGroup className="gap-3">
             <Field>
               <FieldTitle>画质预设</FieldTitle>
               <ToggleGroup
                 aria-label="画质预设"
-                value={quality === 'custom' ? [] : [quality]}
+                value={[quality]}
                 onValueChange={(next) => {
-                  const preset = next[0] as QualityPreset | undefined
-                  if (preset && preset !== quality) applyPreset(preset)
+                  const nextQuality = next[0] as QualitySelection | undefined
+                  if (nextQuality && nextQuality !== quality) applyQuality(nextQuality)
                 }}
                 multiple={false}
                 spacing={1}
@@ -300,15 +294,22 @@ export function PreviewSettingsDialog({
                 {Object.entries(qualityPresets).map(([key, preset]) => (
                   <ToggleGroupItem
                     key={key}
-                    value={key as QualityPreset}
+                    value={key}
                     aria-label={`${preset.label}画质`}
-                    title={`最长边 ${preset.maxSize}px · ${preset.fps} FPS · 码率 ${preset.bitrateMbps} Mbps`}
+                    title={`${maxSizeToShortSide(preset.maxSize)}p · ${preset.fps} FPS · 码率 ${preset.bitrateMbps} Mbps`}
                     className="h-auto min-h-11 flex-col items-start justify-center gap-0.5 rounded-lg px-2 py-1.5 text-left aria-pressed:bg-primary-soft aria-pressed:text-primary-strong"
                   >
                     <span className="text-xs font-medium">{preset.label}</span>
-                    <small className="text-xs font-normal text-muted-foreground">{preset.maxSize}px · {preset.fps} FPS · {preset.bitrateMbps}M</small>
+                    <small className="text-xs font-normal text-muted-foreground">{maxSizeToShortSide(preset.maxSize)}p · {preset.fps} FPS · {preset.bitrateMbps}M</small>
                   </ToggleGroupItem>
                 ))}
+                <ToggleGroupItem
+                  value="custom"
+                  aria-label="自定义画质"
+                  className="h-auto min-h-11 flex-col items-start justify-center gap-0.5 rounded-lg px-2 py-1.5 text-left aria-pressed:bg-primary-soft aria-pressed:text-primary-strong"
+                >
+                  <span className="text-xs font-medium">自定义</span>
+                </ToggleGroupItem>
               </ToggleGroup>
             </Field>
 
@@ -316,10 +317,10 @@ export function PreviewSettingsDialog({
               <FieldTitle>帧率</FieldTitle>
               <ToggleGroup
                 aria-label="视频帧率"
-                value={[String(customFps)]}
+                value={[String(active.fps)]}
                 onValueChange={(next) => {
                   const fps = Number(next[0])
-                  if (!Number.isFinite(fps) || fps === customFps) return
+                  if (!Number.isFinite(fps) || fps === active.fps) return
                   setCustomFps(fps)
                   notifyQualityChange()
                 }}
@@ -344,9 +345,9 @@ export function PreviewSettingsDialog({
               <FieldLabel htmlFor={maxSizeId}>最长边</FieldLabel>
               <Select
                 items={maxSizeItems}
-                value={String(customMaxSize)}
+                value={String(active.maxSize)}
                 onValueChange={(next, details) => {
-                  if (!next || details.reason === 'none') return
+                  if (!next || details.reason === 'none' || Number(next) === active.maxSize) return
                   setCustomMaxSize(Number(next))
                   notifyQualityChange()
                 }}
@@ -368,7 +369,7 @@ export function PreviewSettingsDialog({
                   <Gauge className="size-3.5" aria-hidden="true" />码率
                 </FieldTitle>
                 <output className="inline-flex items-baseline gap-1 text-xs text-muted-foreground">
-                  <strong className="text-sm font-bold text-foreground">{customBitrateMbps}</strong>
+                  <strong className="text-sm font-bold text-foreground">{active.bitrateMbps}</strong>
                   <span>Mbps</span>
                 </output>
               </div>
@@ -376,11 +377,11 @@ export function PreviewSettingsDialog({
                 min={1}
                 max={32}
                 step={0.5}
-                value={[customBitrateMbps]}
+                value={[active.bitrateMbps]}
                 thumbAriaLabel="视频码率"
                 onValueChange={(next) => {
                   const bitrate = Array.isArray(next) ? next[0] : next
-                  if (bitrate === undefined || bitrate === customBitrateMbps) return
+                  if (bitrate === undefined || bitrate === active.bitrateMbps) return
                   setCustomBitrateMbps(bitrate)
                   notifyQualityChange()
                 }}
