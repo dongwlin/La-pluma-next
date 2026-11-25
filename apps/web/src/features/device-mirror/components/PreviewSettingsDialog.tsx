@@ -4,7 +4,6 @@ import { Alert, AlertDescription, AlertTitle } from '@/shared/ui/alert'
 import { Button } from '@/shared/ui/button'
 import { Field, FieldGroup, FieldLabel, FieldTitle } from '@/shared/ui/field'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/shared/ui/select'
-import { Separator } from '@/shared/ui/separator'
 import { Slider } from '@/shared/ui/slider'
 import { ToggleGroup, ToggleGroupItem } from '@/shared/ui/toggle-group'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/shared/ui/tooltip'
@@ -271,8 +270,6 @@ export function PreviewSettingsDialog({
           </Tooltip>
         </section>
 
-        <Separator />
-
         <section aria-labelledby={qualityHeadingId} className="flex flex-col gap-3">
           <div className="flex flex-wrap items-baseline justify-between gap-2">
             <h3 id={qualityHeadingId} className="flex items-center gap-2 text-sm font-medium">
@@ -392,8 +389,6 @@ export function PreviewSettingsDialog({
             </Field>
           </FieldGroup>
         </section>
-
-        <Separator />
 
         <section aria-labelledby={detailsHeadingId} className="flex flex-col gap-3">
           <h3 id={detailsHeadingId} className="flex items-center gap-2 text-sm font-medium">
