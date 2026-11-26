@@ -1,6 +1,5 @@
-import { AlertCircle, LoaderCircle, Search } from 'lucide-react'
-import { DialogBody, DialogFrame, DialogFrameFooter, EmptyState } from '@/shared/components'
-import { Alert, AlertDescription } from '@/shared/ui/alert'
+import { LoaderCircle, Search } from 'lucide-react'
+import { DialogBody, DialogFrame, DialogFrameFooter, EmptyState, InlineAlert } from '@/shared/components'
 import { Badge } from '@/shared/ui/badge'
 import { Button } from '@/shared/ui/button'
 import { Item, ItemActions, ItemContent, ItemDescription, ItemTitle } from '@/shared/ui/item'
@@ -81,12 +80,9 @@ export default function DeviceConnectionDialog({
         )}
 
         {failed && (
-          <Alert variant="destructive">
-            <AlertCircle aria-hidden="true" />
-            <AlertDescription>
-              {discovery.message ?? discovery.error ?? '查找设备失败'}
-            </AlertDescription>
-          </Alert>
+          <InlineAlert tone="error">
+            {discovery.message ?? discovery.error ?? '查找设备失败'}
+          </InlineAlert>
         )}
 
         {devices.length > 0 && (
