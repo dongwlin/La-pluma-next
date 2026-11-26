@@ -72,7 +72,6 @@ export default function DeviceConnectionDialog({
       open={open}
       onOpenChange={onOpenChange}
       title="查找设备"
-      description="选择设备后会回填连接地址并自动测试连接"
     >
       <DialogBody className="flex flex-col gap-3">
         {statusMessage && (
@@ -132,15 +131,7 @@ export default function DeviceConnectionDialog({
         )}
       </DialogBody>
 
-      <DialogFrameFooter align="between">
-        <Button
-          type="button"
-          variant="outline"
-          size="sm"
-          onClick={() => onOpenChange(false)}
-        >
-          关闭
-        </Button>
+      <DialogFrameFooter>
         <Button
           type="button"
           variant="secondary"

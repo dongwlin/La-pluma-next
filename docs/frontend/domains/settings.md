@@ -326,7 +326,7 @@ ConfigManager（app-page > app-stack-section > SettingsWorkspace）
 
 #### 2.2 查找弹窗、选择结果与草稿版本
 
-查找入口是面板的“查找设备”按钮：点击同时打开 `DeviceConnectionDialog` 并立即发起查找；关闭弹窗（X、Esc、遮罩或页脚“关闭”）会取消在途查找。再次打开会重新查找，查找期间保留上一次列表。
+查找入口是面板的“查找设备”按钮：点击同时打开 `DeviceConnectionDialog` 并立即发起查找；关闭弹窗（X、Esc 或遮罩）会取消在途查找。再次打开会重新查找，查找期间保留上一次列表。
 
 选择设备时：
 
