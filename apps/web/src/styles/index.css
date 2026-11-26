@@ -803,9 +803,9 @@
       0 2px 6px rgba(0, 0, 0, 0.24);
   }
 
-  input.control-surface:not(.app-native-control),
-  textarea.control-surface:not(.app-native-control),
-  select.control-surface:not(.app-native-control) {
+  input.control-surface,
+  textarea.control-surface,
+  select.control-surface {
     border-color: transparent !important;
   }
 
