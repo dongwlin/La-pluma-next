@@ -30,7 +30,7 @@ const DashboardPreviewEntry = memo(function DashboardPreviewEntry() {
           <span className="truncate text-xs font-medium text-muted-foreground">画面预览</span>
           {status.phase !== 'off' && (
             <span
-              className="truncate text-xs text-muted-foreground"
+              className="sr-only"
               role="status"
               aria-live="polite"
               aria-atomic="true"
