@@ -217,30 +217,23 @@
     -ms-overflow-style: none;
   }
 
+  button,
+  input,
+  select,
+  textarea {
+    font-family: var(--font-app);
+  }
+
+  body {
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizelegibility;
+  }
+
   html::-webkit-scrollbar,
   body::-webkit-scrollbar {
     display: none;
     width: 0;
     height: 0;
-  }
-
-  body {
-    padding-bottom: env(safe-area-inset-bottom, 0px);
-  }
-
-  body::before {
-    content: '';
-    position: fixed;
-    inset: 0;
-    pointer-events: none;
-    z-index: -1;
-    background-image: linear-gradient(rgba(15, 23, 42, 0.035) 1px, transparent 1px), linear-gradient(90deg, rgba(15, 23, 42, 0.035) 1px, transparent 1px);
-    background-size: 40px 40px;
-    mask-image: linear-gradient(to bottom, rgba(0,0,0,0.65), transparent 70%);
-  }
-
-  .dark body::before {
-    background-image: linear-gradient(rgba(255, 255, 255, 0.035) 1px, transparent 1px), linear-gradient(90deg, rgba(255, 255, 255, 0.035) 1px, transparent 1px);
   }
 
   button:focus-visible,
@@ -1169,6 +1162,19 @@
    */
   [data-sonner-toaster] {
     z-index: var(--layout-z-toast) !important;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .la-pluma-app *,
+    .la-pluma-app *::before,
+    .la-pluma-app *::after,
+    [data-base-ui-portal] *,
+    [data-base-ui-portal] *::before,
+    [data-base-ui-portal] *::after {
+      scroll-behavior: auto !important;
+      transition-duration: 0.01ms !important;
+      animation-duration: 0.01ms !important;
+    }
   }
 
 }
