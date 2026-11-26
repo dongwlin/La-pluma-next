@@ -64,7 +64,7 @@ CI 在 PR/main 运行浏览器跨页集成和视觉检查，只等待客户端�
 视觉基线用于验收布局、材质与交互层级，harness 在 `apps/web/tests/visual/`，基线截图入库于 `apps/web/tests/visual/__screenshots__/`。
 
 - **环境钉死**：截图生成与比对统一跑在 `mcr.microsoft.com/playwright` 官方镜像内（tag 自动取 client 实际安装的 `@playwright/test` 版本，如 `v1.64.1-noble`），字体与浏览器由此与 CI 完全一致。基线截图是 **Linux/Chromium 专属**：更换镜像、Playwright 版本或操作系统后，必须用 `pnpm visual:update` 重新生成并逐项评审 diff，不要试图跨环境复用。
-- **确定性**：`/api` 请求全部由 `apps/web/tests/visual/fixtures.ts` 的固定数据应答（不依赖真实后端与 MAA 运行状态）；`page.clock` 固定到 2026-10-24 04:00（UTC+8），日期敏感内容（今日开放关卡、资源更新时间等）不随运行当天变化；`reducedMotion: 'reduce'` 加文档级样式禁用 CSS 动画/过渡；主题通过 zustand persist 的 `ui-storage` localStorage 预置，首帧即目标主题。公共部分集中在 `harness.ts`。
+- **确定性**：`/api` 请求全部由 `apps/web/tests/visual/fixtures.ts` 的固定数据应答（不依赖真实后端与 MAA 运行状态）；`page.clock` 固定到 2026-10-24 04:00（UTC+8），日期敏感内容（今日开放关卡、资源更新时间等）不随运行当天变化；`reducedMotion: 'reduce'` 加文档级样式禁用 CSS 动画/过渡；主题通过 `lpn-ui` localStorage 预置，首帧即目标主题（旧 `ui-storage` 仅作为升级迁移键读取，不再写入）。公共部分集中在 `harness.ts`。
 - **三个视口**：桌面 1440×900、平板 820×1180、移动 390×844，deviceScaleFactor 1。Playwright 配置为三个 project 都运行 spec，但截图基线按 spec 与用例选择投影，不是每页都有 3 视口 × 双主题：
   - `app.pw.ts` 的整页基线只覆盖 dashboard 与 automation 两个代表页，仅深色，desktop 与 mobile 各一张，tablet 跳过。同一文件的 `PAGE_SHELL_CONTRACT` 在 desktop 上逐 tab 核对 8 个页面壳的锚点与布局属性，属于行为契约，不是 8 张整页基线。
   - `overlays.pw.ts` 的 PWA 安装提示在 desktop / tablet / mobile × 深/浅主题各取一张视口截图；固定偏移用例只在 mobile 视口测量。
@@ -102,7 +102,7 @@ pnpm screenshots:readme
 当前约定：
 
 - **构建链路**：依赖为 `tailwindcss@^4` + `@tailwindcss/vite`，由 Vite 插件处理样式；`autoprefixer`、`postcss` 与 `apps/web/postcss.config.js` 已退役，不再有 `@config` 指令与 `apps/web/tailwind.config.js`。
-- **层序与 token 单源**：语义 token 只在 `index.css` 的 `:root`、`html.dark, #app-root.dark` 与对比度/透明度媒体查询中定义；布局几何与结构 token（`--layout-*`）只由 `layout.css` 定义；`ios-theme.css` 只保留 `--glass-*` 材质 token 与 chrome 视觉。项目语义 token 以 `index.css` 显式定义为准，不依赖 v4 默认色板。层序声明、`page` 层归属与 utilities 优先级详见 [设计规范](../../DESIGN.md) 的「层序与 token 单源」。
+- **层序与 token 单源**：语义 token 只在 `index.css` 的 `:root`、`html.dark, #app-root.dark` 与对比度媒体查询中定义；布局几何与结构 token（`--layout-*`）只由 `layout.css` 定义；`ios-theme.css` 只保留应用 chrome 的实色表面、发丝线与移动端布局覆盖，不定义 token、不使用 `backdrop-filter` 作为表面材质（弹层遮罩 scrim 除外）。项目语义 token 以 `index.css` 显式定义为准，不依赖 v4 默认色板。层序声明、`page` 层归属与 utilities 优先级详见 [设计规范](../../DESIGN.md) 的「层序与 token 单源」。主题体系与新增主题契约见[主题系统](../frontend/themes.md)。
 - **档位即规范**：圆角由 `index.css` 的 `--radius` 经标准派生档位生效、间距沿用 v4 原生档位与 .5 步进、content 自动检测，以 [设计规范](../../DESIGN.md)「档位即规范」为唯一依据。
 - **canonical 类名**：没有 lint 自动检查，按约定与评审核对：CSS 变量写 `bg-(--muted)` 而非 `bg-[var(--muted)]`；`break-words` 写 `wrap-break-word`，`[overflow-wrap:anywhere]` 写 `wrap-anywhere`，两者同时出现时保留两个类。
 - **v3→v4 类名**：`shadow-sm→shadow-xs`、`backdrop-blur-sm→backdrop-blur-xs`、`outline-none→outline-hidden`、`flex-shrink-0→shrink-0`，`!` 前缀改后缀（如 `dark:text-white!` 仍有效）；**`shadow-md` 及以上档位在 v4 中数值与 v3 相同，不要按 "shadow-lg→shadow-md" 的通用口诀改名**。`ring`、裸 `border`/`divide` 已显式给色。
