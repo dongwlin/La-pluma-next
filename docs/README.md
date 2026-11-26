@@ -12,7 +12,7 @@ docs/
 ├── server/          # 服务端架构与运行时
 ├── frontend/        # 前端架构、兼容与组件 API
 │   └── domains/     # 页面领域与跨页共享域各维护一份文档
-└── development/     # 开发、检查、集成与维护
+└── development/     # 开发、检查与维护
 ```
 
 ## 使用与部署
@@ -71,7 +71,6 @@ docs/
 | --- | --- |
 | [开发指南](development/README.md) | 样式/测试治理、文件类型与常用检查 |
 | [依赖与职责护栏](development/guardrails.md) | 分层、公开面、页面职责、布局/样式/测试护栏与限制 |
-| [跨页一致性集成测试](development/integration.md) | Chromium 场景、复现方法、观察结果与覆盖边界 |
 | [维护说明](development/maintaining.md) | 分支、发布、运行时依赖与文档归属 |
 
 性能采样的方法与指标限制随工具维护在 [apps/web/tests/performance/README.md](../apps/web/tests/performance/README.md)。任务过程和一次性证据不加入现行文档索引。

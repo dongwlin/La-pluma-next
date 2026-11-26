@@ -27,7 +27,6 @@
     "vite.config.ts",
     "scripts/**/*.ts",
     "tests/visual/**/*.ts",
-    "tests/integration/**/*.ts",
     "tests/performance/**/*.ts"
   ]
 }

@@ -10,7 +10,7 @@ La Pluma Next 是面向《明日方舟》自动化的本地 Web 控制台：Reac
 | `apps/server/` | HTTP API、任务执行与调度、设备连接、通知与持久化 |
 | `docs/` | 现行架构、领域契约、开发与运维文档 |
 | `scripts/` | 根级 Docker 化 README 截图入口 |
-| `.github/workflows/` | 质量门禁、浏览器检查与镜像发布 |
+| `.github/workflows/` | 质量门禁与镜像发布 |
 
 ## 环境与常用命令
 
@@ -27,7 +27,7 @@ La Pluma Next 是面向《明日方舟》自动化的本地 Web 控制台：Reac
 | 样式预算 | `pnpm --filter la-pluma-next-client stylelint:ratchet` |
 | 生产启动 | `pnpm start` |
 
-`pnpm verify` 不覆盖浏览器集成、服务端覆盖率与容器启动检查；前端改动需自行补跑对应命令，CI 会全部执行。
+`pnpm verify` 不覆盖服务端覆盖率与容器启动检查；CI 会补跑这两项。
 
 ## 开发工作流
 
@@ -84,7 +84,7 @@ La Pluma Next 是面向《明日方舟》自动化的本地 Web 控制台：Reac
 ## 重要约束与风险
 
 - 真实设备链路依赖 `maa` CLI、MaaCore 及资源、ADB；单元测试与 fixture 浏览器测试不能证明设备侧可用，交付时须写明未验证范围。
-- 本地 `pnpm verify` 是 CI 的子集：CI 另跑浏览器集成、服务端覆盖率与双架构容器启动。
+- 本地 `pnpm verify` 是 CI 的子集：CI 另跑服务端覆盖率与双架构容器启动。
 - 执行是否完成只由 Run 终态决定，这是前后端共同契约：HTTP 返回、子进程 idle、断网或页面卸载都不构成完成信号。
 
 ## 提交前验证

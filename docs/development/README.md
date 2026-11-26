@@ -33,7 +33,7 @@ PORT=3100 LA_PLUMA_DEV_PORT=5273 pnpm dev
 
 这些变量通过启动命令或 shell 的 `export` 传入；只给客户端配置端口不会启动或修改另一个后端。单独运行前端连接已有后端时，例如 `LA_PLUMA_DEV_PORT=5273 LA_PLUMA_DEV_API_TARGET=http://localhost:3100 pnpm dev:client`。开发变量不会注入浏览器代码；子路径仍使用 `VITE_BASE_PATH` 和 `LA_PLUMA_BASE_PATH`，见[部署指南](../guides/deployment.md)。
 
-应用数据默认位于各 worktree 自己的 `apps/server/data/`，不要把该目录软链为共享的可写目录。MAA 配置、资源、ADB 和设备预览仍可能使用同一套外部运行时；普通 PR 验证使用浏览器 fixture，真实设备联调由一个指定实例执行。
+应用数据默认位于各 worktree 自己的 `apps/server/data/`，不要把该目录软链为共享的可写目录。MAA 配置、资源、ADB 和设备预览仍可能使用同一套外部运行时；普通 PR 验证不连接真实设备，真实设备联调由一个指定实例执行。
 
 ## 样式治理
 
@@ -57,7 +57,7 @@ pnpm --filter la-pluma-next-client stylelint:baseline  # 违规数下降或有�
 
 `pnpm verify` 包含样式预算检查。CI 将客户端检查、客户端构建与服务端检查拆成并行任务，`stylelint:ratchet` 归客户端检查；服务端保留编译器版本断言和一次 `typecheck`，完整测试通过 `test:coverage` 运行一次，同时检查行为与覆盖率阈值（见 `.github/workflows/ci.yml`）。
 
-CI 在 PR/main 运行浏览器跨页集成，只等待客户端构建，通过 artifact 复用产物；PR 和发布还验证两种原生架构的容器启动。纯文档变更合入 main 时不再重复触发 CI。发布不重复运行浏览器检查。必选的 `verify` 状态是适用任务的汇总结果，详见[工作流说明](../../.github/workflows/README.md)。
+CI 在 PR/main 运行客户端检查、构建与服务端检查，PR 和发布还验证两种原生架构的容器启动。纯文档变更合入 main 时不再重复触发 CI。必选的 `verify` 状态是适用任务的汇总结果，详见[工作流说明](../../.github/workflows/README.md)。
 
 ### README 界面截图
 
@@ -126,12 +126,12 @@ pnpm screenshots:readme
 
 ## 文件类型
 
-`apps/web/` 下的应用代码、构建脚本与测试一律使用 TypeScript。`tsc -b` 通过两个 project 覆盖：`tsconfig.app.json` 检查 `src`，`tsconfig.node.json` 检查 `vite.config.ts`、`scripts/**`、`tests/visual/**`、`tests/integration/**`、`tests/performance/**`。Node 侧脚本直接以 `node xxx.ts` 运行（Node 24 原生类型擦除，脚本只使用可擦除语法：不用 `enum`、`namespace` 与构造器参数属性）。
+`apps/web/` 下的应用代码、构建脚本与测试一律使用 TypeScript。`tsc -b` 通过两个 project 覆盖：`tsconfig.app.json` 检查 `src`，`tsconfig.node.json` 检查 `vite.config.ts`、`scripts/**`、`tests/visual/**` 与 `tests/performance/**`。Node 侧脚本直接以 `node xxx.ts` 运行（Node 24 原生类型擦除，脚本只使用可擦除语法：不用 `enum`、`namespace` 与构造器参数属性）。
 
 ## 常用检查
 
 ```bash
-# 前端类型检查和构建（类型检查覆盖 src、vite.config.ts、scripts 与 tests/{visual,integration,performance}）
+# 前端类型检查和构建（类型检查覆盖 src、vite.config.ts、scripts 与 tests/{visual,performance}）
 # 构建会校验 dist/assets/*.js 全部进入 dist/sw.js 的 precache 清单；
 # 新增 chunk 时必须同步 createWorkboxConfig 的 globPatterns，否则构建失败。
 pnpm --filter la-pluma-next-client build

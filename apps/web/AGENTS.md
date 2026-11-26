@@ -52,7 +52,7 @@
 | 影响范围 | 验证要求 |
 | --- | --- |
 | 纯逻辑、领域状态与请求 | 就近补 `*.test.ts` / `*.test.tsx`；组件和 hooks 按现有测试使用 jsdom、React `act` 和必要的假定时器。 |
-| 竞态、保存、取消、保活或恢复 | 覆盖迟到结果、失败保旧、隐藏/恢复及真正 remount；涉及跨页协作时运行 `pnpm --filter la-pluma-next-client test:integration`。 |
+| 竞态、保存、取消、保活或恢复 | 覆盖迟到结果、失败保旧、隐藏/恢复及真正 remount；跨页协作在浏览器中人工核对。 |
 | CSS、组件外观、布局或弹层 | 运行 `pnpm --filter la-pluma-next-client stylelint:ratchet`，并在浏览器中人工核对受影响页面与主题。 |
 | 分包、Service Worker、启动壳、base path | 运行客户端构建并检查相应回归；构建已包含预缓存完整性校验，启动壳或首帧变化还需人工核对。 |
 | 性能优化 | 使用既有性能采样协议；比较双方保持构建、数据、设备和完成语义一致，不把 DOM mutation 或 CDP 指标当作 React render/commit 次数。 |
@@ -60,7 +60,7 @@
 - 改动后的快速回路用 `pnpm verify:fast`（guardrails、oxlint、类型检查与相对 `origin/main` 的改动测试，包含已提交改动）；提交前仍运行 `pnpm verify` 覆盖样式预算与构建。Vitest 默认最多 4 个 worker，可用 `LA_PLUMA_TEST_WORKERS` 覆盖。
 - 浏览器用例使用 `*.pw.ts`，与 Vitest 单元测试分开。
 - 测试断言可访问性、可见状态、回调/请求参数、store 与导航结果；不要锁 CSS 类名、包裹层或子元素顺序。`html.dark` 是主题契约例外，视觉效果靠浏览器人工核对。
-- 集成测试使用匹配已安装 Playwright 版本的 Docker 镜像；截图不可跨环境复用。
+- README 截图使用匹配已安装 Playwright 版本的 Docker 镜像；截图不可跨环境复用。
 
 ## 延伸阅读
 
@@ -79,5 +79,4 @@
 | [兼容入口与移除规则](../../docs/frontend/compatibility.md) | 删除旧接口、存储键或恢复逻辑前。 |
 | [设计规范](../../DESIGN.md) | 修改视觉、交互、token、主题与样式层序前；此处是设计规则的单一来源。 |
 | [通用组件库](../../docs/frontend/components.md) | 选用或调整公共控件、更新组件 API 时。 |
-| [跨页一致性集成测试](../../docs/development/integration.md) | 运行浏览器集成测试前，确认 Docker 前置条件与场景覆盖边界。 |
 | [性能采样说明](tests/performance/README.md) | 性能优化或报告性能结论前，确认采样协议和指标限制。 |
