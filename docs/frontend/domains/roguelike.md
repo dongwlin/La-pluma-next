@@ -59,7 +59,7 @@ RoguelikeTasks（app-page > app-stack-section > RoguelikeWorkspace）
 - **配置草稿**只由工作区的一次 `useUserConfig(roguelikeConfigAdapter)` 读取。主题与高级字段编辑分别合并当前 `taskInputs`/`advancedParams` 后交给同一个通道；页面、面板都不直接调用 `saveUserConfig`/`loadUserConfig` 或写 `localStorage`。
 - **配置读取门控**：工作区以 `loadState === 'ready'` 判定配置就绪，并以 `isRunning || isSubmitting` 判定执行锁定；只有 `configReady && !isLocked` 时可编辑。未就绪时外壳、执行进度面板与底部操作区仍渲染；模式 tab 与主题预设/输入禁用，设置面板主体改为读取中 `Loading`（`role="status"`）或失败时 `InlineAlert`（`role="alert"`，含 `loadError` 与「重新加载」），高级字段、开关与核心干员区不渲染，执行按钮禁用。失败态的「重新加载」调用 `reload({ force: true })`。已有活动 run 时停止入口不因门控丢失。
 - **配置同步反馈**：失败只通过固定 id `roguelike-config-save` 的 error toast 展示，附带「重新同步」action；action 调用 `retry()`，`syncState === 'saving'` 期间忽略重复触发。错误清空时关闭同 id toast；手动重试返回 true 后才提示「肉鸽配置已同步」。页面不再渲染页内 `role="alert"` 同步错误或重试按钮，也不显示同步中按钮文案。
-- **执行**只由工作区的一次 `useRoguelikeExecution` 订阅。设置面板拿到的是 `isRunning`/`isStopping`/`isWaitingForCombat`/`pendingStopMode`/`isSubmitting` 与 `onExecute`/`onStop(mode)` 投影；停止确认、等待意图、终态提示和 run 身份仍由 hook/控制器持有，面板没有第二份状态机。执行进度面板另取同一次订阅返回的 `trackedRun`、`lastRun`、`hasSnapshot` 与 `resolvingIdentity`，按当前模式过滤后渲染，不新建观察者。
+- **执行**只由工作区的一次 `useRoguelikeExecution` 订阅。设置面板拿到的是 `isRunning`/`isStopping`/`isWaitingForCombat`/`pendingStopMode`/`isSubmitting` 与 `onExecute`/`onStop(mode)` 投影；停止确认、等待意图、终态提示和 run 身份仍由 hook/控制器持有，面板没有第二份状态机。执行进度面板另取同一次订阅返回的 `trackedRun`、`lastRun`、`hasSnapshot` 与 `resolvingIdentity`，按当前模式过滤后渲染，不新建观察者。启动提交不推送常驻进度 toast，运行反馈由「正在启动」按钮与执行进度面板承担；停止请求与终态仍使用固定 id `execution`。
 - **运行期锁定**：运行或提交在途时 `editable=false`，模式 tab 输出 `aria-disabled`，主题预设与输入、高级字段、开关、核心干员的更换与清除全部禁用，开始按钮禁用；提交中按钮以 `aria-busy` 显示「正在启动」。停止按钮不受配置门控或字段锁定影响，运行中始终可达。
 - **停止**分两种意图：运行中左「终止」发 `mode: 'now'`，右「等待战斗结束」发 `mode: 'after-combat'`；空闲态仍是单个「开始」。`after-combat` 被受理后 run 仍是 `running`，等待态由 `trackedRun.progress.stopIntent`（或刚收到的 `pendingStop`）派生，右侧按钮禁用并提示最多等待 10 分钟，左侧保持可点用于取消等待并立即停止；响应没有 `pendingStop` 表示服务端退化为立即停止，页面提示“未在战斗中，已立即终止”而不进入等待态。等待态不属于停止确认，不触发 15s 确认超时。
 - **字段校验**：执行前校验返回首个无效字段的 `{ key, message }`；工作区把错误交给设置面板与主题面板，在对应控件上设置 `aria-invalid` 与指向 `<字段 id>-error` 的 `aria-errormessage`，控件外用共享 `FieldError` 显示同一错误文本。设置错误后聚焦首个无效字段，主题字段聚焦 `roguelike-<taskId>-theme`，其余字段聚焦 `roguelike-<taskId>-<key>`；编辑该字段时立即清除对应错误。全局 toast 只保留执行与全局错误，不再重复字段校验文案。
@@ -168,7 +168,7 @@ maa-cli 0.7.8 只认识部分主题、模式与参数；MaaCore 新增的黑流�
 - 服务端端点、执行提交参数与幂等键语义未变化；停止仍走控制器 `stopTrackedRun({ mode })`，`mode` 与 `pendingStop`/`stopIntent` 都是增量字段，缺省请求仍是原来的立即停止。运行中的 `progress.roguelike` 与终态的 `summary.progress` 都是 Run 载荷的增量字段，客户端缺失时按旧服务端回退到摘要或任务状态，不从退出码或消息推断成功。
 - 保持字段 `id`、配置键、本地键、wire 形状与可访问语义（label、`aria-invalid`/`aria-errormessage`、状态 badge 文本与标题层级）；视觉原语与 CSS 类名可以替换，但字段仍必须能由标签稳定定位。核心干员字段的控件从原生输入换成按钮触发器，但字段 `id`、配置键与 wire 值保持不变。
 - 字段的默认值语义以命令模型为准：生息演算默认模式为 `1`，集成战略默认职业组为 `稳扎稳打`；两者都会写入 wire 与命令。
-- 配置同步失败固定使用 `roguelike-config-save` toast 与「重新同步」action；执行进度与终态提示继续使用 `execution` id，两者互不覆盖。
+- 配置同步失败固定使用 `roguelike-config-save` toast 与「重新同步」action；启动提交不发全局进度 toast，停止请求与终态提示继续使用 `execution` id，两者互不覆盖。
 - 面板只组合命令模型、配置适配器、执行控制器与只读 run 投影；本页不恢复独立的配置或执行状态。
 
 ## 回归与关联
@@ -177,7 +177,7 @@ maa-cli 0.7.8 只认识部分主题、模式与参数；MaaCore 新增的黑流�
 
 以下路径相对于 `apps/web/src/`：领域回归在 `features/roguelike/model`；入口命令见[验证命令](#验证命令)。
 
-执行进度回归集中在 `runProgress.test.ts`：快照解析与字段归一、模式过滤、最近 5 局截断、`lastRun` 选择（含 operation/模式/摘要校验与不继承 tracked 标签）、旧服务端回退、黑流块解析与 60/180/300 秒新鲜度、里程碑去重与策略标签；`runSummary.test.ts` 覆盖终态摘要与结算字段回退。任务目录、默认值、归一化、执行计划与校验分别由 `roguelikeTasks.test.ts`、`roguelikeValidation.test.ts`、`roguelikeConfig.test.ts` 与 `executionState.test.ts` 覆盖。面板渲染与宽屏栅格需在浏览器中人工核对。
+执行进度回归集中在 `runProgress.test.ts`：快照解析与字段归一、模式过滤、最近 5 局截断、`lastRun` 选择（含 operation/模式/摘要校验与不继承 tracked 标签）、旧服务端回退、黑流块解析与 60/180/300 秒新鲜度、里程碑去重与策略标签；`runSummary.test.ts` 覆盖终态摘要与结算字段回退。任务目录、默认值、归一化、执行计划与校验分别由 `roguelikeTasks.test.ts`、`roguelikeValidation.test.ts`、`roguelikeConfig.test.ts` 与 `executionState.test.ts` 覆盖；`hooks/useRoguelikeExecution.test.tsx` 覆盖启动不推送全局进度提示、提交失败仍使用 `execution` 通知。面板渲染与宽屏栅格需在浏览器中人工核对。
 
 关键不变量：
 
