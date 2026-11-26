@@ -51,6 +51,33 @@ test.describe('app tabs', () => {
     })
   }
 
+  test('automation scroll host reaches the fixed scrolled viewport', async ({ page }) => {
+    test.skip(test.info().project.name !== 'desktop', 'the scrolled viewport baseline is captured once on desktop')
+
+    const environment = await installDeterministicEnvironment(page)
+
+    await page.goto('/app/automation')
+    await waitForPageReady(page, 'automation')
+
+    const scrollHost = page.locator('[data-region="scroll"]')
+    const maxScroll = await scrollHost.evaluate(element => {
+      const host = element as HTMLElement
+      host.scrollTop = 200
+      return host.scrollHeight - host.clientHeight
+    })
+
+    expect(maxScroll).toBeGreaterThanOrEqual(200)
+    expect(await scrollHost.evaluate(element => (element as HTMLElement).scrollTop)).toBe(200)
+
+    await expect(page).toHaveScreenshot('automation-scrolled-dark.png', {
+      animations: 'disabled',
+      caret: 'hide',
+    })
+
+    environment.assertNoUnmatchedApi()
+    await expectNoBrowserErrors(page)
+  })
+
   test('page shell anchors define stable regions for every workspace', async ({ page }) => {
     test.skip(test.info().project.name !== 'desktop', 'the region contract is checked on desktop')
 
