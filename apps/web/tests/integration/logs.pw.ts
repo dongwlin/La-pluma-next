@@ -30,6 +30,13 @@ const record = (sequence: number, message: string, runId?: string): SourceLog =>
 
 const logRegion = (page: Page) => page.getByRole('log', { name: '日志内容' })
 
+const scopeCombobox = (page: Page) => page.getByRole('combobox', { name: '执行范围', exact: true })
+
+const chooseScope = async (page: Page, label: string) => {
+  await scopeCombobox(page).click()
+  await page.getByRole('option', { name: label, exact: true }).click()
+}
+
 test('日志事件按固定 Run 范围筛选，指定 Run 在终态和后续执行期间保持不变', async ({ page }) => {
   const state = createScenarioState()
   const selectedRunId = state.runId
@@ -46,28 +53,30 @@ test('日志事件按固定 Run 范围筛选，指定 Run 在终态和后续执�
     json: ok(makeRun(state.runId === selectedRunId ? state.runState : 'succeeded', selectedRunId)),
   }))
   await gotoScenario(page, 'logs')
-  const scope = page.getByRole('combobox', { name: '执行范围', exact: true })
-  await expect(scope).toHaveValue('')
+  const scope = scopeCombobox(page)
+  await expect(scope).toContainText('全部执行与未关联日志')
   await expect(logRegion(page).getByText('未关联采集记录', { exact: true }).first()).toBeVisible()
-  await scope.selectOption(selectedRunId)
+  await chooseScope(page, `Run · ${selectedRunId}`)
   await expect(logRegion(page).getByText('开始执行：理智作战', { exact: true })).toBeVisible()
   await expect(logRegion(page).getByText('固定范围事件', { exact: true }).first()).toBeVisible()
   await expect(logRegion(page).getByText('另一次执行记录', { exact: true })).toHaveCount(0)
-  await expect(logRegion(page).getByText('原文与详情', { exact: true })).toHaveCount(2)
+  await expect(logRegion(page).getByText('原文', { exact: true })).toHaveCount(2)
 
   state.runState = 'succeeded'
   const beforeTerminal = requestsFor(state, '/agent/runs/current', 'GET').length
   await page.evaluate(() => window.dispatchEvent(new Event('focus')))
   await expect.poll(() => requestsFor(state, '/agent/runs/current', 'GET').length).toBeGreaterThan(beforeTerminal)
-  await expect(scope).toHaveValue(selectedRunId)
+  await expect(scope).toContainText(`Run · ${selectedRunId}`)
   await expect(logRegion(page).getByText('另一次执行记录', { exact: true })).toHaveCount(0)
 
   state.runId = 'run-after-selected'
   state.runState = 'running'
   logs.push(record(5, '新执行的日志', state.runId))
   await page.evaluate(() => window.dispatchEvent(new Event('focus')))
-  await expect(scope.getByRole('option', { name: `Run · ${state.runId}`, exact: true })).toBeAttached()
-  await expect(scope).toHaveValue(selectedRunId)
+  await scope.click()
+  await expect(page.getByRole('option', { name: `Run · ${state.runId}`, exact: true })).toBeVisible()
+  await page.keyboard.press('Escape')
+  await expect(scope).toContainText(`Run · ${selectedRunId}`)
   await expect(logRegion(page).getByText('新执行的日志', { exact: true })).toHaveCount(0)
   await expect(logRegion(page).getByText('固定范围事件', { exact: true }).first()).toBeVisible()
   await expectScenarioHealthy(page)
@@ -102,9 +111,9 @@ test('清屏保持本地边界，Activity 隐藏取消读取并在返回后保�
   })
   try {
     await gotoScenario(page, 'logs')
-    const scope = page.getByRole('combobox', { name: '执行范围', exact: true })
+    const scope = scopeCombobox(page)
     await expect(logRegion(page).getByText('清屏前的记录', { exact: true }).first()).toBeVisible()
-    await scope.selectOption(selectedRunId)
+    await chooseScope(page, `Run · ${selectedRunId}`)
     await page.getByRole('button', { name: '清屏', exact: true }).click()
     await expect(logRegion(page).getByText('清屏前的记录', { exact: true })).toHaveCount(0)
     const readsBeforePoll = reads
@@ -128,7 +137,7 @@ test('清屏保持本地边界，Activity 隐藏取消读取并在返回后保�
     releaseHeldRead()
 
     await navigateTo(page, 'logs')
-    await expect(scope).toHaveValue(selectedRunId)
+    await expect(scope).toContainText(`Run · ${selectedRunId}`)
     await expect(logRegion(page).getByText('清屏后的新记录', { exact: true }).first()).toBeVisible()
     await expect(logRegion(page).getByText('清屏前的记录', { exact: true })).toHaveCount(0)
     await expect(logRegion(page).getByText('迟到读取不应覆盖', { exact: true })).toHaveCount(0)

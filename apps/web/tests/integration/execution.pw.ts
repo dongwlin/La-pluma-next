@@ -37,7 +37,8 @@ test('停止中切页、断线重连和刷新都保留同一 Run，旧终态不�
 
   // 原生 offline 事件与 fetch 失败一样属于未知，不得把最后活动 Run 当成完成。
   await context.setOffline(true)
-  await expect(page.locator('[data-dashboard-flow-command]').getByText('当前网络离线', { exact: true })).toBeVisible()
+  await expect(page.locator('[data-dashboard-flow-command]').getByText('连接不可用', { exact: true })).toBeVisible()
+  await expect(page.locator('[data-sonner-toast]').getByText('当前网络离线', { exact: true })).toBeVisible()
   await expect(page.getByRole('button', { name: '开始', exact: true })).toBeDisabled()
 
   // 在线请求失败期间也没有提交新任务；恢复后先按原 runId 对账。
