@@ -581,21 +581,6 @@
     flex: 0 0 auto;
   }
 
-  .la-pluma-app .surface-panel {
-    margin: 0;
-    border: 1px solid var(--border);
-    border-radius: var(--radius-xl);
-    background: var(--card);
-  }
-
-  .la-pluma-app .app-empty-state-icon {
-    /* 空状态图标使用无底色方形视觉，压过 rounded-* utilities。 */
-    border-radius: 0 !important;
-    background: transparent;
-    color: var(--tertiary-foreground);
-    box-shadow: none;
-  }
-
   @media (width < 1024px) {
     /* On phones the chrome floats as separate controls over the page material,
        so each action owns one clear circular hit target. */
