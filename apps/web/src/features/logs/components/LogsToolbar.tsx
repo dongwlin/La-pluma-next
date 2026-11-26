@@ -66,7 +66,7 @@ export default function LogsToolbar({
   const autoScrollControl = (
     <Field
       orientation="horizontal"
-      className={`log-toggle-control min-h-11 min-w-0 gap-3.5 ${viewingHistory ? 'opacity-50' : ''}`}
+      className={`log-toggle-control min-h-11 w-auto shrink-0 gap-3.5 ${viewingHistory ? 'opacity-50' : ''}`}
     >
       <FieldLabel htmlFor="logs-auto-scroll" className="truncate text-xs font-medium text-muted-foreground">
         自动滚动
@@ -194,7 +194,7 @@ export default function LogsToolbar({
                 {autoScrollControl}
               </UnavailableAction>
             ) : autoScrollControl}
-            <Field orientation="horizontal" className="log-toggle-control min-h-11 min-w-0 gap-3.5">
+            <Field orientation="horizontal" className="log-toggle-control min-h-11 w-auto shrink-0 gap-3.5">
               <FieldLabel htmlFor="logs-collapse-repeats" className="truncate text-xs font-medium text-muted-foreground">
                 折叠重复
               </FieldLabel>
