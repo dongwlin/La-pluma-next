@@ -48,11 +48,11 @@ export function AutomationCheckboxField({ id, label, checked, disabled, hint, on
     <Field
       orientation="horizontal"
       data-disabled={disabled || undefined}
-      className="group min-h-11 gap-1"
+      className="group min-h-11 w-fit gap-1"
     >
       <FieldLabel
         htmlFor={id}
-        className="min-h-11 cursor-pointer gap-2 rounded-md text-sm font-normal text-gray-700 has-[:focus-visible]:ring-3 has-[:focus-visible]:ring-ring/50 has-data-checked:bg-transparent dark:text-gray-300"
+        className="min-h-11 cursor-pointer gap-2 rounded-md text-sm font-normal text-gray-700 has-[:focus-visible]:ring-3 has-[:focus-visible]:ring-ring/50 has-data-checked:bg-transparent dark:text-gray-300 dark:has-data-checked:bg-transparent"
       >
         <Checkbox
           id={id}
