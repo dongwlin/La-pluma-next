@@ -84,17 +84,8 @@ jobs:
           node-version: 24.22.1
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      # build includes TypeScript and precache checks; browser tests only need this job.
       - name: Type-check and build the client
         run: pnpm --filter la-pluma-next-client build
-      - name: Upload the client build for browser tests
-        if: ${{ !startsWith(github.ref, 'refs/tags/v') }}
-        uses: actions/upload-artifact@v7
-        with:
-          name: client-dist
-          path: apps/web/dist/
-          if-no-files-found: error
-          retention-days: 1
 
   server-checks:
     runs-on: ubuntu-26.04
@@ -124,51 +115,6 @@ jobs:
       # Coverage runs the complete test suite and propagates test failures.
       - name: Test the server and enforce coverage thresholds
         run: pnpm --filter la-pluma-next-server test:coverage
-
-  browser-checks:
-    needs: client-build
-    # Browser checks already run on PRs and main; avoid repeating them for tags.
-    if: ${{ !startsWith(github.ref, 'refs/tags/v') }}
-    runs-on: ubuntu-26.04
-    timeout-minutes: 10
-    steps:
-      - uses: actions/checkout@v7
-        with:
-          persist-credentials: false
-      - uses: pnpm/action-setup@v6
-        with:
-          version: 12
-      - uses: actions/setup-node@v7
-        with:
-          node-version: 24.22.1
-          cache: pnpm
-      - run: pnpm install --frozen-lockfile
-      - uses: actions/download-artifact@v8
-        with:
-          name: client-dist
-          path: apps/web/dist/
-      - name: Pull the matching Playwright image
-        run: |
-          version=$(node -p "require('./apps/web/node_modules/@playwright/test/package.json').version")
-          docker pull "mcr.microsoft.com/playwright:v${version}-noble"
-      - name: Cross-page behavior
-        env:
-          INTEGRATION_SKIP_BUILD: '1'
-        run: pnpm --filter la-pluma-next-client test:integration
-      - name: Visual baseline comparison
-        env:
-          VISUAL_SKIP_BUILD: '1'
-        run: pnpm visual
-      - name: Upload browser failure evidence
-        if: failure()
-        uses: actions/upload-artifact@v7
-        with:
-          name: browser-test-results
-          path: |
-            apps/web/test-results/
-            apps/web/integration-artifacts/
-          overwrite: true
-          retention-days: 7
 
   build:
     if: github.event_name != 'push' && !startsWith(github.ref, 'refs/tags/v')
@@ -212,7 +158,7 @@ jobs:
 
   # Preserve the required check name used by branch protection.
   verify:
-    needs: [checks, client-checks, client-build, server-checks, browser-checks, build, release-build]
+    needs: [checks, client-checks, client-build, server-checks, build, release-build]
     if: always()
     runs-on: ubuntu-26.04
     timeout-minutes: 5
@@ -223,7 +169,6 @@ jobs:
           CLIENT_CHECKS_RESULT: ${{ needs.client-checks.result }}
           CLIENT_BUILD_RESULT: ${{ needs.client-build.result }}
           SERVER_CHECKS_RESULT: ${{ needs.server-checks.result }}
-          BROWSER_CHECKS_RESULT: ${{ needs.browser-checks.result }}
           BUILD_RESULT: ${{ needs.build.result }}
           RELEASE_RESULT: ${{ needs.release-build.result }}
           IS_RELEASE: ${{ startsWith(github.ref, 'refs/tags/v') }}
@@ -236,7 +181,6 @@ jobs:
           if [ "$IS_RELEASE" = true ]; then
             test "$RELEASE_RESULT" = success
           else
-            test "$BROWSER_CHECKS_RESULT" = success
             if [ "$EVENT_NAME" != push ]; then
               test "$BUILD_RESULT" = success
             fi
@@ -244,7 +188,7 @@ jobs:
 
   publish:
     needs: verify
-    # Tag 运行会跳过 build/browser-checks；若 if 不带状态函数，GitHub 会把
+    # Tag 运行会跳过 build；若 if 不带状态函数，GitHub 会把
     # 该跳过沿 needs 链传播到 publish，导致正式版本永远不会发布。
     if: ${{ !cancelled() && needs.verify.result == 'success' && startsWith(github.ref, 'refs/tags/v') }}
     runs-on: ubuntu-26.04

@@ -1,9 +1,11 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { motion, useReducedMotion } from 'framer-motion'
-import { Filter, Search, UserRoundSearch } from 'lucide-react'
-import { Button, EmptyState, Input, Loading, Select } from '@/shared/ui'
-import { Modal } from '@/shared/ui/Modal'
+import { Filter, LoaderCircle, UserRoundSearch } from 'lucide-react'
+import { Button } from '@/shared/ui/button'
+import { DialogBody, DialogFrame, DialogFrameFooter, EmptyState, InlineAlert, Loading, SearchField } from '@/shared/components'
+import { Field, FieldGroup, FieldLabel } from '@/shared/ui/field'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/shared/ui/select'
 import { useFluidTabIndicator } from '@/shared/hooks/useFluidTabIndicator'
 import { trainingCandidatesQueryOptions, trainingStatusCountsQueryOptions } from '../model/queries'
 import { EMPTY_TRAINING_COUNTS } from '../model/statusCounts'
@@ -40,7 +42,7 @@ function OperatorEmptyState({ title, description }: OperatorEmptyStateContent) {
   return (
     <EmptyState
       compact
-      className="py-8"
+      className="min-h-60 py-8"
       icon={<UserRoundSearch size={21} strokeWidth={1.8} />}
       title={title}
       description={description}
@@ -83,7 +85,7 @@ export default function OperatorPicker({
     activeRect: activeStatusRect,
     setTabRef: setStatusTabRef,
     handleTabKeyDown: handleStatusKeyDown,
-  } = useFluidTabIndicator(filters.status)
+  } = useFluidTabIndicator(filters.status, isOpen)
 
   const rarityFilter = filters.rarity ? Number.parseInt(filters.rarity, 10) : null
   const candidateOptions = useMemo(
@@ -113,8 +115,8 @@ export default function OperatorPicker({
         ? candidatesQuery.error.message
         : '干员列表加载失败，请稍后重试')
     : null
+  const countsUnavailable = countsQuery.isError && !countsQuery.data
   const trainingStatusCounts = countsQuery.data ?? EMPTY_TRAINING_COUNTS
-  // 计数失败静默保留旧值；只有读取中且尚无计数时显示占位。
   const statusCountsLoading = countsQuery.isFetching
 
   const handleTrainingStatusChange = (status: TrainingFilters['status']) => {
@@ -126,8 +128,6 @@ export default function OperatorPicker({
   }
 
   useEffect(() => {
-    // 筛选/搜索变化时重置分页游标；这是对当前已渲染列表的同步复位。
-    // eslint-disable-next-line react-hooks/set-state-in-effect
     setVisibleOperatorLimit(OPERATOR_RENDER_BATCH_SIZE)
   }, [filters.status, filters.rarity, filters.needsElite2, professionFilter, searchTerm])
 
@@ -147,6 +147,11 @@ export default function OperatorPicker({
     setProfessionFilter(option.value)
   }
 
+  const handleRetryCandidates = () => {
+    void candidatesQuery.refetch()
+    void countsQuery.refetch()
+  }
+
   const gridItems: OperatorPickerGridItem[] = visibleOperators.map((operator) => {
     const row = describeOperatorRow(operator, queueOperatorIds.has(operator.id))
     return {
@@ -160,159 +165,212 @@ export default function OperatorPicker({
       action: (
         <Button
           onClick={() => void onAdd(operator)}
-          aria-label={row.canAdd ? `添加${operator.name}` : undefined}
-          disabled={!row.canAdd || busy}
-          loading={pendingOperatorIds.has(operator.id)}
-          loadingText="添加中"
+          aria-label={row.canAdd ? `添加${operator.name}` : `${row.actionLabel}${operator.name}`}
+          disabled={!row.canAdd || busy || pendingOperatorIds.has(operator.id)}
+          aria-busy={pendingOperatorIds.has(operator.id) || undefined}
           variant="secondary"
-          size="md"
-          fullWidth
+          className="w-full"
         >
-          {row.actionLabel}
+          {pendingOperatorIds.has(operator.id)
+            ? <><LoaderCircle className="animate-spin" aria-hidden="true" />添加中</>
+            : row.actionLabel}
         </Button>
       ),
     }
   })
 
   return (
-    <Modal isOpen={isOpen} onClose={onClose} title="添加干员" size="xl" footer={<div className="flex w-full items-center justify-between gap-3"><span className="text-sm text-secondary">已加入 {queueLength} 名干员</span><Button onClick={onClose} variant="secondary">完成选择</Button></div>}>
-      {operationError && <div role="alert" className="training-feedback status-danger">{operationError}</div>}
-      <div className="space-y-4">
-        <div className="flex flex-col gap-3">
-          <div className="app-workspace-segments app-liquid-tab-pill training-status-shell">
-            <div
-              ref={statusTabsRef}
-              className="app-workspace-segment-list grid-cols-3"
-              role="toolbar"
-              aria-label="干员范围"
-            >
-              {activeStatusRect.width > 0 && (
-                <motion.div
-                  data-testid="training-status-highlight"
-                  aria-hidden="true"
-                  className="app-workspace-segment-indicator training-status-highlight"
-                  initial={false}
-                  animate={{
-                    x: activeStatusRect.x,
-                    y: activeStatusRect.y,
-                    width: activeStatusRect.width,
-                    height: activeStatusRect.height,
-                  }}
-                  transition={shouldReduceMotion
-                    ? { duration: 0 }
-                    : { type: 'spring', stiffness: 420, damping: 38, mass: 0.72 }}
-                />
-              )}
-              {TRAINING_STATUS_OPTIONS.map((option) => {
-                const selected = filters.status === option.value;
-                const count = statusCountsLoading && trainingStatusCounts[option.value] === 0
-                  ? '-'
-                  : trainingStatusCounts[option.value];
-                return (
-                  <button
-                    key={option.value}
-                    ref={setStatusTabRef(option.value)}
-                    type="button"
-                    onClick={() => handleTrainingStatusChange(option.value)}
-                    onKeyDown={(event) => handleStatusKeyDown(
-                      event,
-                      TRAINING_STATUS_OPTIONS.map(({ value }) => value),
-                      handleTrainingStatusChange,
-                    )}
-                    aria-pressed={selected}
-                    tabIndex={selected ? 0 : -1}
-                    className={`app-workspace-segment training-status-segment min-h-11 ${selected ? 'is-selected' : ''}`}
-                  >
-                    <span
-                      className="app-workspace-segment-icon training-status-count"
-                      aria-label={`${count} 名`}
+    <DialogFrame
+      open={isOpen}
+      onOpenChange={open => { if (!open) onClose() }}
+      title="添加干员"
+      size="4xl"
+      toolbar={(
+        <div className="flex flex-col gap-3.5">
+          <div className="flex items-center gap-2">
+            <div className="app-workspace-segments min-w-0 flex-1">
+              <div
+                ref={statusTabsRef}
+                className="app-workspace-segment-list w-full grid-cols-3"
+                role="toolbar"
+                aria-label="干员范围"
+              >
+                {activeStatusRect.width > 0 && (
+                  <motion.div
+                    data-testid="training-status-indicator"
+                    aria-hidden="true"
+                    className="app-workspace-segment-indicator"
+                    initial={false}
+                    animate={{
+                      x: activeStatusRect.x,
+                      y: activeStatusRect.y,
+                      width: activeStatusRect.width,
+                      height: activeStatusRect.height,
+                    }}
+                    transition={shouldReduceMotion
+                      ? { duration: 0 }
+                      : { type: 'spring', stiffness: 420, damping: 38, mass: 0.72 }}
+                  />
+                )}
+                {TRAINING_STATUS_OPTIONS.map((option) => {
+                  const selected = filters.status === option.value
+                  const count = countsUnavailable || (statusCountsLoading && trainingStatusCounts[option.value] === 0)
+                    ? '-'
+                    : trainingStatusCounts[option.value]
+                  return (
+                    <button
+                      key={option.value}
+                      ref={setStatusTabRef(option.value)}
+                      type="button"
+                      onClick={() => handleTrainingStatusChange(option.value)}
+                      onKeyDown={(event) => handleStatusKeyDown(
+                        event,
+                        TRAINING_STATUS_OPTIONS.map(({ value }) => value),
+                        handleTrainingStatusChange,
+                      )}
+                      aria-pressed={selected}
+                      tabIndex={selected ? 0 : -1}
+                      className={`app-workspace-segment min-h-11 ${selected ? 'is-selected' : ''}`}
                     >
-                      {count}
-                    </span>
-                    <span className="app-workspace-segment-copy">
-                      <span>{option.label}</span>
-                      <small>{option.desc}</small>
-                    </span>
-                  </button>
-                );
-              })}
+                      <span
+                        className="app-workspace-segment-icon training-status-count"
+                        aria-label={`${count} 名`}
+                      >
+                        {count}
+                      </span>
+                      <span className="app-workspace-segment-copy">
+                        <span>{option.label}</span>
+                        <small>{option.desc}</small>
+                      </span>
+                    </button>
+                  )
+                })}
+              </div>
             </div>
+            {countsUnavailable && (
+              <Button
+                type="button"
+                variant="secondary"
+                size="sm"
+                onClick={() => void countsQuery.refetch()}
+              >
+                重试计数
+              </Button>
+            )}
           </div>
 
-        <div className="grid grid-cols-[minmax(0,1fr)_auto] gap-2 sm:grid-cols-[minmax(0,1fr)_9rem_9rem_auto]">
-          <Input
-            type="text"
-            aria-label="搜索干员名称"
-            placeholder="搜索干员"
-            value={searchTerm}
-            onChange={setSearchTerm}
-            icon={<Search size={17} strokeWidth={1.9} aria-hidden="true" />}
-            className="min-w-0"
-          />
-          <Select
-            aria-label="职业"
-            value={professionFilter}
-            onChange={handleProfessionFilterChange}
-            options={[...OPERATOR_PROFESSION_FILTERS]}
-            className="min-w-0"
-          />
-          <Select
-            aria-label="稀有度"
-            value={filters.rarity}
-            onChange={(rarity) => setFilters({ ...filters, rarity })}
-            options={[
-              { value: '', label: '全部稀有度' },
-              { value: '6', label: '6 星' },
-              { value: '5', label: '5 星' },
-              { value: '4', label: '4 星' },
-            ]}
-            className="min-w-0"
-          />
-          <Button
-            type="button"
-            variant={filters.needsElite2 ? 'primary' : 'secondary'}
-            size="md"
-            onClick={() => setFilters({ ...filters, needsElite2: !filters.needsElite2 })}
-            aria-pressed={filters.needsElite2}
-            icon={<Filter size={15} strokeWidth={1.9} aria-hidden="true" />}
-            className="whitespace-nowrap"
-          >
-            未精二
-          </Button>
+          <FieldGroup className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-2 sm:grid-cols-[minmax(0,1fr)_9rem_9rem_auto]">
+            <Field className="min-w-0 gap-0">
+              <FieldLabel htmlFor="training-operator-search" className="sr-only">搜索干员名称</FieldLabel>
+              <SearchField
+                id="training-operator-search"
+                ariaLabel="搜索干员名称"
+                placeholder="搜索干员"
+                value={searchTerm}
+                onValueChange={setSearchTerm}
+                clearable
+              />
+            </Field>
+            <Field className="min-w-0 gap-0">
+              <FieldLabel htmlFor="training-operator-profession" className="sr-only">职业</FieldLabel>
+              <Select
+                items={[...OPERATOR_PROFESSION_FILTERS]}
+                value={professionFilter}
+                onValueChange={(next, details) => { if (details.reason !== 'none' && next !== null) handleProfessionFilterChange(next) }}
+              >
+                <SelectTrigger id="training-operator-profession" aria-label="职业" className="w-full min-w-0">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {[...OPERATOR_PROFESSION_FILTERS].map(item => (
+                    <SelectItem key={item.value} value={item.value}>{item.label}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </Field>
+            <Field className="min-w-0 gap-0">
+              <FieldLabel htmlFor="training-operator-rarity" className="sr-only">稀有度</FieldLabel>
+              <Select
+                value={filters.rarity}
+                onValueChange={(rarity, details) => { if (details.reason !== 'none' && rarity !== null) setFilters({ ...filters, rarity }) }}
+                items={[
+                  { value: '', label: '全部稀有度' },
+                  { value: '6', label: '6 星' },
+                  { value: '5', label: '5 星' },
+                  { value: '4', label: '4 星' },
+                ]}
+              >
+                <SelectTrigger id="training-operator-rarity" aria-label="稀有度" className="w-full min-w-0">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {[
+                    { value: '', label: '全部稀有度' },
+                    { value: '6', label: '6 星' },
+                    { value: '5', label: '5 星' },
+                    { value: '4', label: '4 星' },
+                  ].map(item => (
+                    <SelectItem key={item.value} value={item.value}>{item.label}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </Field>
+            <Button
+              type="button"
+              variant={filters.needsElite2 ? 'default' : 'secondary'}
+              onClick={() => setFilters({ ...filters, needsElite2: !filters.needsElite2 })}
+              aria-pressed={filters.needsElite2}
+              className="whitespace-nowrap"
+            >
+              <Filter size={15} strokeWidth={1.9} aria-hidden="true" />
+              未精二
+            </Button>
+          </FieldGroup>
         </div>
+      )}
+      footer={(
+        <DialogFrameFooter align="between">
+          <span className="text-sm text-muted-foreground">已加入 {queueLength} 名干员</span>
+          <Button onClick={onClose} variant="secondary">完成选择</Button>
+        </DialogFrameFooter>
+      )}
+    >
+      <DialogBody>
+        <div className="flex flex-col gap-3.5">
+          {operationError && <InlineAlert tone="error">{operationError}</InlineAlert>}
+
+          {recognitionHint && (
+            <div
+              role="status"
+              className={`training-feedback ${recognitionHint.tone === 'warning' ? 'status-warning' : ''}`}
+            >
+              {recognitionHint.message}
+            </div>
+          )}
+
+          {operatorsLoading ? (
+            <div className="flex min-h-60 items-center justify-center">
+              <Loading text="正在读取干员..." />
+            </div>
+          ) : operatorsError ? (
+            <TrainingLoadError
+              title="干员列表加载失败"
+              description={operatorsError}
+              onRetry={handleRetryCandidates}
+            />
+          ) : emptyState ? (
+            <OperatorEmptyState {...emptyState} />
+          ) : (
+            <OperatorPickerGrid
+              items={gridItems}
+              visibleCount={visibleOperators.length}
+              totalCount={filteredOperators.length}
+              hiddenCount={hiddenCount}
+              onShowMore={() => setVisibleOperatorLimit(nextOperatorRenderLimit)}
+            />
+          )}
         </div>
-
-        {recognitionHint && (
-          <div
-            role="status"
-            className={`training-feedback ${recognitionHint.tone === 'warning' ? 'status-warning' : ''}`}
-          >
-            {recognitionHint.message}
-          </div>
-        )}
-
-        {operatorsLoading ? (
-          <div className="flex min-h-65 items-center justify-center">
-            <Loading text="正在读取干员..." />
-          </div>
-        ) : operatorsError ? (
-          <TrainingLoadError
-            title="干员列表加载失败"
-            description={operatorsError}
-            onRetry={() => void candidatesQuery.refetch()}
-          />
-        ) : emptyState ? (
-          <OperatorEmptyState {...emptyState} />
-        ) : (
-          <OperatorPickerGrid
-            items={gridItems}
-            visibleCount={visibleOperators.length}
-            totalCount={filteredOperators.length}
-            hiddenCount={hiddenCount}
-            onShowMore={() => setVisibleOperatorLimit(nextOperatorRenderLimit)}
-          />
-        )}
-      </div>
-    </Modal>
+      </DialogBody>
+    </DialogFrame>
   )
 }

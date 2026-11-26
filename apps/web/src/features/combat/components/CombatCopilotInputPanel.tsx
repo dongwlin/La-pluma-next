@@ -1,7 +1,9 @@
 import { useRef, type ChangeEvent, type ClipboardEvent } from 'react'
-import { Compass, ListPlus, Upload, X } from 'lucide-react'
-import { Button, IconButton } from '@/shared/ui'
-import ActivityIndicator from '@/shared/ui/ActivityIndicator'
+import { Compass, ListPlus, LoaderCircle, Upload, X } from 'lucide-react'
+import { Button } from '@/shared/ui/button'
+import { Label } from '@/shared/ui/label'
+import { Popover, PopoverContent, PopoverTrigger } from '@/shared/ui/popover'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/shared/ui/select'
 import type { CopilotPreviewMode } from '../model/copilotPreview'
 import { COPILOT_DISCOVERY_DIALOG_ID } from './combatPanelTypes'
 import type { CombatCopilotFileImportProjection } from './combatPanelTypes'
@@ -72,8 +74,7 @@ export default function CombatCopilotInputPanel({
   return (
     <div className="combat-copilot-input">
       <div className="combat-copilot-input-row">
-        <label htmlFor="combat-copilot-uri" className="sr-only">作业链接，或粘贴 JSON 作业文件</label>
-        <label htmlFor="combat-copilot-preview-mode" className="sr-only">识别方式</label>
+        <Label htmlFor="combat-copilot-uri" className="sr-only">作业链接，或粘贴 JSON 作业文件</Label>
         <div className="combat-copilot-uri-field">
           <input
             id="combat-copilot-uri"
@@ -92,20 +93,22 @@ export default function CombatCopilotInputPanel({
             className="combat-copilot-uri-input"
           />
           {input !== '' && (
-            <IconButton
-              icon={<X size={15} aria-hidden="true" />}
+            <Button
+              size="icon"
+              variant="ghost"
               title="清除作业链接"
               aria-label="清除作业链接"
-              size="sm"
               disabled={isLoading || isAddingToQueue}
               onClick={handleClear}
               className="combat-copilot-clear-button"
-            />
+            >
+              <X size={15} aria-hidden="true" />
+            </Button>
           )}
           <div className="combat-copilot-uri-trailing">
             {fileImport && (
               <>
-                <label htmlFor="combat-copilot-file" className="sr-only">导入 JSON 作业文件</label>
+                <Label htmlFor="combat-copilot-file" className="sr-only">导入 JSON 作业文件</Label>
                 <input
                   id="combat-copilot-file"
                   ref={fileInputRef}
@@ -115,63 +118,81 @@ export default function CombatCopilotInputPanel({
                   onChange={handleFileChange}
                   className="sr-only"
                 />
-                <IconButton
-                  icon={fileImport.isImporting
-                    ? <ActivityIndicator size="sm" />
-                    : <Upload size={16} aria-hidden="true" />}
+                <Button
+                  size="icon"
+                  variant="ghost"
                   title="导入 JSON 作业文件"
                   aria-label="导入 JSON 作业文件"
                   aria-busy={fileImport.isImporting || undefined}
                   disabled={fileImport.isImporting}
                   onClick={() => fileInputRef.current?.click()}
                   className="combat-copilot-import-button"
-                />
+                >
+                  {fileImport.isImporting
+                    ? <LoaderCircle size={16} className="animate-spin" aria-hidden="true" />
+                    : <Upload size={16} aria-hidden="true" />}
+                </Button>
               </>
             )}
-            <select
-              id="combat-copilot-preview-mode"
-              name="maa-copilot-preview-mode"
-              value={previewMode}
-              onChange={(e) => onPreviewModeChange(e.target.value as CopilotPreviewMode)}
-              className="combat-copilot-mode-select"
-            >
-              {PREVIEW_MODE_OPTIONS.map(option => (
-                <option key={option.value} value={option.value}>{option.label}</option>
-              ))}
-            </select>
           </div>
         </div>
+        <Select
+          name="maa-copilot-preview-mode"
+          items={PREVIEW_MODE_OPTIONS}
+          value={previewMode}
+          onValueChange={(next, details) => {
+            if (details.reason !== 'none' && next !== null) onPreviewModeChange(next as CopilotPreviewMode)
+          }}
+        >
+          <SelectTrigger
+            id="combat-copilot-preview-mode"
+            aria-label="识别方式"
+            className="combat-copilot-mode-select"
+          >
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {PREVIEW_MODE_OPTIONS.map(option => (
+              <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
         <Button
           onClick={onPreview}
           aria-haspopup="dialog"
           disabled={isLoading || !input.trim()}
-          loading={isLoading}
+          aria-busy={isLoading || undefined}
           variant="secondary"
-          size="md"
           className="shrink-0 px-3"
-          icon={
-            !isLoading && (
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
-              </svg>
-            )
-          }
         >
-          {!isLoading && '预览'}
+          {isLoading
+            ? <><LoaderCircle className="animate-spin" aria-hidden="true" />加载中...</>
+            : (
+              <>
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                </svg>
+                预览
+              </>
+            )}
         </Button>
         {onAddToQueue && (
           <Button
             onClick={onAddToQueue}
             disabled={isAddingToQueue || isLoading || !input.trim()}
-            loading={isAddingToQueue}
-            loadingText="加入中"
+            aria-busy={isAddingToQueue || undefined}
             variant="secondary"
-            size="md"
             className="shrink-0 px-3"
-            icon={!isAddingToQueue && <ListPlus size={15} aria-hidden="true" />}
           >
-            {!isAddingToQueue && '加入队列'}
+            {isAddingToQueue
+              ? <><LoaderCircle className="animate-spin" aria-hidden="true" />加入中</>
+              : (
+                <>
+                  <ListPlus size={15} aria-hidden="true" />
+                  加入队列
+                </>
+              )}
           </Button>
         )}
         <Button
@@ -179,22 +200,37 @@ export default function CombatCopilotInputPanel({
           aria-haspopup="dialog"
           aria-controls={COPILOT_DISCOVERY_DIALOG_ID}
           variant="secondary"
-          size="md"
           className="shrink-0 px-3"
-          icon={<Compass size={15} aria-hidden="true" />}
         >
+          <Compass size={15} aria-hidden="true" />
           发现
         </Button>
-        <details className="combat-copilot-help">
-          <summary className="combat-copilot-help-trigger">说明</summary>
-          <div className="combat-copilot-help-body">
-            <p>• 在 <a href="https://prts.plus/" target="_blank" rel="noopener noreferrer" className="brand-text hover:underline">prts.plus</a> 获取作业链接</p>
-            <p>• 单作业：<code className="combat-copilot-code">prts://1234</code>；作业集：<code className="combat-copilot-code">prts://s1234</code></p>
-            <p>• 作业站链接会自动识别，也可直接粘贴或导入本地 JSON 文件</p>
-            <p>• 识别方式可强制按单个作业或作业集读取，默认按链接判断</p>
-            <p>• 点击“发现”可按关键词、关卡和干员搜索作业站作业</p>
-          </div>
-        </details>
+        <Popover>
+          <PopoverTrigger
+            render={
+              <Button
+                variant="ghost"
+                size="sm"
+                className="min-h-11 min-w-11 px-2 text-xs text-primary-strong"
+              />
+            }
+          >
+            说明
+          </PopoverTrigger>
+          <PopoverContent
+            aria-label="作业输入说明"
+            align="end"
+            sideOffset={8}
+            collisionPadding={12}
+            className="w-[min(18rem,calc(100vw-3rem))] text-xs text-muted-foreground"
+          >
+            <p className="m-0 leading-normal">• 在 <a href="https://prts.plus/" target="_blank" rel="noopener noreferrer" className="brand-text hover:underline">prts.plus</a> 获取作业链接</p>
+            <p className="m-0 leading-normal">• 单作业：<code className="combat-copilot-code">prts://1234</code>；作业集：<code className="combat-copilot-code">prts://s1234</code></p>
+            <p className="m-0 leading-normal">• 作业站链接会自动识别，也可直接粘贴或导入本地 JSON 文件</p>
+            <p className="m-0 leading-normal">• 识别方式可强制按单个作业或作业集读取，默认按链接判断</p>
+            <p className="m-0 leading-normal">• 点击“发现”可按关键词、关卡和干员搜索作业站作业</p>
+          </PopoverContent>
+        </Popover>
       </div>
     </div>
   )

@@ -9,8 +9,8 @@ La Pluma Next 是面向《明日方舟》自动化的本地 Web 控制台：Reac
 | `apps/web/` | 前端应用、领域逻辑、共享 UI、浏览器测试与 PWA 构建 |
 | `apps/server/` | HTTP API、任务执行与调度、设备连接、通知与持久化 |
 | `docs/` | 现行架构、领域契约、开发与运维文档 |
-| `scripts/` | 根级 Docker 化视觉测试入口 |
-| `.github/workflows/` | 质量门禁、浏览器检查与镜像发布 |
+| `scripts/` | 根级 Docker 化 README 截图入口 |
+| `.github/workflows/` | 质量门禁与镜像发布 |
 
 ## 环境与常用命令
 
@@ -22,13 +22,12 @@ La Pluma Next 是面向《明日方舟》自动化的本地 Web 控制台：Reac
 | 启动前后端 | `pnpm dev`；单独启动 `pnpm dev:client` / `pnpm dev:server` |
 | 构建 | `pnpm build`：客户端类型检查、构建与 precache 校验；服务端语法检查 |
 | 测试 | `pnpm test`：客户端 Vitest + 服务端 `node:test` |
-| 客户端快速回归 | `pnpm verify:fast`：客户端 guardrails、ESLint、类型检查与相对 `origin/main` 的改动测试（包含已提交改动；只验证未提交改动时直接运行 `vitest run --changed`）；不含样式预算、构建与服务端流程，全量回归仍用 `pnpm verify` |
-| 主要质量检查 | `pnpm verify`：两个包的 guardrails、类型检查、测试与构建，客户端另含 ESLint 与样式预算 |
+| 客户端快速回归 | `pnpm verify:fast`：客户端 guardrails、oxlint、类型检查与相对 `origin/main` 的改动测试（包含已提交改动；只验证未提交改动时直接运行 `vitest run --changed`）；不含样式预算、构建与服务端流程，全量回归仍用 `pnpm verify` |
+| 主要质量检查 | `pnpm verify`：两个包的 guardrails、类型检查、测试与构建，客户端另含 oxlint 与样式预算 |
 | 样式预算 | `pnpm --filter la-pluma-next-client stylelint:ratchet` |
-| 视觉基线比对 / 更新 | `pnpm visual` / `pnpm visual:update`（需 Docker） |
 | 生产启动 | `pnpm start` |
 
-`pnpm verify` 不覆盖浏览器集成、视觉比对、服务端覆盖率与容器启动检查；前端改动需自行补跑对应命令，CI 会全部执行。
+`pnpm verify` 不覆盖服务端覆盖率与容器启动检查；CI 会补跑这两项。
 
 ## 开发工作流
 
@@ -47,11 +46,12 @@ La Pluma Next 是面向《明日方舟》自动化的本地 Web 控制台：Reac
 
 ## 注释规范
 
-默认零注释。除以下三类外不写任何注释：
+默认零注释。除以下四类外不写任何注释：
 
 - 许可证头，且仅当仓库确实需要时。
 - 无法从代码推导的「为什么」：隐藏约束、微妙不变量、特定 Bug 的 workaround，并指得出具体 issue。
 - 项目已有的公共 API docstring 惯例：跟随存量风格，不新增惯例。
+- `apps/web/src/shared/ui/**` 内 shadcn CLI 生成文件：随上游原样保留（含上游注释与 `use client` 指令，本项目无 RSC），不适用零注释政策；任何有意本地修改必须是明确的语义决策并记录。
 
 以下写法一律禁止：
 
@@ -68,13 +68,13 @@ La Pluma Next 是面向《明日方舟》自动化的本地 Web 控制台：Reac
 - 修 Bug 先写失败测试：先补一个能在当前代码上复现问题的测试并确认它失败，再改实现。
 - 不得用 mock 把被测逻辑替换成恒真断言。mock 只允许替换真实边界依赖：子进程、网络、时钟、文件系统、浏览器 API。
 - 不得为覆盖率堆砌无意义测试。断言必须验证行为（输入 → 可观察结果），不锁实现细节、内部调用次数或私有字段。
-- 更新快照、像素基线或覆盖率阈值必须有对应的真实变化与结构依据，不得用重录或降阈值掩盖回归。
+- 更新快照或覆盖率阈值必须有对应的真实变化与结构依据，不得用重录或降阈值掩盖回归。
 
 ## 修改须知
 
 - 改前后端共有行为时同步核对请求、响应、错误码与持久化格式，两侧各自补测试；契约以现有 envelope 为准，不新增平行字段。
 - 向 Agent 公开能力时更新 `apps/server/src/routes/agentContract.ts`，manifest 与 OpenAPI 从同一能力清单生成，不分别维护副本。
-- 保持对外标识不变：环境变量 `LA_PLUMA_*`、CSS 类名与 localStorage key `la-pluma-*`、HTTP 头 `x-la-pluma-*`、Agent API 标识 `la-pluma-agent-api`。重命名不能顺带改这些约定。
+- 保持对外标识不变：环境变量 `LA_PLUMA_*`、CSS 类名与 localStorage key `la-pluma-*`、HTTP 头 `x-la-pluma-*`、Agent API 标识 `la-pluma-agent-api`；UI 主题偏好的存储 key 为 `lpn-ui`（`lpn-*` 前缀）。重命名不能顺带改这些约定。
 - 子路径部署时构建端 `VITE_BASE_PATH` 与运行端 `LA_PLUMA_BASE_PATH` 保持一致；`/api`、`/health`、`/readiness`、`/game-assets`、`/webrtc-signaling` 仍挂在同源根路径，不随子路径前缀移动。
 - 运行数据与凭据不入库：`apps/server/data/`（默认持久数据根目录）、`.env*` 以及仓库外的 MAA 状态目录（日志与调试截图）。打包时保持运行数据与源码隔离。
 - 文档改动落到该主题的归属文档，其他位置只留导航，不复制参数表与状态机；移动文档时同步修正索引及源码、脚本中的引用。
@@ -84,14 +84,14 @@ La Pluma Next 是面向《明日方舟》自动化的本地 Web 控制台：Reac
 ## 重要约束与风险
 
 - 真实设备链路依赖 `maa` CLI、MaaCore 及资源、ADB；单元测试与 fixture 浏览器测试不能证明设备侧可用，交付时须写明未验证范围。
-- 本地 `pnpm verify` 是 CI 的子集：CI 另跑浏览器集成、视觉比对、服务端覆盖率与双架构容器启动。
+- 本地 `pnpm verify` 是 CI 的子集：CI 另跑服务端覆盖率与双架构容器启动。
 - 执行是否完成只由 Run 终态决定，这是前后端共同契约：HTTP 返回、子进程 idle、断网或页面卸载都不构成完成信号。
 
 ## 提交前验证
 
 1. 跑定向检查：改动包的测试、类型检查与对应专项脚本。
 2. 跑 `pnpm verify`。
-3. 改前端样式、布局或构建配置时补 `pnpm visual`；样式预算已包含在 `pnpm verify` 中，改基线须说明依据。
+3. 改前端样式、布局或构建配置时人工核对受影响的页面与 README 截图；样式预算已包含在 `pnpm verify` 中。
 4. 纯文档改动核对命令、路径、链接与完整 diff；CI 不会替你发现文档事实错误。
 5. 交付说明写清实际执行过哪些检查、哪些仍未验证。
 

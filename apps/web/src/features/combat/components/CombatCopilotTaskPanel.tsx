@@ -1,4 +1,5 @@
-import { Card } from '@/shared/ui'
+import type { ReactNode } from 'react'
+import { Card } from '@/shared/ui/card'
 import { useResolvedCopilotDetailTarget } from '../hooks/useResolvedCopilotDetailTarget'
 import type { CopilotDetailTarget } from '../model/copilotDetail'
 import type { CopilotSetView } from '../model/copilotSetView'
@@ -34,6 +35,7 @@ interface CombatCopilotTaskPanelProps {
   detail: CombatCopilotDetailSelection | null
   onOpenQueueDetail: (id: string) => void
   onCloseDetail: () => void
+  resetDialog?: ReactNode
 }
 
 function buildPreviewDetailTarget(preview: CopilotSetInfo): CopilotDetailTarget {
@@ -70,6 +72,7 @@ export default function CombatCopilotTaskPanel({
   detail,
   onOpenQueueDetail,
   onCloseDetail,
+  resetDialog,
 }: CombatCopilotTaskPanelProps) {
   const previewInfo = detail?.type === 'preview' ? preview.info : null
   const pendingTarget = detail?.type === 'preview' ? preview.pendingTarget : null
@@ -79,15 +82,22 @@ export default function CombatCopilotTaskPanel({
     : pendingTarget ?? (queueEntry ? buildQueueDetailTarget(queueEntry, queue) : null)
   const detailTarget = useResolvedCopilotDetailTarget(baseDetailTarget)
   const detailLoading = detail?.type === 'preview' && previewInfo === null && preview.loading
+  const checkedQueueCount = queue.entries.filter(entry => queue.selected.has(entry.id)).length
+  const isExecuteIdle = !execution.isRunning && !execution.isWaitingForNext && !execution.isSubmitting
+  const executeHint = isExecuteIdle && queue.entries.length > 0
+    ? checkedQueueCount > 0
+      ? `将执行已勾选队列（${checkedQueueCount} 项）`
+      : '队列非空，请先勾选要执行的作业'
+    : undefined
+  const hasQueueExecution = queue.entries.length > 0
+    || (preview.info?.type === 'set' && (preview.info.copilots?.length ?? 0) > 0)
 
   return (
     <Card
-      smoothCorners
-      className="combat-task-card p-0!"
+      className="combat-task-card gap-0 p-0!"
     >
       <CombatTaskHeading
         task={task}
-        buttonClassName="combat-task-run-button min-h-11 px-4 text-sm sm:px-6"
         automationAvailable={execution.automationAvailable}
         unavailableMessage={execution.unavailableMessage}
         isRunning={execution.isRunning}
@@ -98,6 +108,7 @@ export default function CombatCopilotTaskPanel({
         onExecute={execution.onExecute}
         onStop={execution.onStop}
         onStartNext={execution.onStartNext}
+        executeHint={executeHint}
       />
 
       <CombatCopilotSourceBar
@@ -111,6 +122,25 @@ export default function CombatCopilotTaskPanel({
         onPreview={preview.onPreview}
         onAddToQueue={queue.onAddCurrent}
         onCancelPreview={preview.onCancel}
+        detailLayer={(
+          <CombatCopilotDetailLayer
+            target={detailTarget}
+            loading={detailLoading}
+            onClose={onCloseDetail}
+            stacked={search.isOpen}
+          >
+            {previewInfo?.type === 'set' && (
+              <CombatCopilotSetPanel
+                preview={previewInfo}
+                view={view}
+                isRunning={execution.isRunning}
+                isResetting={selection.isResetting}
+                onOpenReset={selection.onOpenReset}
+              />
+            )}
+            {resetDialog}
+          </CombatCopilotDetailLayer>
+        )}
       />
 
       <div className="combat-copilot-body">
@@ -129,6 +159,7 @@ export default function CombatCopilotTaskPanel({
             raid={config.raid}
             setExecutionMode={config.setExecutionMode}
             advanced={config.advanced}
+            showSetExecutionMode={hasQueueExecution}
             onFormationChange={config.onFormationChange}
             onRaidChange={value => config.onAdvancedChange('raid', value)}
             onSetExecutionModeChange={config.onSetExecutionModeChange}
@@ -137,22 +168,6 @@ export default function CombatCopilotTaskPanel({
         </div>
       </div>
 
-      <CombatCopilotDetailLayer
-        target={detailTarget}
-        loading={detailLoading}
-        onClose={onCloseDetail}
-        stacked={search.isOpen}
-      >
-        {previewInfo?.type === 'set' && (
-          <CombatCopilotSetPanel
-            preview={previewInfo}
-            view={view}
-            isRunning={execution.isRunning}
-            isResetting={selection.isResetting}
-            onOpenReset={selection.onOpenReset}
-          />
-        )}
-      </CombatCopilotDetailLayer>
     </Card>
   )
 }

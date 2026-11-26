@@ -1,6 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { getErrorMessage } from '@/shared/api'
-import type { StatusMessageType } from '@/features/runtime-status'
+import {
+  EXECUTION_NOTICE_ID,
+  notifyProgress,
+  type Notify,
+} from '@/shared/notifications'
 import {
   executionController as defaultExecutionController,
   executePredefinedTaskArgs,
@@ -11,6 +15,7 @@ import {
   useExecutionSnapshot,
   type AgentRun,
   type ExecutionController,
+  type TerminalRunState,
 } from '@/features/task-execution'
 import {
   continueCopilotQueue,
@@ -70,6 +75,13 @@ export interface CombatQueueSubmission {
   taskName: string
 }
 
+export interface CombatTerminalResult {
+  runId: string
+  state: TerminalRunState
+  message: string
+  type: 'success' | 'warning' | 'error'
+}
+
 export interface CombatExecution {
   /** 本页发起且仍处于活动的 run（含等待下一关），或身份已持久化但快照尚未解析出来。 */
   isRunning: boolean
@@ -87,6 +99,8 @@ export interface CombatExecution {
   setRun: CopilotSetRunProjection | null
   queueRun: CopilotQueueRunProjection | null
   run: AgentRun | null
+  /** 本页观察到的最近一次终态结果；新提交开始时清空。 */
+  terminalResult: CombatTerminalResult | null
   submitTask: (request: CombatTaskSubmission) => Promise<boolean>
   submitSet: (request: CombatSetSubmission) => Promise<boolean>
   submitQueue: (request: CombatQueueSubmission) => Promise<boolean>
@@ -97,7 +111,7 @@ export interface CombatExecution {
 }
 
 interface UseCombatExecutionOptions {
-  notify: (message: string, type?: StatusMessageType) => void
+  notify: Notify
   stopOnFailure?: boolean
   controller?: ExecutionController
 }
@@ -155,6 +169,7 @@ export function useCombatExecution({
   const [stopAcknowledged, setStopAcknowledged] = useState(false)
   const [isContinuing, setIsContinuing] = useState(false)
   const [isSkipping, setIsSkipping] = useState(false)
+  const [terminalResult, setTerminalResult] = useState<CombatTerminalResult | null>(null)
   const [autoStoppingRunId, setAutoStoppingRunId] = useState<string | null>(null)
   const stopRequestRef = useRef(false)
   const continuingRef = useRef(false)
@@ -184,18 +199,23 @@ export function useCombatExecution({
   }, [ownedRunId])
 
   const announceTerminal = useCallback((run: AgentRun) => {
+    if (!isTerminalRunState(run.state)) return
     announcedRunRef.current = run.runId
     const queueProjection = readCopilotQueueRunProjection(run)
-    if (queueProjection) {
-      const notice = describeCopilotQueueRunTerminal(run, queueProjection)
-      notify(notice.message, notice.type)
-      return
+    let notice = queueProjection ? describeCopilotQueueRunTerminal(run, queueProjection) : null
+    if (!notice) {
+      const projection = readCopilotSetRunProjection(run)
+      notice = projection
+        ? describeCopilotSetRunTerminal(run, projection)
+        : describeCombatTaskTerminal(run, runLabelsRef.current.get(run.runId))
     }
-    const projection = readCopilotSetRunProjection(run)
-    const notice = projection
-      ? describeCopilotSetRunTerminal(run, projection)
-      : describeCombatTaskTerminal(run, runLabelsRef.current.get(run.runId))
-    notify(notice.message, notice.type)
+    setTerminalResult({
+      runId: run.runId,
+      state: run.state,
+      message: notice.message,
+      type: notice.type,
+    })
+    notify(notice.message, notice.type, { id: EXECUTION_NOTICE_ID })
   }, [notify])
 
   useEffect(() => {
@@ -220,7 +240,7 @@ export function useCombatExecution({
     itemMessageRef.current = key
     const entry = setRun.entries.find(item => item.status === 'running')
     const stage = entry?.stage ? `: ${entry.stage}` : ''
-    notify(`正在执行作业 ${setRun.currentItemIndex + 1}/${Math.max(setRun.itemCount, 1)}${stage}`)
+    notifyProgress(`正在执行作业 ${setRun.currentItemIndex + 1}/${Math.max(setRun.itemCount, 1)}${stage}`, EXECUTION_NOTICE_ID)
   }, [notify, setRun])
 
   useEffect(() => {
@@ -231,32 +251,34 @@ export function useCombatExecution({
     const entry = queueRun.taskResults.find(item => item.clientId === queueRun.currentClientId)
     const stage = entry?.stage ? `: ${entry.stage}` : ''
     const position = queueRun.currentItemIndex ?? 0
-    notify(`正在执行队列第 ${position + 1}/${Math.max(queueRun.totalCount, 1)} 项${stage}`)
+    notifyProgress(`正在执行队列第 ${position + 1}/${Math.max(queueRun.totalCount, 1)} 项${stage}`, EXECUTION_NOTICE_ID)
   }, [notify, queueRun])
 
   const stop = useCallback(async () => {
     if (stopRequestRef.current) return
-    if (!controller.getState().trackedRunId) return
+    const trackedRunId = controller.getState().trackedRunId
+    if (!trackedRunId) return
 
+    observedActiveRunRef.current = trackedRunId
     stopRequestRef.current = true
     setStopRequestPending(true)
-    notify('正在终止自动战斗...', 'warning')
+    notifyProgress('正在终止自动战斗...', EXECUTION_NOTICE_ID)
 
     try {
       const result = await controller.stopTrackedRun()
       if (!result) {
-        notify('未找到可终止的自动战斗运行', 'warning')
+        notify('未找到可终止的自动战斗运行', 'warning', { id: EXECUTION_NOTICE_ID })
         setStopAcknowledged(false)
         return
       }
       if (!result.success) {
-        notify(`终止失败: ${getErrorMessage(result)}`, 'error')
+        notify(`终止失败: ${getErrorMessage(result)}`, 'error', { id: EXECUTION_NOTICE_ID })
         setStopAcknowledged(false)
         return
       }
       setStopAcknowledged(!result.data?.alreadyTerminal)
     } catch (error) {
-      notify(`终止失败: ${(error as Error).message}`, 'error')
+      notify(`终止失败: ${(error as Error).message}`, 'error', { id: EXECUTION_NOTICE_ID })
       setStopAcknowledged(false)
     } finally {
       stopRequestRef.current = false
@@ -271,7 +293,7 @@ export function useCombatExecution({
 
     const timer = window.setTimeout(() => {
       setStopAcknowledged(false)
-      notify('终止失败: 终止请求已发送，但尚未确认任务停止', 'error')
+      notify('终止失败: 终止请求已发送，但尚未确认任务停止', 'error', { id: EXECUTION_NOTICE_ID })
     }, COMBAT_STOP_CONFIRM_TIMEOUT_MS)
 
     return () => window.clearTimeout(timer)
@@ -309,13 +331,14 @@ export function useCombatExecution({
     const key = `${setRun.runId}:${settled.key ?? settled.itemIndex}:${settled.status}`
     if (waitingMessageRef.current === key) return
     waitingMessageRef.current = key
-    notify(`${describeSettledEntry(settled, setRun)}，等待开始下一关`)
+    notifyProgress(`${describeSettledEntry(settled, setRun)}，等待开始下一关`, EXECUTION_NOTICE_ID)
   }, [notify, setRun, stopOnFailure])
 
   const submitTask = useCallback(async ({ command, args, taskName }: CombatTaskSubmission) => {
     if (isRunning || controller.getState().submission === 'pending') return false
 
-    notify(`正在执行: ${taskName}`)
+    setTerminalResult(null)
+    notifyProgress(`正在执行: ${taskName}`, EXECUTION_NOTICE_ID)
     try {
       const result = await controller.submitExecution(
         'run_task',
@@ -333,18 +356,24 @@ export function useCombatExecution({
       )
 
       if (!result.success) {
-        notify(`执行失败: ${getErrorMessage(result)}`, 'error')
+        notify(`执行失败: ${getErrorMessage(result)}`, 'error', { id: EXECUTION_NOTICE_ID })
         return false
       }
 
       const runId = readSubmittedRunId(result.data)
-      if (runId) runLabelsRef.current.set(runId, taskName)
-      const submittedRun = runId ? readSubmittedRun(result.data, runId) : null
+      if (runId) {
+        runLabelsRef.current.set(runId, taskName)
+        observedActiveRunRef.current = runId
+      } else {
+        notify('服务端未返回运行身份，无法确认本次执行状态', 'warning', { id: EXECUTION_NOTICE_ID })
+        return false
+      }
+      const submittedRun = readSubmittedRun(result.data, runId)
       if (submittedRun && isTerminalRunState(submittedRun.state)) announceTerminal(submittedRun)
       return true
     } catch (error) {
       // 传输失败时服务端可能已经接受执行，不能宣称失败或自动重提。
-      notify(`无法确认执行状态: ${(error as Error).message}`, 'warning')
+      notify(`无法确认执行状态: ${(error as Error).message}`, 'warning', { id: EXECUTION_NOTICE_ID })
       return false
     }
   }, [announceTerminal, controller, isRunning, notify])
@@ -356,7 +385,8 @@ export function useCombatExecution({
       return false
     }
 
-    notify(request.mode === 'manual' ? '正在执行作业集（手动逐关）' : '正在连续执行作业集')
+    setTerminalResult(null)
+    notifyProgress(request.mode === 'manual' ? '正在执行作业集（手动逐关）' : '正在连续执行作业集', EXECUTION_NOTICE_ID)
     try {
       const result = await controller.submitExecution(
         'run_copilot_set',
@@ -371,17 +401,23 @@ export function useCombatExecution({
       )
 
       if (!result.success) {
-        notify(`作业集执行失败: ${getErrorMessage(result)}`, 'error')
+        notify(`作业集执行失败: ${getErrorMessage(result)}`, 'error', { id: EXECUTION_NOTICE_ID })
         return false
       }
 
       const runId = readSubmittedRunId(result.data)
-      if (runId) runLabelsRef.current.set(runId, request.taskName)
-      const submittedRun = runId ? readSubmittedRun(result.data, runId) : null
+      if (runId) {
+        runLabelsRef.current.set(runId, request.taskName)
+        observedActiveRunRef.current = runId
+      } else {
+        notify('服务端未返回运行身份，无法确认本次执行状态', 'warning', { id: EXECUTION_NOTICE_ID })
+        return false
+      }
+      const submittedRun = readSubmittedRun(result.data, runId)
       if (submittedRun && isTerminalRunState(submittedRun.state)) announceTerminal(submittedRun)
       return true
     } catch (error) {
-      notify(`无法确认作业集执行状态: ${(error as Error).message}`, 'warning')
+      notify(`无法确认作业集执行状态: ${(error as Error).message}`, 'warning', { id: EXECUTION_NOTICE_ID })
       return false
     }
   }, [announceTerminal, controller, isRunning, notify])
@@ -393,7 +429,8 @@ export function useCombatExecution({
       return false
     }
 
-    notify(request.mode === 'manual' ? '正在执行作业队列（手动逐项）' : '正在连续执行作业队列')
+    setTerminalResult(null)
+    notifyProgress(request.mode === 'manual' ? '正在执行作业队列（手动逐项）' : '正在连续执行作业队列', EXECUTION_NOTICE_ID)
     try {
       const result = await controller.submitExecution(
         'run_copilot_queue',
@@ -410,17 +447,23 @@ export function useCombatExecution({
       )
 
       if (!result.success) {
-        notify(`队列执行失败: ${getErrorMessage(result)}`, 'error')
+        notify(`队列执行失败: ${getErrorMessage(result)}`, 'error', { id: EXECUTION_NOTICE_ID })
         return false
       }
 
       const runId = readSubmittedRunId(result.data)
-      if (runId) runLabelsRef.current.set(runId, request.taskName)
-      const submittedRun = runId ? readSubmittedRun(result.data, runId) : null
+      if (runId) {
+        runLabelsRef.current.set(runId, request.taskName)
+        observedActiveRunRef.current = runId
+      } else {
+        notify('服务端未返回运行身份，无法确认本次执行状态', 'warning', { id: EXECUTION_NOTICE_ID })
+        return false
+      }
+      const submittedRun = readSubmittedRun(result.data, runId)
       if (submittedRun && isTerminalRunState(submittedRun.state)) announceTerminal(submittedRun)
       return true
     } catch (error) {
-      notify(`无法确认队列执行状态: ${(error as Error).message}`, 'warning')
+      notify(`无法确认队列执行状态: ${(error as Error).message}`, 'warning', { id: EXECUTION_NOTICE_ID })
       return false
     }
   }, [announceTerminal, controller, isRunning, notify])
@@ -430,31 +473,34 @@ export function useCombatExecution({
     const state = controller.getState()
     if (state.trackedScope !== COMBAT_EXECUTION_SCOPE || !state.trackedRunId) return
 
+    observedActiveRunRef.current = state.trackedRunId
     continuingRef.current = true
     setIsContinuing(true)
-    notify('正在执行下一关...')
+    notifyProgress('正在执行下一关...', EXECUTION_NOTICE_ID)
 
     try {
       const result = await continueCopilotSet(state.trackedRunId, { waitForCompletion: false })
       if (!result.success) {
         const code = result.errorInfo?.code
         if (code === 'MAA_EXECUTION_BUSY') {
-          notify('设备正被其他任务占用，请稍后重试', 'warning')
+          notify('设备正被其他任务占用，请稍后重试', 'warning', { id: EXECUTION_NOTICE_ID })
         } else if (code === 'AGENT_COPILOT_SET_SESSION_LOST') {
-          notify('作业集会话已失效，无法继续下一关，请重新提交作业集', 'error')
+          notify('作业集会话已失效，无法继续下一关，请重新提交作业集', 'error', { id: EXECUTION_NOTICE_ID })
         } else if (code === 'AGENT_COPILOT_SET_NOT_WAITING') {
-          notify('作业集已不在等待下一关状态，正在重新确认', 'warning')
+          notify('作业集已不在等待下一关状态，正在重新确认', 'warning', { id: EXECUTION_NOTICE_ID })
         } else {
-          notify(`继续执行失败: ${getErrorMessage(result)}`, 'error')
+          notify(`继续执行失败: ${getErrorMessage(result)}`, 'error', { id: EXECUTION_NOTICE_ID })
         }
         await controller.refresh('manual')
         return
       }
 
-      if (result.data?.alreadyTerminal) notify('作业集已经结束', 'warning')
+      if (result.data?.alreadyTerminal) {
+        notify('作业集已经结束', 'warning', { id: EXECUTION_NOTICE_ID })
+      }
       await controller.refresh('manual')
     } catch (error) {
-      notify(`无法确认下一关状态: ${(error as Error).message}`, 'warning')
+      notify(`无法确认下一关状态: ${(error as Error).message}`, 'warning', { id: EXECUTION_NOTICE_ID })
     } finally {
       continuingRef.current = false
       setIsContinuing(false)
@@ -466,31 +512,34 @@ export function useCombatExecution({
     const state = controller.getState()
     if (state.trackedScope !== COMBAT_EXECUTION_SCOPE || !state.trackedRunId) return
 
+    observedActiveRunRef.current = state.trackedRunId
     continuingRef.current = true
     setIsContinuing(true)
-    notify('正在执行下一项...')
+    notifyProgress('正在执行下一项...', EXECUTION_NOTICE_ID)
 
     try {
       const result = await continueCopilotQueue(state.trackedRunId, false)
       if (!result.success) {
         const code = result.errorInfo?.code
         if (code === 'MAA_EXECUTION_BUSY') {
-          notify('设备正被其他任务占用，请稍后重试', 'warning')
+          notify('设备正被其他任务占用，请稍后重试', 'warning', { id: EXECUTION_NOTICE_ID })
         } else if (code === 'AGENT_COPILOT_QUEUE_SESSION_LOST') {
-          notify('队列会话已失效，无法继续下一项，请重新提交队列', 'error')
+          notify('队列会话已失效，无法继续下一项，请重新提交队列', 'error', { id: EXECUTION_NOTICE_ID })
         } else if (code === 'AGENT_COPILOT_QUEUE_NOT_WAITING') {
-          notify('队列已不在等待下一项状态，正在重新确认', 'warning')
+          notify('队列已不在等待下一项状态，正在重新确认', 'warning', { id: EXECUTION_NOTICE_ID })
         } else {
-          notify(`继续执行失败: ${getErrorMessage(result)}`, 'error')
+          notify(`继续执行失败: ${getErrorMessage(result)}`, 'error', { id: EXECUTION_NOTICE_ID })
         }
         await controller.refresh('manual')
         return
       }
 
-      if (result.data?.alreadyTerminal) notify('队列已经结束', 'warning')
+      if (result.data?.alreadyTerminal) {
+        notify('队列已经结束', 'warning', { id: EXECUTION_NOTICE_ID })
+      }
       await controller.refresh('manual')
     } catch (error) {
-      notify(`无法确认下一项状态: ${(error as Error).message}`, 'warning')
+      notify(`无法确认下一项状态: ${(error as Error).message}`, 'warning', { id: EXECUTION_NOTICE_ID })
     } finally {
       continuingRef.current = false
       setIsContinuing(false)
@@ -502,29 +551,34 @@ export function useCombatExecution({
     const state = controller.getState()
     if (state.trackedScope !== COMBAT_EXECUTION_SCOPE || !state.trackedRunId) return
 
+    observedActiveRunRef.current = state.trackedRunId
     skippingRef.current = true
     setIsSkipping(true)
-    notify('正在跳过当前项...')
+    notifyProgress('正在跳过当前项...', EXECUTION_NOTICE_ID)
 
     try {
       const result = await skipCopilotQueueEntry(state.trackedRunId)
       if (!result.success) {
         const code = result.errorInfo?.code
         if (code === 'AGENT_COPILOT_QUEUE_NOT_WAITING') {
-          notify('队列已不在等待下一项状态，正在重新确认', 'warning')
+          notify('队列已不在等待下一项状态，正在重新确认', 'warning', { id: EXECUTION_NOTICE_ID })
         } else if (code === 'AGENT_COPILOT_QUEUE_SESSION_LOST') {
-          notify('队列会话已失效，无法跳过当前项，请重新提交队列', 'error')
+          notify('队列会话已失效，无法跳过当前项，请重新提交队列', 'error', { id: EXECUTION_NOTICE_ID })
         } else {
-          notify(`跳过失败: ${getErrorMessage(result)}`, 'error')
+          notify(`跳过失败: ${getErrorMessage(result)}`, 'error', { id: EXECUTION_NOTICE_ID })
         }
         await controller.refresh('manual')
         return
       }
 
-      notify(result.data?.finished ? '已跳过当前项，队列执行结束' : '已跳过当前项', 'success')
+      notify(
+        result.data?.finished ? '已跳过当前项，队列执行结束' : '已跳过当前项',
+        'success',
+        { id: EXECUTION_NOTICE_ID },
+      )
       await controller.refresh('manual')
     } catch (error) {
-      notify(`无法确认跳过结果: ${(error as Error).message}`, 'warning')
+      notify(`无法确认跳过结果: ${(error as Error).message}`, 'warning', { id: EXECUTION_NOTICE_ID })
     } finally {
       skippingRef.current = false
       setIsSkipping(false)
@@ -545,6 +599,7 @@ export function useCombatExecution({
     setRun,
     queueRun,
     run: trackedRun,
+    terminalResult,
     submitTask,
     submitSet,
     submitQueue,

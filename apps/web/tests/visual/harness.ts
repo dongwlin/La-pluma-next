@@ -1,4 +1,6 @@
-import { expect, type Page, type Route } from '@playwright/test'
+import { expect, type Locator, type Page, type Route } from '@playwright/test'
+import { THEME_STORAGE_KEY } from '../../src/shared/theme/bootTheme'
+import { DEFAULT_THEME_ID } from '../../src/shared/theme/registry'
 import {
   apiFixtures,
   FIXED_NOW,
@@ -7,7 +9,7 @@ import {
 } from './fixtures'
 
 /**
- * 视觉基线 harness：固定数据、外部资源、时间、动效与主题种子。未匹配的 /api 请求
+ * 浏览器测试 harness：固定数据、外部资源、时间、动效与主题种子。未匹配的 /api 请求
  * 视为 harness 缺口直接失败，防止静默假状态；Service Worker 注册在文档起点被替换为
  * 永久挂起的 promise；page.clock.setFixedTime 不暂停/推进时钟，保持真实时间速率。
  */
@@ -24,14 +26,15 @@ export const READY_MARKER: Record<string, { text?: string; input?: string }> = {
   logs: { text: '任务执行完成' },
   statistics: { text: '能天使' },
   config: { text: 'v5.12.3' },
+  gallery: { text: '主题画廊' },
 }
 
-/** 主题种子：与 shared/stores/uiStore.ts 的 persist key/结构保持一致。 */
+/** 主题种子：key 与默认主题 id 取自 shared/theme 单一来源。 */
 export function themeSeedScript(theme: Theme) {
   return `
-    localStorage.setItem('ui-storage', JSON.stringify({
-      state: { theme: ${JSON.stringify(theme)} },
-      version: 0,
+    localStorage.setItem(${JSON.stringify(THEME_STORAGE_KEY)}, JSON.stringify({
+      themeId: ${JSON.stringify(DEFAULT_THEME_ID)},
+      mode: ${JSON.stringify(theme)},
     }))
   `
 }
@@ -49,7 +52,7 @@ const MOTION_FREEZE_CSS = `
 `
 
 const NO_SW_SCRIPT = `
-  // 阻断 service worker 注册（单页应用在基线环境下无需离线缓存）。
+  // 阻断 service worker 注册（单页应用在浏览器测试环境下无需离线缓存）。
   // 注册 promise 永久挂起：既不触发 PWAInstallPrompt 的注册失败提示，
   // 也不触发 offlineReady 提示（success 消息 1.5s 自动收起会造成时序抖动）。
   if (navigator.serviceWorker) {
@@ -168,4 +171,25 @@ export async function waitForPageReady(page: Page, tab: string) {
     )
   }
   await page.evaluate(() => document.fonts.ready)
+}
+
+export async function removeMotionFreeze(page: Page) {
+  await page.evaluate(() => {
+    document.querySelector('style[data-la-pluma-motion-freeze]')?.remove()
+  })
+}
+
+export async function readMotionDurations(locator: Locator) {
+  return locator.evaluate(element => {
+    const style = getComputedStyle(element)
+    const parse = (value: string) => value.split(',').map(entry => {
+      const duration = entry.trim()
+      const amount = Number.parseFloat(duration)
+      return duration.endsWith('ms') ? amount / 1000 : amount
+    })
+    return {
+      animation: parse(style.animationDuration),
+      transition: parse(style.transitionDuration),
+    }
+  })
 }

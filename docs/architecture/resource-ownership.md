@@ -16,6 +16,7 @@
 | 养成队列、设置、计划、材料刷新端点 | `features/training` | 队列/设置/计划的写入与领域语义仍归 training；材料刷新的命令编排归 statistics |
 | 掉落统计、今日掉落、今日开放关卡、识别/材料命令所有者 | `features/statistics` | 只读掉落/关卡供 Dashboard 使用；统计页使用领域 Query，识别/材料命令所有者及失效范围见[统计识别命令与失效联动](../frontend/domains/statistics.md#识别命令) |
 | 设备采样 | `features/device-mirror` | `device-stats` 只读轮询资源；总览只订阅样本并写入自己的投影 |
+| 预览会话、截图采样与基础设施操作 | `features/device-mirror` 的 `PreviewSessionProvider` | 应用级单例，位于页面 `Activity` 之外；页面只绑定/解除视频，总览只投影同一状态源；不进入 Query |
 | Query 客户端、默认策略 | `shared/query` | 见 [Query 缓存与键规范](query-cache.md) |
 
 关键约束：
@@ -49,6 +50,7 @@ import {
 | 养成队列（含材料进度） | `training` | TrainingWorkspace、Dashboard 快照 |
 | 掉落/今日开放关卡 | `statistics` | StatisticsWorkspace、Dashboard 快照 |
 | 设备采样 | `device-mirror` | Dashboard |
+| 预览会话、transport 与截图采样 | `device-mirror` 的 `PreviewSessionProvider` / `usePreviewSessionOwner` / `usePreviewSnapshotOwner` | 七个共享画面的页面经 `usePreviewSession` 绑定视频；Dashboard 经同一会话投影状态 |
 
 Query key、参数与缓存策略集中见[Query 缓存与键规范](query-cache.md)。物品图标与干员头像由浏览器 HTTP/图片缓存；`getItemIconUrl` / `getOperatorAvatarUrl` 带 `?v=<epoch>`，epoch 存储在 `laPlumaItemIconVersion`，使用 `useItemIconCacheVersion()` 的组件随 epoch 重渲染。
 
@@ -112,7 +114,7 @@ publishResourceInvalidation({
 | `catalog` | 干员目录或资源元数据变化 |
 | `materials` | 养成材料数据/派生进度变化 |
 | `training-queue` | 队列顺序、成员或进度变化 |
-| `training-plan` | 已生成计划的前提（队列版本、材料、设置）变化 |
+| `training-plan` | 已生成计划的前提（队列版本、设置、材料、游戏日与客户端类型）变化 |
 | `automation-config` | 自动化任务流程配置变化 |
 | `automation-schedule` | 服务端定时配置变化 |
 | `drops` | 今日掉落记录变化 |
@@ -134,7 +136,7 @@ publishResourceInvalidation({
 | 触发 | 应发布作用域 | 发布方 |
 | --- | --- | --- |
 | 仓库识别成功并解析完成 | `depot`、`materials`、`training-queue`、`dashboard-snapshot` | `statistics` 识别命令 |
-| 干员识别成功并解析完成 | `operbox`、`materials`、`training-queue`、`dashboard-snapshot` | `statistics` 识别命令 |
+| 干员识别成功并解析完成 | `operbox`、`catalog`、`materials`、`training-queue`、`dashboard-snapshot` | `statistics` 识别命令 |
 | 材料刷新成功 | `materials`、`training-queue`、`dashboard-snapshot` | `statistics` 材料命令 |
 | 队列增删/排序/撤销成功 | `training-queue`、`materials`、`training-plan`、`dashboard-snapshot`；任务流程确认 synced 时额外 `automation-config`（自动同步不重注册 cron，不发布 `automation-schedule`） | 养成队列命令 |
 | 养成设置保存成功 | `training-plan`（设置值参与计划应用前提） | `training` 设置所有者 |
@@ -143,7 +145,7 @@ publishResourceInvalidation({
 
 `detail` 可选，例如应用计划时携带 `{ stageCount }`；接收方不得依赖未声明字段。队列命令的 `detail.source = 'training-queue-command'` 与设置所有者的 `detail.source = 'training-settings-owner'` 是各自领域协议约定的字段，供本页忽略自己的发布；外部发布不需要携带它。
 
-资源更新由 `features/settings` 的 `SettingsUpdateOwner` 在服务端确认成功后发布：core 更新与渠道切换在服务端同时同步资源，和“仅同步游戏资源”一样发布上表四个作用域，并推进物品图标缓存 epoch 使同一路径的新图换用新 URL；CLI 更新只改变 CLI 版本，不发布任何资源作用域，也不推进图标 epoch。失败、取消与参数校验失败不发布。版本刷新由同一适配层失效 `settings/version`，不经过该端口。
+资源更新由 `features/settings` 的 `SettingsUpdateOwner` 在服务端确认成功后发布：core 更新与渠道切换在服务端同时同步资源，和“更新资源”一样发布上表四个作用域，并推进物品图标缓存 epoch 使同一路径的新图换用新 URL；CLI 更新只改变 CLI 版本，不发布任何资源作用域，也不推进图标 epoch。失败、取消与参数校验失败不发布。版本刷新由同一适配层失效 `settings/version`，不经过该端口。
 
 ## 6. 各消费页面的失效接收
 
@@ -153,6 +155,8 @@ publishResourceInvalidation({
 | `AutomationTasks` | `automation-config`、`automation-schedule` | 等到配置通道空闲后 `reload({ force: true })`；pending 失败草稿保留本地并提示；采用服务端副本时保留本设备独有的禁用时间点 |
 | `Dashboard` | `dashboard-snapshot` | 调用完整快照刷新（`force`），五项全部有效才提交；单路失败保留旧快照与 `lastUpdate`；设备采样由 `device-mirror` 独立轮询 |
 | `StatisticsWorkspace`（统计页） | `depot`、`operbox`、`catalog`、`drops` | 按作用域 `invalidateQueries` 对应资源；识别命令由 `features/statistics` 的命令所有者提交，`hooks/useStatisticsCommands.ts` 把解析快照写入 Query 并发布作用域 |
+
+计划应用返回 409 过期属于应用响应分支，不是失效订阅动作：计划所有者清空预览并重读队列，详见[养成设置与计划有效期](../frontend/domains/training.md#设置与计划有效期)。
 
 队列写入、计划应用与设置提交的命令生命周期分别见[养成队列命令](../frontend/domains/training.md#队列命令)和[养成设置与计划有效期](../frontend/domains/training.md#设置与计划有效期)；本页第 5–6 节统一维护其跨域发布与接收映射。
 
@@ -176,7 +180,7 @@ Activity 语义：隐藏会清理订阅 Effect，期间发布不会直接刷新�
 pnpm --filter la-pluma-next-client exec vitest run src/features/resource-invalidation
 ```
 
-端点与 signal 回归见[资源请求契约](resource-requests.md)，key 与缓存回归见[Query 规范](query-cache.md)，领域命令测试由对应领域契约维护。完整检查使用 `pnpm --filter la-pluma-next-client verify`，视觉检查范围与方式见[开发指南](../development/README.md)。
+端点与 signal 回归见[资源请求契约](resource-requests.md)，key 与缓存回归见[Query 规范](query-cache.md)，领域命令测试由对应领域契约维护。完整检查使用 `pnpm --filter la-pluma-next-client verify`。
 
 ## 关联
 

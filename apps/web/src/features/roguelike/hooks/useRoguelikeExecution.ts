@@ -1,6 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { getErrorMessage } from '@/shared/api'
-import type { StatusMessageType } from '@/features/runtime-status'
+import {
+  EXECUTION_NOTICE_ID,
+  notifyProgress,
+  type Notify,
+} from '@/shared/notifications'
 import {
   executionController as defaultExecutionController,
   executePredefinedTask,
@@ -14,6 +18,7 @@ import {
   type TaskConfig,
 } from '@/features/task-execution'
 import { describeRoguelikeTerminalRun, projectRoguelikeStopState } from '../model/executionState'
+import { readRoguelikeRunProgress, type RoguelikeCommand } from '../model/runProgress'
 
 export const ROGUELIKE_EXECUTION_SCOPE = 'roguelike'
 
@@ -43,14 +48,24 @@ export interface RoguelikeExecution {
   pendingStopMode: StopMode | null
   /** 启动请求在途；按钮保持禁用，重复点击不会产生第二个提交。 */
   isSubmitting: boolean
-  /** 本页 owned 的 run（活动或终态），供结果面板读取结构化摘要。 */
+  /** 本页 owned 的 run（活动或终态），供执行进度面板读取进度与摘要。 */
   trackedRun: AgentRun | null
+  /** 本页发起该 run 时记录的任务名；刷新后无法恢复时为 null。 */
+  trackedRunLabel: string | null
+  /** 服务端最近一次终态 run；不保证属于本页或当前模式。 */
+  lastRun: AgentRun | null
+  /** 执行快照是否已经到达；用于区分“尚未加载”和“确实没有执行”。 */
+  hasSnapshot: boolean
+  /** 本页身份已恢复但 run 详情尚未取回；用于避免误报空闲或旧结果。 */
+  resolvingIdentity: boolean
+  /** 活动 run 的进度模式；只有活动 run 提供进度时才有值。 */
+  trackedCommand: RoguelikeCommand | null
   execute: (request: RoguelikeExecutionRequest) => Promise<void>
   stop: (mode?: StopMode) => Promise<void>
 }
 
 interface UseRoguelikeExecutionOptions {
-  notify: (message: string, type?: StatusMessageType) => void
+  notify: Notify
   controller?: ExecutionController
 }
 
@@ -63,6 +78,9 @@ export function useRoguelikeExecution({
   const ownedRunId = owned ? execution.trackedRunId : null
   const trackedRun = owned ? execution.trackedRun : null
   const activeRun = trackedRun && isActiveRunState(trackedRun.state) ? trackedRun : null
+  const lastRun = execution.snapshot?.lastRun ?? null
+  const hasSnapshot = execution.snapshot !== null
+  const trackedCommand = activeRun ? readRoguelikeRunProgress(activeRun)?.command ?? null : null
   // 身份已持久化但快照还没返回：保守地按运行中处理，刷新后不能因此重复提交。
   const unresolved = owned && Boolean(ownedRunId) && execution.identity === 'tracked' && !trackedRun
   const isRunning = Boolean(activeRun) || unresolved
@@ -76,6 +94,9 @@ export function useRoguelikeExecution({
   const observedActiveRunRef = useRef<string | null>(null)
   const announcedRunRef = useRef<string | null>(null)
   const runLabelsRef = useRef(new Map<string, string>())
+  const trackedRunLabel = trackedRun
+    ? runLabelsRef.current.get(trackedRun.runId) ?? null
+    : null
 
   const isLeaving = trackedRun?.state === 'stopping'
   const { isWaitingForCombat, isStopping } = projectRoguelikeStopState({
@@ -116,7 +137,7 @@ export function useRoguelikeExecution({
     announcedRunRef.current = trackedRun.runId
     const label = runLabelsRef.current.get(trackedRun.runId)
     const terminal = describeRoguelikeTerminalRun(trackedRun, label)
-    notify(terminal.message, terminal.type)
+    notify(terminal.message, terminal.type, { id: EXECUTION_NOTICE_ID })
   }, [activeRun, notify, ownedRunId, trackedRun])
 
   useEffect(() => {
@@ -126,7 +147,7 @@ export function useRoguelikeExecution({
 
     const timer = window.setTimeout(() => {
       setStopAcknowledged(false)
-      notify('终止失败: 终止请求已发送，但尚未确认任务停止', 'error')
+      notify('终止失败: 终止请求已发送，但尚未确认任务停止', 'error', { id: EXECUTION_NOTICE_ID })
     }, ROGUELIKE_STOP_CONFIRM_TIMEOUT_MS)
 
     return () => window.clearTimeout(timer)
@@ -135,7 +156,6 @@ export function useRoguelikeExecution({
   const execute = useCallback(async ({ command, params, taskConfig, taskName }: RoguelikeExecutionRequest) => {
     if (isRunning || controller.getState().submission === 'pending') return
 
-    notify('正在执行命令...')
     try {
       const result = await controller.submitExecution(
         'run_task',
@@ -153,52 +173,58 @@ export function useRoguelikeExecution({
       )
 
       if (!result.success) {
-        notify(`执行失败: ${getErrorMessage(result)}`, 'error')
+        notify(`执行失败: ${getErrorMessage(result)}`, 'error', { id: EXECUTION_NOTICE_ID })
         return
       }
 
       const runId = readSubmittedRunId(result.data)
-      if (runId) runLabelsRef.current.set(runId, taskName)
-      else notify(`${taskName} 已提交`, 'info')
+      if (runId) {
+        runLabelsRef.current.set(runId, taskName)
+        observedActiveRunRef.current = runId
+      } else {
+        notify('服务端未返回运行身份，无法确认本次执行状态', 'warning', { id: EXECUTION_NOTICE_ID })
+      }
     } catch (error) {
       // 传输失败时服务端可能已经接受执行，不能宣称失败或自动重提。
-      notify(`无法确认执行状态: ${(error as Error).message}`, 'warning')
+      notify(`无法确认执行状态: ${(error as Error).message}`, 'warning', { id: EXECUTION_NOTICE_ID })
     }
   }, [controller, isRunning, notify])
 
   const stop = useCallback(async (mode: StopMode = 'now') => {
     if (stopRequestRef.current) return
-    if (!controller.getState().trackedRunId) return
+    const trackedRunId = controller.getState().trackedRunId
+    if (!trackedRunId) return
 
+    observedActiveRunRef.current = trackedRunId
     stopRequestRef.current = mode
     setPendingStopMode(mode)
     if (mode === 'now') setWaitAccepted(false)
-    notify(STOP_REQUEST_MESSAGES[mode], 'warning')
+    notifyProgress(STOP_REQUEST_MESSAGES[mode], EXECUTION_NOTICE_ID)
 
     try {
       const result = await controller.stopTrackedRun({ mode })
       if (!result) {
-        notify('未找到可终止的肉鸽运行', 'warning')
+        notify('未找到可终止的肉鸽运行', 'warning', { id: EXECUTION_NOTICE_ID })
         setStopAcknowledged(false)
         return
       }
       if (!result.success) {
-        notify(`终止失败: ${getErrorMessage(result)}`, 'error')
+        notify(`终止失败: ${getErrorMessage(result)}`, 'error', { id: EXECUTION_NOTICE_ID })
         setStopAcknowledged(false)
         return
       }
       if (result.data?.pendingStop) {
         setWaitAccepted(true)
         setStopAcknowledged(false)
-        notify('已受理，等待战斗结束后终止', 'warning')
+        notify('已受理，等待战斗结束后终止', 'warning', { id: EXECUTION_NOTICE_ID })
         return
       }
       setStopAcknowledged(!result.data?.alreadyTerminal)
       if (mode === 'after-combat' && !result.data?.alreadyTerminal && !result.data?.alreadyStopping) {
-        notify('未在战斗中，已立即终止', 'warning')
+        notify('未在战斗中，已立即终止', 'warning', { id: EXECUTION_NOTICE_ID })
       }
     } catch (error) {
-      notify(`终止失败: ${(error as Error).message}`, 'error')
+      notify(`终止失败: ${(error as Error).message}`, 'error', { id: EXECUTION_NOTICE_ID })
       setStopAcknowledged(false)
     } finally {
       stopRequestRef.current = null
@@ -213,6 +239,11 @@ export function useRoguelikeExecution({
     pendingStopMode,
     isSubmitting,
     trackedRun,
+    trackedRunLabel,
+    lastRun,
+    hasSnapshot,
+    resolvingIdentity: unresolved,
+    trackedCommand,
     execute,
     stop,
   }

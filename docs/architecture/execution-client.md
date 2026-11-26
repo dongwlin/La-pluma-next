@@ -89,7 +89,7 @@ const result = await executionController.submitExecution('run_task', ({ idempote
 | `unknown` | 观察断线（保留最后已知 `isRunning`），或 `occupancy.state=unknown` | `执行状态未知` | 按最后已知值 |
 | `idle` | 其余情况 | 无 | 否 |
 
-`statusStore` 只保留阶段、身份、标签和进度说明，不复制 `AgentRun`；相同投影重复写入会被忽略。`FloatingStatusIndicator` 的显示优先级是连接健康 > 临时消息 > 运行投影 > 干员台词。连接监测器只在投影进入忙态时把探针间隔调到 2s，并且只写 `backendStatus`/`backendMessage`，不再从 `tasks/status.isRunning` 推断运行状态。
+`statusStore` 只保留阶段、身份、标签和进度说明，不复制 `AgentRun`；相同投影重复写入会被忽略。用户可见的执行结果与临时消息通过 `shared/notifications` 的 `notify` / `notifyProgress` 进入 sonner 通知器，与运行投影和连接健康互不覆盖。连接监测器只在投影进入忙态时把探针间隔调到 2s，并且只写 `backendStatus`/`backendMessage`，不再从 `tasks/status.isRunning` 推断运行状态。
 
 ## 3. 身份、幂等与旧响应
 
@@ -127,7 +127,7 @@ const result = await executionController.submitExecution('run_task', ({ idempote
 
 - `App` 通过 `useExecutionObservation()` 启动一次应用级观察；页面或组件只能通过 `useExecutionSnapshot()` 订阅，不得自行创建控制器或重复启动轮询。`App` 同时调用 `useRunStatusProjection()`：它在 React 树外订阅控制器并写 `statusStore.runStatus`，所以页面切换、Activity 清理和组件卸载都不会让全局运行展示退回空闲。
 - Activity 隐藏只清理页面 Effects，不调用 `abortObservation()` 或 `stopTrackedRun()`；控制器不在 React 树内，页面生命周期不改变执行所有权。浏览器文档隐藏同样不停止应用级 Run 观察，也不改变执行终态。
-- 肉鸽页已迁移到控制器：`run_task` 以 `waitForCompletion=false` 和 `scope: 'roguelike'` 提交，202 接受后只按 `trackedRun` 渲染停止意图。运行中提供两个等宽按钮：「立即终止」以 `stopTrackedRun({ mode: 'now' })` 立即停止，「等待战斗结束」以 `stopTrackedRun({ mode: 'after-combat' })` 请求战斗结束后停止；空闲态仍是单个「立即执行」。等待态只由 `trackedRun.progress.stopIntent` 或刚受理的 `pendingStop` 派生，期间右侧按钮禁用并提示最多等待 10 分钟，左侧「立即终止」保持可用，用于取消等待或逃生。停止请求成功但 15s 内仍看不到 `stopping`/终态时解锁按钮允许重试；等待态不算停止确认，不能触发该超时。页面卸载或 Activity 隐藏不发送停止，刷新后按持久化身份恢复且不重新提交。页面只消费全局运行投影。
+- 肉鸽页已迁移到控制器：`run_task` 以 `waitForCompletion=false` 和 `scope: 'roguelike'` 提交，202 接受后只按 `trackedRun` 渲染停止意图。运行或提交在途时页面锁定模式 tab、主题、字段、开关与核心干员入口；已有活动 Run 时停止入口始终可达，提交在途尚无 `runId` 时渲染禁用的执行按钮而不渲染停止入口；提交中执行按钮显示「正在启动」。运行中提供两个等宽按钮：「终止」以 `stopTrackedRun({ mode: 'now' })` 立即停止，「等待战斗结束」以 `stopTrackedRun({ mode: 'after-combat' })` 请求战斗结束后停止；空闲态仍是单个「开始」。等待态只由 `trackedRun.progress.stopIntent` 或刚受理的 `pendingStop` 派生，期间右侧按钮禁用并提示最多等待 10 分钟，左侧「终止」保持可用，用于取消等待或逃生。停止请求成功但 15s 内仍看不到 `stopping`/终态时解锁按钮允许重试；等待态不算停止确认，不能触发该超时。执行后焦点移到「终止」，停止并进入终态后回到「开始」。执行进度面板按当前模式消费 `trackedRun` 与 `lastRun`：活动 Run 读 `progress.roguelike`，终态读 `summary.progress`，`lastRun` 只用于刷新后的展示回退，并且只在 `operationId === 'run_task'` 与摘要 `command` 匹配当前模式时展示；本页身份已恢复但 run 详情尚未取回时显示解析中的加载态。徽章只表达任务状态，没有结构化摘要时仍保留终态。页面卸载或 Activity 隐藏不发送停止，刷新后按持久化身份恢复且不重新提交。页面只消费全局运行投影。
 - 作业页已迁移到控制器，`scope: 'combat'`：
   - 单作业走 `run_task`（`waitForCompletion=false`），幂等键由控制器 intent 生成；作业集走 `run_copilot_set`，只有服务端持有的集合 run 一种身份。
   - 三种页面模式映射为两种服务端模式：`顺序执行` 与 `连续执行` 都提交 `mode=continuous`；`手动逐关` 提交 `mode=manual`，首项后 run 转 `waiting`，页面用 `progress.nextEntry` 渲染“开始下一关”，点击调用 `POST /api/agent/actions/continue-copilot-set`（不新建 run、不使用新幂等键）。
@@ -137,7 +137,7 @@ const result = await executionController.submitExecution('run_task', ({ idempote
   - 作业集终态后页面按服务端计划进度重建“待执行”选择（成功项移出、失败项保留）；计划读取失败只影响展示，不据此宣告完成。`失败后停止` 策略在 manual 等待态遇到失败项时结束集合 run，不再提供“开始下一关”。
   - 作业页只消费全局运行投影；页面隐藏/卸载不发送停止，刷新后按持久化身份恢复运行展示且不重提作业集。刷新后需要重新预览对应作业集才能恢复列表与“开始下一关”入口，`waiting` run 本身不会被重新提交。
 - 自动化页已迁移到控制器，`scope: 'automation'`，归属按 `trackedOperationId === 'run_daily_flow'` 判定：
-  - 手动执行只提交一次 `run_daily_flow`（`POST /api/agent/schedules/manual/execute`，`waitForCompletion=false`），幂等键由控制器 intent 生成；202 接受后运行/停止按钮只由 `trackedRun` 决定。页面不再逐项提交 `run-task`，也不再保留第二套前端流程引擎。
+  - 手动执行只提交一次 `run_daily_flow`（`POST /api/agent/schedules/manual/execute`，`waitForCompletion=false`），幂等键由控制器 intent 生成；202 接受后页脚只由 `trackedRun` 决定：运行中只渲染「终止」，不再渲染运行按钮。页面不再逐项提交 `run-task`，也不再保留第二套前端流程引擎。
   - 活动进度来自 `run.progress` 的 `currentStep`/`totalSteps`/`currentTask`/`message`；逐项结果只读取快照中 `schedule.runId === trackedRunId` 的 `taskResults`。流程步间延迟期间 run 仍为活动，页面不会提前标完成；终态摘要只来自 `run.result.summary`。空闲且本页没有持有 run 时，“最近执行”可回退展示快照的 `schedule.lastResult`；它只是旧字段的展示投影，不用于判断身份、完成或重提。
   - 停止走 `stopTrackedRun()`，确认期间由快照推进，15s 未确认解锁重试；页面隐藏/卸载不发送停止，刷新后按持久化身份恢复观察且不重新提交。
   - 旧 `maa-task-flow-execution` 断点只关联已有 Run，绝不重提任务；接受期限、匹配与清理规则由[兼容文档](../frontend/compatibility.md#旧自动化断点的接受与恢复)维护。
@@ -153,7 +153,7 @@ const result = await executionController.submitExecution('run_task', ({ idempote
   - 仓库/干员识别通过 `beginExecutionIntent('run_task', { scope: 'statistics' })` 生成幂等键，以 `waitForCompletion=true` 提交；命令确认成功后才轮询解析端点等待 MAA 日志可解析。
   - 命令超时或本地取消只结束本地等待，不调用停止；继续时复用同一幂等键确认已有 Run，已接受 Run 只读取终态，绝不产生第二个设备命令。Run 终态等待或解析超时后只继续等待/解析，不再提交 `run-task`。
   - 识别成功由 `features/statistics/model/commandOwner.ts` 发布作用域失效；材料刷新是脚本入口，不产生 Run。命令状态归域内所有者，页面不再内联 `executeCommand`、固定延迟或读 queue 决定提示。详见[统计识别命令与失效联动](../frontend/domains/statistics.md#识别命令)。
-- 肉鸽、作业、自动化、Dashboard 与统计识别的运行身份都来自同一控制器；Dashboard 启动的 run 带有 `scope: 'dashboard'`，统计识别带有 `scope: 'statistics'`，其它页面不会把它们显示成自己的执行，但全局投影、浮动指示器和 Dashboard 会看到同一个活动 run。
+- 肉鸽、作业、自动化、Dashboard 与统计识别的运行身份都来自同一控制器；Dashboard 启动的 run 带有 `scope: 'dashboard'`，统计识别带有 `scope: 'statistics'`，其它页面不会把它们显示成自己的执行，但全局运行投影和 Dashboard 会看到同一个活动 run。
 
 ## 7. 回归清单
 
@@ -163,7 +163,9 @@ const result = await executionController.submitExecution('run_task', ({ idempote
 | --- | --- |
 | `features/task-execution/api/api.test.ts` | 旧位置参数不带幂等头；新 `AgentRequestOptions` 写入 `Idempotency-Key`；快照/按 id/目标停止的 URL 与请求方式；缺省停止不带 body，`mode` 才写入 JSON body；旧 `tasks/status`、`stopTask` 仍可用 |
 | `features/task-execution/controller/executionController.test.tsx` | 快照作为唯一观察源；旧快照不覆盖新快照；旧提交不覆盖新 run；幂等键复用与格式；调用方 `scope` 与 `operationId` 随身份提交/持久化/恢复，未知身份或解除绑定时清除；断线保留活动状态；重连按 `runId` 恢复观察且不重新提交；页面卸载后仍观察；引用计数释放；订阅入口不启动轮询；观察 hook 挂载/卸载；404 标记 unknown；停止与本地中止分离；`mode` 透传后保持 run 的 `running` 与响应中的 `pendingStop` |
-| `pages/roguelike/RoguelikeTasks.test.tsx` | 单次幂等提交保留 `run_task`/`taskType`/命令参数；重复点击不并发提交；运行中双按钮与空闲单按钮；两种停止模式与请求 `mode`；等待态来自 `progress.stopIntent`/`pendingStop` 且不触发 15s 超时；等待中点「立即终止」发 `mode=now`；非战斗退化提示；停止确认超时与拒绝后可重试；Activity 隐藏/恢复不遗留锁定按钮；页面卸载不发送停止且继续观察；刷新按身份恢复且不重提交；其它 `scope` 的 run 不显示为本页执行；终态成功/失败消息 |
+| `pages/roguelike/RoguelikeTasks.test.tsx` | 单次幂等提交保留 `run_task`/`taskType`/命令参数；重复点击不并发提交；运行中双按钮与空闲单按钮；两种停止模式与请求 `mode`；等待态来自 `progress.stopIntent`/`pendingStop` 且不触发 15s 超时；等待中点「终止」发 `mode=now`；非战斗退化提示；停止确认超时与拒绝后可重试；运行/提交期编辑锁与停止入口可达；执行→停止→终态的焦点移交；执行进度面板按模式展示活动进度与终态、匹配模式的 `lastRun` 刷新回退、模式切换不串台与身份解析加载态；Activity 隐藏/恢复不遗留锁定按钮；页面卸载不发送停止且继续观察；刷新按身份恢复且不重提交；其它 `scope` 的 run 不显示为本页执行；终态成功/失败消息 |
+| `features/roguelike/model/runProgress.test.ts` | 活动 `progress.roguelike` 与终态 `summary.progress` 的解析；缺失或非法字段归为未知而非 0；模式匹配、`lastRun` 过滤与旧服务端回退；成功率、计时与相对时间格式化 |
+| `features/roguelike/components/RoguelikeProgressPanel.test.tsx` | 加载态与空闲态区分；集成战略/生息演算的活动、停止与终态；统计、目标、当前动作与最近 5 局；`degraded` 提示；匹配模式的 `lastRun` 刷新回退，其它模式/operation 不展示；旧服务端摘要回退；计时每秒推进且卸载清理；非交互 Badge 与 live region 边界 |
 | `features/combat/model/copilotSetRun.test.ts` | 活动 `progress` 与终态 `summary` 的投影；突袭/普通条目按作业折叠；等待态 `nextEntry`；缺失进度不伪造完成；终态通知文案 |
 | `pages/combat/CombatTasks.test.tsx` | 单作业 `run_task` 幂等提交（不等待完成）；作业集三模式映射（cli/app→`continuous`、`manual`）；提交在途重复点击只发一次；等待态“开始下一关”与 409 占用重试；失败汇总与失败数；按 `runId` 停止后不再提交；停止确认超时重试；Activity 隐藏/恢复不停止、不重提；断线保留运行态并在重连后恢复观察；刷新按身份恢复；其它 `scope`/其它作业集的 run 不显示为本页执行；未知身份不冒充完成 |
 | `features/statistics/model/commandOwner.test.ts` | 识别命令经 `beginExecutionIntent` 提交并携带 `scope: statistics`；超时/取消后复用同一幂等键确认已有 Run；Run 终态等待与解析超时不重提；材料刷新不产生 Run；成功后发布作用域失效 |
@@ -175,8 +177,7 @@ const result = await executionController.submitExecution('run_task', ({ idempote
 | `pages/automation/AutomationTasks.activity.test.tsx` | 流程结束时 Activity 隐藏再恢复，完成标记不丢失、不发送停止、不重新提交 |
 | `features/runtime-status/hooks/useRunStatusProjection.test.tsx` | 空闲/运行/等待继续/等待战斗结束后停止（仍算设备忙）/正在停止/外部占用/未知占用/断线保留最后活动 run/终态才回到空闲 |
 | `features/runtime-status/hooks/useBackendStatusMonitor.test.tsx` | 探针只写连接健康，不写运行状态；投影进入忙态后探针改按 2s 间隔 |
-| `features/runtime-status/components/FloatingStatusIndicator.test.tsx` | 连接健康 > 临时消息 > 运行投影（标签与颜色）> 干员台词；运行/等待为 info，占用/未知为 warning |
-| `features/runtime-status/store/statusStore.test.ts` | 运行字段只接受投影；忙态保留消息，离开忙态才恢复自动消失；相同投影不重复通知；连接健康与消息互不影响 |
+| `features/runtime-status/store/statusStore.test.ts` | 运行字段只接受投影；相同投影不重复通知；连接健康与运行投影互不影响 |
 | `pages/dashboard/Dashboard.test.tsx` | 日常入口单次异步 `run_daily_flow` 幂等提交（`scope: dashboard`）；在途重复点击不产生第二个提交；终态通知只宣告实际观察过的本页 run；其它域启动/停止不冒充本页执行但全局保持一致；外部占用与断线未知禁用启动入口 |
 
 ## 8. 当前限制

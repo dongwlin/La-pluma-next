@@ -50,10 +50,6 @@ export const apiFixtures: ApiFixture[] = [
     }),
   },
   {
-    path: '/operator-quotes/random',
-    payload: ok({ operatorId: 'char_002_amiya', operator: '阿米娅', quote: '博士，情报已经同步完毕' }),
-  },
-  {
     path: '/operator-quotes/daily',
     payload: ok({ operatorId: 'char_002_amiya', operator: '阿米娅', quote: '今天也请多指教' }),
   },
@@ -86,6 +82,16 @@ export const apiFixtures: ApiFixture[] = [
     }),
   },
   { path: '/agent/webrtc/status', payload: ok({ installed: true, built: true, serverRunning: false, agentRunning: false }) },
+  {
+    path: '/agent/config/resource-source',
+    payload: ok({
+      autoUpdate: true,
+      warnOnUpdateFailure: true,
+      source: 'git',
+      git: { backend: 'git', url: 'https://github.com/MaaAssistantArknights/MaaResource.git', branch: 'main' },
+      mirrorchyan: { cdkKind: 'none', checkInterval: 600 },
+    }),
+  },
 
   {
     path: '/agent/drops/today',
@@ -230,6 +236,7 @@ export const apiFixtures: ApiFixture[] = [
           settings: { useMedicine: 0, useStone: 0, autoSwitch: false, notifyOnComplete: false },
         },
       ],
+      settings: { useMedicine: 0, useStone: 0, autoSwitch: true, notifyOnComplete: true },
       revision: 'visual-baseline-1',
       flowSync: false,
     }),
@@ -250,7 +257,7 @@ export const apiFixtures: ApiFixture[] = [
     }),
   },
   {
-    // 此端点的 data 是裸数组（DataStatistics 直接 Array.isArray 消费），
+    // 此端点的 data 是裸数组：game-data 的 getAllOperators 以 Array.isArray 校验，
     // 训练页的 extractOperatorRows 两种形状都兼容。
     path: '/agent/data/operators',
     payload: ok([
@@ -266,16 +273,13 @@ export const apiFixtures: ApiFixture[] = [
   {
     path: '/agent/data/operbox',
     payload: ok({
-      operCount: 128,
+      operCount: 5,
       data: [
         { id: 'char_010_chen', name: '陈', rarity: 6, profession: 'WARRIOR', position: 'MELEE', level: 90, elite: 2, potential: 5 },
         { id: 'char_103_angel', name: '能天使', rarity: 6, profession: 'SNIPER', position: 'RANGED', level: 85, elite: 2, potential: 2 },
         { id: 'char_180_amgoat', name: '艾雅法拉', rarity: 6, profession: 'CASTER', position: 'RANGED', level: 80, elite: 1, potential: 3 },
         { id: 'char_202_demkni', name: '塞雷娅', rarity: 6, profession: 'TANK', position: 'MELEE', level: 60, elite: 0, potential: 1 },
         { id: 'char_002_amiya', name: '阿米娅', rarity: 5, profession: 'CASTER', position: 'RANGED', level: 70, elite: 1, potential: 6 },
-        { id: 'char_326_glacus', name: '格劳克斯', rarity: 5, profession: 'SPECIAL', position: 'MELEE', level: 55, elite: 1, potential: 4 },
-        { id: 'char_286_cast3', name: '夜烟', rarity: 3, profession: 'CASTER', position: 'RANGED', level: 40, elite: 0, potential: 2 },
-        { id: 'char_121_lava', name: '炎熔', rarity: 3, profession: 'CASTER', position: 'RANGED', level: 35, elite: 0, potential: 1 },
       ],
       allOpers: [
         { id: 'char_010_chen', name: '陈', rarity: 6, owned: true },
@@ -286,7 +290,7 @@ export const apiFixtures: ApiFixture[] = [
         { id: 'char_326_glacus', name: '格劳克斯', rarity: 5, owned: false },
       ],
       operTotal: 6,
-      recognition: { status: 'complete', total: 6, owned: 8 },
+      recognition: { status: 'complete', total: 6, owned: 5 },
       timestamp: '2026-10-24 04:00:00',
     }),
   },
@@ -395,7 +399,7 @@ export const apiFixtures: ApiFixture[] = [
 export const EXTERNAL_IMAGE_HOSTS = ['raw.githubusercontent.com']
 
 /**
- * 1x1 灰蓝色 PNG（base64）。外部头像/物品图标在基线中统一渲染为该占位图，
+ * 1x1 灰蓝色 PNG（base64）。外部头像/物品图标在浏览器测试中统一渲染为该占位图，
  * 其加载路径（onError 回退等）因此完全确定。
  */
 export const PLACEHOLDER_PNG_BASE64 =

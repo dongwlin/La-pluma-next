@@ -1,8 +1,10 @@
-import { ChevronRight, Target } from 'lucide-react'
-import { Card, IconButton } from '@/shared/ui'
+import { ChevronRight } from 'lucide-react'
+import { Badge } from '@/shared/ui/badge'
+import { Button } from '@/shared/ui/button'
+import { Card } from '@/shared/ui/card'
 import { useDashboardStore } from '../store/dashboardStore'
 
-const sectionTitleClass = 'text-base font-bold text-primary'
+const sectionTitleClass = 'text-base font-bold text-foreground'
 
 interface DashboardTrainingSummaryCardProps {
   onOpenTraining: () => void
@@ -12,25 +14,23 @@ export default function DashboardTrainingSummaryCard({ onOpenTraining }: Dashboa
   const trainingSummary = useDashboardStore(state => state.trainingSummary)
 
   return (
-    <Card smoothCorners className="dashboard-summary-card is-training p-0!">
+    <Card className="dashboard-summary-card is-training gap-0 p-0!">
       <div className="dashboard-summary-header">
         <div className="dashboard-summary-heading">
-          <span className="dashboard-summary-icon" aria-hidden="true">
-            <Target className="h-4 w-4" strokeWidth={1.8} />
-          </span>
           <div className="min-w-0">
             <div className={sectionTitleClass}>养成摘要</div>
           </div>
         </div>
-        <IconButton
+        <Button
           onClick={onOpenTraining}
-          icon={<ChevronRight className="h-4 w-4" />}
+          size="icon-sm"
           variant="ghost"
-          size="sm"
           title="打开养成"
           aria-label="打开养成"
           className="dashboard-summary-action"
-        />
+        >
+          <ChevronRight className="h-4 w-4" aria-hidden="true" />
+        </Button>
       </div>
       <div className="dashboard-summary-body" data-dashboard-summary="training">
         <div className="dashboard-summary-statline">
@@ -39,7 +39,7 @@ export default function DashboardTrainingSummaryCard({ onOpenTraining }: Dashboa
             <div className="dashboard-summary-number-label">培养目标</div>
           </div>
           <div className="dashboard-summary-copy">
-            <div className="text-sm font-semibold text-primary">{trainingSummary.count > 0 ? '队列已建立' : '等待添加目标'}</div>
+            <div className="text-sm font-semibold text-foreground">{trainingSummary.count > 0 ? '队列已建立' : '等待添加目标'}</div>
             <div className="dashboard-summary-detail">
               {trainingSummary.count > 0 ? '按优先级推进当前培养计划' : '添加干员后会在这里汇总优先目标'}
             </div>
@@ -49,7 +49,13 @@ export default function DashboardTrainingSummaryCard({ onOpenTraining }: Dashboa
           {trainingSummary.topNames.length > 0 ? (
             <div className="dashboard-stage-list">
               {trainingSummary.topNames.map(name => (
-                <span key={name} className="dashboard-stage-chip is-accent">{name}</span>
+                <Badge
+                  key={name}
+                  variant="ghost"
+                  className="dashboard-stage-chip is-accent rounded-lg border-0 px-2 py-1 font-semibold hover:text-foreground"
+                >
+                  {name}
+                </Badge>
               ))}
             </div>
           ) : (

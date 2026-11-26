@@ -6,7 +6,7 @@ La Pluma Next 是 [mps233/La-pluma](https://github.com/mps233/La-pluma) 的社�
 
 ## 分支与合并
 
-- `main` 是集成分支，已开启分支保护，要求 `verify` 状态检查通过，并禁止 force push 和删除。该汇总门禁定义在 `.github/workflows/ci.yml`，同时约束源码、浏览器和适用的镜像检查；纯文档变更合入 main 时不再重复触发 CI。
+- `main` 是集成分支，已开启分支保护，要求 `verify` 状态检查通过，并禁止 force push 和删除。该汇总门禁定义在 `.github/workflows/ci.yml`，同时约束源码和适用的镜像检查；纯文档变更合入 main 时不再重复触发 CI。
 - 日常改动使用主题分支，通过 Pull Request 合并。
 
 ## 发布流程
@@ -29,7 +29,7 @@ La Pluma Next 是 [mps233/La-pluma](https://github.com/mps233/La-pluma) 的社�
    git push origin "v${release_version}"
    ```
 
-3. CI 校验根版本及 main 归属，并行运行源码校验和原生双架构构建、启动检查。`verify` 汇总通过后发布多架构镜像，不重复运行 PR/main 的浏览器检查。正式版更新完整版本、主次版本别名及 `latest`；预发布只产生完整版本标签。标签可覆盖，补发旧正式版本也会更新别名。
+3. CI 校验根版本及 main 归属，并行运行源码校验和原生双架构构建、启动检查。`verify` 汇总通过后发布多架构镜像。正式版更新完整版本、主次版本别名及 `latest`；预发布只产生完整版本标签。标签可覆盖，补发旧正式版本也会更新别名。
 4. 在 GitHub Releases 中补充变更说明。
 
 检查、权限、缓存和发布标签的规则见[工作流说明](../../.github/workflows/README.md)。main 推送不发布镜像，手动运行分支也只验证。
@@ -85,6 +85,7 @@ WebRTC 安装会从 `hqw700/ScrcpyOverWebRTC` 的 GitHub Release 下载 `cloudph
 | 界面视觉、交互与设计 token | 根 [DESIGN.md](../../DESIGN.md)；[组件库](../frontend/components.md)只维护组件 API 和用法 |
 | 系统技术栈与目录结构 | [整体架构](../architecture/README.md) |
 | 前端分层、状态所有者、URL 与 Activity | [前端架构](../frontend/README.md) |
+| 主题注册、三层模型、`data-theme` 与新增主题契约 | [主题系统](../frontend/themes.md) |
 | Agent 对接流程与鉴权 | [Agent API](../api/agent.md) |
 | 服务端 Run 协议 / 前端控制器 | [执行生命周期](../architecture/execution-lifecycle.md) / [执行客户端](../architecture/execution-client.md) |
 | 服务端分层与请求契约 | [服务端架构与请求契约](../server/README.md) |
@@ -98,6 +99,6 @@ WebRTC 安装会从 `hqw700/ScrcpyOverWebRTC` 的 GitHub Release 下载 `cloudph
 | 共享资源所有权、跨域失效作用域与收发映射 | [资源归属与失效端口](../architecture/resource-ownership.md) |
 | 旧入口消费者、支持窗口与移除条件 | [兼容入口](../frontend/compatibility.md) |
 | 领域特有的面板、命令、竞态与回归 | 各领域文档；通用规则链接到上述契约 |
-| 日常检查、集成场景与性能方法 | [开发指南](README.md)、[跨页集成](integration.md)、[性能采样说明](../../apps/web/tests/performance/README.md) |
+| 日常检查与性能方法 | [开发指南](README.md)、[性能采样说明](../../apps/web/tests/performance/README.md) |
 
 文件移动或合并时，同步修复索引、相对路径、章节锚点和源码/脚本中的文档引用。已完成任务的历史证据应固定到交付提交，避免用当前路径冒充仍在维护的文档；不为旧路径建立第二份正文或长期占位文件。

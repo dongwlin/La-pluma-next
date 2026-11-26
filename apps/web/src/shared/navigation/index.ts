@@ -37,6 +37,12 @@ export function appTabFromPathname(pathname: string): AppTab | null {
   return isAppTab(tab) ? tab : null
 }
 
+/** 判定 /dev 前缀的开发路由（如主题画廊）；pathname 同样只处理去 base 后的形态。 */
+export function isDevRoutePathname(pathname: string): boolean {
+  const segments = pathname.split('/').filter(Boolean)
+  return segments[0] === 'dev'
+}
+
 export function routerBasename(): string {
   return import.meta.env.BASE_URL.replace(/\/+$/, '')
 }

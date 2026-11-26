@@ -1,2 +1,3 @@
 import './index.css'
-import './ios-theme.css'
+import './layout.css'
+import './chrome.css'

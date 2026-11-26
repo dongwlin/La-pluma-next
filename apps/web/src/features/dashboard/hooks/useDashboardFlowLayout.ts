@@ -1,7 +1,7 @@
 import { useLayoutEffect, useRef, useState } from 'react'
 import type { CSSProperties } from 'react'
+import { BREAKPOINTS } from '@/shared/lib/breakpoints'
 
-const FLOW_GRID_COLUMNS_FALLBACK = 'minmax(0, 0.78fr) minmax(0, 1.22fr)'
 const PREVIEW_ASPECT_RATIO = 16 / 9
 const GRID_MIN_LEFT_WIDTH = 360
 const GRID_MIN_PREVIEW_WIDTH = 520
@@ -10,7 +10,7 @@ export function useDashboardFlowLayout(enabled = true) {
   const flowGridRef = useRef<HTMLDivElement | null>(null)
   const flowCardRef = useRef<HTMLDivElement | null>(null)
   const flowPreviewRef = useRef<HTMLDivElement | null>(null)
-  const [flowGridColumns, setFlowGridColumns] = useState(FLOW_GRID_COLUMNS_FALLBACK)
+  const [flowGridColumns, setFlowGridColumns] = useState<string | null>(null)
 
   useLayoutEffect(() => {
     if (!enabled) return
@@ -21,10 +21,10 @@ export function useDashboardFlowLayout(enabled = true) {
 
     if (!grid || !flowCard || !previewShell) return
 
-    const mediaQuery = window.matchMedia('(min-width: 1280px)')
+    const mediaQuery = window.matchMedia(`(width >= ${BREAKPOINTS.xl}px)`)
     let frameId = 0
 
-    const updateColumns = (columns: string) => {
+    const updateColumns = (columns: string | null) => {
       setFlowGridColumns(current => current === columns ? current : columns)
     }
 
@@ -32,7 +32,7 @@ export function useDashboardFlowLayout(enabled = true) {
       window.cancelAnimationFrame(frameId)
       frameId = window.requestAnimationFrame(() => {
         if (!mediaQuery.matches) {
-          updateColumns(FLOW_GRID_COLUMNS_FALLBACK)
+          updateColumns(null)
           return
         }
 
@@ -40,7 +40,7 @@ export function useDashboardFlowLayout(enabled = true) {
         const previewFrame = previewShell.querySelector<HTMLElement>('[data-dashboard-preview-frame]')
 
         if (!previewCard || !previewFrame) {
-          updateColumns(FLOW_GRID_COLUMNS_FALLBACK)
+          updateColumns(null)
           return
         }
 
@@ -48,8 +48,6 @@ export function useDashboardFlowLayout(enabled = true) {
         const flowRect = flowCard.getBoundingClientRect()
         const previewCardRect = previewCard.getBoundingClientRect()
         const previewFrameRect = previewFrame.getBoundingClientRect()
-        const feedbackRow = flowCard.querySelector<HTMLElement>('[data-dashboard-flow-feedback]')
-        const feedbackRowHeight = feedbackRow?.getBoundingClientRect().height ?? 0
         const stages = flowCard.querySelector<HTMLElement>('[data-dashboard-flow-stages]')
         const stagesContent = stages?.lastElementChild
         let stagesExtraHeight = 0
@@ -70,6 +68,7 @@ export function useDashboardFlowLayout(enabled = true) {
           previewCardRect.width <= 0 ||
           previewFrameRect.width <= 0
         ) {
+          updateColumns(null)
           return
         }
 
@@ -77,9 +76,9 @@ export function useDashboardFlowLayout(enabled = true) {
         const columnGap = Number.parseFloat(gridStyle.columnGap) || 20
         const previewChromeHeight = Math.max(0, previewCardRect.height - previewFrameRect.height)
         const previewChromeWidth = Math.max(0, previewCardRect.width - previewFrameRect.width)
-        // Ignore transient feedback and the stage section's empty stretch space.
+        // Ignore the stage section's empty stretch space.
         // Column sizing must use content height so equal-height cards cannot resize themselves.
-        const stableFlowHeight = Math.max(0, flowRect.height - feedbackRowHeight - stagesExtraHeight)
+        const stableFlowHeight = Math.max(0, flowRect.height - stagesExtraHeight)
         const targetFrameHeight = Math.max(180, stableFlowHeight - previewChromeHeight)
         const desiredPreviewWidth = targetFrameHeight * PREVIEW_ASPECT_RATIO + previewChromeWidth
         const minLeftWidth = Math.min(420, Math.max(GRID_MIN_LEFT_WIDTH, gridRect.width * 0.32))
@@ -115,9 +114,9 @@ export function useDashboardFlowLayout(enabled = true) {
     }
   }, [enabled])
 
-  const flowGridStyle = {
-    '--dashboard-flow-columns': flowGridColumns,
-  } as CSSProperties
+  const flowGridStyle = flowGridColumns === null
+    ? undefined
+    : ({ '--dashboard-flow-columns': flowGridColumns } as CSSProperties)
 
   return {
     flowGridRef,

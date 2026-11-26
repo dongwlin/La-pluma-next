@@ -1,7 +1,7 @@
 /**
  * 依赖与职责护栏的分析核心。
  *
- * 规则边界与阈值依据见 docs/development/guardrails.md。测试文件不参与运行时依赖与规模统计，
+ * 规则边界见 docs/development/guardrails.md。测试文件不参与运行时依赖分析，
  * 因为测试可以为了隔离而接触内部实现，不会进入生产包。
  */
 import { readFile, readdir } from 'node:fs/promises'
@@ -42,10 +42,14 @@ export type GuardrailRule =
   | 'domain-cycle'
   | 'deep-import'
   | 'layer-direction'
+  | 'model-component-dependency'
   | 'task-execution-reverse'
   | 'page-transport'
   | 'page-storage'
   | 'page-polling'
+  | 'layout-region'
+  | 'global-style-scope'
+  | 'layout-test-detail'
 
 export interface GuardrailViolation {
   rule: GuardrailRule
@@ -61,7 +65,6 @@ export interface DependencyAnalysis {
 
 const TEST_FILE_PATTERN = /\.(?:test|spec)\.(?:ts|tsx)$/
 const PAGE_FILE_PATTERN = /^pages\/[^/]+\/[^/]+\.(?:ts|tsx)$/
-const SIZE_CATEGORY_PATTERN = /^(?:features\/[^/]+\/(hooks|model|components)|pages\/[^/]+)\/.+\.(?:ts|tsx)$/
 
 const TRANSPORT_GLOBALS = new Set(['fetch', 'WebSocket', 'EventSource', 'XMLHttpRequest'])
 const STORAGE_GLOBALS = new Set(['localStorage', 'sessionStorage', 'indexedDB'])
@@ -556,6 +559,15 @@ export function analyzeDependencies(files: readonly SourceFile[]): DependencyAna
         rule: 'layer-direction',
         file: edge.from,
         message: `features 不得依赖根入口模块：${edge.specifier}`,
+      })
+      continue
+    }
+
+    if (/^features\/[^/]+\/model\//.test(edge.from) && /^features\/[^/]+\/components\//.test(edge.to)) {
+      violations.push({
+        rule: 'model-component-dependency',
+        file: edge.from,
+        message: `features model 不得依赖 components：${edge.specifier}`,
       })
       continue
     }
@@ -1364,214 +1376,351 @@ export function checkPageGuardrails(files: readonly SourceFile[]): GuardrailViol
   return violations
 }
 
-export type SizeCategory = 'pages' | 'hooks' | 'model' | 'components'
-
-export const SIZE_CATEGORIES: readonly SizeCategory[] = ['pages', 'hooks', 'model', 'components']
-
-export const DEFAULT_SIZE_THRESHOLDS: Record<SizeCategory, number> = {
-  pages: 60,
-  hooks: 220,
-  model: 340,
-  components: 320,
+interface RegionAnchor {
+  attribute: string
+  value?: string
 }
 
-export interface SizeEntry {
-  path: string
-  category: SizeCategory
-  lines: number
+const LAYOUT_REGION_CONTRACT: Readonly<Record<string, readonly RegionAnchor[]>> = {
+  'app/layout/Layout.tsx': [
+    { attribute: 'data-region', value: 'scroll' },
+    { attribute: 'data-region', value: 'page-content' },
+  ],
+  'app/layout/AppNavbar.tsx': [
+    { attribute: 'data-region', value: 'navbar' },
+    { attribute: 'data-region', value: 'page-header' },
+    { attribute: 'data-region', value: 'page-title' },
+  ],
+  'app/layout/AppSidebar.tsx': [
+    { attribute: 'data-region', value: 'sidebar' },
+    { attribute: 'data-region', value: 'sidebar-brand' },
+  ],
+  'app/layout/AppTabbar.tsx': [
+    { attribute: 'data-region', value: 'tabbar' },
+  ],
+  'shared/components/PageShell.tsx': [
+    { attribute: 'data-region', value: 'page' },
+    { attribute: 'data-page-kind' },
+    { attribute: 'data-page-layout' },
+    { attribute: 'data-page-surface' },
+  ],
 }
 
-export interface DomainSizeTotals {
-  pages: number
-  nonPage: number
-}
+function collectJsxAttributes(sourceFile: ts.SourceFile): Map<string, Set<string | null>> {
+  const attributes = new Map<string, Set<string | null>>()
 
-export interface SizeCategoryReport {
-  category: SizeCategory
-  threshold: number
-  fileCount: number
-  totalLines: number
-  medianLines: number
-  largeFiles: SizeEntry[]
-}
-
-export interface SizeReport {
-  categories: SizeCategoryReport[]
-  totalLines: number
-  totalFiles: number
-  entries: SizeEntry[]
-  domainTotals: Record<string, DomainSizeTotals>
-}
-
-export interface SizeBaseline {
-  thresholds: Record<SizeCategory, number>
-  largeFiles: Record<SizeCategory, string[]>
-  pageLines?: Record<string, number>
-  nonPageLines?: Record<string, number>
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value)
-}
-
-export function isSizeBaseline(value: unknown): value is SizeBaseline {
-  if (!isRecord(value) || !isRecord(value.thresholds) || !isRecord(value.largeFiles)) {
-    return false
+  const visit = (node: ts.Node): void => {
+    if (ts.isJsxAttribute(node) && ts.isIdentifier(node.name)) {
+      const name = node.name.text
+      let values = attributes.get(name)
+      if (!values) {
+        values = new Set<string | null>()
+        attributes.set(name, values)
+      }
+      values.add(
+        node.initializer && ts.isStringLiteral(node.initializer)
+          ? node.initializer.text
+          : null,
+      )
+    }
+    ts.forEachChild(node, visit)
   }
 
-  for (const category of SIZE_CATEGORIES) {
-    const threshold = value.thresholds[category]
-    if (typeof threshold !== 'number' || !Number.isFinite(threshold) || threshold <= 0) return false
-    const files = value.largeFiles[category]
-    if (!Array.isArray(files) || files.some(file => typeof file !== 'string')) return false
-  }
+  visit(sourceFile)
+  return attributes
+}
 
-  for (const lines of [value.pageLines, value.nonPageLines]) {
-    if (lines === undefined) continue
-    if (
-      !isRecord(lines)
-      || Object.values(lines).some(lineCount => typeof lineCount !== 'number' || !Number.isFinite(lineCount))
-    ) {
-      return false
+function hasRegionAnchor(
+  attributes: ReadonlyMap<string, ReadonlySet<string | null>>,
+  anchor: RegionAnchor,
+): boolean {
+  const values = attributes.get(anchor.attribute)
+  if (!values) return false
+  return anchor.value === undefined || values.has(anchor.value)
+}
+
+function formatRegionAnchor(anchor: RegionAnchor): string {
+  return anchor.value === undefined ? anchor.attribute : `${anchor.attribute}="${anchor.value}"`
+}
+
+export function checkLayoutRegions(files: readonly SourceFile[]): GuardrailViolation[] {
+  const filesByPath = new Map(files.map(file => [file.path, file]))
+  const violations: GuardrailViolation[] = []
+
+  for (const [filePath, anchors] of Object.entries(LAYOUT_REGION_CONTRACT)) {
+    const file = filesByPath.get(filePath)
+    if (!file) {
+      violations.push({
+        rule: 'layout-region',
+        file: filePath,
+        message: `缺少布局文件：${filePath}，无法核对壳层稳定锚点`,
+      })
+      continue
+    }
+
+    const attributes = collectJsxAttributes(parseSourceFile(file))
+    for (const anchor of anchors) {
+      if (hasRegionAnchor(attributes, anchor)) continue
+      violations.push({
+        rule: 'layout-region',
+        file: filePath,
+        message: `缺少壳层稳定锚点：${formatRegionAnchor(anchor)}`,
+      })
     }
   }
 
-  return true
+  return violations
 }
 
-export interface SizeBudgetResult {
-  violations: string[]
-  notes: string[]
+const GLOBAL_STYLE_FILES = [
+  'styles/index.css',
+  'styles/layout.css',
+  'styles/chrome.css',
+] as const
+
+const GLOBAL_STYLE_FORBIDDEN_SELECTORS: readonly RegExp[] = [
+  /\[data-page-kind\b/,
+  /\.(?:automation|combat|roguelike|training|statistics|logs|dashboard|settings|config)-/,
+]
+
+interface CssSelectorPrelude {
+  selector: string
+  index: number
 }
 
-export function countLines(source: string): number {
-  if (source.length === 0) return 0
-  const normalized = source.replace(/\r\n/g, '\n')
-  return normalized.endsWith('\n')
-    ? normalized.split('\n').length - 1
-    : normalized.split('\n').length
+function stripCssComments(source: string): string {
+  return source.replace(/\/\*[\s\S]*?\*\//g, comment => comment.replace(/[^\n]/g, ' '))
 }
 
-export function sizeCategoryOf(filePath: string): SizeCategory | null {
-  if (isTestFile(filePath)) return null
-  if (PAGE_FILE_PATTERN.test(filePath)) return 'pages'
-  const match = SIZE_CATEGORY_PATTERN.exec(filePath)
-  const category = match?.[1]
-  return category === 'hooks' || category === 'model' || category === 'components'
-    ? category
-    : null
-}
+function collectCssSelectorPreludes(css: string): CssSelectorPrelude[] {
+  const preludes: CssSelectorPrelude[] = []
+  let segmentStart = 0
+  let quote: string | null = null
+  let depth = 0
 
-function medianOf(sortedValues: readonly number[]): number {
-  if (sortedValues.length === 0) return 0
-  const middle = Math.floor(sortedValues.length / 2)
-  if (sortedValues.length % 2 === 1) return sortedValues[middle] ?? 0
-  return Math.round(((sortedValues[middle - 1] ?? 0) + (sortedValues[middle] ?? 0)) / 2)
-}
+  for (let index = 0; index < css.length; index += 1) {
+    const character = css[index]
 
-export function analyzeSize(
-  files: readonly SourceFile[],
-  thresholds: Record<SizeCategory, number>,
-): SizeReport {
-  const entries: SizeEntry[] = []
+    if (quote) {
+      if (character === '\\') {
+        index += 1
+      } else if (character === quote) {
+        quote = null
+      }
+      continue
+    }
 
-  for (const file of files) {
-    const category = sizeCategoryOf(file.path)
-    if (!category) continue
-    entries.push({ path: file.path, category, lines: countLines(file.source) })
+    if (character === '"' || character === "'") {
+      quote = character
+      continue
+    }
+
+    if (character === '{') {
+      const raw = css.slice(segmentStart, index)
+      const selector = raw.trim()
+      if (selector && !selector.startsWith('@')) {
+        preludes.push({
+          selector,
+          index: segmentStart + (raw.length - raw.trimStart().length),
+        })
+      }
+      depth += 1
+      segmentStart = index + 1
+    } else if (character === '}') {
+      depth = Math.max(0, depth - 1)
+      segmentStart = index + 1
+    } else if (character === ';' && depth === 0) {
+      segmentStart = index + 1
+    }
   }
 
-  const categories = SIZE_CATEGORIES.map((category) => {
-    const categoryEntries = entries.filter(entry => entry.category === category)
-    const lines = categoryEntries.map(entry => entry.lines).sort((a, b) => a - b)
-    const threshold = thresholds[category]
-    return {
-      category,
-      threshold,
-      fileCount: categoryEntries.length,
-      totalLines: lines.reduce((sum, value) => sum + value, 0),
-      medianLines: medianOf(lines),
-      largeFiles: categoryEntries
-        .filter(entry => entry.lines > threshold)
-        .sort((a, b) => b.lines - a.lines || a.path.localeCompare(b.path)),
+  return preludes
+}
+
+function lineNumberAt(source: string, index: number): number {
+  let line = 1
+  for (let cursor = 0; cursor < index; cursor += 1) {
+    if (source[cursor] === '\n') line += 1
+  }
+  return line
+}
+
+function compactSelector(selector: string): string {
+  const compact = selector.replace(/\s+/g, ' ')
+  return compact.length > 120 ? `${compact.slice(0, 117)}...` : compact
+}
+
+export function checkGlobalStyleScope(files: readonly SourceFile[]): GuardrailViolation[] {
+  const filesByPath = new Map(files.map(file => [file.path, file]))
+  const violations: GuardrailViolation[] = []
+
+  for (const filePath of GLOBAL_STYLE_FILES) {
+    const file = filesByPath.get(filePath)
+    if (!file) {
+      violations.push({
+        rule: 'global-style-scope',
+        file: filePath,
+        message: `缺少全局样式文件：${filePath}，无法核对页面选择器`,
+      })
+      continue
     }
+
+    const css = stripCssComments(file.source)
+    for (const prelude of collectCssSelectorPreludes(css)) {
+      for (const pattern of GLOBAL_STYLE_FORBIDDEN_SELECTORS) {
+        const match = pattern.exec(prelude.selector)
+        if (!match) continue
+        const line = lineNumberAt(css, prelude.index)
+        violations.push({
+          rule: 'global-style-scope',
+          file: filePath,
+          message: `全局样式不得包含页面或领域选择器（第 ${line} 行：${compactSelector(prelude.selector)}；命中 ${match[0]}）`,
+        })
+        break
+      }
+    }
+  }
+
+  return violations
+}
+
+const LAYOUT_TEST_FILE_PATTERN = /\.layout\.test\.tsx$/
+const LAYOUT_TEST_STYLE_PROPERTIES = new Set([
+  'width',
+  'height',
+  'top',
+  'left',
+  'right',
+  'bottom',
+  'display',
+  'maxHeight',
+])
+const LAYOUT_TEST_INVOCATION_KEYS = new Set(['behavior', 'block'])
+const LAYOUT_TEST_SELECTOR_FUNCTIONS = new Set(['querySelector', 'querySelectorAll'])
+
+function isClassSelectorArgument(argument: ts.Expression | undefined): boolean {
+  if (!argument) return false
+  const expression = unwrapExpression(argument)
+  return ts.isStringLiteralLike(expression) && expression.text.trimStart().startsWith('.')
+}
+
+function callExpressionName(node: ts.CallExpression): string | null {
+  const expression = unwrapExpression(node.expression)
+  if (ts.isIdentifier(expression)) return expression.text
+  if (ts.isPropertyAccessExpression(expression)) return expression.name.text
+  return null
+}
+
+function objectLiteralContainsKey(node: ts.Node, keys: ReadonlySet<string>): boolean {
+  if (ts.isObjectLiteralExpression(node)) {
+    for (const property of node.properties) {
+      if (!ts.isPropertyAssignment(property) && !ts.isShorthandPropertyAssignment(property)) continue
+      const key = assignmentPropertyKey(property)
+      if (key !== null && keys.has(key)) return true
+    }
+  }
+
+  let found = false
+  ts.forEachChild(node, (child) => {
+    if (found) return
+    if (objectLiteralContainsKey(child, keys)) found = true
   })
-
-  const domainTotals: Record<string, DomainSizeTotals> = {}
-  for (const entry of entries) {
-    const domain = /^(?:features|pages)\/([^/]+)\//.exec(entry.path)?.[1]
-    if (!domain) continue
-    const totals = domainTotals[domain] ?? { pages: 0, nonPage: 0 }
-    if (entry.category === 'pages') {
-      totals.pages += entry.lines
-    } else {
-      totals.nonPage += entry.lines
-    }
-    domainTotals[domain] = totals
-  }
-
-  return {
-    categories,
-    totalLines: entries.reduce((sum, entry) => sum + entry.lines, 0),
-    totalFiles: entries.length,
-    entries,
-    domainTotals,
-  }
+  return found
 }
 
-export const RELOCATION_MIN_SHRINK_LINES = 40
-export const RELOCATION_GROWTH_RATIO = 0.8
-
-export function evaluateSizeBudget(report: SizeReport, baseline: SizeBaseline): SizeBudgetResult {
-  const violations: string[] = []
-  const notes: string[] = []
-  const entriesByPath = new Map(report.entries.map(entry => [entry.path, entry]))
-
-  for (const categoryReport of report.categories) {
-    const { category } = categoryReport
-    const baselineFiles = new Set(baseline.largeFiles[category] ?? [])
-    const currentLarge = new Set(categoryReport.largeFiles.map(entry => entry.path))
-
-    for (const entry of categoryReport.largeFiles) {
-      if (baselineFiles.has(entry.path)) continue
-      violations.push(
-        `新增超阈值文件：${entry.path}（${category} 阈值 ${categoryReport.threshold} 行，当前 ${entry.lines} 行）`,
-      )
-    }
-
-    for (const baselinePath of baselineFiles) {
-      if (currentLarge.has(baselinePath)) continue
-      const entry = entriesByPath.get(baselinePath)
-      notes.push(
-        entry
-          ? `已回落到阈值以下：${baselinePath}（${category}，当前 ${entry.lines} 行）`
-          : `基线文件已不存在：${baselinePath}（${category}）`,
-      )
-    }
+function collectLayoutTestViolations(file: SourceFile, violations: GuardrailViolation[]): void {
+  const sourceFile = parseSourceFile(file)
+  const report = (node: ts.Node, detail: string): void => {
+    const line = sourceFile.getLineAndCharacterOfPosition(node.getStart(sourceFile)).line + 1
+    violations.push({
+      rule: 'layout-test-detail',
+      file: file.path,
+      message: `布局测试不得锁定实现细节（第 ${line} 行：${detail}）`,
+    })
   }
 
-  for (const [domain, totals] of Object.entries(report.domainTotals).sort(([a], [b]) => a.localeCompare(b))) {
-    const baselinePages = baseline.pageLines?.[domain]
-    const baselineNonPage = baseline.nonPageLines?.[domain]
-    if (baselinePages === undefined || baselineNonPage === undefined) continue
+  const visit = (node: ts.Node): void => {
+    if (ts.isCallExpression(node)) {
+      const name = callExpressionName(node)
+      if (name === 'toHaveClass') report(node, 'toHaveClass')
+      if (name === 'toHaveStyle') report(node, 'toHaveStyle')
+      if (
+        (name === 'toHaveBeenCalledWith' || name === 'toHaveBeenLastCalledWith')
+        && node.arguments.some(argument => objectLiteralContainsKey(argument, LAYOUT_TEST_INVOCATION_KEYS))
+      ) {
+        report(node, `${name} 的 behavior/block 精确参数`)
+      }
+      if (
+        name !== null
+        && LAYOUT_TEST_SELECTOR_FUNCTIONS.has(name)
+        && isClassSelectorArgument(node.arguments[0])
+      ) {
+        report(node, `${name} 的类选择器`)
+      }
+    }
 
-    const shrink = baselinePages - totals.pages
-    if (shrink < RELOCATION_MIN_SHRINK_LINES) continue
+    if (ts.isPropertyAccessExpression(node)) {
+      const member = node.name.text
+      if (member === 'classList') report(node, 'classList')
+      if (member === 'previousElementSibling' || member === 'nextElementSibling') report(node, member)
+      if (
+        LAYOUT_TEST_STYLE_PROPERTIES.has(member)
+        && ts.isPropertyAccessExpression(node.expression)
+        && node.expression.name.text === 'style'
+      ) {
+        report(node, `.style.${member}`)
+      }
+    }
 
-    const growth = totals.nonPage - baselineNonPage
-    if (growth < Math.ceil(shrink * RELOCATION_GROWTH_RATIO)) continue
+    if (ts.isElementAccessExpression(node)) {
+      const member = staticMemberName(node)
+      if (member === 'classList') report(node, 'classList')
+      if (
+        member !== null
+        && LAYOUT_TEST_STYLE_PROPERTIES.has(member)
+        && ts.isPropertyAccessExpression(node.expression)
+        && node.expression.name.text === 'style'
+      ) {
+        report(node, `.style.${member}`)
+      }
+    }
 
-    violations.push(
-      `疑似把页面逻辑搬进非页面目录：pages/${domain} 从 ${baselinePages} 行降到 ${totals.pages} 行`
-      + `（-${shrink}），hooks/model/components 从 ${baselineNonPage} 行增到 ${totals.nonPage} 行（+${growth}）。`
-      + '请确认是真实拆分；如属有意的结构调整，运行 guardrails:size-baseline 并说明依据。',
-    )
+    if (ts.isStringLiteralLike(node) && node.text.includes('data-align')) report(node, 'data-align')
+    if (
+      ts.isJsxAttribute(node)
+      && ts.isIdentifier(node.name)
+      && node.name.text === 'data-align'
+    ) {
+      report(node, 'data-align')
+    }
+
+    ts.forEachChild(node, visit)
   }
 
-  return { violations, notes }
+  visit(sourceFile)
+}
+
+export function checkLayoutTestDetails(files: readonly SourceFile[]): GuardrailViolation[] {
+  const layoutTests = files.filter(file => LAYOUT_TEST_FILE_PATTERN.test(file.path))
+  if (layoutTests.length === 0) return []
+
+  const violations: GuardrailViolation[] = []
+  for (const file of layoutTests) collectLayoutTestViolations(file, violations)
+  return violations
 }
 
 export async function readSourceTree(srcRoot: string): Promise<SourceFile[]> {
+  return readMatchingTree(srcRoot, name => /\.(?:ts|tsx)$/.test(name))
+}
+
+export async function readStyleTree(srcRoot: string): Promise<SourceFile[]> {
+  return readMatchingTree(srcRoot, name => name.endsWith('.css'))
+}
+
+async function readMatchingTree(
+  root: string,
+  matches: (name: string) => boolean,
+): Promise<SourceFile[]> {
   const files: SourceFile[] = []
 
   const walk = async (directory: string): Promise<void> => {
@@ -1584,14 +1733,14 @@ export async function readSourceTree(srcRoot: string): Promise<SourceFile[]> {
         await walk(absolute)
         continue
       }
-      if (!/\.(?:ts|tsx)$/.test(entry.name)) continue
+      if (!matches(entry.name)) continue
       files.push({
-        path: path.relative(srcRoot, absolute).split(path.sep).join('/'),
+        path: path.relative(root, absolute).split(path.sep).join('/'),
         source: await readFile(absolute, 'utf8'),
       })
     }
   }
 
-  await walk(srcRoot)
+  await walk(root)
   return files
 }

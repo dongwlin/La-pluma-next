@@ -1,7 +1,13 @@
 import { useEffect, useState } from 'react'
 import { motion, useReducedMotion } from 'framer-motion'
-import { Clock3, Plus, X } from 'lucide-react'
-import { IconButton, SmoothPanel, Switch } from '@/shared/ui'
+import { Plus, X } from 'lucide-react'
+import { EmptyState } from '@/shared/components'
+import { Badge } from '@/shared/ui/badge'
+import { Button } from '@/shared/ui/button'
+import { Input } from '@/shared/ui/input'
+import { Item, ItemActions } from '@/shared/ui/item'
+import { Switch } from '@/shared/ui/switch'
+import { Card } from '@/shared/ui/card'
 import {
   MAX_SCHEDULE_ENTRIES,
   appendScheduleEntry,
@@ -65,7 +71,7 @@ function ScheduleTimeField({ index, time, disabled, onCommit }: ScheduleTimeFiel
   }
 
   return (
-    <input
+    <Input
       type="text"
       inputMode="numeric"
       autoComplete="off"
@@ -144,21 +150,20 @@ export default function AutomationScheduleCard({
   }
 
   return (
-    <SmoothPanel className="automation-side-card">
+    <Card className="automation-side-card gap-0 p-0!">
       <div className="automation-side-card-heading">
         <div className="automation-side-card-heading-text">
-          <h3><Clock3 size={16} strokeWidth={1.8} aria-hidden="true" /><span>定时执行</span></h3>
-          <p>到点自动运行任务流程</p>
+          <h3><span>定时执行</span></h3>
         </div>
         <div className="automation-side-card-heading-actions">
-          <span className="automation-schedule-count" aria-label={`已设置 ${entries.length} 个执行时间`}>
+          <Badge variant="secondary" className="tabular-nums" aria-label={`已设置 ${entries.length} 个执行时间`}>
             {entries.length === 0 ? '0' : `${enabledCount}/${entries.length}`}
-          </span>
+          </Badge>
           <Switch
             checked={enabled}
-            onChange={handleEnabledChange}
+            onCheckedChange={handleEnabledChange}
             disabled={disabled}
-            label="启用定时执行"
+            aria-label="启用定时执行"
             className="automation-card-switch"
           />
         </div>
@@ -172,13 +177,14 @@ export default function AutomationScheduleCard({
           transition={{ duration: shouldReduceMotion ? 0 : 0.2 }}
         >
           {entries.length === 0 ? (
-            <p className="automation-schedule-empty">还没有执行时间</p>
+            <EmptyState compact title="还没有执行时间" />
           ) : (
             <div className="automation-schedule-times">
               {entries.map((entry, index) => (
-                <div
+                <Item
                   key={`schedule-time-${index}`}
-                  className={`automation-schedule-time-row${entry.enabled ? '' : ' is-off'}`}
+                  size="sm"
+                  className={`automation-schedule-time-row${entry.enabled ? '' : ' is-off'} min-h-11 flex-nowrap gap-2 rounded-none border-x-0 border-b-0 px-0 py-0 ${index > 0 ? 'border-t border-border' : 'border-t-0'}`}
                 >
                   <ScheduleTimeField
                     index={index}
@@ -186,45 +192,48 @@ export default function AutomationScheduleCard({
                     disabled={disabled}
                     onCommit={(time) => updateScheduleTime(index, time)}
                   />
-                  <Switch
-                    checked={entry.enabled}
-                    onChange={(nextEnabled) => updateScheduleTimeEnabled(index, nextEnabled)}
-                    disabled={disabled}
-                    label={`${entry.time} 启用`}
-                    compact
-                    className="automation-schedule-row-switch"
-                  />
-                  {entries.length > 1 ? (
-                    <IconButton
-                      icon={<X size={16} strokeWidth={2.2} aria-hidden="true" />}
-                      variant="ghost"
-                      size="md"
-                      onClick={() => removeScheduleTime(index)}
+                  <ItemActions className="ml-auto">
+                    <Switch
+                      checked={entry.enabled}
+                      onCheckedChange={(nextEnabled) => updateScheduleTimeEnabled(index, nextEnabled)}
                       disabled={disabled}
-                      className="automation-schedule-row-remove"
-                      aria-label={`删除 ${entry.time}`}
-                      title="删除时间"
+                      aria-label={`${entry.time} 启用`}
+                      size="sm"
                     />
-                  ) : <span className="automation-schedule-row-remove-placeholder" aria-hidden="true" />}
-                </div>
+                    {entries.length > 1 ? (
+                      <Button
+                        size="icon"
+                        variant="ghost"
+                        onClick={() => removeScheduleTime(index)}
+                        disabled={disabled}
+                        className="automation-schedule-row-remove hover:text-destructive"
+                        aria-label={`删除 ${entry.time}`}
+                        title="删除时间"
+                      >
+                        <X size={16} strokeWidth={2.2} aria-hidden="true" />
+                      </Button>
+                    ) : <span className="automation-schedule-row-remove-placeholder" aria-hidden="true" />}
+                  </ItemActions>
+                </Item>
               ))}
             </div>
           )}
 
-          <button
+          <Button
             type="button"
-            className="automation-schedule-add"
+            variant="secondary"
+            className="automation-schedule-add w-full justify-start gap-2"
             onClick={addScheduleTime}
             disabled={disabled || entries.length >= MAX_SCHEDULE_ENTRIES}
           >
-            <Plus size={14} strokeWidth={2.2} aria-hidden="true" />
+            <Plus data-icon="inline-start" aria-hidden="true" />
             <span>新增时间</span>
-            {entries.length >= MAX_SCHEDULE_ENTRIES && <small>最多 {MAX_SCHEDULE_ENTRIES} 个</small>}
-          </button>
+            {entries.length >= MAX_SCHEDULE_ENTRIES && <small className="ml-auto text-xs text-tertiary-foreground">最多 {MAX_SCHEDULE_ENTRIES} 个</small>}
+          </Button>
         </motion.div>
       ) : (
         <div className="automation-schedule-paused">
-          <span className="automation-schedule-paused-label">已暂停</span>
+          <Badge variant="secondary" className="font-normal">已暂停</Badge>
           <span className="automation-schedule-paused-times">
             {entries.length === 0 ? '未设置执行时间' : pausedTimes}
           </span>
@@ -232,6 +241,6 @@ export default function AutomationScheduleCard({
       )}
 
       <p className="automation-schedule-timezone">游戏服务区时区 · 每日 04:00 刷新游戏日</p>
-    </SmoothPanel>
+    </Card>
   )
 }

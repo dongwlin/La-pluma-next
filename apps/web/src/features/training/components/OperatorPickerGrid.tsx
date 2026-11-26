@@ -1,6 +1,8 @@
 import { useState, type ReactNode } from 'react'
 import { getOperatorAvatarUrl, useItemIconCacheVersion } from '@/features/game-data'
-import { Button } from '@/shared/ui'
+import { Badge } from '@/shared/ui/badge'
+import { Button } from '@/shared/ui/button'
+import { Skeleton } from '@/shared/ui/skeleton'
 import { OPERATOR_RENDER_BATCH_SIZE } from '../model/operatorRows'
 
 export interface OperatorPickerGridItem {
@@ -26,11 +28,11 @@ function OperatorPickerCard({ item, eager }: OperatorPickerCardProps) {
 
   return (
     <div className={`training-operator-item relative overflow-hidden p-2.5 ${isOwned ? '' : 'opacity-75'}`}>
-      <div className="relative mb-2.5 aspect-square w-full overflow-hidden rounded-xl surface-panel">
+      <div className="relative mb-2.5 aspect-square w-full overflow-hidden rounded-xl bg-muted">
         {item.id ? (
           <>
             {!imageLoaded && (
-              <div className="app-skeleton absolute inset-0 surface-soft" />
+              <Skeleton className="absolute inset-0 rounded-none" />
             )}
             <img
               src={getOperatorAvatarUrl(item.id, 'base', itemIconVersion)}
@@ -55,7 +57,7 @@ function OperatorPickerCard({ item, eager }: OperatorPickerCardProps) {
               }}
             />
             {item.scrim && imageLoaded && (
-              <div className={`absolute inset-0 ${isOwned ? 'bg-(--app-surface)/25' : 'bg-(--app-surface)/50'}`} />
+              <div className={`absolute inset-0 ${isOwned ? 'bg-card/25' : 'bg-card/50'}`} />
             )}
           </>
         ) : (
@@ -64,21 +66,21 @@ function OperatorPickerCard({ item, eager }: OperatorPickerCardProps) {
           </div>
         )}
         {item.rarity > 0 && (
-          <div className="absolute right-2 top-2 rounded-full px-2 py-0.5 text-xs font-semibold surface-panel brand-text">
+          <Badge variant="outline" className="absolute right-2 top-2 border-transparent brand-chip brand-text font-semibold">
             {item.rarity}★
-          </div>
+          </Badge>
         )}
       </div>
 
-      <div className="space-y-2 text-center">
-        <div className="truncate text-sm font-semibold text-primary" title={item.name}>
+      <div className="flex flex-col gap-2 text-center">
+        <div className="truncate text-sm font-semibold text-foreground" title={item.name}>
           {item.name || '未知干员'}
         </div>
         <div className="flex min-h-5 flex-wrap items-center justify-center gap-1 text-xs">
           {isOwned && item.elite !== undefined && (
-            <span className="whitespace-nowrap rounded-full px-2 py-0.5 surface-panel text-secondary">
+            <Badge variant="outline" className="border-transparent surface-soft text-muted-foreground">
               精{item.elite}{item.level ? ` · ${item.level} 级` : ''}
-            </span>
+            </Badge>
           )}
         </div>
 
@@ -115,7 +117,6 @@ export default function OperatorPickerGrid({
           <Button
             onClick={onShowMore}
             variant="secondary"
-            size="md"
             className="min-w-36"
           >
             继续显示 {Math.min(OPERATOR_RENDER_BATCH_SIZE, hiddenCount)} 个

@@ -49,7 +49,7 @@ describe('usePreviewSnapshotOwner', () => {
   beforeEach(() => {
     vi.useFakeTimers()
     mocks.captureScreen.mockReset().mockResolvedValue(captured())
-    usePreviewStore.setState({ mode: 'off', quality: 'power', fps: 15, maxSize: 640, bitrateMbps: 1.5 })
+    usePreviewStore.setState({ mode: 'off', quality: 'smooth', customFps: 30, customMaxSize: 640, customBitrateMbps: 4 })
     window.localStorage.clear()
     visibility = 'visible'
     Object.defineProperty(document, 'visibilityState', { configurable: true, get: () => visibility })
@@ -153,6 +153,20 @@ describe('usePreviewSnapshotOwner', () => {
     expect(snapshot.image).toBeNull()
 
     await act(async () => vi.advanceTimersByTimeAsync(10000))
+    expect(snapshot.image).toBe('data:image/png;base64,fresh-image')
+    expect(snapshot.error).toBeNull()
+  })
+
+  it('retries immediately when retry is requested', async () => {
+    mocks.captureScreen.mockResolvedValueOnce({ success: false })
+    await render()
+    await selectMode('snapshot')
+    expect(snapshot.error).toBe('无法获取设备截图')
+    expect(mocks.captureScreen).toHaveBeenCalledTimes(1)
+
+    await act(async () => snapshot.retry())
+
+    expect(mocks.captureScreen).toHaveBeenCalledTimes(2)
     expect(snapshot.image).toBe('data:image/png;base64,fresh-image')
     expect(snapshot.error).toBeNull()
   })

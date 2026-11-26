@@ -3,43 +3,19 @@
     display: flex;
     align-items: center;
     justify-content: space-between;
-    min-height: 4.75rem;
+    min-height: var(--layout-navbar-height);
     gap: 1rem;
     padding: 1rem 1.125rem;
-    border-bottom: 1px solid var(--app-border);
+    border-bottom: 1px solid var(--border);
   }
 
   .automation-flow-header h3 {
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-    color: var(--app-text);
-    font-size: var(--app-font-card-title);
+    color: var(--foreground);
+    font-size: 1rem;
     font-weight: 600;
   }
 
-  .automation-flow-header h3 svg {
-    width: 1.05rem;
-    height: 1.05rem;
-    color: var(--app-accent);
-  }
-
-  .automation-flow-summary {
-    display: inline-flex;
-    flex: 0 0 auto;
-    align-items: center;
-    justify-content: center;
-    min-height: 1.75rem;
-    border-radius: 999px;
-    padding: 0 0.625rem;
-    background: color-mix(in srgb, var(--app-surface-muted) 88%, transparent);
-    color: var(--app-text-muted);
-    box-shadow: none;
-    font-size: 0.6875rem;
-    font-weight: 700;
-  }
-
-  @media (min-width: 1200px) {
+  @media (width >= 1200px) {
     .automation-flow-card-header {
       align-items: flex-start;
       flex-direction: column;
@@ -57,36 +33,6 @@
     }
   }
 
-  .automation-flow-card {
-    min-width: 0;
-    border: 1px solid var(--app-border);
-    border-radius: var(--app-radius-lg);
-    padding: 1rem;
-    background: var(--app-surface-muted);
-    transition: border-color 160ms ease, background 160ms ease, box-shadow 160ms ease, opacity 160ms ease, transform 160ms ease;
-  }
-
-  .automation-flow-card:hover {
-    border-color: color-mix(in srgb, var(--app-accent) 42%, var(--app-border));
-    box-shadow: 0 8px 22px color-mix(in srgb, var(--app-accent) 9%, transparent);
-  }
-
-  .automation-flow-card.is-current {
-    border-color: var(--app-accent);
-    background: var(--app-accent-soft);
-    box-shadow: none;
-  }
-
-  .automation-flow-card.is-disabled {
-    background: color-mix(in srgb, var(--app-surface-muted) 56%, transparent);
-    opacity: 0.58;
-  }
-
-  .automation-flow-card.is-dragging {
-    transform: scale(0.99);
-    opacity: 0.5;
-  }
-
   .automation-flow-card-header {
     display: flex;
     align-items: center;
@@ -95,7 +41,7 @@
     gap: 1rem;
     margin-bottom: 1rem;
     padding-bottom: 0.875rem;
-    border-bottom: 1px solid var(--app-border);
+    border-bottom: 1px solid var(--border);
   }
 
   .automation-flow-card-identity,
@@ -116,7 +62,7 @@
 
   .automation-flow-sequence {
     flex: 0 0 auto;
-    color: var(--app-accent);
+    color: var(--primary);
     font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
     font-size: 0.625rem;
     font-weight: 700;
@@ -130,8 +76,8 @@
 
   .automation-flow-task-name strong {
     overflow: hidden;
-    color: var(--app-text);
-    font-size: var(--app-font-body);
+    color: var(--foreground);
+    font-size: 0.875rem;
     font-weight: 600;
     text-overflow: ellipsis;
     white-space: nowrap;
@@ -139,22 +85,18 @@
 
   .automation-flow-task-name small {
     overflow: hidden;
-    color: var(--app-text-soft);
+    color: var(--tertiary-foreground);
     font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
-    font-size: var(--app-font-meta);
+    font-size: 0.6875rem;
     text-overflow: ellipsis;
     white-space: nowrap;
   }
 
-  @media (max-width: 639px) {
+  @media (width < 640px) {
     .automation-flow-header {
       min-height: 0;
       align-items: stretch;
       flex-direction: column;
-      padding: 0.875rem;
-    }
-
-    .automation-flow-card {
       padding: 0.875rem;
     }
 
@@ -183,10 +125,9 @@
       "editor"
       "support";
     align-items: start;
-    gap: var(--app-space-section);
+    gap: 1.125rem;
   }
 
-  .automation-monitor-column,
   .automation-sequence-column,
   .automation-editor-column,
   .automation-support-column {
@@ -205,60 +146,10 @@
     display: grid;
     grid-area: support;
     align-content: start;
-    gap: var(--app-space-section);
+    gap: 1.125rem;
   }
 
-  .automation-monitor-panel {
-    width: 100%;
-  }
-
-  .automation-monitor-skeleton-surface {
-    padding: 0;
-  }
-
-  .automation-monitor-skeleton {
-    container-type: inline-size;
-  }
-
-  .automation-monitor-skeleton-header {
-    display: flex;
-    min-height: 3.25rem;
-    align-items: center;
-    gap: 0.5rem;
-    padding: 0.75rem 1rem;
-  }
-
-  .automation-monitor-skeleton-frame {
-    width: calc(100% - 1.5rem);
-    max-height: 17rem;
-    margin: 0 0.75rem;
-    overflow: hidden;
-    border-radius: var(--app-continuous-radius-compact);
-  }
-
-  .automation-monitor-skeleton-toolbar {
-    display: flex;
-    min-height: 4rem;
-    align-items: center;
-    justify-content: center;
-    gap: clamp(0.25rem, 2cqw, 0.75rem);
-    padding: 0.625rem 1rem 0.75rem;
-  }
-
-  .automation-monitor-skeleton-toolbar .app-skeleton {
-    flex: 0 0 2.75rem;
-  }
-
-  @container (min-width: 34rem) {
-    .automation-monitor-skeleton-frame {
-      height: 13.5rem;
-      max-height: none;
-      aspect-ratio: auto;
-    }
-
-  }
-
-  @media (min-width: 900px) {
+  @media (width >= 900px) {
     .automation-workspace-grid {
       grid-template-columns: repeat(2, minmax(0, 1fr));
       grid-template-areas:
@@ -271,7 +162,7 @@
     }
   }
 
-  @media (min-width: 1360px) {
+  @media (width >= 1360px) {
     .automation-workspace-grid {
       grid-template-columns: repeat(3, minmax(0, 1fr));
       grid-template-areas: "sequence editor support";
@@ -280,21 +171,25 @@
 
   .automation-sequence-panel {
     position: sticky;
-    top: 1rem;
-    max-height: calc(100vh - 2rem);
+    top: var(--layout-content-sticky-top);
+    max-height: calc(var(--layout-viewport-height, 100dvh) - var(--layout-navbar-height) - 2rem);
+  }
+
+  @media (900px <= width < 1024px) {
+    .automation-sequence-panel {
+      max-height: calc(
+        var(--layout-viewport-height, 100dvh) -
+        var(--layout-content-sticky-top) -
+        var(--layout-tabbar-reserved-height) -
+        1rem
+      );
+    }
   }
 
   .automation-sequence-surface {
     display: flex;
     min-height: 0;
-    max-height: inherit;
     flex-direction: column;
-  }
-
-  /* useSmoothCorners 把圆角写成内联 clip-path，会裁掉流程页脚上方的固定定位菜单；
-     菜单展开期间交回 overflow 圆角裁剪，关闭后恢复连续圆角。 */
-  .automation-sequence-surface:has(.automation-task-picker) {
-    clip-path: none !important;
   }
 
   .automation-sequence-surface > .automation-flow-header {
@@ -307,7 +202,7 @@
     align-items: center;
     justify-content: center;
     flex-direction: column;
-    color: var(--app-text-soft);
+    color: var(--tertiary-foreground);
     text-align: center;
   }
 
@@ -319,20 +214,20 @@
   .automation-sequence-empty svg,
   .automation-editor-empty svg {
     margin-bottom: 0.625rem;
-    color: var(--app-accent);
+    color: var(--primary);
   }
 
   .automation-sequence-empty strong,
   .automation-editor-empty strong {
-    color: var(--app-text);
-    font-size: var(--app-font-body);
+    color: var(--foreground);
+    font-size: 0.875rem;
     font-weight: 600;
   }
 
   .automation-sequence-empty span,
   .automation-editor-empty span {
     margin-top: 0.25rem;
-    font-size: var(--app-font-caption);
+    font-size: 0.75rem;
   }
 
   .automation-sequence-list {
@@ -342,8 +237,8 @@
     overflow-y: auto;
     margin: 0.5rem 0.75rem 0.75rem;
     padding: 0;
-    border-radius: var(--app-radius-lg);
-    background: color-mix(in srgb, var(--app-surface-muted) 88%, transparent);
+    border-radius: var(--radius-xl);
+    background: color-mix(in srgb, var(--muted) 88%, transparent);
     scrollbar-width: none;
   }
 
@@ -362,7 +257,7 @@
     gap: var(--automation-sequence-gap);
     border-radius: 0;
     padding: 0.25rem;
-    color: var(--app-text-muted);
+    color: var(--muted-foreground);
     box-shadow: none;
     isolation: isolate;
     transition: color 160ms ease, opacity 160ms ease, transform 160ms ease;
@@ -386,7 +281,7 @@
     bottom: 0;
     left: calc(5rem + var(--automation-sequence-gap));
     height: 1px;
-    background: var(--app-border);
+    background: var(--border);
     content: '';
     opacity: 0.72;
     transform: scaleY(0.5);
@@ -394,33 +289,33 @@
   }
 
   .automation-sequence-item:not(.is-selected):not(.is-current):hover::before {
-    background: color-mix(in srgb, var(--app-surface-solid) 52%, transparent);
+    background: color-mix(in srgb, var(--card) 52%, transparent);
   }
 
   .automation-sequence-item.is-selected {
-    color: var(--app-text);
+    color: var(--foreground);
   }
 
   .automation-sequence-item.is-selected::before {
     inset: 0.125rem 0;
-    border-radius: var(--app-continuous-radius-compact);
-    background: color-mix(in srgb, var(--app-text) 5%, transparent);
+    border-radius: var(--radius-xl);
+    background: color-mix(in srgb, var(--foreground) 5%, transparent);
     box-shadow: 0 1px 3px color-mix(in srgb, black 6%, transparent);
   }
 
   .automation-sequence-item.is-current:not(.is-selected) {
-    color: var(--app-text);
+    color: var(--foreground);
   }
 
   .automation-sequence-item.is-current:not(.is-selected)::before {
     inset: 0.125rem 0;
-    border-radius: var(--app-continuous-radius-compact);
-    background: color-mix(in srgb, var(--app-accent) 7%, transparent);
-    box-shadow: 0 1px 3px color-mix(in srgb, var(--app-accent) 8%, transparent);
+    border-radius: var(--radius-xl);
+    background: color-mix(in srgb, var(--primary) 7%, transparent);
+    box-shadow: 0 1px 3px color-mix(in srgb, var(--primary) 8%, transparent);
   }
 
   .automation-sequence-item.is-completed {
-    color: var(--app-text);
+    color: var(--foreground);
   }
 
   .automation-sequence-item.is-disabled {
@@ -441,8 +336,8 @@
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    border-radius: var(--app-radius-sm);
-    color: var(--app-text-soft);
+    border-radius: var(--radius-md);
+    color: var(--tertiary-foreground);
   }
 
   .automation-sequence-drag {
@@ -463,7 +358,13 @@
   .automation-sequence-delete {
     width: 1.75rem;
     height: 1.75rem;
-    transition: background 160ms ease, color 160ms ease;
+    transition: background 160ms ease, color 160ms ease, opacity 160ms ease, transform 160ms ease;
+  }
+
+  .automation-sequence-delete.is-execution-hidden {
+    opacity: 0;
+    transform: scale(0.82);
+    pointer-events: none;
   }
 
   .automation-sequence-delete:hover {
@@ -477,13 +378,13 @@
     grid-template-columns: auto minmax(0, 1fr);
     align-items: center;
     gap: 0.5rem;
-    border-radius: var(--app-radius-sm);
+    border-radius: var(--radius-md);
     text-align: left;
   }
 
   .automation-sequence-select:focus-visible,
   .automation-sequence-delete:focus-visible {
-    outline: 2px solid var(--app-accent);
+    outline: 2px solid var(--primary);
     outline-offset: 2px;
   }
 
@@ -496,12 +397,12 @@
     align-items: center;
     justify-content: center;
     border-radius: 999px;
-    background: var(--app-surface);
-    color: var(--app-accent);
+    background: var(--card);
+    color: var(--primary);
     font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
-    font-size: var(--app-font-meta);
+    font-size: 0.6875rem;
     font-weight: 700;
-    box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--app-accent) 30%, var(--app-border));
+    box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--primary) 30%, var(--border));
     transition: color 160ms ease, background 160ms ease, box-shadow 160ms ease;
   }
 
@@ -517,7 +418,7 @@
     z-index: -1;
     left: calc(0.25rem + 2.75rem + var(--automation-sequence-gap) + 0.75rem);
     width: 1px;
-    background: var(--app-border);
+    background: var(--border);
     content: '';
     transform: translateX(-50%);
     pointer-events: none;
@@ -535,20 +436,20 @@
   }
 
   .automation-sequence-item.is-current .automation-sequence-node {
-    background: var(--app-accent);
+    background: var(--primary);
     color: white;
     box-shadow: inset 0 0 0 1px color-mix(in srgb, white 16%, transparent);
   }
 
   .automation-sequence-item.is-completed .automation-sequence-node {
-    background: var(--app-success);
+    background: var(--success);
     color: white;
     box-shadow: inset 0 0 0 1px color-mix(in srgb, white 18%, transparent);
   }
 
   .automation-sequence-item.is-completed .automation-sequence-select::before,
   .automation-sequence-item.is-completed .automation-sequence-select::after {
-    background: color-mix(in srgb, var(--app-success) 68%, var(--app-border));
+    background: color-mix(in srgb, var(--success) 68%, var(--border));
   }
 
   .automation-sequence-progress {
@@ -559,19 +460,10 @@
     .automation-sequence-progress {
       animation: none;
     }
-  }
 
-  .automation-completed-mark {
-    display: inline-flex;
-    width: 1.5rem;
-    height: 1.5rem;
-    align-items: center;
-    justify-content: center;
-    justify-self: center;
-    border-radius: 50%;
-    background: color-mix(in srgb, var(--app-success) 11%, var(--app-surface-solid));
-    color: var(--app-success-text);
-    box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--app-success) 22%, var(--app-border));
+    .automation-sequence-delete {
+      transition: none;
+    }
   }
 
   .automation-sequence-copy {
@@ -588,14 +480,14 @@
   }
 
   .automation-sequence-copy strong {
-    color: var(--app-text);
-    font-size: var(--app-font-body);
+    color: var(--foreground);
+    font-size: 0.875rem;
     font-weight: 600;
   }
 
   .automation-sequence-copy small {
-    color: var(--app-text-soft);
-    font-size: var(--app-font-caption);
+    color: var(--tertiary-foreground);
+    font-size: 0.75rem;
   }
 
   .automation-sequence-enabled {
@@ -606,99 +498,28 @@
 
   .automation-sequence-footer {
     position: relative;
-    display: grid;
+    display: flex;
     flex: 0 0 auto;
-    gap: var(--app-space-2);
-    padding: var(--app-space-3);
-    border-top: 1px solid var(--app-border);
-  }
-
-  [data-automation-tasks] .automation-run-button.is-running:is(:disabled, .disabled) {
-    cursor: progress;
-    opacity: 1 !important;
-    background: color-mix(in srgb, var(--app-accent) 11%, var(--app-surface-solid)) !important;
-    color: var(--app-accent-strong) !important;
-    box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--app-accent) 24%, var(--app-border)) !important;
-  }
-
-  [data-automation-tasks] .automation-stop-button.is-stopping:is(:disabled, .disabled) {
-    cursor: progress;
-    opacity: 1 !important;
-    background: var(--app-accent-soft) !important;
-    color: var(--app-accent-strong) !important;
-    box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--app-accent) 28%, var(--app-border)) !important;
-  }
-
-  [data-automation-tasks] .automation-test-connection.is-testing:is(:disabled, .disabled) {
-    cursor: progress;
-    opacity: 1 !important;
-    background: var(--app-accent-soft) !important;
-    color: var(--app-accent-strong) !important;
-    box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--app-accent) 28%, var(--app-border)) !important;
-  }
-
-  .automation-task-picker-toggle {
-    display: grid;
-    width: 100%;
-    min-height: 2.75rem;
-    grid-template-columns: auto minmax(0, 1fr) auto;
     align-items: center;
     gap: 0.5rem;
-    border-radius: var(--app-radius-md);
-    padding: 0 0.75rem;
-    color: var(--app-text-muted);
-    background: color-mix(in srgb, var(--app-surface-muted) 86%, transparent);
-    box-shadow: none;
-    text-align: left;
-    transition: background 160ms ease, color 160ms ease, box-shadow 160ms ease;
+    padding: 0.75rem;
+    border-top: 1px solid var(--border);
   }
 
-  .automation-task-picker-toggle:hover,
-  .automation-task-picker-toggle.is-open {
-    background: var(--app-accent-soft);
-    color: var(--app-accent);
-    box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--app-accent) 26%, transparent);
+  [data-page-kind="automation"] .automation-stop-button.is-stopping:is(:disabled, .disabled) {
+    cursor: progress;
+    opacity: 1 !important;
+    background: var(--primary-soft) !important;
+    color: var(--primary-strong) !important;
+    box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--primary) 28%, var(--border)) !important;
   }
 
-  .automation-task-picker-toggle:disabled {
-    cursor: not-allowed;
-    opacity: 0.4;
-  }
-
-  .automation-task-picker-toggle span {
-    font-size: var(--app-font-caption);
-    font-weight: 700;
-  }
-
-  .automation-task-picker-toggle small {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    min-width: 1.25rem;
-    height: 1.25rem;
-    border-radius: var(--app-radius-pill);
-    background: var(--app-accent-soft);
-    color: var(--app-accent);
-    font-size: 0.5625rem;
-    font-weight: 700;
-  }
-
-  .automation-task-picker {
-    position: fixed;
-    z-index: 20;
-    display: grid;
-    max-height: 14rem;
-    gap: 0.25rem;
-    overflow-y: auto;
-    border-radius: var(--app-radius-md);
-    padding: 0.375rem;
-    background: var(--app-surface-solid);
-    box-shadow: inset 0 0 0 1px var(--app-border), 0 14px 30px rgba(2, 8, 12, 0.28);
-    scrollbar-width: none;
-  }
-
-  .automation-task-picker::-webkit-scrollbar {
-    display: none;
+  [data-page-kind="automation"] .automation-test-connection.is-testing:is(:disabled, .disabled) {
+    cursor: progress;
+    opacity: 1 !important;
+    background: var(--primary-soft) !important;
+    color: var(--primary-strong) !important;
+    box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--primary) 28%, var(--border)) !important;
   }
 
   .automation-task-picker-option {
@@ -707,17 +528,17 @@
     grid-template-columns: 1.75rem minmax(0, 1fr) auto auto;
     align-items: center;
     gap: 0.5rem;
-    border-radius: var(--app-radius-sm);
+    border-radius: var(--radius-md);
     min-height: 2.75rem;
     padding: 0.375rem 0.5rem;
-    color: var(--app-text-muted);
+    color: var(--muted-foreground);
     text-align: left;
     transition: background 160ms ease, color 160ms ease;
   }
 
   .automation-task-picker-option:hover {
-    background: var(--app-accent-soft);
-    color: var(--app-accent);
+    background: var(--primary-soft);
+    color: var(--primary);
   }
 
   .automation-task-picker-option > span {
@@ -726,9 +547,9 @@
     justify-content: center;
     width: 1.75rem;
     height: 1.75rem;
-    border-radius: var(--app-radius-md);
-    background: var(--app-accent-soft);
-    color: var(--app-accent);
+    border-radius: var(--radius-lg);
+    background: var(--primary-soft);
+    color: var(--primary);
   }
 
   .automation-task-picker-option > span svg {
@@ -738,8 +559,8 @@
 
   .automation-task-picker-option strong {
     overflow: hidden;
-    color: var(--app-text);
-    font-size: var(--app-font-caption);
+    color: var(--foreground);
+    font-size: 0.75rem;
     font-weight: 700;
     text-overflow: ellipsis;
     white-space: nowrap;
@@ -751,8 +572,8 @@
     justify-content: center;
     width: 1.125rem;
     height: 1.125rem;
-    border-radius: var(--app-radius-pill);
-    background: var(--app-accent);
+    border-radius: 9999px;
+    background: var(--primary);
     color: white;
     font-size: 0.625rem;
     font-weight: 700;
@@ -760,30 +581,23 @@
 
   .automation-editor-panel {
     position: sticky;
-    top: 1rem;
+    top: var(--layout-content-sticky-top);
   }
 
   .automation-editor-heading {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    min-height: 4.75rem;
+    min-height: var(--layout-navbar-height);
     gap: 1rem;
     padding: 1rem 1.125rem;
-    border-bottom: 1px solid var(--app-border);
+    border-bottom: 1px solid var(--border);
   }
 
   .automation-editor-heading h3 {
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-    color: var(--app-text);
-    font-size: var(--app-font-card-title);
+    color: var(--foreground);
+    font-size: 1rem;
     font-weight: 600;
-  }
-
-  .automation-editor-heading h3 svg {
-    color: var(--app-accent);
   }
 
   .automation-editor-heading > span {
@@ -792,9 +606,9 @@
     justify-content: center;
     min-width: 1.875rem;
     height: 1.75rem;
-    border-radius: var(--app-radius-pill);
-    background: var(--app-accent-soft);
-    color: var(--app-accent);
+    border-radius: 9999px;
+    background: var(--primary-soft);
+    color: var(--primary);
     font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
     font-size: 0.625rem;
     font-weight: 700;
@@ -810,7 +624,7 @@
     justify-content: space-between;
     gap: 0.75rem;
     padding: 0.875rem 1rem;
-    border-bottom: 1px solid var(--app-border);
+    border-bottom: 1px solid var(--border);
   }
 
   .automation-side-card-heading-text {
@@ -818,33 +632,9 @@
   }
 
   .automation-side-card-heading h3 {
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-    color: var(--app-text);
-    font-size: var(--app-font-card-title);
+    color: var(--foreground);
+    font-size: 1rem;
     font-weight: 600;
-  }
-
-  .automation-side-card-heading h3 svg {
-    width: 1rem;
-    height: 1rem;
-    color: var(--app-accent);
-  }
-
-  .automation-flow-header h3 .icon-well svg,
-  .automation-editor-heading h3 .icon-well svg,
-  .automation-side-card-heading h3 .icon-well svg {
-    /* S3: 标题图标使用固定 16px 视觉尺寸，需要压过 Icons 上的 w-3.5。 */
-    width: 1rem !important;
-    height: 1rem !important;
-  }
-
-  .automation-side-card-heading p {
-    margin-top: 0.2rem;
-    color: var(--app-text-soft);
-    font-size: var(--app-font-caption);
-    line-height: 1.45;
   }
 
   .automation-side-card-heading-actions {
@@ -859,29 +649,13 @@
     align-self: center;
   }
 
-  .automation-schedule-count {
-    display: inline-flex;
-    min-width: 2.5rem;
-    height: 1.5rem;
-    align-items: center;
-    justify-content: center;
-    border-radius: var(--app-radius-pill);
-    padding: 0 0.5rem;
-    background: var(--app-surface-muted);
-    color: var(--app-text-muted);
-    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-    font-size: 0.625rem;
-    font-variant-numeric: tabular-nums;
-    font-weight: 700;
-  }
-
   .automation-side-card-footer {
     display: flex;
     align-items: center;
     justify-content: space-between;
     gap: 0.75rem;
     padding: 0.75rem 1rem;
-    border-top: 1px solid var(--app-border);
+    border-top: 1px solid var(--border);
   }
 
   .automation-schedule-body {
@@ -894,104 +668,34 @@
     display: grid;
   }
 
-  .automation-schedule-time-row {
-    display: flex;
-    min-height: 2.75rem;
-    align-items: center;
-    gap: 0.5rem;
-  }
-
-  .automation-schedule-time-row + .automation-schedule-time-row {
-    border-top: 1px solid var(--app-border);
-  }
-
   .automation-schedule-time-row.is-off .automation-time-input {
     opacity: 0.55;
   }
 
   .automation-time-input {
     flex: 0 0 6.25rem;
-    width: 6.25rem;
-    height: 2.25rem;
-    border: 0;
-    border-radius: var(--app-radius-md);
-    padding: 0 0.5rem;
-    background: var(--app-surface-muted);
-    color: var(--app-text);
     font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-    font-size: var(--app-font-body);
     font-variant-numeric: tabular-nums;
     letter-spacing: 0.04em;
     text-align: center;
-    outline: 0;
-    transition: box-shadow 160ms ease, opacity 160ms ease;
-  }
-
-  .automation-time-input:disabled {
-    cursor: not-allowed;
-    opacity: 0.5;
-  }
-
-  .automation-schedule-row-switch {
-    margin-left: auto;
   }
 
   .automation-schedule-row-remove,
   .automation-schedule-row-remove-placeholder {
-    flex: 0 0 2.75rem;
-    width: 2.75rem;
-    height: 2.75rem;
+    flex: 0 0 2rem;
   }
 
   .automation-schedule-row-remove {
-    color: var(--app-text-soft);
+    color: var(--tertiary-foreground);
   }
 
   .automation-schedule-row-remove:hover:not(:disabled) {
-    background: var(--app-surface-muted);
-    color: var(--app-danger);
+    background: var(--muted);
+    color: var(--destructive);
   }
 
   .automation-schedule-row-remove-placeholder {
     display: block;
-  }
-
-  .automation-schedule-add {
-    display: flex;
-    width: 100%;
-    min-height: 2.5rem;
-    align-items: center;
-    gap: 0.5rem;
-    border-radius: var(--app-radius-md);
-    padding: 0 0.75rem;
-    background: color-mix(in srgb, var(--app-surface-muted) 86%, transparent);
-    color: var(--app-text-muted);
-    font-size: var(--app-font-caption);
-    font-weight: 700;
-    text-align: left;
-  }
-
-  .automation-schedule-add:hover:not(:disabled) {
-    background: var(--app-accent-soft);
-    color: var(--app-accent);
-  }
-
-  .automation-schedule-add:disabled {
-    cursor: not-allowed;
-    opacity: 0.45;
-  }
-
-  .automation-schedule-add small {
-    margin-left: auto;
-    color: var(--app-text-soft);
-    font-size: 0.625rem;
-    font-weight: 600;
-  }
-
-  .automation-schedule-empty {
-    padding: 0.5rem 0;
-    color: var(--app-text-soft);
-    font-size: var(--app-font-caption);
   }
 
   .automation-schedule-paused {
@@ -1002,28 +706,16 @@
     padding: 0.75rem 1rem;
   }
 
-  .automation-schedule-paused-label {
-    display: inline-flex;
-    height: 1.5rem;
-    align-items: center;
-    border-radius: var(--app-radius-pill);
-    padding: 0 0.5rem;
-    background: var(--app-surface-muted);
-    color: var(--app-text-muted);
-    font-size: 0.625rem;
-    font-weight: 700;
-  }
-
   .automation-schedule-paused-times {
-    color: var(--app-text-muted);
-    font-size: var(--app-font-body);
+    color: var(--muted-foreground);
+    font-size: 0.875rem;
     font-variant-numeric: tabular-nums;
   }
 
   .automation-schedule-timezone {
     padding: 0 1rem 0.75rem;
-    color: var(--app-text-soft);
-    font-size: var(--app-font-caption);
+    color: var(--tertiary-foreground);
+    font-size: 0.75rem;
     line-height: 1.45;
   }
 
@@ -1051,14 +743,14 @@
   }
 
   .automation-notification-channel-heading strong {
-    color: var(--app-text);
-    font-size: var(--app-font-body);
+    color: var(--foreground);
+    font-size: 0.875rem;
     font-weight: 600;
   }
 
   .automation-notification-channel-heading small {
-    color: var(--app-text-soft);
-    font-size: var(--app-font-caption);
+    color: var(--tertiary-foreground);
+    font-size: 0.75rem;
   }
 
   .automation-notification-details {
@@ -1066,92 +758,11 @@
     gap: 0.625rem;
   }
 
-  .automation-notification-field {
-    display: grid;
-    gap: 0.35rem;
-  }
-
-  .automation-notification-field > span {
-    color: var(--app-text-muted);
-    font-size: var(--app-font-caption);
-    font-weight: 700;
-  }
-
-  .automation-notification-field input {
-    width: 100%;
-    min-width: 0;
-    height: 2.25rem;
-    border: 0;
-    border-radius: var(--app-radius-md);
-    padding: 0 0.625rem;
-    background: var(--app-surface-muted);
-    color: var(--app-text);
-    font-size: var(--app-font-body);
-    outline: 0;
-    transition: box-shadow 160ms ease, opacity 160ms ease;
-  }
-
-  .automation-notification-field input:disabled {
-    cursor: not-allowed;
-    opacity: 0.45;
-  }
-
   .automation-notification-actions {
     display: flex;
     flex-wrap: wrap;
     align-items: center;
     gap: 0.625rem;
-  }
-
-  .automation-notification-hint {
-    color: var(--app-text-soft);
-    font-size: var(--app-font-caption);
-    line-height: 1.45;
-  }
-
-  .automation-notification-channel + .automation-notification-hint {
-    display: block;
-    padding: 0 1rem 0.75rem;
-  }
-
-  .automation-notification-notice {
-    margin: 0 1rem 0.75rem;
-    border-radius: var(--app-radius-md);
-    padding: 0.5rem 0.625rem;
-    font-size: var(--app-font-caption);
-    font-weight: 600;
-  }
-
-  .automation-notification-channel .automation-notification-notice {
-    margin: 0;
-  }
-
-  .automation-notification-notice.is-success {
-    background: rgb(5 150 105 / 10%);
-    color: var(--app-success);
-    box-shadow: inset 0 0 0 1px rgb(5 150 105 / 20%);
-  }
-
-  .automation-notification-notice.is-error {
-    background: rgb(225 29 72 / 10%);
-    color: var(--app-danger);
-    box-shadow: inset 0 0 0 1px rgb(225 29 72 / 20%);
-  }
-
-  .automation-notification-status {
-    color: var(--app-text-soft);
-    font-size: var(--app-font-caption);
-    font-weight: 600;
-  }
-
-  .automation-notification-status.is-error {
-    color: var(--app-danger);
-  }
-
-  .automation-notification-loading {
-    padding: 1rem;
-    color: var(--app-text-soft);
-    font-size: var(--app-font-caption);
   }
 
   .automation-editor-empty {
@@ -1176,7 +787,7 @@
   }
 
   .automation-task-editor.is-current .automation-flow-card-header {
-    border-bottom-color: color-mix(in srgb, var(--app-accent) 42%, var(--app-border));
+    border-bottom-color: color-mix(in srgb, var(--primary) 42%, var(--border));
   }
 
   .automation-task-editor .automation-flow-card-header {
@@ -1223,14 +834,6 @@
     grid-template-columns: 8.5rem minmax(0, 1fr);
   }
 
-  .automation-field-label {
-    min-width: 0;
-    color: var(--app-text-muted);
-    font-size: 0.8125rem;
-    font-weight: 500;
-    line-height: 1.25rem;
-  }
-
   .automation-field-helper {
     display: grid;
     grid-template-columns: 0.875rem minmax(0, 1fr);
@@ -1238,7 +841,7 @@
     gap: 0.375rem;
     margin-top: 0.5rem;
     padding-left: 5.75rem;
-    color: var(--app-text-soft);
+    color: var(--tertiary-foreground);
     font-size: 0.6875rem;
     line-height: 1.45;
   }
@@ -1247,269 +850,8 @@
     margin-top: 0.0625rem;
   }
 
-  .automation-select-control {
-    position: relative;
-    flex: 1;
-    min-width: 0;
-  }
-
-  .automation-select-control select {
-    width: 100%;
-    min-width: 0;
-    height: 2.75rem;
-    min-height: 2.75rem;
-    border: 0;
-    border-radius: var(--app-radius-md);
-    padding: 0 2.5rem 0 0.875rem;
-    background: var(--app-surface-muted);
-    color: var(--app-text);
-    box-shadow: inset 0 0 0 0.5px var(--automation-hairline);
-    font-size: 1rem;
-    font-weight: 500;
-    line-height: 1.25;
-    outline: 0;
-    cursor: pointer;
-    transition: background 160ms ease, box-shadow 160ms ease, color 160ms ease;
-  }
-
-  .automation-select-control:hover select {
-    background: color-mix(in srgb, var(--app-surface-muted) 86%, var(--app-surface-solid));
-    box-shadow: inset 0 0 0 0.5px var(--app-border-strong);
-  }
-
-  .automation-select-control:has(select:focus-visible) select {
-    background: var(--app-surface-solid);
-    box-shadow: inset 0 0 0 1px var(--app-accent), 0 0 0 3px var(--app-accent-soft);
-  }
-
-  .automation-select-control > svg {
-    position: absolute;
-    top: 50%;
-    right: 0.75rem;
-    color: var(--app-text-soft);
-    pointer-events: none;
-    transform: translateY(-50%);
-    transition: color 160ms ease, transform 160ms ease;
-  }
-
-  .automation-select-control:hover > svg,
-  .automation-select-control:has(select:focus-visible) > svg {
-    color: var(--app-accent);
-  }
-
-  .automation-select-control select:disabled {
-    cursor: not-allowed;
-    opacity: 0.55;
-  }
-
-  .automation-task-editor .automation-text-control,
-  .automation-task-editor .number-input-wrapper,
-  .automation-composite-control {
-    min-width: 0;
-    height: 2.75rem;
-    min-height: 2.75rem;
-    border-radius: var(--app-radius-md);
-    background: var(--app-surface-muted);
-    box-shadow: inset 0 0 0 0.5px var(--automation-hairline);
-    transition: background 160ms ease, box-shadow 160ms ease, color 160ms ease;
-  }
-
-  .automation-task-editor .automation-text-control {
-    width: 100%;
-    flex: 1;
-    border: 0;
-    border-radius: var(--app-radius-md);
-    padding: 0 0.875rem;
-    background: var(--app-surface-muted);
-    color: var(--app-text);
-    box-shadow: inset 0 0 0 0.5px var(--automation-hairline);
-    font-size: 1rem;
-    font-weight: 500;
-    line-height: 1.25;
-    outline: 0;
-  }
-
-  .automation-task-editor .automation-text-control::placeholder {
-    color: var(--app-text-soft);
-    font-weight: 400;
-    opacity: 1;
-  }
-
-  .automation-task-editor .automation-text-control:hover,
-  .automation-task-editor .number-input-wrapper:hover,
-  .automation-composite-control:hover {
-    background: color-mix(in srgb, var(--app-surface-muted) 86%, var(--app-surface-solid));
-    box-shadow: inset 0 0 0 0.5px var(--app-border-strong);
-  }
-
-  .automation-task-editor .automation-text-control:focus-visible,
-  .automation-task-editor .number-input-wrapper:has(input:focus-visible),
-  .automation-composite-control:has(input:focus-visible) {
-    background: var(--app-surface-solid);
-    box-shadow: inset 0 0 0 1px var(--app-accent), 0 0 0 3px var(--app-accent-soft);
-  }
-
-  .automation-task-editor .automation-text-control:disabled,
-  .automation-task-editor .number-input-wrapper:has(input:disabled),
-  .automation-composite-control:has(input:disabled) {
-    cursor: not-allowed;
-    opacity: 0.48;
-  }
-
-  .automation-task-editor.is-disabled :is(
-    .automation-text-control:disabled,
-    .automation-select-control select:disabled,
-    .number-input-wrapper:has(input:disabled),
-    .automation-composite-control:has(input:disabled)
-  ) {
-    opacity: 1;
-  }
-
   .automation-param-field:is(.is-checkbox, .is-star-select, .is-facility-select) .automation-field-helper {
     padding-left: 0;
-  }
-
-  .automation-param-fields.is-grouped {
-    gap: 0;
-    overflow: hidden;
-    border-radius: var(--app-radius-lg);
-    background: var(--app-surface-muted);
-    box-shadow: inset 0 0 0 0.5px var(--automation-hairline);
-  }
-
-  .automation-param-fields.is-grouped .automation-param-field {
-    position: relative;
-    padding: 0 0.875rem;
-  }
-
-  .automation-param-fields.is-grouped .automation-param-field + .automation-param-field::before {
-    content: '';
-    position: absolute;
-    top: 0;
-    right: 0;
-    left: 0.875rem;
-    height: 0.5px;
-    background: var(--automation-hairline);
-  }
-
-  .automation-param-fields.is-grouped .automation-field-row {
-    min-height: 3.25rem;
-  }
-
-  .automation-param-fields.is-grouped :is(
-    .automation-select-control select,
-    .automation-text-control,
-    .number-input-wrapper
-  ) {
-    height: 3.25rem;
-    min-height: 3.25rem;
-    border-radius: 0;
-    background: transparent;
-    box-shadow: none;
-  }
-
-  .automation-param-fields.is-grouped .automation-field-helper {
-    margin-top: -0.25rem;
-    padding-bottom: 0.75rem;
-  }
-
-  .automation-param-fields.is-grouped .automation-param-field:focus-within {
-    background: color-mix(in srgb, var(--app-accent-soft) 22%, transparent);
-  }
-
-  .automation-param-fields.is-grouped :is(
-    .automation-select-control:has(select:focus-visible) select,
-    .automation-text-control:focus-visible,
-    .number-input-wrapper:has(input:focus-visible)
-  ) {
-    background: transparent;
-    box-shadow: none;
-  }
-
-  .automation-task-editor .number-input-wrapper {
-    height: 2.75rem;
-    overflow: hidden;
-  }
-
-  .automation-task-editor .number-input-wrapper > input[type="number"] {
-    width: 100%;
-    height: 100%;
-    border: 0;
-    border-radius: 0;
-    padding: 0 6.25rem 0 0.75rem;
-    background: transparent;
-    color: var(--app-text);
-    box-shadow: none;
-    font-size: 1rem;
-    font-weight: 500;
-    outline: 0;
-  }
-
-  .automation-task-editor .number-input-controls {
-    width: 5.5rem;
-    flex-direction: row;
-    border-left-color: var(--app-border);
-  }
-
-  .automation-task-editor .number-input-controls button {
-    width: 2.75rem;
-    min-width: 2.75rem;
-    min-height: 2.75rem;
-    flex: 0 0 2.75rem;
-    border-radius: 0;
-    background: transparent;
-    color: var(--app-text-soft);
-  }
-
-  .automation-task-editor .number-input-controls button:hover {
-    background: var(--app-accent-soft);
-    color: var(--app-accent);
-  }
-
-  .automation-task-editor .number-input-controls button:first-child {
-    border-right: 1px solid var(--app-border);
-    border-bottom: 0;
-    border-radius: 0;
-  }
-
-  .automation-task-editor .number-input-controls button:last-child {
-    border-radius: 0 var(--app-radius-md) var(--app-radius-md) 0;
-  }
-
-  .automation-composite-control {
-    overflow: hidden;
-  }
-
-  .automation-composite-control > input[type="text"],
-  .automation-composite-control > input[type="number"] {
-    height: 100%;
-    border: 0;
-    border-radius: 0;
-    background: transparent;
-    box-shadow: none;
-    outline: 0;
-  }
-
-  .automation-composite-control > .w-px,
-  .automation-composite-control > .border-l {
-    border-color: var(--app-border);
-  }
-
-  .automation-composite-control > .w-px {
-    background: var(--app-border);
-  }
-
-  .automation-composite-control > .border-l {
-    background: transparent;
-  }
-
-  .automation-composite-control > .border-l button {
-    border-radius: 0;
-    background: transparent;
-  }
-
-  .automation-composite-control > .border-l button:hover {
-    background: var(--app-accent-soft);
   }
 
   .automation-stage-editor {
@@ -1519,7 +861,6 @@
     margin: 0;
     padding: 0;
     border: 0;
-    container-type: inline-size;
   }
 
   .automation-stage-editor-header {
@@ -1538,19 +879,10 @@
   }
 
   .automation-stage-editor-title label {
-    color: var(--app-text);
+    color: var(--foreground);
     font-size: 0.875rem;
     font-weight: 600;
     line-height: 1.25rem;
-  }
-
-  .automation-stage-editor-title span {
-    overflow: hidden;
-    color: var(--app-text-soft);
-    font-size: 0.6875rem;
-    line-height: 1rem;
-    text-overflow: ellipsis;
-    white-space: nowrap;
   }
 
   .automation-stage-editor-title button {
@@ -1560,8 +892,8 @@
   .automation-stage-list {
     min-width: 0;
     overflow: hidden;
-    border-radius: var(--app-radius-lg);
-    background: var(--app-surface-muted);
+    border-radius: var(--radius-xl);
+    background: var(--muted);
     box-shadow: inset 0 0 0 1px var(--automation-hairline);
   }
 
@@ -1587,210 +919,64 @@
     min-width: 0;
     min-height: 3.25rem;
     align-items: center;
+    gap: 0.5rem;
+    padding: 0 0.375rem;
     transition: background 160ms ease;
   }
 
   .automation-stage-row:hover {
-    background: color-mix(in srgb, var(--app-surface-solid) 24%, transparent);
+    background: color-mix(in srgb, var(--card) 24%, transparent);
   }
 
   .automation-stage-row:focus-within {
-    background: color-mix(in srgb, var(--app-accent-soft) 32%, transparent);
+    background: color-mix(in srgb, var(--primary-soft) 32%, transparent);
   }
 
   .automation-stage-item.is-smart .automation-stage-row {
-    background: color-mix(in srgb, var(--app-accent-soft) 42%, transparent);
-  }
-
-  .automation-stage-kind,
-  .automation-stage-pin {
-    width: 2.75rem;
-    min-width: 2.75rem;
-    height: 2.75rem;
-    min-height: 2.75rem;
-    flex: 0 0 2.75rem;
-    border-radius: var(--app-radius-md);
+    background: color-mix(in srgb, var(--primary-soft) 42%, transparent);
   }
 
   .automation-stage-kind {
     display: inline-flex;
+    width: 2rem;
+    min-width: 2rem;
+    height: 2rem;
+    flex: 0 0 2rem;
     align-items: center;
     justify-content: center;
-    color: var(--app-accent);
+    border-radius: var(--radius-lg);
+    color: var(--primary);
   }
 
   .automation-stage-pin {
-    color: var(--app-text-soft);
+    color: var(--tertiary-foreground);
   }
 
   .automation-stage-pin.is-active {
-    background: var(--app-accent-soft);
-    color: var(--app-accent-strong);
-  }
-
-  input.automation-stage-name-input {
-    width: 100%;
-    min-width: 0;
-    height: 3.25rem;
-    flex: 1 1 auto;
-    border: 0;
-    border-radius: 0;
-    padding: 0 0.75rem 0 0.25rem;
-    background: transparent;
-    background-color: transparent;
-    color: var(--app-text);
-    box-shadow: none;
-    font-size: 0.9375rem;
-    font-weight: 500;
-    line-height: 1.25;
-    outline: 0;
-  }
-
-  input.automation-stage-name-input::placeholder {
-    color: var(--app-text-soft);
-    font-weight: 400;
-    opacity: 1;
+    background: var(--primary-soft);
+    color: var(--primary-strong);
   }
 
   .automation-stage-times {
     display: flex;
-    width: 4.25rem;
-    min-width: 4.25rem;
-    height: 2rem;
-    flex: 0 0 4.25rem;
+    flex: 0 0 auto;
     align-items: center;
-    border-left: 1px solid var(--app-border);
-    color: var(--app-text-soft);
-  }
-
-  .automation-stage-times input {
-    width: 2.75rem;
-    min-width: 0;
-    height: 100%;
-    border: 0;
-    border-radius: 0;
-    padding: 0 0.1875rem 0 0.375rem;
-    background: transparent;
-    color: var(--app-text);
-    box-shadow: none;
-    font-size: 0.8125rem;
-    font-variant-numeric: tabular-nums;
-    text-align: right;
-    outline: 0;
-    appearance: textfield;
-  }
-
-  .automation-stage-times input::-webkit-inner-spin-button,
-  .automation-stage-times input::-webkit-outer-spin-button {
-    appearance: none;
-  }
-
-  .dark input.automation-stage-name-input,
-  .dark .automation-stage-times input {
-    background: transparent;
-    background-color: transparent;
+    gap: 0.25rem;
+    color: var(--tertiary-foreground);
   }
 
   .automation-stage-times span {
-    padding-right: 0.5rem;
     font-size: 0.6875rem;
     white-space: nowrap;
   }
 
-  input.automation-stage-name-input:focus-visible,
-  .automation-stage-times input:focus-visible {
-    color: var(--app-accent-strong);
-  }
-
-  input.automation-stage-name-input:disabled,
-  .automation-stage-times input:disabled {
-    cursor: not-allowed;
-    opacity: 0.55;
-  }
-
-  .automation-stage-item.is-smart :is(
-    input.automation-stage-name-input:disabled,
-    .automation-stage-times input:disabled
-  ) {
-    color: var(--app-text);
-    opacity: 1;
-    -webkit-text-fill-color: var(--app-text);
-  }
-
-  .automation-stage-stepper {
-    display: none !important;
-    height: 2.75rem;
-    flex: 0 0 auto;
-    align-items: center;
-    border-left: 1px solid var(--app-border);
-  }
-
-  .automation-stage-stepper button {
-    display: inline-flex;
-    width: 2.75rem;
-    min-width: 2.75rem;
-    height: 2.75rem;
-    min-height: 2.75rem;
-    align-items: center;
-    justify-content: center;
-    border: 0;
-    border-radius: 0;
-    background: transparent;
-    color: var(--app-text-soft);
-    transition: background 160ms ease, color 160ms ease, opacity 160ms ease;
-  }
-
-  .automation-stage-stepper button + button {
-    border-left: 1px solid var(--app-border);
-  }
-
-  .automation-stage-stepper button:hover:not(:disabled) {
-    background: var(--app-accent-soft);
-    color: var(--app-accent-strong);
-  }
-
-  .automation-stage-stepper button:focus-visible {
-    position: relative;
-    z-index: 1;
-    outline: 2px solid var(--app-accent);
-    outline-offset: -2px;
-  }
-
-  .automation-stage-stepper button:disabled {
-    cursor: not-allowed;
-    opacity: 0.32;
-  }
-
-  .automation-stage-delete {
-    color: var(--app-danger);
-  }
-
-  .automation-stage-delete:hover:not(:disabled) {
-    background: color-mix(in srgb, var(--app-danger) 10%, transparent);
-    color: var(--app-danger);
+  .automation-stage-item.is-smart input:disabled {
+    -webkit-text-fill-color: var(--foreground);
   }
 
   .automation-stage-add {
     position: relative;
-    justify-content: flex-start;
-    border-radius: 0;
-    padding-right: 0.875rem;
-    padding-left: 1rem;
-    color: var(--app-accent-strong);
-    box-shadow: none;
-  }
-
-  .automation-stage-add:hover:not(:disabled) {
-    background: color-mix(in srgb, var(--app-accent-soft) 42%, transparent);
-    color: var(--app-accent-strong);
-  }
-
-  .automation-stage-list :is(
-    .automation-stage-pin,
-    .automation-stage-delete,
-    .automation-stage-add
-  ):focus-visible {
-    outline-offset: -2px;
+    color: var(--primary-strong);
   }
 
   .automation-smart-stage-entry {
@@ -1800,15 +986,15 @@
     align-items: center;
     gap: 0.625rem;
     padding: 0.625rem 0.75rem;
-    border-radius: var(--app-radius-lg);
-    background: var(--app-surface-muted);
+    border-radius: var(--radius-xl);
+    background: var(--muted);
     box-shadow: inset 0 0 0 1px var(--automation-hairline);
     transition: background 160ms ease, box-shadow 160ms ease;
   }
 
   .automation-smart-stage-entry.is-active {
-    background: color-mix(in srgb, var(--app-accent-soft) 52%, var(--app-surface-muted));
-    box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--app-accent) 22%, var(--app-border));
+    background: color-mix(in srgb, var(--primary-soft) 52%, var(--muted));
+    box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--primary) 22%, var(--border));
   }
 
   .automation-smart-stage-icon {
@@ -1819,10 +1005,10 @@
     flex: 0 0 2.25rem;
     align-items: center;
     justify-content: center;
-    border-radius: var(--app-radius-md);
-    background: color-mix(in srgb, var(--app-surface-solid) 72%, transparent);
-    color: var(--app-accent-strong);
-    box-shadow: inset 0 0 0 1px var(--app-border);
+    border-radius: var(--radius-lg);
+    background: color-mix(in srgb, var(--card) 72%, transparent);
+    color: var(--primary-strong);
+    box-shadow: inset 0 0 0 1px var(--border);
   }
 
   .automation-smart-stage-copy {
@@ -1834,7 +1020,7 @@
 
   .automation-smart-stage-copy strong {
     overflow: hidden;
-    color: var(--app-text);
+    color: var(--foreground);
     font-size: 0.8125rem;
     font-weight: 600;
     line-height: 1.125rem;
@@ -1844,7 +1030,7 @@
 
   .automation-smart-stage-copy > span {
     overflow: hidden;
-    color: var(--app-text-soft);
+    color: var(--tertiary-foreground);
     font-size: 0.6875rem;
     line-height: 1rem;
     text-overflow: ellipsis;
@@ -1856,21 +1042,14 @@
     box-shadow: none;
   }
 
-  @container (min-width: 30rem) {
-    .automation-stage-stepper {
-      /* S3: 宽容器下恢复 flex；display 工具类可能先声明，故保留 important。 */
-      display: flex !important;
-    }
-  }
-
   @media (prefers-contrast: more) {
     .automation-stage-list,
     .automation-smart-stage-entry {
-      box-shadow: inset 0 0 0 1px var(--app-border-strong);
+      box-shadow: inset 0 0 0 1px var(--input);
     }
   }
 
-  @media (max-width: 899px) {
+  @media (width < 900px) {
     .automation-sequence-panel,
     .automation-editor-panel {
       position: static;
@@ -1880,21 +1059,9 @@
     .automation-sequence-list {
       overflow: visible;
     }
-
-    .automation-text-control,
-    .automation-select-control select,
-    .automation-task-editor .number-input-wrapper,
-    .automation-composite-control {
-      min-height: 2.75rem;
-      height: 2.75rem;
-    }
-
-    .automation-task-editor .number-input-wrapper > input[type="number"] {
-      padding-right: 0.875rem;
-    }
   }
 
-  @media (max-width: 639px) {
+  @media (width < 640px) {
     .automation-sequence-surface > .automation-flow-header {
       align-items: center;
       flex-direction: row;
@@ -1921,33 +1088,9 @@
       padding: 0.875rem;
     }
 
-    .automation-schedule-add {
-      min-height: 2.75rem;
-      padding: 0 0.875rem;
-      border-radius: var(--app-radius-lg);
-      font-size: 0.75rem;
-    }
-
-    .automation-time-input,
-    .automation-notification-field input {
-      height: 2.75rem;
-    }
-
-    .automation-side-card-footer .app-button {
-      min-height: 2.75rem;
-    }
-
-    [data-automation-tasks] .app-button,
-    .automation-task-picker-toggle,
     .automation-task-picker-option,
     .automation-sequence-select {
       min-height: 2.75rem;
-    }
-
-    .automation-schedule-add svg,
-    .automation-side-card-footer .app-button svg {
-      width: 1rem;
-      height: 1rem;
     }
 
     .automation-task-editor .automation-flow-card-header {
@@ -1962,24 +1105,15 @@
     }
   }
 
-  /* Apple Liquid Glass: automation content stays on unified solid surfaces.
-     Accent is reserved for active rows and commands; only the picker and
-     preview controls behave as overlapping glass. */
-  [data-automation-tasks] {
+  [data-page-kind="automation"] {
     --automation-hairline: rgba(60, 60, 67, 0.1);
-    --automation-overlay-shadow:
-      0 2px 8px rgba(0, 0, 0, 0.1),
-      0 30px 80px rgba(0, 0, 0, 0.2);
   }
 
-  .dark [data-automation-tasks] {
+  .dark [data-page-kind="automation"] {
     --automation-hairline: rgba(235, 235, 245, 0.12);
-    --automation-overlay-shadow:
-      0 2px 8px rgba(0, 0, 0, 0.24),
-      0 30px 80px rgba(0, 0, 0, 0.44);
   }
 
-  [data-automation-tasks] :is(
+  [data-page-kind="automation"] :is(
     .automation-flow-header,
     .automation-editor-heading,
     .automation-side-card-heading,
@@ -1988,20 +1122,11 @@
     .automation-notification-channel,
     [aria-label="最近执行结果"]
   ) {
-    /* S3: 自动化分组使用更淡的发丝线，压过 border-[var(--app-border)]。 */
+    /* S3: 自动化分组使用更淡的发丝线，压过 border-border。 */
     border-color: var(--automation-hairline) !important;
   }
 
-  [data-automation-tasks] :is(
-    .automation-flow-header,
-    .automation-editor-heading,
-    .automation-side-card-heading
-  ) h3 svg {
-    color: var(--app-text-soft);
-  }
-
-  [data-automation-tasks] :is(
-    .automation-flow-summary,
+  [data-page-kind="automation"] :is(
     .automation-editor-heading > span,
     .automation-schedule-paused-times,
     .automation-sequence-node
@@ -2009,82 +1134,67 @@
     font-variant-numeric: tabular-nums;
   }
 
-  [data-automation-tasks] .automation-editor-heading > span {
-    background: var(--app-surface-muted);
-    color: var(--app-text-muted);
+  [data-page-kind="automation"] .automation-editor-heading > span {
+    background: var(--muted);
+    color: var(--muted-foreground);
   }
 
-  [data-automation-tasks] .automation-sequence-list {
+  [data-page-kind="automation"] .automation-sequence-list {
     border-radius: 0;
     background: transparent;
   }
 
-  [data-automation-tasks] .automation-schedule-time-row + .automation-schedule-time-row {
-    border-color: var(--automation-hairline);
-  }
-
-  [data-automation-tasks] .automation-sequence-item:not(:last-child)::after {
+  [data-page-kind="automation"] .automation-sequence-item:not(:last-child)::after {
     background: var(--automation-hairline);
     opacity: 1;
   }
 
-  [data-automation-tasks] .automation-sequence-item:is(.is-selected, .is-current)::after,
-  [data-automation-tasks] .automation-sequence-item:has(+ :is(.is-selected, .is-current))::after {
+  [data-page-kind="automation"] .automation-sequence-item:is(.is-selected, .is-current)::after,
+  [data-page-kind="automation"] .automation-sequence-item:has(+ :is(.is-selected, .is-current))::after {
     opacity: 0;
   }
 
-  [data-automation-tasks] .automation-sequence-node {
-    background: var(--app-surface-solid);
-    color: var(--app-text-soft);
+  [data-page-kind="automation"] .automation-sequence-node {
+    background: var(--card);
+    color: var(--tertiary-foreground);
     box-shadow: inset 0 0 0 1px var(--automation-hairline);
   }
 
-  [data-automation-tasks] .automation-sequence-item.is-selected:not(.is-current, .is-completed) .automation-sequence-node {
-    background: var(--app-accent-soft);
-    color: var(--app-accent-strong);
+  [data-page-kind="automation"] .automation-sequence-item.is-selected:not(.is-current, .is-completed) .automation-sequence-node {
+    background: var(--primary-soft);
+    color: var(--primary-strong);
     box-shadow: none;
   }
 
-  [data-automation-tasks] .automation-sequence-item.is-current .automation-sequence-node {
-    background: var(--app-accent);
+  [data-page-kind="automation"] .automation-sequence-item.is-current .automation-sequence-node {
+    background: var(--primary);
     color: #fff;
     box-shadow: inset 0 0 0 1px color-mix(in srgb, #fff 16%, transparent);
   }
 
-  [data-automation-tasks] .automation-sequence-item.is-current .automation-sequence-copy small {
-    color: var(--app-accent-strong);
+  [data-page-kind="automation"] .automation-sequence-item.is-current .automation-sequence-copy small {
+    color: var(--primary-strong);
     font-weight: 600;
   }
 
-  [data-automation-tasks] .automation-sequence-item.is-completed .automation-sequence-node {
-    background: var(--app-success);
+  [data-page-kind="automation"] .automation-sequence-item.is-completed .automation-sequence-node {
+    background: var(--success);
     color: #fff;
     box-shadow: inset 0 0 0 1px color-mix(in srgb, #fff 18%, transparent);
   }
 
-  [data-automation-tasks] .automation-sequence-item.is-failed .automation-sequence-node {
-    background: var(--app-danger);
+  [data-page-kind="automation"] .automation-sequence-item.is-failed .automation-sequence-node {
+    background: var(--destructive);
     color: #fff;
     box-shadow: none;
   }
 
-  [data-automation-tasks] .automation-sequence-item.is-skipped .automation-sequence-node {
-    background: var(--app-surface-muted);
-    color: var(--app-text-muted);
+  [data-page-kind="automation"] .automation-sequence-item.is-skipped .automation-sequence-node {
+    background: var(--muted);
+    color: var(--muted-foreground);
   }
 
-  [data-automation-tasks] :is(
-    .automation-task-picker-toggle,
-    .automation-run-button,
-    .automation-stop-button,
-    .automation-test-connection
-  ) {
-    border-radius: var(--app-radius-pill);
-  }
-
-  [data-automation-tasks] :is(
-    .automation-task-picker-toggle,
-    .automation-task-picker-option,
+  [data-page-kind="automation"] :is(
     .automation-run-button,
     .automation-stop-button,
     .automation-test-connection,
@@ -2094,50 +1204,13 @@
     transition-duration: 100ms;
   }
 
-  [data-automation-tasks] :is(
+  [data-page-kind="automation"] :is(
     .automation-sequence-delete
   ) {
     border-radius: 50%;
   }
 
-  [data-automation-tasks] .automation-task-picker {
-    gap: 0;
-    border: 1px solid var(--automation-hairline);
-    border-radius: var(--app-continuous-radius-compact);
-    background: color-mix(in srgb, var(--app-surface-solid) 76%, transparent);
-    -webkit-backdrop-filter: saturate(180%) blur(20px);
-    backdrop-filter: saturate(180%) blur(20px);
-    box-shadow: var(--automation-overlay-shadow);
-    transform-origin: bottom center;
-    will-change: transform, opacity;
-  }
-
-  [data-automation-tasks] .automation-task-picker-option {
-    border-radius: 0;
-  }
-
-  [data-automation-tasks] .automation-task-picker-option + .automation-task-picker-option {
-    border-top: 1px solid var(--automation-hairline);
-  }
-
-  [data-automation-tasks] .automation-task-picker-option > span {
-    border-radius: var(--app-radius-sm);
-    background: var(--app-surface-muted);
-    color: var(--app-text-muted);
-  }
-
-  [data-automation-tasks] .automation-task-picker-option:hover > span,
-  [data-automation-tasks] .automation-task-picker-option:focus-visible > span {
-    color: var(--app-accent);
-  }
-
-  [data-automation-tasks] .automation-task-picker-option small {
-    background: var(--app-surface-muted);
-    color: var(--app-text-muted);
-    font-variant-numeric: tabular-nums;
-  }
-
-  [data-automation-tasks] .automation-task-editor details.group {
+  [data-page-kind="automation"] .automation-task-editor details.group {
     margin-top: 1rem;
     border: 0;
     border-top: 1px solid var(--automation-hairline);
@@ -2146,7 +1219,7 @@
     background: transparent;
   }
 
-  [data-automation-tasks] .automation-task-editor details.group > summary {
+  [data-page-kind="automation"] .automation-task-editor details.group > summary {
     padding: 0;
   }
 
@@ -2154,8 +1227,8 @@
     display: grid;
     gap: 0;
     overflow: hidden;
-    border-radius: var(--app-radius-lg);
-    background: var(--app-surface-muted);
+    border-radius: var(--radius-xl);
+    background: var(--muted);
   }
 
   .automation-recruitment-time-row {
@@ -2169,70 +1242,6 @@
 
   .automation-recruitment-time-row + .automation-recruitment-time-row {
     border-top: 1px solid var(--automation-hairline);
-  }
-
-  @media (prefers-reduced-transparency: reduce) {
-    [data-automation-tasks] .automation-task-picker {
-      background: var(--app-surface-solid);
-      -webkit-backdrop-filter: none;
-      backdrop-filter: none;
-    }
-  }
-
-  @media (prefers-contrast: more) {
-    [data-automation-tasks] .automation-task-picker {
-      border-color: var(--app-border-strong);
-      background: var(--app-surface-solid);
-    }
-  }
-
-  /* Automation owns a few compact field implementations instead of the shared
-     Input component. Keep their filled grouping while removing the permanent
-     hairlines used by the former desktop control treatment. */
-  .la-pluma-app [data-automation-tasks] :is(
-    .automation-select-control select,
-    .automation-task-editor .automation-text-control,
-    .automation-task-editor .number-input-wrapper,
-    .automation-composite-control,
-    .automation-time-input,
-    .automation-notification-field input
-  ) {
-    border: 0;
-    box-shadow: none;
-  }
-
-  .la-pluma-app [data-automation-tasks] :is(
-    .automation-select-control:hover select,
-    .automation-task-editor .automation-text-control:hover,
-    .automation-task-editor .number-input-wrapper:hover,
-    .automation-composite-control:hover
-  ) {
-    box-shadow: none;
-  }
-
-  .la-pluma-app [data-automation-tasks] .automation-time-input:focus,
-  .la-pluma-app [data-automation-tasks] .automation-notification-field input:focus,
-  .la-pluma-app [data-automation-tasks] .automation-select-control:has(select:focus) select,
-  .la-pluma-app [data-automation-tasks] .automation-task-editor .automation-text-control:focus,
-  .la-pluma-app [data-automation-tasks] .automation-task-editor .number-input-wrapper:has(input:focus),
-  .la-pluma-app [data-automation-tasks] .automation-composite-control:has(input:focus) {
-    box-shadow: 0 0 0 3px color-mix(in srgb, var(--app-accent) 16%, transparent);
-  }
-
-  .la-pluma-app [data-automation-tasks] .automation-monitor-surface .automation-preview-glass-button {
-    background: color-mix(in srgb, var(--app-glass-bg) 84%, transparent);
-    -webkit-backdrop-filter: blur(12px) saturate(150%);
-    backdrop-filter: blur(12px) saturate(150%);
-    box-shadow:
-      inset 0 0 0 0.5px color-mix(in srgb, var(--app-glass-border) 55%, transparent),
-      0 3px 10px rgb(60 60 67 / 8%);
-  }
-
-  html.dark .la-pluma-app [data-automation-tasks] .automation-monitor-surface .automation-preview-glass-button,
-  .la-pluma-app.dark [data-automation-tasks] .automation-monitor-surface .automation-preview-glass-button {
-    box-shadow:
-      inset 0 0 0 0.5px color-mix(in srgb, var(--app-glass-border) 42%, transparent),
-      0 3px 10px rgb(0 0 0 / 20%);
   }
 
 }

@@ -3,45 +3,10 @@
     grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 
-  .combat-mode-skeleton-highlight {
-    inset: 0 auto auto 0;
-    width: calc((100% - 0.25rem) / 3);
-  }
-
-  .combat-segment-active {
-    background: var(--app-accent-soft);
-    color: var(--app-accent-strong);
-    box-shadow: none;
-  }
-
   .combat-mode-shell {
     width: 100%;
   }
 
-  .combat-workspace-grid {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr);
-    align-items: start;
-    gap: var(--app-space-section);
-  }
-
-  .combat-main-column {
-    display: flex;
-    min-width: 0;
-    flex-direction: column;
-    gap: var(--app-space-section);
-    container-type: inline-size;
-  }
-
-  .combat-monitor-column {
-    min-width: 0;
-  }
-
-  .combat-monitor-panel {
-    width: 100%;
-  }
-
-  .combat-copilot-layout,
   .combat-special-layout {
     display: grid;
     grid-template-columns: minmax(0, 1fr);
@@ -56,29 +21,9 @@
   .combat-task-heading {
     min-height: 4.5rem;
     align-items: center;
-    padding: var(--app-space-panel);
-    border-bottom: 1px solid var(--app-border);
+    padding: 1rem;
+    border-bottom: 1px solid var(--border);
     background: transparent;
-  }
-
-  .combat-task-icon {
-    display: flex;
-    width: 2.25rem;
-    height: 2.25rem;
-    flex: none;
-    align-items: center;
-    justify-content: center;
-    border-radius: 0.75rem;
-    background: var(--app-accent-soft);
-    color: var(--app-accent-strong);
-    box-shadow: none;
-  }
-
-  .combat-task-icon > * {
-    width: 2.25rem;
-    height: 2.25rem;
-    background: transparent;
-    box-shadow: none;
   }
 
   .combat-task-run-button {
@@ -86,7 +31,6 @@
     flex: none;
   }
 
-  .combat-copilot-layout > *,
   .combat-special-layout > * {
     position: relative;
     min-width: 0;
@@ -95,74 +39,63 @@
 
   .combat-workspace-section {
     min-width: 0;
-    border-radius: var(--app-continuous-radius-compact);
-    padding: var(--app-space-card);
-    background: color-mix(in srgb, var(--app-surface-muted) 86%, transparent);
-  }
-
-  .combat-job-list-section {
-    min-height: 18rem;
+    border-radius: var(--radius-xl);
+    padding: 0.875rem;
+    background: var(--muted);
   }
 
   .combat-copilot-source-bar {
     position: relative;
     display: grid;
-    gap: var(--app-space-3);
-    padding: var(--app-space-panel);
-    border-bottom: 1px solid var(--app-border);
-    background: color-mix(in srgb, var(--app-surface-muted) 45%, transparent);
+    gap: 0.75rem;
+    padding: 1rem;
   }
 
   .combat-copilot-input {
     display: grid;
     min-width: 0;
-    gap: var(--app-space-2);
+    gap: 0.5rem;
   }
 
   .combat-copilot-input-row {
     display: flex;
     min-width: 0;
     flex-wrap: wrap;
-    gap: var(--app-space-2);
-  }
-
-  .combat-copilot-search-row {
-    display: flex;
-    min-width: 0;
-    gap: var(--app-space-2);
+    align-items: center;
+    gap: 0.5rem;
   }
 
   .combat-copilot-uri-field {
     display: flex;
     min-width: 0;
-    min-height: var(--app-control-height-md);
+    min-height: 2.75rem;
     flex: 1 1 auto;
     align-items: stretch;
-    border-radius: var(--app-radius-md);
-    background: var(--app-surface-muted);
+    border-radius: var(--radius-lg);
+    background: var(--muted);
     transition: background-color 160ms ease, box-shadow 160ms ease;
   }
 
   .combat-copilot-uri-field:hover {
-    background: color-mix(in srgb, var(--app-accent-soft) 16%, var(--app-surface-muted));
+    background: color-mix(in srgb, var(--primary-soft) 16%, var(--muted));
   }
 
   .combat-copilot-uri-field:focus-within {
-    background: color-mix(in srgb, var(--app-accent-soft) 22%, var(--app-surface-muted));
-    box-shadow: 0 0 0 3px color-mix(in srgb, var(--app-accent) 16%, transparent);
+    background: color-mix(in srgb, var(--primary-soft) 22%, var(--muted));
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--ring) 50%, transparent);
   }
 
   .combat-copilot-uri-input {
     width: auto;
     min-width: 0;
     flex: 1 1 auto;
-    padding: 0 var(--app-space-control-x);
+    padding: 0 1rem;
     border: 0;
     border-radius: 0;
     background: transparent;
     box-shadow: none;
-    color: var(--app-text);
-    font-family: var(--app-font-family);
+    color: var(--foreground);
+    font-family: inherit;
     font-size: inherit;
     font-weight: 400;
     line-height: inherit;
@@ -170,7 +103,7 @@
   }
 
   .combat-copilot-uri-input::placeholder {
-    color: var(--app-text-soft);
+    color: var(--tertiary-foreground);
     opacity: 1;
   }
 
@@ -179,172 +112,24 @@
     min-width: 0;
     flex: none;
     align-items: stretch;
-    box-shadow: inset 1px 0 0 var(--app-border);
+    box-shadow: inset 1px 0 0 var(--border);
   }
 
   .combat-copilot-clear-button,
   .combat-copilot-import-button {
     align-self: center;
-    border-radius: var(--app-radius-md);
+    border-radius: var(--radius-lg);
   }
 
   .combat-copilot-mode-select {
-    min-width: 5rem;
-    min-height: 0;
+    min-width: 5.5rem;
     flex: none;
-    padding: 0 1.5rem 0 var(--app-space-2);
-    border: 0;
-    border-radius: 0 var(--app-radius-md) var(--app-radius-md) 0;
-    background-color: transparent;
-    background-image: var(--app-select-chevron);
-    background-position: right 0.375rem center;
-    background-repeat: no-repeat;
-    background-size: 0.75rem 0.75rem;
-    color: var(--app-text-muted);
-    font-family: inherit;
-    font-size: 0.75rem;
-    font-weight: 500;
-    line-height: 1.25;
-    appearance: none;
-    cursor: pointer;
-    transition: color 160ms ease;
-  }
-
-  .combat-copilot-mode-select:hover,
-  .combat-copilot-mode-select:focus-visible {
-    color: var(--app-text);
-  }
-
-  .combat-copilot-mode-select:focus,
-  .combat-copilot-mode-select:focus-visible {
-    outline: none;
-  }
-
-  .combat-copilot-import-button + .combat-copilot-mode-select {
-    box-shadow: inset 1px 0 0 var(--app-border);
-  }
-
-  .combat-copilot-search {
-    display: grid;
-    min-width: 0;
-    gap: var(--app-space-2);
-  }
-
-  .combat-copilot-search-results {
-    display: grid;
-    max-height: 9rem;
-    gap: 0.375rem;
-    overflow-y: auto;
-    overscroll-behavior: contain;
-  }
-
-  .combat-copilot-search-result {
-    display: flex;
-    min-width: 0;
-    min-height: 2.75rem;
-    align-items: center;
-    justify-content: space-between;
-    gap: var(--app-space-3);
-    padding: 0.25rem 0.75rem;
-    border: 1px solid var(--app-border);
-    border-radius: var(--app-radius-md);
-    background: var(--app-surface-solid);
-    text-align: left;
-    transition: border-color 160ms ease, background-color 160ms ease;
-  }
-
-  .combat-copilot-search-result:hover {
-    border-color: var(--app-accent);
-  }
-
-  .combat-copilot-search-result.is-active {
-    border-color: var(--app-accent);
-    background: var(--app-accent-soft);
-  }
-
-  .combat-copilot-search-result-main {
-    display: flex;
-    min-width: 0;
-    min-height: 2.75rem;
-    flex: 1 1 auto;
-    align-self: stretch;
-    align-items: center;
-    justify-content: space-between;
-    gap: var(--app-space-3);
-    padding: 0;
-    border: 0;
-    background: transparent;
-    color: inherit;
-    text-align: left;
-    cursor: pointer;
-  }
-
-  .combat-copilot-search-result-add {
-    min-height: 2.75rem;
-    flex: none;
-    padding: 0 0.5rem;
-    border: 0;
-    border-left: 1px solid var(--app-border);
-    background: transparent;
-    color: var(--app-accent-strong);
-    font-size: 0.6875rem;
-    font-weight: 500;
-    cursor: pointer;
-  }
-
-  .combat-copilot-search-result-add:disabled {
-    opacity: 0.5;
-    cursor: not-allowed;
-  }
-
-  .combat-copilot-help-trigger {
-    display: inline-flex;
-    min-width: 2.75rem;
-    min-height: 2.75rem;
-    align-items: center;
-    justify-content: center;
-    padding: 0 0.5rem;
-    border-radius: var(--app-radius-md);
-    color: var(--app-accent-strong);
-    font-size: 0.75rem;
-    font-weight: 500;
-    cursor: pointer;
-    list-style: none;
-  }
-
-  .combat-copilot-help-body {
-    position: absolute;
-    z-index: 20;
-    right: 0;
-    display: none;
-    width: min(18rem, calc(100vw - 3rem));
-    margin-top: var(--app-space-2);
-    padding: var(--app-space-3);
-    border: 1px solid var(--app-border);
-    border-radius: var(--app-radius-md);
-    background: var(--app-surface-solid);
-    box-shadow: 0 12px 32px color-mix(in srgb, var(--app-text) 16%, transparent);
-  }
-
-  .combat-copilot-help[open] .combat-copilot-help-body {
-    display: block;
-  }
-
-  .combat-copilot-help-body p {
-    margin: 0;
-    color: var(--app-text-soft);
-    font-size: 0.75rem;
-    line-height: 1.5;
-  }
-
-  .combat-copilot-help-body p + p {
-    margin-top: 0.375rem;
   }
 
   .combat-copilot-code {
     padding: 0 0.25rem;
-    border-radius: var(--app-radius-xs);
-    background: var(--app-surface-muted);
+    border-radius: var(--radius-sm);
+    background: var(--muted);
     font-size: 0.6875rem;
   }
 
@@ -352,21 +137,21 @@
     display: grid;
     grid-template-columns: minmax(0, 1fr);
     align-items: start;
-    gap: var(--app-space-3);
-    padding: var(--app-space-2);
+    gap: 0.75rem;
+    padding: 0.5rem;
   }
 
   .combat-copilot-queue-column {
     display: flex;
     min-width: 0;
     flex-direction: column;
-    gap: var(--app-space-3);
+    gap: 0.75rem;
   }
 
   .combat-copilot-mine-summary {
     margin: 0;
-    padding: 0.5rem var(--app-space-card) 0;
-    color: var(--app-text-soft);
+    padding: 0.5rem 0.875rem 0;
+    color: var(--tertiary-foreground);
     font-size: 0.75rem;
     line-height: 1.5;
   }
@@ -384,9 +169,9 @@
     min-width: 0;
     flex-wrap: wrap;
     align-items: center;
-    gap: var(--app-space-2);
+    gap: 0.5rem;
     padding: 0.25rem 0.625rem;
-    border-top: 1px solid var(--app-border);
+    border-top: 1px solid var(--border);
   }
 
   .combat-copilot-mine-row:first-child {
@@ -394,7 +179,7 @@
   }
 
   .combat-copilot-mine-row:hover {
-    background: var(--app-surface-muted);
+    background: var(--muted);
   }
 
   .combat-copilot-mine-check {
@@ -404,34 +189,9 @@
     flex: none;
     align-items: center;
     justify-content: center;
-    border: 0;
-    border-radius: var(--app-radius-md);
-    background: transparent;
+    border-radius: var(--radius-lg);
     cursor: pointer;
     transition: background-color 160ms ease;
-  }
-
-  .combat-copilot-mine-check:disabled {
-    opacity: 0.5;
-    cursor: not-allowed;
-  }
-
-  .combat-copilot-mine-check-box {
-    display: flex;
-    width: 1rem;
-    height: 1rem;
-    align-items: center;
-    justify-content: center;
-    border: 2px solid var(--app-border-strong);
-    border-radius: var(--app-radius-xs);
-    background: var(--app-surface-solid);
-    color: transparent;
-  }
-
-  .combat-copilot-mine-check-box.is-selected {
-    border-color: var(--app-accent);
-    background: var(--app-accent);
-    color: #fff;
   }
 
   .combat-copilot-mine-marker {
@@ -441,31 +201,37 @@
     flex: none;
     align-items: center;
     justify-content: center;
-    border-radius: var(--app-radius-pill);
-    background: var(--app-surface-muted);
-    color: var(--app-text-soft);
+    border-radius: 9999px;
+    background: var(--muted);
+    color: var(--tertiary-foreground);
     font-size: 0.6875rem;
-  }
-
-  .combat-copilot-mine-tag {
-    display: inline-flex;
-    align-items: center;
-    padding: 0 0.25rem;
-    border-radius: var(--app-radius-xs);
-    background: var(--app-surface-muted);
-    color: var(--app-text-soft);
-    white-space: nowrap;
-  }
-
-  .combat-copilot-mine-tag.is-complete {
-    color: var(--app-success);
   }
 
   .combat-copilot-mine-status {
     flex: none;
-    color: var(--app-text-soft);
-    font-size: 0.6875rem;
+    color: var(--tertiary-foreground);
+    font-size: 0.75rem;
     white-space: nowrap;
+  }
+
+  .combat-copilot-mine-status.is-active {
+    color: var(--primary-strong);
+  }
+
+  .combat-copilot-mine-status.is-success {
+    color: var(--success-text);
+  }
+
+  .combat-copilot-mine-status.is-warning {
+    color: var(--warning-text);
+  }
+
+  .combat-copilot-mine-status.is-danger {
+    color: var(--destructive);
+  }
+
+  .combat-copilot-mine-status.is-neutral {
+    color: var(--tertiary-foreground);
   }
 
   .combat-copilot-mine-body {
@@ -477,7 +243,7 @@
     gap: 0.125rem;
     padding: 0.375rem 0.25rem;
     border: 0;
-    border-radius: var(--app-radius-md);
+    border-radius: var(--radius-lg);
     background: transparent;
     text-align: left;
     cursor: pointer;
@@ -485,7 +251,7 @@
 
   .combat-copilot-mine-title {
     overflow: hidden;
-    color: var(--app-text);
+    color: var(--foreground);
     font-size: 0.8125rem;
     font-weight: 500;
     text-overflow: ellipsis;
@@ -497,9 +263,9 @@
     min-width: 0;
     flex-wrap: wrap;
     align-items: center;
-    gap: 0.125rem var(--app-space-2);
-    color: var(--app-text-soft);
-    font-size: 0.6875rem;
+    gap: 0.125rem 0.5rem;
+    color: var(--tertiary-foreground);
+    font-size: 0.75rem;
   }
 
   .combat-copilot-mine-actions {
@@ -515,9 +281,9 @@
     min-width: 0;
     flex-direction: column;
     overflow: hidden;
-    border: 1px solid var(--app-border);
-    border-radius: var(--app-radius-lg);
-    background: color-mix(in srgb, var(--app-surface-muted) 48%, transparent);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-xl);
+    background: var(--card);
   }
 
   .combat-copilot-panel-head {
@@ -525,295 +291,35 @@
     flex-wrap: wrap;
     align-items: center;
     justify-content: space-between;
-    gap: var(--app-space-2) var(--app-space-3);
-    padding: var(--app-space-card);
-    border-bottom: 1px solid var(--app-border);
+    gap: 0.5rem 0.75rem;
+    padding: 0.875rem;
+    border-bottom: 1px solid var(--border);
   }
 
   .combat-copilot-panel-title {
     display: flex;
     min-width: 0;
     align-items: center;
-    gap: var(--app-space-2);
+    gap: 0.5rem;
   }
 
-  .combat-copilot-panel-title h5 {
+  .combat-copilot-panel-title h3 {
     margin: 0;
-    color: var(--app-text);
+    color: var(--foreground);
     font-size: 0.875rem;
     font-weight: 600;
-  }
-
-  .combat-copilot-kicker {
-    color: var(--app-text-soft);
-    font-size: 0.6875rem;
-    font-weight: 500;
   }
 
   .combat-copilot-panel-actions {
     display: flex;
     flex-wrap: wrap;
     align-items: center;
-    gap: var(--app-space-2);
-  }
-
-  .combat-copilot-text-action {
-    min-height: 2.75rem;
-    padding: 0 0.25rem;
-    border: 0;
-    background: transparent;
-    color: var(--app-text-muted);
-    font-size: 0.75rem;
-    cursor: pointer;
-  }
-
-  .combat-copilot-text-action.is-accent {
-    color: var(--app-accent-strong);
-  }
-
-  .combat-copilot-text-action:disabled {
-    opacity: 0.5;
-    cursor: not-allowed;
-  }
-
-  .combat-copilot-divider {
-    width: 1px;
-    height: 0.75rem;
-    background: var(--app-border);
-  }
-
-  .combat-copilot-queue-list {
-    display: flex;
-    max-height: 24rem;
-    flex-direction: column;
-    overflow-y: auto;
-    overscroll-behavior: contain;
-  }
-
-  .combat-copilot-row {
-    border-top: 1px solid var(--app-border);
-  }
-
-  .combat-copilot-row:first-child {
-    border-top: 0;
-  }
-
-  .combat-copilot-row-main {
-    display: flex;
-    min-height: 3.5rem;
-    align-items: center;
-    gap: var(--app-space-2);
-    padding: 0.25rem 0.625rem;
-  }
-
-  .combat-copilot-row:hover {
-    background: var(--app-surface-muted);
-  }
-
-  .combat-copilot-row.is-current {
-    background: var(--app-accent-soft);
-  }
-
-  .combat-copilot-row.is-success {
-    background: color-mix(in srgb, var(--app-success) 10%, transparent);
-  }
-
-  .combat-copilot-row.is-failed {
-    background: color-mix(in srgb, var(--app-danger) 9%, transparent);
-  }
-
-  .combat-copilot-row.is-stopped {
-    background: var(--app-surface-muted);
-  }
-
-  .combat-copilot-row.is-muted {
-    opacity: 0.72;
-  }
-
-  .combat-copilot-check {
-    display: inline-flex;
-    width: 2.75rem;
-    height: 2.75rem;
-    flex: none;
-    align-items: center;
-    justify-content: center;
-    border: 0;
-    border-radius: var(--app-radius-md);
-    background: transparent;
-    cursor: pointer;
-    transition: background-color 160ms ease;
-  }
-
-  .combat-copilot-check:disabled {
-    opacity: 0.5;
-    cursor: not-allowed;
-  }
-
-  .combat-copilot-check-box {
-    display: flex;
-    width: 1rem;
-    height: 1rem;
-    align-items: center;
-    justify-content: center;
-    border: 2px solid var(--app-border-strong);
-    border-radius: var(--app-radius-xs);
-    background: var(--app-surface-solid);
-    color: transparent;
-  }
-
-  .combat-copilot-check-box.is-selected {
-    border-color: var(--app-accent);
-    background: var(--app-accent);
-    color: #fff;
-  }
-
-  .combat-copilot-marker {
-    display: flex;
-    width: 1rem;
-    height: 1rem;
-    flex: none;
-    align-items: center;
-    justify-content: center;
-    border-radius: var(--app-radius-pill);
-    background: var(--app-surface-muted);
-    color: var(--app-text-soft);
-    font-size: 0.6875rem;
-  }
-
-  .combat-copilot-row.is-current .combat-copilot-marker {
-    background: var(--app-accent);
-    color: #fff;
-  }
-
-  .combat-copilot-row.is-success .combat-copilot-marker {
-    background: var(--app-success);
-    color: #fff;
-  }
-
-  .combat-copilot-row.is-failed .combat-copilot-marker {
-    background: var(--app-danger);
-    color: #fff;
-  }
-
-  .combat-copilot-row-body {
-    display: grid;
-    min-width: 0;
-    flex: 1 1 auto;
-    gap: 0.125rem;
-  }
-
-  .combat-copilot-row-name {
-    display: flex;
-    min-width: 0;
-    align-items: center;
-    gap: 0.375rem;
-  }
-
-  .combat-copilot-row-title {
-    overflow: hidden;
-    color: var(--app-text);
-    font-size: 0.75rem;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-
-  .combat-copilot-row-meta {
-    display: flex;
-    min-width: 0;
-    align-items: center;
-    gap: var(--app-space-2);
-    color: var(--app-text-soft);
-    font-size: 0.75rem;
-  }
-
-  .combat-copilot-row-id {
-    display: none;
-    margin-left: auto;
-    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-    font-size: 0.6875rem;
-    white-space: nowrap;
-  }
-
-  .combat-copilot-status {
-    display: inline-flex;
-    min-width: 4rem;
-    flex: none;
-    align-items: center;
-    justify-content: center;
-    padding: 0.125rem 0.5rem;
-    border-radius: var(--app-radius-xs);
-    background: var(--app-surface-muted);
-    color: var(--app-text-muted);
-    font-size: 0.6875rem;
-    line-height: 1.4;
-    white-space: nowrap;
-  }
-
-  .combat-copilot-row.is-current .combat-copilot-status {
-    background: var(--app-accent);
-    color: #fff;
-  }
-
-  .combat-copilot-row.is-success .combat-copilot-status {
-    background: color-mix(in srgb, var(--app-success) 12%, transparent);
-    color: var(--app-success-text);
-  }
-
-  .combat-copilot-row.is-failed .combat-copilot-status {
-    background: color-mix(in srgb, var(--app-danger) 12%, transparent);
-    color: var(--app-danger);
-  }
-
-  .combat-copilot-expand {
-    display: inline-flex;
-    width: 2.75rem;
-    height: 2.75rem;
-    flex: none;
-    align-items: center;
-    justify-content: center;
-    border: 0;
-    border-radius: var(--app-radius-md);
-    background: transparent;
-    color: var(--app-text-soft);
-    cursor: pointer;
-  }
-
-  .combat-copilot-expand:hover {
-    background: var(--app-surface-muted);
-    color: var(--app-text);
-  }
-
-  .combat-copilot-expand-icon {
-    transition: transform 160ms ease;
-  }
-
-  .combat-copilot-expand-icon.is-expanded {
-    transform: rotate(180deg);
-  }
-
-  .combat-copilot-tag {
-    flex: none;
-    padding: 0.125rem 0.375rem;
-    border-radius: var(--app-radius-xs);
-    background: var(--app-accent-soft);
-    color: var(--app-accent-strong);
-    font-size: 0.6875rem;
-    line-height: 1.4;
-    white-space: nowrap;
-  }
-
-  .combat-copilot-tag.is-complete {
-    background: color-mix(in srgb, var(--app-success) 12%, transparent);
-    color: var(--app-success-text);
-  }
-
-  .combat-copilot-row-name .combat-copilot-tag {
-    display: none;
+    gap: 0.5rem;
   }
 
   .combat-copilot-summary {
     display: grid;
-    gap: var(--app-space-3);
+    gap: 0.75rem;
   }
 
   .combat-copilot-summary-head {
@@ -821,7 +327,7 @@
     flex-wrap: wrap;
     align-items: flex-start;
     justify-content: space-between;
-    gap: var(--app-space-3);
+    gap: 0.75rem;
   }
 
   .combat-copilot-summary-copy {
@@ -831,25 +337,25 @@
   }
 
   .combat-copilot-summary-label {
-    color: var(--app-text-soft);
+    color: var(--tertiary-foreground);
     font-size: 0.75rem;
     font-weight: 500;
   }
 
   .combat-copilot-summary-title {
-    color: var(--app-text);
+    color: var(--foreground);
     font-size: 0.875rem;
     font-weight: 600;
   }
 
   .combat-copilot-summary-meta {
-    color: var(--app-text-soft);
+    color: var(--tertiary-foreground);
     font-size: 0.75rem;
   }
 
   .combat-copilot-summary-note {
     margin: 0;
-    color: var(--app-text-soft);
+    color: var(--tertiary-foreground);
     font-size: 0.75rem;
   }
 
@@ -859,176 +365,95 @@
     gap: 0.375rem;
   }
 
-  .combat-copilot-chip {
-    padding: 0.125rem 0.5rem;
-    border: 1px solid var(--app-border);
-    border-radius: var(--app-radius-xs);
-    color: var(--app-text-muted);
-    font-size: 0.6875rem;
-    line-height: 1.4;
-    white-space: nowrap;
-  }
-
-  .combat-copilot-chip.is-pending {
-    border-color: transparent;
-    background: var(--app-accent-soft);
-    color: var(--app-accent-strong);
-  }
-
-  .combat-copilot-chip.is-failed {
-    border-color: color-mix(in srgb, var(--app-danger) 30%, transparent);
-    background: color-mix(in srgb, var(--app-danger) 10%, transparent);
-    color: var(--app-danger);
-  }
-
-  .combat-copilot-chip.is-muted {
-    color: var(--app-text-soft);
-  }
-
-  .combat-copilot-progress {
-    overflow: hidden;
-    height: 0.375rem;
-    border-radius: var(--app-radius-pill);
-    background: var(--app-surface-muted);
-  }
-
-  .combat-copilot-progress-bar {
-    height: 100%;
-    border-radius: var(--app-radius-pill);
-    background: var(--app-accent);
-    transition: width 300ms ease;
-  }
-
   .combat-copilot-resume {
     display: flex;
     min-width: 0;
     align-items: center;
-    gap: var(--app-space-2);
-    padding-top: var(--app-space-2);
-    border-top: 1px solid var(--app-border);
+    gap: 0.5rem;
+    padding-top: 0.5rem;
+    border-top: 1px solid var(--border);
     font-size: 0.75rem;
   }
 
   .combat-copilot-resume-label {
     flex: none;
-    color: var(--app-text-soft);
+    color: var(--tertiary-foreground);
   }
 
   .combat-copilot-resume-uri {
     flex: none;
-    color: var(--app-accent-strong);
+    color: var(--primary-strong);
     font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
     font-size: 0.6875rem;
   }
 
   .combat-copilot-resume-name {
     overflow: hidden;
-    color: var(--app-text-soft);
+    color: var(--tertiary-foreground);
     text-overflow: ellipsis;
     white-space: nowrap;
   }
 
   .combat-copilot-waiting {
     display: grid;
-    gap: var(--app-space-2);
-    padding: var(--app-space-3);
-    border: 1px solid var(--app-accent);
-    border-radius: var(--app-radius-md);
-    background: var(--app-accent-soft);
+    gap: 0.5rem;
+    padding: 0.75rem;
+    border: 1px solid var(--primary);
+    border-radius: var(--radius-lg);
+    background: var(--primary-soft);
   }
 
   .combat-copilot-waiting-head {
     display: flex;
     flex-wrap: wrap;
     align-items: center;
-    gap: var(--app-space-2);
+    gap: 0.5rem;
   }
 
   .combat-copilot-waiting-index {
-    color: var(--app-accent-strong);
+    color: var(--primary-strong);
     font-size: 0.75rem;
   }
 
   .combat-copilot-waiting-uri {
     margin-left: auto;
-    color: var(--app-accent-strong);
+    color: var(--primary-strong);
     font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
     font-size: 0.6875rem;
   }
 
   .combat-copilot-waiting-name {
     margin: 0;
-    color: var(--app-text);
+    color: var(--foreground);
     font-size: 0.875rem;
     font-weight: 600;
   }
 
   .combat-copilot-waiting-stage {
     margin: 0;
-    color: var(--app-text-soft);
+    color: var(--tertiary-foreground);
     font-size: 0.75rem;
   }
 
   .combat-copilot-waiting-hint {
     margin: 0;
-    color: var(--app-accent-strong);
+    color: var(--primary-strong);
     font-size: 0.75rem;
   }
 
   .combat-copilot-empty {
     min-height: 14rem;
-    padding: var(--app-space-panel);
-  }
-
-  .combat-copilot-detail-grid {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr);
-    gap: var(--app-space-3) var(--app-space-4);
-    margin: 0;
-  }
-
-  .combat-copilot-detail-field {
-    display: grid;
-    min-width: 0;
-    gap: 0.125rem;
-  }
-
-  .combat-copilot-detail-wide {
-    grid-column: 1 / -1;
-  }
-
-  .combat-copilot-detail-label {
-    color: var(--app-text-soft);
-    font-size: 0.6875rem;
-  }
-
-  .combat-copilot-detail-value {
-    margin: 0;
-    color: var(--app-text-muted);
-    font-size: 0.75rem;
-  }
-
-  .combat-copilot-detail-link {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    gap: var(--app-space-2);
-  }
-
-  .combat-copilot-detail-link code {
-    color: var(--app-accent-strong);
-    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-    font-size: 0.75rem;
+    padding: 1rem;
   }
 
   .combat-copilot-params {
     display: flex;
     min-width: 0;
     flex-direction: column;
-    padding: var(--app-space-card);
-    border: 1px solid var(--app-border);
-    border-radius: var(--app-radius-lg);
-    background: color-mix(in srgb, var(--app-surface-muted) 48%, transparent);
+    padding: 0.875rem;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-xl);
+    background: var(--card);
   }
 
   .combat-copilot-params > .combat-workspace-section {
@@ -1042,24 +467,12 @@
 
   .combat-advanced-disclosure {
     overflow: hidden;
-    border-radius: 0.875rem;
-    background: color-mix(in srgb, var(--app-surface-solid) 58%, transparent);
+    border-radius: var(--radius-lg);
+    background: var(--muted);
   }
 
-  .combat-advanced-disclosure > :not(summary) {
-    margin-right: var(--app-space-3);
-    margin-left: var(--app-space-3);
-  }
-
-  .combat-copilot-check:focus-visible,
-  .combat-copilot-expand:focus-visible,
-  .combat-copilot-text-action:focus-visible,
-  .combat-copilot-search-result-main:focus-visible,
-  .combat-copilot-search-result-add:focus-visible,
-  .combat-copilot-mine-body:focus-visible,
-  .combat-copilot-mine-check:focus-visible,
-  .combat-copilot-help-trigger:focus-visible {
-    outline: 2px solid color-mix(in srgb, var(--app-accent) 62%, transparent);
+  .combat-copilot-mine-body:focus-visible {
+    outline: 3px solid color-mix(in srgb, var(--ring) 50%, transparent);
     outline-offset: 2px;
   }
 
@@ -1070,10 +483,6 @@
   }
 
   @container (min-width: 40rem) {
-    .combat-copilot-layout {
-      grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-    }
-
     .combat-special-layout {
       grid-template-columns: minmax(0, 1fr) minmax(18rem, 21.25rem);
     }
@@ -1084,15 +493,6 @@
   }
 
   @container (min-width: 40rem) {
-    .combat-copilot-row-id {
-      display: inline;
-    }
-
-    .combat-copilot-row-name .combat-copilot-tag {
-      display: inline-flex;
-      align-items: center;
-    }
-
     .combat-copilot-detail-grid {
       grid-template-columns: repeat(2, minmax(0, 1fr));
     }
@@ -1104,97 +504,50 @@
     }
   }
 
-  @media (width >= 1360px) {
-    .combat-workspace-grid {
-      grid-template-columns: repeat(3, minmax(0, 1fr));
-    }
-
-    .combat-main-column {
-      grid-column: span 2;
-    }
-  }
-
-  @media (width <= 767px) {
+  @media (width < 768px) {
     .combat-task-heading {
       align-items: stretch;
-      padding: var(--app-space-panel);
+      padding: 1rem;
     }
 
     .combat-task-run-button {
       width: 100%;
     }
 
-    .combat-copilot-layout,
     .combat-special-layout {
       gap: 0.375rem;
       padding: 0.375rem;
     }
 
     .combat-copilot-source-bar {
-      padding: var(--app-space-3);
+      padding: 0.75rem;
     }
 
     .combat-copilot-body {
       gap: 0.375rem;
       padding: 0.375rem;
     }
-
-    .combat-copilot-row-main {
-      padding-inline: var(--app-space-2);
-    }
-  }
-
-  .combat-copilot-text-action:enabled:hover {
-    color: var(--app-accent-strong);
-  }
-
-  .combat-copilot-check:enabled:hover {
-    background: var(--app-accent-soft);
-  }
-
-  .combat-task-icon svg {
-    /* S3: 图标尺寸随任务图标容器缩放，需要压过图标上的 w-* / h-* utilities。 */
-    width: 1.125rem !important;
-    height: 1.125rem !important;
   }
 
   .combat-copilot-discovery {
     display: grid;
-    gap: var(--app-space-card);
+    gap: 0.875rem;
   }
 
   .combat-copilot-discovery-search {
     display: grid;
-    gap: var(--app-space-2);
+    gap: 0.5rem;
   }
 
   .combat-copilot-discovery-search-row {
     display: flex;
     min-width: 0;
-    gap: var(--app-space-2);
+    gap: 0.5rem;
   }
 
   .combat-copilot-discovery-keyword-field {
-    position: relative;
-    display: flex;
     min-width: 0;
     flex: 1 1 auto;
-  }
-
-  .combat-copilot-discovery-keyword {
-    min-width: 0;
-    flex: 1 1 auto;
-  }
-
-  .combat-copilot-discovery-keyword-field input {
-    padding-right: 3rem;
-  }
-
-  .combat-copilot-discovery-clear {
-    position: absolute;
-    top: 50%;
-    right: var(--app-space-1);
-    transform: translateY(-50%);
   }
 
   .combat-copilot-discovery-submit {
@@ -1206,7 +559,7 @@
     min-width: 0;
     flex-wrap: wrap;
     align-items: center;
-    gap: var(--app-space-2);
+    gap: 0.5rem;
   }
 
   .combat-copilot-discovery-operator-control {
@@ -1224,15 +577,15 @@
     margin-left: -1px;
     border-top-left-radius: 0;
     border-bottom-left-radius: 0;
-    box-shadow: inset 1px 0 0 var(--app-border);
+    box-shadow: inset 1px 0 0 var(--border);
   }
 
   .combat-copilot-discovery-operator-toggle[aria-pressed='true'] {
-    color: var(--app-accent-strong);
+    color: var(--primary-strong);
   }
 
   .combat-copilot-discovery-operator-control.is-disabled .combat-copilot-discovery-operator-trigger {
-    color: var(--app-text-soft);
+    color: var(--tertiary-foreground);
   }
 
   .combat-copilot-discovery-order {
@@ -1250,59 +603,34 @@
   }
 
   .combat-copilot-discovery-stage-panel {
-    position: absolute;
-    z-index: 30;
-    top: calc(100% + var(--app-space-2));
-    left: 0;
-    display: grid;
-    width: min(24rem, calc(100vw - 4rem));
-    gap: var(--app-space-2);
-    padding: var(--app-space-3);
-    border: 1px solid var(--app-border);
-    border-radius: var(--app-radius-md);
-    background: var(--app-surface-solid);
-    box-shadow: 0 12px 32px color-mix(in srgb, var(--app-text) 16%, transparent);
+    --combat-stage-panel-width: min(24rem, calc(100vw - 4rem));
   }
 
   .combat-copilot-discovery-stage-list {
     display: flex;
     max-height: 14rem;
     flex-direction: column;
-    margin: 0;
-    padding: 0;
+    gap: 0.125rem;
     overflow-y: auto;
     overscroll-behavior: contain;
-    list-style: none;
   }
 
   .combat-copilot-discovery-stage-option {
-    display: flex;
-    width: 100%;
     min-height: 2.75rem;
-    align-items: center;
-    gap: var(--app-space-2);
-    padding: 0.25rem 0.5rem;
-    border: 0;
-    border-radius: var(--app-radius-sm);
-    background: transparent;
-    color: var(--app-text);
-    font-size: 0.75rem;
-    text-align: left;
-    cursor: pointer;
   }
 
   .combat-copilot-discovery-stage-option:hover {
-    background: var(--app-surface-muted);
+    background: var(--muted);
   }
 
   .combat-copilot-discovery-stage-option.is-selected {
-    background: var(--app-accent-soft);
-    color: var(--app-accent-strong);
+    background: var(--primary-soft);
+    color: var(--primary-strong);
   }
 
   .combat-copilot-discovery-stage-code {
     flex: none;
-    color: var(--app-accent-strong);
+    color: var(--primary-strong);
     font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
     font-size: 0.6875rem;
   }
@@ -1317,71 +645,40 @@
   .combat-copilot-discovery-stage-zone {
     flex: none;
     margin-left: auto;
-    color: var(--app-text-soft);
+    color: var(--tertiary-foreground);
     font-size: 0.6875rem;
   }
 
-  .combat-copilot-discovery-stage-state {
-    margin: 0;
-    color: var(--app-text-soft);
-    font-size: 0.75rem;
-  }
-
-  .combat-copilot-discovery-stage-error {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    justify-content: space-between;
-    gap: var(--app-space-2);
-    color: var(--app-danger);
-    font-size: 0.75rem;
-  }
-
   .combat-copilot-discovery-toggle.is-active {
-    background: var(--app-accent-soft);
-    color: var(--app-accent-strong);
-  }
-
-  .combat-copilot-discovery-view-toggle {
-    display: inline-flex;
-    flex: none;
-    align-items: center;
-    gap: 0.125rem;
-    padding: 0.125rem;
-    border-radius: var(--app-radius-md);
-    background: var(--app-surface-muted);
-  }
-
-  .combat-copilot-discovery-view-button.is-active {
-    background: var(--app-surface-solid);
-    color: var(--app-accent-strong);
+    background: var(--primary-soft);
+    color: var(--primary-strong);
   }
 
   .combat-copilot-discovery-summary {
     display: flex;
     flex-wrap: wrap;
     align-items: center;
-    gap: var(--app-space-2);
-    color: var(--app-text-soft);
+    gap: 0.5rem;
+    color: var(--tertiary-foreground);
     font-size: 0.75rem;
   }
 
   .combat-copilot-discovery-match-count {
-    color: var(--app-accent-strong);
+    color: var(--primary-strong);
   }
 
   .combat-copilot-discovery-loading {
-    padding: var(--app-space-section);
+    padding: 1.125rem;
   }
 
   .combat-copilot-discovery-empty {
-    padding: var(--app-space-section);
+    padding: 1.125rem;
   }
 
   .combat-copilot-discovery-results {
     display: grid;
     min-width: 0;
-    gap: var(--app-space-2);
+    gap: 0.5rem;
   }
 
   .combat-copilot-discovery-results.is-grid {
@@ -1396,23 +693,11 @@
     display: flex;
     min-width: 0;
     flex-direction: column;
-    gap: var(--app-space-2);
-    padding: var(--app-space-3);
-    border: 1px solid var(--app-border);
-    border-radius: var(--app-radius-md);
-    background: var(--app-surface-solid);
-    cursor: pointer;
-  }
-
-  .combat-copilot-discovery-card-main {
-    display: grid;
-    min-width: 0;
-    gap: 0.375rem;
-    padding: 0;
-    border: 0;
-    background: transparent;
-    color: inherit;
-    text-align: left;
+    gap: 0.5rem;
+    padding: 0.75rem;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    background: var(--card);
     cursor: pointer;
   }
 
@@ -1424,56 +709,16 @@
     gap: 0.25rem;
   }
 
-  .combat-copilot-discovery-badge {
-    padding: 0.125rem 0.375rem;
-    border-radius: var(--app-radius-xs);
-    background: var(--app-surface-muted);
-    color: var(--app-text-muted);
-    font-size: 0.6875rem;
-    line-height: 1.4;
-    white-space: nowrap;
-  }
-
-  .combat-copilot-discovery-badge.is-match {
-    background: var(--app-accent-soft);
-    color: var(--app-accent-strong);
-  }
-
-  .combat-copilot-discovery-badge.is-match.is-ready {
-    background: color-mix(in srgb, var(--app-success) 12%, transparent);
-    color: var(--app-success-text);
-  }
-
-  .combat-copilot-discovery-badge.is-match.is-train {
-    background: color-mix(in srgb, var(--app-warning) 14%, transparent);
-    color: var(--app-warning);
-  }
-
-  .combat-copilot-discovery-badge.is-match.is-check {
-    background: var(--app-surface-muted);
-    color: var(--app-text-muted);
-  }
-
-  .combat-copilot-discovery-badge.is-match.is-blocked {
-    background: color-mix(in srgb, var(--app-danger) 12%, transparent);
-    color: var(--app-danger);
-  }
-
-  .combat-copilot-discovery-badge.is-recommended {
-    background: color-mix(in srgb, var(--app-success) 12%, transparent);
-    color: var(--app-success-text);
-  }
-
   .combat-copilot-discovery-card-stage {
     display: flex;
     min-width: 0;
     align-items: baseline;
-    gap: var(--app-space-2);
+    gap: 0.5rem;
   }
 
   .combat-copilot-discovery-card-code {
     flex: none;
-    color: var(--app-accent-strong);
+    color: var(--primary-strong);
     font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
     font-size: 0.75rem;
     font-weight: 600;
@@ -1482,19 +727,8 @@
   .combat-copilot-discovery-card-label {
     min-width: 0;
     overflow: hidden;
-    color: var(--app-text-soft);
+    color: var(--tertiary-foreground);
     font-size: 0.75rem;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-
-  .combat-copilot-discovery-card-title {
-    min-width: 0;
-    overflow: hidden;
-    color: var(--app-text);
-    font-size: 0.875rem;
-    font-weight: 600;
-    line-height: 1.45;
     text-overflow: ellipsis;
     white-space: nowrap;
   }
@@ -1506,47 +740,19 @@
     gap: 0.25rem;
   }
 
-  .combat-copilot-discovery-operator-chip {
-    max-width: 100%;
-    overflow: hidden;
-    padding: 0.125rem 0.375rem;
-    border: 1px solid var(--app-border);
-    border-radius: var(--app-radius-xs);
-    color: var(--app-text-muted);
-    font-size: 0.6875rem;
-    line-height: 1.4;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-
-  .combat-copilot-discovery-operator-chip.is-owned {
-    border-color: color-mix(in srgb, var(--app-success) 32%, transparent);
-    background: color-mix(in srgb, var(--app-success) 10%, transparent);
-    color: var(--app-success-text);
-  }
-
-  .combat-copilot-discovery-operator-chip.is-missing {
-    color: var(--app-text-soft);
-  }
-
-  .combat-copilot-discovery-operator-chip.is-more {
-    border-color: transparent;
-    background: var(--app-surface-muted);
-    color: var(--app-text-soft);
-  }
-
   .combat-copilot-discovery-card-meta {
     display: flex;
     min-width: 0;
     flex-wrap: wrap;
     align-items: center;
-    gap: 0.125rem var(--app-space-2);
-    color: var(--app-text-soft);
+    gap: 0.125rem 0.5rem;
+    color: var(--tertiary-foreground);
     font-size: 0.6875rem;
   }
 
   .combat-copilot-discovery-card-unmatched {
-    color: var(--app-warning);
+    color: var(--warning-text);
+    font-size: 0.75rem;
   }
 
   .combat-copilot-discovery-card-actions {
@@ -1558,50 +764,40 @@
 
   .combat-copilot-operator-filter {
     display: grid;
-    gap: var(--app-space-card);
-  }
-
-  .combat-copilot-operator-error {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    justify-content: space-between;
-    gap: var(--app-space-2);
-    color: var(--app-danger);
-    font-size: 0.75rem;
+    gap: 0.875rem;
   }
 
   .combat-copilot-operator-section {
     display: grid;
     min-width: 0;
-    gap: var(--app-space-2);
-    padding: var(--app-space-3);
-    border: 1px solid var(--app-border);
-    border-radius: var(--app-radius-md);
-    background: color-mix(in srgb, var(--app-surface-muted) 45%, transparent);
+    gap: 0.5rem;
+    padding: 0.75rem;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    background: var(--muted);
   }
 
   .combat-copilot-operator-section-heading {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    gap: var(--app-space-2);
+    gap: 0.5rem;
   }
 
   .combat-copilot-operator-section-title {
-    color: var(--app-text);
+    color: var(--foreground);
     font-size: 0.8125rem;
     font-weight: 600;
   }
 
   .combat-copilot-operator-section-count {
-    color: var(--app-text-soft);
+    color: var(--tertiary-foreground);
     font-size: 0.6875rem;
   }
 
   .combat-copilot-operator-hint {
     margin: 0;
-    color: var(--app-text-soft);
+    color: var(--tertiary-foreground);
     font-size: 0.75rem;
   }
 
@@ -1613,22 +809,14 @@
   }
 
   .combat-copilot-operator-chip {
-    display: inline-flex;
     min-height: 1.75rem;
-    align-items: center;
-    gap: 0.25rem;
-    padding: 0.125rem 0.5rem;
-    border: 0;
-    border-radius: var(--app-radius-xs);
-    background: var(--app-accent-soft);
-    color: var(--app-accent-strong);
-    font-size: 0.6875rem;
-    cursor: pointer;
+    background: var(--primary-soft);
+    color: var(--primary-strong);
   }
 
   .combat-copilot-operator-options {
     --operator-option-row-height: 3rem;
-    --operator-option-row-gap: var(--app-space-2);
+    --operator-option-row-gap: 0.5rem;
     --operator-option-inset: 0.125rem;
 
     display: grid;
@@ -1643,75 +831,21 @@
     padding: var(--operator-option-inset);
     overflow-y: auto;
     overscroll-behavior: contain;
-    list-style: none;
   }
 
   .combat-copilot-operator-option {
-    display: flex;
     min-width: 0;
     min-height: var(--operator-option-row-height);
-    align-items: center;
-    gap: var(--app-space-2);
-    padding: 0.25rem 0.375rem;
-    border: 1px solid var(--app-border);
-    border-radius: var(--app-radius-sm);
-    background: var(--app-surface-solid);
-    color: var(--app-text);
-    text-align: left;
-    cursor: pointer;
-  }
-
-  .combat-copilot-operator-option:hover {
-    border-color: var(--app-accent);
-  }
-
-  .combat-copilot-operator-option:disabled {
-    opacity: 0.5;
-    cursor: not-allowed;
+    background: var(--card);
   }
 
   .combat-copilot-operator-avatar {
     width: 2rem;
     height: 2rem;
     flex: none;
-    border-radius: var(--app-radius-pill);
-    background: var(--app-surface-muted);
+    border-radius: 9999px;
+    background: var(--muted);
     object-fit: cover;
-  }
-
-  .combat-copilot-operator-copy {
-    display: grid;
-    min-width: 0;
-    flex: 1 1 auto;
-    gap: 0.125rem;
-  }
-
-  .combat-copilot-operator-name {
-    overflow: hidden;
-    color: var(--app-text);
-    font-size: 0.75rem;
-    font-weight: 500;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-
-  .combat-copilot-operator-meta {
-    color: var(--app-text-soft);
-    font-size: 0.6875rem;
-  }
-
-  .combat-copilot-operator-ownership {
-    flex: none;
-    font-size: 0.6875rem;
-    white-space: nowrap;
-  }
-
-  .combat-copilot-operator-ownership.is-owned {
-    color: var(--app-success-text);
-  }
-
-  .combat-copilot-operator-ownership.is-missing {
-    color: var(--app-text-soft);
   }
 
   .combat-copilot-operator-actions {
@@ -1719,94 +853,54 @@
     flex-wrap: wrap;
     align-items: center;
     justify-content: space-between;
-    gap: var(--app-space-2);
-    padding-top: var(--app-space-2);
-    border-top: 1px solid var(--app-border);
+    gap: 0.5rem;
+    padding-top: 0.5rem;
+    border-top: 1px solid var(--border);
   }
 
   .combat-copilot-operator-summary {
-    color: var(--app-text-soft);
+    color: var(--tertiary-foreground);
     font-size: 0.75rem;
   }
 
   .combat-copilot-operator-action-buttons {
     display: flex;
     align-items: center;
-    gap: var(--app-space-2);
+    gap: 0.5rem;
   }
 
   .combat-copilot-match {
     display: grid;
-    gap: var(--app-space-card);
+    gap: 0.875rem;
   }
 
   .combat-copilot-match-toggle {
-    display: flex;
-    align-items: center;
     justify-content: space-between;
-    gap: var(--app-space-3);
-    padding: var(--app-space-3);
-    border: 1px solid var(--app-border);
-    border-radius: var(--app-radius-md);
-    background: color-mix(in srgb, var(--app-surface-muted) 45%, transparent);
-  }
-
-  .combat-copilot-match-toggle-copy {
-    display: grid;
-    min-width: 0;
-    gap: 0.125rem;
-  }
-
-  .combat-copilot-match-toggle-title {
-    color: var(--app-text);
-    font-size: 0.8125rem;
-    font-weight: 600;
-  }
-
-  .combat-copilot-match-toggle-hint {
-    color: var(--app-text-soft);
-    font-size: 0.6875rem;
-  }
-
-  .combat-copilot-match-warning {
-    margin: 0;
-    color: var(--app-warning);
-    font-size: 0.75rem;
+    padding: 0.75rem;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    background: var(--muted);
   }
 
   .combat-copilot-match-note {
     margin: 0;
-    color: var(--app-text-soft);
+    color: var(--tertiary-foreground);
     font-size: 0.75rem;
     line-height: 1.6;
   }
 
   .combat-copilot-match-modes {
     display: grid;
-    gap: var(--app-space-2);
-  }
-
-  .combat-copilot-match-modes-title {
-    color: var(--app-text-muted);
-    font-size: 0.75rem;
-    font-weight: 500;
+    gap: 0.5rem;
   }
 
   .combat-copilot-match-mode-list {
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(7rem, 1fr));
-    gap: var(--app-space-2);
+    gap: 0.5rem;
   }
 
-  .combat-copilot-discovery-card-main:focus-visible,
-  .combat-copilot-discovery-stage-option:focus-visible,
-  .combat-copilot-operator-option:focus-visible,
-  .combat-copilot-operator-chip:focus-visible {
-    outline: 2px solid color-mix(in srgb, var(--app-accent) 62%, transparent);
-    outline-offset: 2px;
-  }
-
-  @media (width <= 767px) {
+  @media (width < 768px) {
     .combat-copilot-discovery-search-row {
       flex-wrap: wrap;
     }
@@ -1820,7 +914,7 @@
     }
 
     .combat-copilot-discovery-stage-panel {
-      width: min(20rem, calc(100vw - 3rem));
+      --combat-stage-panel-width: min(20rem, calc(100vw - 3rem));
     }
   }
 }

@@ -8,7 +8,6 @@ import {
   coreChannelLabel,
   readUpdateFailureDetails,
   resolveCoreChannel,
-  resolveCoreChannelSwitch,
   shouldRetryUpdateResources,
 } from './updateCommands'
 import type { SettingsUpdateRunPort, UpdateRunTerminal } from './updateRunPort'
@@ -64,17 +63,15 @@ const createOwner = (
 }
 
 describe('core channel policy', () => {
-  it('switches beta/alpha builds back to stable and everything else to beta', () => {
-    expect(resolveCoreChannelSwitch('v5.0.0')).toEqual({ version: 'beta', label: 'Beta' })
-    expect(resolveCoreChannelSwitch('v5.0.0-beta.1')).toEqual({ version: 'stable', label: '正式版' })
-    expect(resolveCoreChannelSwitch('v5.0.0-alpha.2')).toEqual({ version: 'stable', label: '正式版' })
-    expect(resolveCoreChannelSwitch(null)).toEqual({ version: 'beta', label: 'Beta' })
-    expect(coreChannelLabel('stable')).toBe('正式版')
-    expect(coreChannelLabel('alpha')).toBe('Alpha')
+  it('reads the installed channel from the version string', () => {
     expect(resolveCoreChannel('v5.0.0')).toBe('stable')
     expect(resolveCoreChannel('v5.0.0-beta.1')).toBe('beta')
-    expect(resolveCoreChannel('v5.0.0-alpha.2')).toBe('beta')
+    expect(resolveCoreChannel('v5.0.0-alpha.2')).toBe('alpha')
     expect(resolveCoreChannel(undefined)).toBe('stable')
+    expect(resolveCoreChannel(null)).toBe('stable')
+    expect(coreChannelLabel('stable')).toBe('正式版')
+    expect(coreChannelLabel('beta')).toBe('Beta')
+    expect(coreChannelLabel('alpha')).toBe('Alpha')
   })
 
   it('reads failure details from the typed error envelope', () => {
@@ -164,7 +161,7 @@ describe('SettingsUpdateOwner', () => {
     expect(owner.getState().running).toBeNull()
     expect(owner.getState().feedback).toEqual({
       type: 'success',
-      message: '资源文件更新成功',
+      message: '资源已更新',
       resourceRetry: false,
     })
   })
@@ -228,7 +225,7 @@ describe('SettingsUpdateOwner', () => {
     // CLI 更新不清空此前的资源更新反馈。
     expect(owner.getState().feedback).toEqual({
       type: 'success',
-      message: '资源文件更新成功',
+      message: '资源已更新',
       resourceRetry: false,
     })
 
@@ -250,10 +247,10 @@ describe('SettingsUpdateOwner', () => {
     expect(outcome.versionChanged).toBe(true)
   })
 
-  it('switches channels with the current-version policy and reports the target label', async () => {
+  it('installs an explicit core channel and reports the target label', async () => {
     const { owner, mocks } = createOwner()
 
-    const stabilized = await owner.switchCoreChannel('v5.0.0-beta.2')
+    const stabilized = await owner.updateCore('stable')
     expect(mocks.updateCore).toHaveBeenLastCalledWith('stable')
     expect(stabilized).toMatchObject({
       status: 'succeeded',
@@ -262,7 +259,7 @@ describe('SettingsUpdateOwner', () => {
       resourcesChanged: true,
     })
 
-    await owner.switchCoreChannel('v5.0.0')
+    await owner.updateCore('beta')
     expect(mocks.updateCore).toHaveBeenLastCalledWith('beta')
   })
 
@@ -340,7 +337,7 @@ describe('SettingsUpdateOwner', () => {
     const core = owner.updateCore()
     const cli = await owner.updateCli()
     const resources = await owner.updateResources()
-    const channel = await owner.switchCoreChannel('v5.0.0')
+    const channel = await owner.updateCore('beta')
 
     expect(cli).toMatchObject({ status: 'ignored', operation: 'cli', message: null })
     expect(resources).toMatchObject({ status: 'ignored', operation: 'resources' })
@@ -383,6 +380,7 @@ describe('SettingsUpdateOwner run semantics', () => {
     state: 'succeeded',
     message: null,
     errorDetails: {},
+    result: null,
     ...overrides,
   })
 
@@ -440,6 +438,24 @@ describe('SettingsUpdateOwner run semantics', () => {
     })
     expect(released).toEqual(['run-core'])
     expect(owner.getState()).toMatchObject({ running: null, canceling: false })
+  })
+
+  it('does not claim a channel switch when the terminal result says the channel was not persisted', async () => {
+    const runPort = createRunPort(() => Promise.resolve(terminal({
+      result: { channelPersisted: false },
+    })))
+    const { owner } = createOwner({ updateCore: submitted('run-channel') }, runPort)
+
+    const outcome = await owner.updateCore('beta')
+
+    expect(outcome).toMatchObject({
+      status: 'succeeded',
+      operation: 'core-channel',
+      message: 'MaaCore 已更新并同步最新资源，但 Beta 渠道配置未能持久化，后续更新可能仍使用原渠道',
+      resourcesChanged: true,
+      versionChanged: true,
+    })
+    expect(outcome.message).not.toContain('已切换到')
   })
 
   it('maps a failed run to the existing failure feedback and resource retry policy', async () => {

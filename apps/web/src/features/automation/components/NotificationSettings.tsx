@@ -1,8 +1,15 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { Bell, Save, Send } from 'lucide-react'
+import { LoaderCircle, Save, Send } from 'lucide-react'
 import type { ApiResponse } from '@/shared/api'
-import { Button, SmoothPanel, Switch } from '@/shared/ui'
+import { InlineAlert, Loading } from '@/shared/components'
+import { Badge } from '@/shared/ui/badge'
+import { Button } from '@/shared/ui/button'
+import { Field, FieldDescription, FieldLabel } from '@/shared/ui/field'
+import { Input } from '@/shared/ui/input'
+import { Switch } from '@/shared/ui/switch'
+import { Card } from '@/shared/ui/card'
+import { dismissNotice, notify } from '@/shared/notifications'
 import { saveNotificationConfig, testNotificationChannel } from '../api'
 import {
   cloneNotificationConfig,
@@ -17,10 +24,9 @@ const getResponseMessage = (data: Partial<ApiResponse>, fallback: string) =>
 const getErrorMessage = (error: unknown, fallback: string) =>
   error instanceof Error && error.message ? error.message : fallback
 
-interface Notice {
-  type: 'success' | 'error'
-  text: string
-}
+const NOTIFICATION_LOAD_NOTICE_ID = 'automation-notification-load'
+const NOTIFICATION_TEST_NOTICE_ID = 'automation-notification-test'
+const NOTIFICATION_SAVE_NOTICE_ID = 'automation-notification-save'
 
 export default function NotificationSettings() {
   const queryClient = useQueryClient()
@@ -29,8 +35,6 @@ export default function NotificationSettings() {
   const [testing, setTesting] = useState(false)
   const [saving, setSaving] = useState(false)
   const [dirty, setDirty] = useState(false)
-  const [testNotice, setTestNotice] = useState<Notice | null>(null)
-  const [saveNotice, setSaveNotice] = useState<Notice | null>(null)
   const mountedRef = useRef(false)
   const activationRevisionRef = useRef(0)
   const draftRevisionRef = useRef(0)
@@ -63,17 +67,30 @@ export default function NotificationSettings() {
   }, [configQuery.data])
 
   const refetchConfig = configQuery.refetch
-  const loadConfig = useCallback(async (force = false) => {
-    if (force) {
-      setSaveNotice(null)
-      setTestNotice(null)
-    }
+  const loadConfig = useCallback(async () => {
     await refetchConfig()
   }, [refetchConfig])
+  const loadConfigRef = useRef(loadConfig)
+  loadConfigRef.current = loadConfig
+
+  useEffect(() => {
+    if (!loadError) {
+      dismissNotice(NOTIFICATION_LOAD_NOTICE_ID)
+      return
+    }
+    notify(loadError, 'error', {
+      id: NOTIFICATION_LOAD_NOTICE_ID,
+      action: {
+        label: '重新加载',
+        onClick: () => {
+          void loadConfigRef.current()
+        },
+      },
+    })
+  }, [loadError])
 
   const updateConfig = (updater: (current: NotificationConfig) => NotificationConfig) => {
     draftRevisionRef.current += 1
-    setSaveNotice(null)
     setDirty(true)
     setConfig(updater)
   }
@@ -96,7 +113,6 @@ export default function NotificationSettings() {
     const revisionSnapshot = draftRevisionRef.current
     const requestId = ++saveRequestIdRef.current
     setSaving(true)
-    setSaveNotice(null)
 
     try {
       const data = await saveNotificationConfig(configSnapshot)
@@ -108,13 +124,15 @@ export default function NotificationSettings() {
           committedRevisionRef.current = revisionSnapshot
           setDirty(false)
         }
-        if (mountedRef.current) setSaveNotice({ type: 'success', text: data.message || '通知配置已保存' })
+        if (mountedRef.current) {
+          notify(data.message || '通知配置已保存', 'success', { id: NOTIFICATION_SAVE_NOTICE_ID })
+        }
       } else if (mountedRef.current) {
-        setSaveNotice({ type: 'error', text: getResponseMessage(data, '通知配置保存失败') })
+        notify(getResponseMessage(data, '通知配置保存失败'), 'error', { id: NOTIFICATION_SAVE_NOTICE_ID })
       }
     } catch (error) {
       if (saveRequestIdRef.current === requestId && mountedRef.current) {
-        setSaveNotice({ type: 'error', text: getErrorMessage(error, '通知配置保存失败') })
+        notify(getErrorMessage(error, '通知配置保存失败'), 'error', { id: NOTIFICATION_SAVE_NOTICE_ID })
       }
     } finally {
       if (saveRequestIdRef.current === requestId && mountedRef.current) setSaving(false)
@@ -127,18 +145,19 @@ export default function NotificationSettings() {
     testAbortRef.current?.abort()
     testAbortRef.current = controller
     setTesting(true)
-    setTestNotice(null)
 
     try {
       const data = await testNotificationChannel('telegram', telegramSnapshot, controller.signal)
       if (controller.signal.aborted || !mountedRef.current || testAbortRef.current !== controller) return
 
-      setTestNotice(data.success
-        ? { type: 'success', text: data.message || '测试通知已发送' }
-        : { type: 'error', text: getResponseMessage(data, '测试通知失败') })
+      if (data.success) {
+        notify(data.message || '测试通知已发送', 'success', { id: NOTIFICATION_TEST_NOTICE_ID })
+      } else {
+        notify(getResponseMessage(data, '测试通知失败'), 'error', { id: NOTIFICATION_TEST_NOTICE_ID })
+      }
     } catch (error) {
       if (controller.signal.aborted || !mountedRef.current || testAbortRef.current !== controller) return
-      setTestNotice({ type: 'error', text: getErrorMessage(error, '测试通知失败') })
+      notify(getErrorMessage(error, '测试通知失败'), 'error', { id: NOTIFICATION_TEST_NOTICE_ID })
     } finally {
       if (testAbortRef.current === controller) {
         testAbortRef.current = null
@@ -159,36 +178,29 @@ export default function NotificationSettings() {
         : null
 
   return (
-    <SmoothPanel className="automation-side-card">
+    <Card className="automation-side-card gap-0 p-0!">
       <div className="automation-side-card-heading">
         <div className="automation-side-card-heading-text">
-          <h3><Bell size={16} strokeWidth={1.8} aria-hidden="true" /><span>通知</span></h3>
-          <p>任务流程结束后发送结果</p>
+          <h3><span>通知</span></h3>
         </div>
         <div className="automation-side-card-heading-actions">
           <Switch
             checked={config.enabled}
-            onChange={(enabled) => updateConfig(current => ({ ...current, enabled }))}
+            onCheckedChange={(enabled) => updateConfig(current => ({ ...current, enabled }))}
             disabled={loading || saving || Boolean(loadError)}
-            label="启用通知"
+            aria-label="启用通知"
             className="automation-card-switch"
           />
         </div>
       </div>
 
       {loading ? (
-        <div className="automation-notification-loading" role="status">读取通知配置…</div>
+        <div className="min-h-24 p-4">
+          <Loading size="sm" text="读取通知配置…" />
+        </div>
       ) : loadError ? (
-        <div className="automation-notification-notice is-error flex flex-wrap items-center justify-between gap-2" role="alert">
-          <span>{loadError}</span>
-          <Button
-            size="sm"
-            variant="secondary"
-            onClick={() => void loadConfig(true)}
-            disabled={loading || configQuery.isFetching}
-          >
-            重新加载
-          </Button>
+        <div className="min-h-24 p-4">
+          <InlineAlert tone="error">通知配置暂不可用</InlineAlert>
         </div>
       ) : (
         <>
@@ -200,107 +212,99 @@ export default function NotificationSettings() {
               </div>
               <Switch
                 checked={telegram.enabled}
-                onChange={(enabled) => updateTelegram({ enabled })}
+                onCheckedChange={(enabled) => updateTelegram({ enabled })}
                 disabled={!config.enabled || saving}
-                label="启用 Telegram"
+                aria-label="启用 Telegram"
                 className="automation-card-switch"
               />
             </div>
 
             {telegram.enabled && (
               <div className="automation-notification-details">
-                <label className="automation-notification-field">
-                  <span>Bot Token</span>
-                  <input
+                <Field data-disabled={!config.enabled || saving || undefined}>
+                  <FieldLabel htmlFor="automation-notification-bot-token" className="text-muted-foreground">Bot Token</FieldLabel>
+                  <Input
+                    id="automation-notification-bot-token"
                     type="text"
                     value={telegram.botToken}
                     onChange={(event) => updateTelegram({ botToken: event.target.value })}
                     placeholder="Telegram Bot Token"
                     disabled={!config.enabled || saving}
                     autoComplete="off"
-                    className="app-native-control"
                   />
-                </label>
+                </Field>
 
-                <label className="automation-notification-field">
-                  <span>Chat ID</span>
-                  <input
+                <Field data-disabled={!config.enabled || saving || undefined}>
+                  <FieldLabel htmlFor="automation-notification-chat-id" className="text-muted-foreground">Chat ID</FieldLabel>
+                  <Input
+                    id="automation-notification-chat-id"
                     type="text"
                     value={telegram.chatId}
                     onChange={(event) => updateTelegram({ chatId: event.target.value })}
                     placeholder="Telegram Chat ID"
                     disabled={!config.enabled || saving}
                     autoComplete="off"
-                    className="app-native-control"
                   />
-                </label>
+                </Field>
               </div>
             )}
 
             {config.enabled && !canSend && (
-              <p className="automation-notification-hint" role="status">
+              <InlineAlert tone="warning" showIcon={false}>
                 {telegram.enabled ? '凭据不完整，不会发送' : '未启用渠道，不会发送'}
-              </p>
+              </InlineAlert>
             )}
 
             <div className="automation-notification-actions">
               <Button
                 size="sm"
                 variant="secondary"
-                icon={<Send size={14} />}
-                loading={testing}
-                loadingText="发送中"
                 onClick={() => void testNotification()}
                 disabled={loading || Boolean(loadError) || testing || !canTest}
+                aria-busy={testing || undefined}
               >
-                发送测试消息
+                {testing
+                  ? <><LoaderCircle className="animate-spin" aria-hidden="true" />发送中</>
+                  : (
+                    <>
+                      <Send size={14} aria-hidden="true" />
+                      发送测试消息
+                    </>
+                  )}
               </Button>
               {config.enabled && testBlockedReason && (
-                <small className="automation-notification-hint">{testBlockedReason}</small>
+                <FieldDescription className="text-xs">{testBlockedReason}</FieldDescription>
               )}
             </div>
 
-            {testNotice && (
-              <div
-                className={`automation-notification-notice is-${testNotice.type}`}
-                role={testNotice.type === 'error' ? 'alert' : 'status'}
-              >
-                {testNotice.text}
-              </div>
-            )}
           </div>
 
           {!config.enabled && (
-            <small className="automation-notification-hint">{testBlockedReason}</small>
-          )}
-
-          {saveNotice && (
-            <div
-              className={`automation-notification-notice is-${saveNotice.type}`}
-              role={saveNotice.type === 'error' ? 'alert' : 'status'}
-            >
-              {saveNotice.text}
-            </div>
+            <FieldDescription className="mt-0 px-4 pb-3 text-xs">{testBlockedReason}</FieldDescription>
           )}
 
           <div className="automation-side-card-footer">
-            <span className="automation-notification-status">
+            <Badge variant="secondary" className="font-normal text-tertiary">
               {saving ? '保存中…' : dirty ? '有未保存的更改' : '已保存'}
-            </span>
+            </Badge>
             <Button
               size="sm"
-              variant="primary"
-              icon={<Save size={14} />}
-              loading={saving}
-              loadingText="保存中"
               onClick={() => void saveConfig()}
               disabled={!dirty || loading || saving}
+              aria-busy={saving || undefined}
             >
-              保存
+              {saving
+                ? <><LoaderCircle className="animate-spin" aria-hidden="true" />保存中</>
+                : (
+                  <>
+                    <Save size={14} aria-hidden="true" />
+                    保存
+                  </>
+                )}
             </Button>
           </div>
         </>
       )}
-    </SmoothPanel>
+    </Card>
   )
 }

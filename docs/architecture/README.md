@@ -15,16 +15,16 @@ La Pluma Next 是一个面向《明日方舟》自动化的本地 Web 控制台�
 
 ### 前端 UI 与响应式壳层
 
-前端使用 React 19、Tailwind CSS v4（`@tailwindcss/vite`；`@theme` 圆角映射 + 定向 `@utility` 间距映射，无 JS 配置）和 Framer Motion。`Layout` 与 `shared/ui` 通用组件使用原生语义元素实现页面 chrome、导航栏、移动 tabbar 和模态交互；`styles/` 下的语义 token 与 `ios-theme.css` 统一 iOS 26 材质、La Pluma Next 品牌色和信息密度。
+前端使用 React 19、Tailwind CSS v4（`@tailwindcss/vite`；`@theme` 圆角/断点映射与 `@theme inline` 颜色映射，无 JS 配置，spacing 使用 v4 原生档位）和 Framer Motion。`Layout` 与 `shared/components` 通用组件使用原生语义元素实现页面 chrome、导航栏、移动 tabbar 和模态交互；`styles/index.css` 的语义 token、`styles/layout.css` 的布局几何 token 与 `styles/chrome.css` 的 chrome 视觉分别统一品牌色、信息密度、水平留白与默认主题外观，液态玻璃由后续独立主题包提供。
 
 URL 导航、路径归一、PWA 历史记录与 Activity 保活的约定统一见[前端架构与所有权](../frontend/README.md)。
 
-桌面与移动导航、主题、安全区、响应式断点等界面规则以根目录 [设计规范](../../DESIGN.md) 为唯一来源；组件 API 见 [通用组件库](../frontend/components.md)。新增页面应复用现有 `Layout`、`shared/ui` 通用组件和语义 token，不要重复实现导航壳层或页面级安全区计算。
+桌面与移动导航、主题、安全区、响应式断点等界面规则以根目录 [设计规范](../../DESIGN.md) 为唯一来源；组件 API 见 [通用组件库](../frontend/components.md)。新增页面应复用 `PageShell`、现有 `Layout`、`shared/components` 通用组件和语义 token，不要重复实现导航壳层或页面级安全区计算。
 
 ## 技术栈
 
 - **前端框架**: React 19 + TypeScript + Vite
-- **UI 框架**: Tailwind CSS v4（`@tailwindcss/vite`，CSS-first 配置）+ Framer Motion + 项目语义组件与 `src/styles/ios-theme.css`
+- **UI 框架**: Tailwind CSS v4（`@tailwindcss/vite`，CSS-first 配置）+ Framer Motion + 项目语义组件与 `src/styles/` 全局样式
 - **图标**: Lucide React
 - **路由**: React Router 7（`BrowserRouter`，URL 即 tab 状态）
 - **状态管理**: Zustand（跨页客户端状态）
@@ -48,12 +48,12 @@ La-pluma-next/
 │   │   ├── src/
 │   │   │   ├── main.tsx       # 入口：import './styles' 并挂载 @/app/App
 │   │   │   ├── app/           # 应用组装层：router（路由表、URL 归一与保活出口）、layout、providers
-│   │   │   ├── pages/         # 页面层：按域组合页头与领域工作区
+│   │   │   ├── pages/         # 页面层：按域组合页面壳与领域工作区
 │   │   │   ├── features/      # 功能域（对外只有 index.ts）：dashboard、automation、combat、roguelike、training、
 │   │   │   │                  #   statistics、logs、settings 等页面域，以及 task-execution、user-config、game-data、
 │   │   │   │                  #   resource-invalidation、runtime-status、device-mirror、operator-quotes 等跨域微域
 │   │   │   ├── shared/        # 横向下层：ui、theme（启动主题单一真源）、navigation、stores、api、query、hooks、utils
-│   │   │   └── styles/        # 全局样式资产（不参与四层分层）：index.css 语义 token 单源与 ios-theme.css
+│   │   │   └── styles/        # 全局样式资产（不参与四层分层）：index.css 语义 token 单源、layout.css 布局几何与 chrome.css chrome 视觉
 │   │   └── public/            # 静态资源（Logo、图标）
 │   └── server/                # 后端 (Node.js + Express)
 │       ├── src/
@@ -87,12 +87,12 @@ La-pluma-next/
 
 ## 依赖与职责护栏
 
-`app → pages → features → shared` 的单向依赖、feature 公开面、`task-execution` 不反向依赖页面域、页面裸副作用，以及 hooks/model/components/pages 的规模观察由 `apps/web/scripts/check-guardrails.ts` 自动检查，并作为客户端 `verify` 的第一步运行：
+`app → pages → features → shared` 的单向依赖、feature 公开面、`task-execution` 不反向依赖页面域、页面裸副作用、壳层稳定锚点、全局样式作用域与布局测试细节由 `apps/web/scripts/check-guardrails.ts` 自动检查，并作为客户端 `verify` 的第一步运行：
 
 ```bash
 pnpm --filter la-pluma-next-client guardrails
 ```
 
-规模预算冻结在 `apps/web/size-budget.json`，阈值依据迁移后的实际分类分布而不是统一的 150 行，并检查同域页面缩减是否被搬进 hooks/model/components（缩减 ≥40 行且增长 ≥80% 判为疑似搬移）；规则、阈值表、更新方式和已知限制见[依赖与职责护栏](../development/guardrails.md)。ESLint 继续负责编辑器内的深路径与分层即时报错，CLI 额外覆盖相对路径绕过、真实域环、页面职责与规模预算。
+规则、允许方向与已知限制见[依赖与职责护栏](../development/guardrails.md)。oxlint 继续负责编辑器内的深路径与分层即时报错，CLI 额外覆盖相对路径绕过、真实域环、页面职责与布局/样式/测试护栏。
 
 开发流程与常用检查见 [开发文档](../development/README.md)。

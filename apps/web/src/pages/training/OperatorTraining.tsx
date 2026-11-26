@@ -1,9 +1,10 @@
+import { PageShell } from '@/shared/components'
 import { TrainingWorkspace } from '@/features/training'
 
 export default function OperatorTraining() {
   return (
-    <div className="app-page ios-workspace-page training-workspace" data-page="training">
+    <PageShell pageKind="training" layout="workspace">
       <TrainingWorkspace />
-    </div>
+    </PageShell>
   )
 }

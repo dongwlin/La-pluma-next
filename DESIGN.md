@@ -1,10 +1,9 @@
 ---
 name: La Pluma Next
-description: 面向《明日方舟》自动化的本地 Web 控制台，使用 macOS 工作台结构与 iOS 26 材质。
+description: 面向《明日方舟》自动化的本地 Web 控制台，使用 macOS 工作台结构、默认主题语义 token 与共享布局 token。
 colors:
   bg: "#f2f2f7"
   bg-soft: "#e5e5ea"
-  surface: "rgba(255, 255, 255, 0.72)"
   surface-solid: "#ffffff"
   surface-muted: "rgba(118, 118, 128, 0.12)"
   border: "rgba(60, 60, 67, 0.18)"
@@ -21,7 +20,9 @@ colors:
   success-text: "#1f7a36"
   success-action: "#248a3d"
   warning: "#ff9500"
+  warning-text: "#8a4b00"
   danger: "#ff3b30"
+  danger-text: "#c40012"
   danger-action: "#d70015"
   info: "#5856d6"
   dark-bg: "#000000"
@@ -38,7 +39,9 @@ colors:
   dark-accent-soft: "rgba(10, 132, 255, 0.2)"
   dark-success: "#30d158"
   dark-warning: "#ff9f0a"
+  dark-warning-text: "#ff9f0a"
   dark-danger: "#ff453a"
+  dark-danger-text: "#ff453a"
   dark-info: "#5e5ce6"
 typography:
   page-title:
@@ -73,11 +76,10 @@ typography:
     lineHeight: 1.4
 rounded:
   xs: "6px"
-  sm: "10px"
-  md: "13px"
-  lg: "16px"
-  continuous: "20px"
-  continuous-compact: "16px"
+  sm: "8px"
+  md: "10px"
+  lg: "12px"
+  xl: "16px"
   pill: "9999px"
 spacing:
   "1": "4px"
@@ -93,39 +95,33 @@ spacing:
   control-x: "16px"
 components:
   button-primary:
-    backgroundColor: "{colors.accent-action}"
+    backgroundColor: "{colors.accent}"
     textColor: "#ffffff"
     rounded: "{rounded.lg}"
-    padding: "0 16px"
-    height: "44px"
-  button-primary-hover:
-    backgroundColor: "{colors.accent-action-pressed}"
-    textColor: "#ffffff"
-    rounded: "{rounded.lg}"
-    padding: "0 16px"
-    height: "44px"
+    padding: "0 10px"
+    height: "32px"
   button-secondary:
-    backgroundColor: "{colors.surface-muted}"
+    backgroundColor: "{colors.bg-soft}"
     textColor: "{colors.text}"
     rounded: "{rounded.lg}"
-    padding: "0 16px"
-    height: "44px"
+    padding: "0 10px"
+    height: "32px"
   button-ghost:
     backgroundColor: "transparent"
-    textColor: "{colors.text-muted}"
-    rounded: "{rounded.lg}"
-    padding: "0 12px"
-    height: "36px"
-  input:
-    backgroundColor: "{colors.surface-solid}"
     textColor: "{colors.text}"
     rounded: "{rounded.lg}"
-    padding: "0 12px"
-    height: "44px"
+    padding: "0 10px"
+    height: "32px"
+  input:
+    backgroundColor: "transparent"
+    textColor: "{colors.text}"
+    rounded: "{rounded.lg}"
+    padding: "4px 10px"
+    height: "32px"
   card:
     backgroundColor: "{colors.surface-solid}"
     textColor: "{colors.text}"
-    rounded: "{rounded.lg}"
+    rounded: "{rounded.xl}"
     padding: "16px"
   nav-active:
     backgroundColor: "{colors.accent}"
@@ -141,24 +137,25 @@ components:
 
 **Creative North Star: "The Precision Workbench"**
 
-La Pluma Next 是一个高密度的本地自动化控制台，不是营销页面。它的界面首先是一张工作台：macOS 风格的固定侧栏负责工作区导航，中央区域承载任务编排、日志、数据和设备预览，移动端则退化为悬浮的 iOS 26 胶囊导航。所有控件都应当像加工过的系统控件：尺寸精确、反馈短促、层级清楚，不靠装饰制造存在感。
+La Pluma Next 是一个高密度的本地自动化控制台，不是营销页面。它的界面首先是一张工作台：macOS 风格的固定侧栏负责工作区导航，中央区域承载任务编排、日志、数据和设备预览，移动端则退化为悬浮胶囊导航。所有控件都应当像加工过的系统控件：尺寸精确、反馈短促、层级清楚，不靠装饰制造存在感。
 
-浅色主题读起来像冷调纸面与磨砂玻璃，深色主题则是近黑石墨与同一支蓝色信号。密度是刻意保留的：信息可以很满，但层级必须由字重、1px 发丝线和间距 token 建立，而不是由彩色卡片、渐变或投影堆出来。强调色是稀缺资源，只出现在当前导航项、主操作、焦点和运行中的状态上。
+浅色主题读起来像冷调纸面与分层表面，深色主题则是近黑石墨与同一支蓝色信号。密度是刻意保留的：信息可以很满，但层级必须由字重、1px 发丝线和间距 token 建立，而不是由彩色卡片、渐变或投影堆出来。强调色是稀缺资源，只出现在当前导航项、主操作、焦点和运行中的状态上。
 
 **Key Characteristics:**
-- 原生语义优先：`Button`、`Card`、`Input`、`Switch` 等 `shared/ui` 通用组件使用真实语义元素，浏览器、jsdom、SSR 和嵌入式场景渲染一致。
+- 原生语义优先：`Button`、`Input`、`Select`、`Checkbox`、`Switch`、`Progress`、`Badge`、`Alert`、`Card`、`Dialog`、`AlertDialog`、`Sheet` 使用 `shared/ui` 的 shadcn 生成物，`ConfirmAlertDialog`、`Loading` 等应用组件位于 `shared/components`；两者都使用真实语义元素，浏览器、jsdom、SSR 和嵌入式场景渲染一致。
 - 单强调色：系统蓝承担品牌、主操作、焦点和选中态；状态色只表达成功、警告、危险和信息。
-- 分层而不炫技：普通内容面保持平整，只有 chrome、弹层和可点击卡片使用玻璃、抬升或 hover 阴影。
-- 4px 节奏：所有间距回到 `--app-space-*`；圆角回到 `--app-radius-*`。
+- 分层而不炫技：普通内容面保持平整，只有 chrome、弹层和可点击卡片使用抬升或 hover 阴影；玻璃由后续主题层提供。
+- 4px 节奏：布局间距使用 Tailwind 原生档位与组件类；圆角使用 `--radius` 派生档位。
 - 移动优先：断点从内容需要出发，不复制桌面布局，也不建立第二套导航状态。
 
 ### Source of Truth
 
-- `apps/web/src/styles/index.css`：语义 token 的**唯一来源**（base 层）、Tailwind 入口、`@theme` 圆角映射、`gap-*` / `space-*` 定向 `@utility`、通用组件类与跨域 keyframes；页面样式由各功能域自持。
-- `apps/web/src/styles/ios-theme.css`：只保留 iOS 26 独有的 chrome/材质 token（`--app-chrome-*`、`--app-glass-*`、安全区、导航/侧栏几何等）与对应样式；不再重定义语义 token。
-- `apps/web/src/shared/ui`：`Button`、`IconButton`、`Card`、`Input`、`Select`、`Checkbox`、`Switch`、`Modal`、`PageHeader`、`EmptyState`、`Loading` 等通用组件。
+- `apps/web/src/styles/index.css`：语义 token 的**唯一来源**（base 层）、Tailwind 入口、`@theme` 圆角派生与 `@theme inline` 颜色映射、通用组件类与跨域 keyframes；页面样式由各功能域自持。
+- `apps/web/src/styles/layout.css`：结构几何与 `--layout-*` token（视口、navbar 与安全区高度、侧栏、内容宽度与留白、内容 sticky 顶部偏移、tabbar 安全区与浮动内容底部偏移）；应用 chrome 的尺寸、定位、网格、滚动宿主与 skip link 可访问性样式都在这里，不承载页面级颜色、材质或控件外观。
+- `apps/web/src/styles/chrome.css`：只保留默认主题的应用 chrome 视觉样式（导航、tabbar、more-sheet、PWA 入口的实色表面、发丝线与移动端布局覆盖），不定义 token、不使用 `backdrop-filter`；分段控件不在此处提供材质，共享 `SegmentedControl` 使用 `control-surface` 容器与品牌动作色选中态；共享设备画面的 surface 与扁平控件样式归 `apps/web/src/features/device-mirror/styles/device-mirror.css`，该域不提供玻璃材质；液态玻璃由后续独立主题包提供。
+- `apps/web/src/shared/components`：`PageShell`、`ConfirmAlertDialog`、`EmptyState`、`Loading` 等应用级通用组件；`Button`、`Input`、`Select`、`Checkbox`、`Switch`、`Progress`、`Badge`、`Alert`、`Card`、`Dialog`、`AlertDialog`、`Sheet` 等 shadcn 生成物位于 `apps/web/src/shared/ui`（sidebar 也在该目录）。
 
-本文件描述规则；token 的具体数值以 `apps/web/src/styles/index.css` 为准，调整 token 时同步更新本文件的表格与说明。
+本文件描述规则；语义 token 的具体数值以 `apps/web/src/styles/index.css` 为准，布局与结构几何 token 以 `apps/web/src/styles/layout.css` 为准，应用 chrome 的视觉规则以 `apps/web/src/styles/chrome.css` 为准。调整 token 时同步更新本文件的表格与说明。
 
 ## 层序与 token 单源
 
@@ -170,46 +167,44 @@ La Pluma Next 是一个高密度的本地自动化控制台，不是营销页面
 ```
 
 - **utilities 永远赢**：`page` 位于 `components` 之后、`utilities` 之前；页面 CSS 可以覆盖 base/preflight 与 components，但普通声明不再压过 utilities。确实需要压过 utilities 的页面/组件规则使用 `!important` 并在原位注释原因。
-- **page 层**：每个功能域自持自己的页面样式，放在 `features/<domain>/styles/<domain>.css`，由该域 `index.ts` 导入一次，全部位于 `@layer page`；`index.css` 只保留跨域 keyframes，`ios-theme.css` 只保留 iOS 26 chrome 与跨域 page-kind 材质（`.ios-workspace-page`、`.ios-borderless-cards`、`[data-automation-tasks]` + `[data-workbench-tasks]` 组合、`.la-pluma-content` 控件、浮层）；通用组件类留在 `@layer components`。
-- **域内 CSS 按普通 CSS 处理**：功能域样式文件不经过 Tailwind 入口的编译与降级流水线，不要在其中使用 `@apply`/`@theme` 等 Tailwind 指令；需要厂商前缀的能力按现有写法显式补齐（如 `-webkit-backdrop-filter`），浏览器下限仍以 v4 目标为准。
-- **token 单源**：语义 token（颜色、圆角、间距、字号、控件高度等）只在 `index.css` 的 `:root` / `html.dark, #app-root.dark` / 媒体查询中定义一次。浅色、深色、`prefers-contrast`、`prefers-reduced-transparency` 的最终生效值都写在这里；`ios-theme.css` 不再出现同名重定义。
+- **page 层**：每个功能域自持自己的页面样式，放在 `features/<domain>/styles/<domain>.css`，由该域 `index.ts` 导入一次，全部位于 `@layer page`；`index.css` 只保留跨域 keyframes，`layout.css` 只保留应用壳层的布局几何与结构 token，`chrome.css` 只保留应用 chrome 的视觉样式与跨域 page-kind 的表面规则（`[data-page-layout="workspace"]`、`[data-page-surface="borderless"]`、`.la-pluma-content` 控件、浮层）；automation 的 `[data-page-kind="automation"]` 样式归 `features/automation/styles/automation.css` 自持；共享设备画面（surface、扁平控件）样式归 `features/device-mirror/styles/device-mirror.css`，不以页面 kind 切换；通用组件类留在 `@layer components`。
+- **域内 CSS 按普通 CSS 处理**：功能域样式文件不经过 Tailwind 入口的编译与降级流水线，不要在其中使用 `@apply`/`@theme` 等 Tailwind 指令；需要厂商前缀的能力按现有写法显式补齐（如 `-webkit-user-select`），浏览器下限仍以 v4 目标为准。
+- **token 单源**：语义 token（颜色、圆角、间距、字号、控件高度等）只在 `index.css` 的 `:root` / `html.dark, #app-root.dark` / 媒体查询中定义一次；结构布局 token（`--layout-*`）只由 `layout.css` 定义。浅色、深色与 `prefers-contrast` 的最终生效值都写在这里；`chrome.css` 不再出现同名重定义。
 - **深色切换**：主题仍同时给 `html` 与 `#app-root` 加 `.dark`；`html.dark` 与 `#app-root.dark` 都保留为有效选择器。
 
-## 配置即规范（Tailwind 压缩映射）
+### 层序（z-index scale）
 
-压缩映射由 `index.css` 的 `@theme` 与定向 `@utility` 承担，保持已有类名的尺寸约定。页面代码继续使用 Tailwind 类名，但实际生效的档位由下面的映射表唯一决定——不要按通用 v4 迁移指南改写这些类名。
+`layout.css` 的 `:root` 定义八个有限层序 token；组件与页面只引用 token，不新增裸 z-index 层：
 
-- **圆角**：`@theme` 先用 `--radius-*: initial` 清掉 Tailwind v4 默认档位，再把 `--radius-sm/md/lg/xl/full` 映射到 `--app-radius-*`。应用只使用这 5 个命名档位，裸 `rounded`、`rounded-xs`、`rounded-2xl/3xl` 都不再生成；`rounded-sm` 是应用最小档（6px），从 sm 起收口。
-- **gap/space**：v4 的 `gap-*` / `space-*` 与 `p-*` / `m-*` 共用全局 `--spacing` 尺度，直接改 `--spacing-3/4/5/6` 会连带改变 `p-3..6` / `m-3..6`。因此用 `@utility` 定向定义 `gap-3/4/5/6`、`gap-x/y-3/4/5/6`、`space-x/y-4/5/6`；`p-*` / `m-*` 仍保持 v4 默认 4px 节奏。gap 定向工具带 `!important`，用于压过 Tailwind 为同名类生成的默认 `calc(var(--spacing) * n)` 声明；space 定向工具沿用 v4 的 `& > :not(:last-child)` end-margin 语义。代价是 `gap-3/4/5/6` 不能被同元素的 `gap-[...]` 覆盖——需要任意值时改用组件类或显式样式。
+| token | 值 | 用途 |
+| --- | --- | --- |
+| `--layout-z-content` | 0 | 页面内容基础层 |
+| `--layout-z-sticky` | 10 | 页面内 sticky 元素 |
+| `--layout-z-chrome` | 20 | 应用壳 navbar 与顶栏区域内元素 |
+| `--layout-z-tabbar` | 30 | 移动端浮动 tabbar |
+| `--layout-z-raised` | 40 | 高于 chrome 的应用自绘浮层，如 skip link 与 PWA 提示 |
+| `--layout-z-portal` | 50 | Base UI portal 弹层：select、tooltip、dropdown、dialog、sheet 与应用抽屉 |
+| `--layout-z-toast` | 60 | sonner toast |
+| `--layout-z-immersive` | 70 | 设备沉浸预览 |
+
+`.la-pluma-page` 以 `isolation: isolate` 自成 stacking context，页面内 navbar/tabbar 的 z-index 只在该上下文内比较；Base UI 弹层经 portal 挂在 `document.body` 根并使用 portal token，因此总是高于页面内 chrome。应用代码使用 Tailwind v4 变量简写 `z-(--layout-z-*)`；`shared/ui` 生成物中的 `z-50` 即 portal 层字面量，不由应用层再覆盖。
+
+页面内的局部层仍可保留小数值（如 `z-index: 0/1/2`）。automation 任务选择器是非模态 DropdownMenu，combat 关卡面板是非模态 Popover；两者都随 Base UI portal 挂在 `document.body`，层序使用 `--layout-z-portal`，不设页面局部高位。非模态表示不锁页面滚动、不遮断菜单或弹层之外的交互；automation 任务选择器使用 Base UI 标准的 outside-press、Escape 与焦点归还。2000、9999 之类的高位特例不再使用。
+
+主题菜单按审计建议延后迁移：当前仍是 navbar 内绝对定位菜单，暂借 `--layout-z-portal` token，不代表它已走 body portal。
+
+## 档位即规范（Tailwind 原生尺度）
+
+应用直接使用 Tailwind v4 原生档位，不做压缩映射或定向重映射。
+
+- **圆角**：由 `index.css` 的 `--radius: 0.75rem` 经标准派生得到常用四档——`rounded-sm` = `calc(var(--radius) - 4px)`（8px）、`rounded-md` = `- 2px`（10px）、`rounded-lg` = `var(--radius)`（12px）、`rounded-xl` = `+ 4px`（16px）；`rounded-2xl`、`rounded-3xl` 等更大档位沿用 v4 默认静态值，胶囊用 `rounded-full`。
+- **间距**：沿用 v4 动态 spacing 尺度的 .5 步进，卡片内紧密间距用 `gap-3.5`（14px），区块间距用 `gap-4.5`（18px）；`p-*` / `m-*` 与 gap 共用同一 4px 基线节奏。
 - **content 检测**：由 Tailwind v4 自动检测 `index.html` 与 `src/**` 取代原 `content` glob，无需额外配置。
-
-### 圆角映射（rounded-*）
-
-| Tailwind 类 | 实际生效 token | 生效值 |
-| --- | --- | --- |
-| `rounded-sm` | `--app-radius-xs` | 6px |
-| `rounded-md` | `--app-radius-sm` | 10px |
-| `rounded-lg` | `--app-radius-md` | 13px |
-| `rounded-xl` | `--app-radius-lg` | 16px |
-| `rounded-full` | `--app-radius-pill` | 9999px |
-
-Tailwind 的 8 个圆角档位被压缩为应用的 5 个命名档位：`rounded-2xl` / `rounded-3xl` 与 `xl` 同为 16px，已随 `--radius-*: initial` 一起移除，避免同一值出现多个类名——不存在比 16px 更圆的常规卡片圆角，需要 iOS 连续圆角视觉时使用 `SmoothPanel`（20px / 紧凑 16px）。sm、md、lg、xl 四个常用档位作为有意约束保留，不要新增更大的档位，也不要恢复裸 `rounded`。
-
-### 间距映射（gap-* / space-*）
-
-| Tailwind 类 | 实际生效 token | 生效值 |
-| --- | --- | --- |
-| `gap-3`、`gap-4`、`gap-x/y-3/4` | `--app-space-card` | 14px |
-| `gap-5`、`gap-6`、`gap-x/y-5/6` | `--app-space-section` | 18px |
-| `space-x-4`、`space-y-4` | `--app-space-card` | 14px |
-| `space-x-5/6`、`space-y-5/6` | `--app-space-section` | 18px |
-
-`gap-3/4` 的差别与 `gap-5/6` 的差别被抹平：它们分别表示"卡片内间距"与"区块间距"两个语义档位。未列出的档位沿用 Tailwind 默认 spacing 尺度，与 4px 基线节奏一致；更精细的布局间距优先使用 `--app-space-1..6`。
 
 ### 冻结规则（全局样式入口）
 
-- `apps/web/src/styles/index.css` 与 `apps/web/src/styles/ios-theme.css` 是全局样式的**冻结入口**，不接收新增页面级选择器。
-- 页面选择器归 `features/<domain>/styles/`，由该域 `index.ts` 导入；两个全局入口对页面级选择器保持冻结，新样式按组件目录或功能域目录新增。
+- `apps/web/src/styles/index.css`、`apps/web/src/styles/layout.css` 与 `apps/web/src/styles/chrome.css` 是全局样式的**冻结入口**，不接收新增页面级选择器。
+- 页面选择器归 `features/<domain>/styles/`，由该域 `index.ts` 导入；上述全局入口对页面级选择器保持冻结，新样式按组件目录或功能域目录新增。
 - 拦截机制：stylelint 预算制（ratchet）冻结存量违规数、只拦净新增，用法见 [开发文档](docs/development/README.md) 的「样式治理」一节。
 
 ## Colors
@@ -217,13 +212,13 @@ Tailwind 的 8 个圆角档位被压缩为应用的 5 个命名档位：`rounded
 整体调色板是 Apple 系统色在冷灰纸面上的克制组合：一个系统蓝强调色，一组石墨中性色，以及只用于状态反馈的语义色。
 
 ### Primary
-- **System Blue** (`#007aff`；深色 `#0a84ff`)：当前导航项、主操作、链接、焦点环、选中控件和运行中状态。实心操作使用 `#0066cc`，按下使用 `#0055b3`，弱背景使用 `rgba(0, 122, 255, 0.12)`。
+- **System Blue** (`#007aff`；深色 `#0a84ff`)：当前导航项、主操作、链接、焦点环、选中控件和运行中状态。按钮主操作使用 shadcn `bg-primary`（即上述 System Blue，hover 为 `bg-primary/80`）；`.brand-action` 实心表面使用 `#0066cc`，按下 `#0055b3`，用于分段控件等应用自绘表面；弱背景使用 `rgba(0, 122, 255, 0.12)`。
 - **Blue Signal Rule**：蓝色只承担“当前 / 主要 / 可交互”的信号，不用于装饰性标题、图标底色或大面积背景。
 
 ### Secondary
 - **Status Green** (`#34c759`；深色 `#30d158`)：成功、完成、已连接。
-- **Status Amber** (`#ff9500`；深色 `#ff9f0a`)：警告、需要确认的中间态。
-- **Status Red** (`#ff3b30`；深色 `#ff453a`)：错误、危险操作、不可逆动作。
+- **Status Amber** (`#ff9500`；深色 `#ff9f0a`)：警告、需要确认的中间态；文字使用 `--warning-text`（浅色 `#8a4b00`、深色 `#ff9f0a`），背景与边框仍使用 `--warning`。
+- **Status Red** (`#ff3b30`；深色 `#ff453a`)：错误、危险操作、不可逆动作；文字使用 `--destructive-text`（浅色 `#c40012`、深色 `#ff453a`），背景与边框仍使用 `--destructive`。
 - **Status Indigo** (`#5856d6`；深色 `#5e5ce6`)：信息、提示和中性强调。
 
 游戏资源稀有度是唯一允许的领域色例外，但应封装在资源组件内部，不能扩散成页面主题。
@@ -232,13 +227,13 @@ Tailwind 的 8 个圆角档位被压缩为应用的 5 个命名档位：`rounded
 - **Paper White** (`#ffffff` / `#f2f2f7`)：浅色卡片、页面和 chrome 的基准面。
 - **Mist Gray** (`#e5e5ea` / `rgba(118, 118, 128, 0.12)`)：分组背景、弱容器、未选中控件和列表底。
 - **Graphite Ink** (`#1c1c1e` / `#636366` / `#8e8e93`)：依次为主文字、次文字、辅助文字。
-- **Midnight Glass** (`#000000` / `#1c1c1e`)：深色主题页面与卡片基底，不使用纯黑大面积铺满内容。
+- **Midnight Graphite** (`#000000` / `#1c1c1e`)：深色主题页面与卡片基底，不使用纯黑大面积铺满内容。
 - **Hairline** (`rgba(60, 60, 67, 0.18)`；深色 `rgba(235, 235, 245, 0.18)`)：普通边框和分隔线；需要更明确分隔时使用 `border-strong`。
 
 ### Named Rules
 **The One Accent Rule.** 系统蓝是唯一的品牌强调色。任一屏幕中，实心蓝色面积应保持克制；如果所有按钮、图标和标题都在抢蓝色，先删掉装饰性的那些。
 
-**The Semantic Surface Rule.** 页面通过 `surface-panel`、`surface-soft`、`control-surface`、`control-active`、`brand-action`、`brand-text`、`status-*`、`form-error-*` 使用颜色，不直接写 `from-violet-*`、`text-orange-*`、`bg-cyan-*` 这类页面级色板。
+**The Semantic Surface Rule.** 页面通过 `Card` 语义 token、`surface-panel`、`surface-soft`、`control-surface`、`control-active`、`brand-action`、`brand-text`、`status-*`、`form-error-*` 使用颜色，不直接写 `from-violet-*`、`text-orange-*`、`bg-cyan-*` 这类页面级色板。
 
 **The Dark Mirror Rule.** 深色主题不是浅色的机械反转：页面变为近黑石墨，文字变为暖白，蓝色略微提亮，但语义关系和强调色的稀缺性保持不变。不要在页面里另建一套深色 token。
 
@@ -251,9 +246,10 @@ Tailwind 的 8 个圆角档位被压缩为应用的 5 个命名档位：`rounded
 **Character:** 字体是“系统原生”的一部分，不表演个性。层级靠字号、字重和颜色（primary / secondary / tertiary）建立；中文标题和正文不增加字距，只有英文全大写微标签可以使用更宽字距。
 
 ### Hierarchy
-- **Display / 页面标题** (600, `1.5rem` / `1.35`，移动端 `1.25rem`)：仅 `PageHeader` 的页面主标题。
-- **Headline / 区块标题** (600, `1.125rem` / `1.45`)：`CardHeader`、主要内容区标题。
-- **Title / 卡片标题** (600, `1rem` / `1.4`)：紧凑区块、列表分组和卡片内标题。
+- **Page title / chrome 页面标题** (600, `1.5rem` / `1.35`)：顶栏唯一的 `h1`，直接使用当前工作区名称；桌面与移动端同字号，`document.title` 使用同一来源，页面内不再重复页头。
+- **Headline / 区块标题** (600, `1.125rem` / `1.45`)：卡片外的页面区块标题（如设置页的 `h2`）与主要内容区标题。
+- **Title / 卡片标题** (600, `1rem` / `1.4`)：紧凑区块、列表分组和卡片内标题；设置页的卡片不再重复区块标题。
+- **Subsection / 卡片子区块** (500, `0.875rem` / `1.5`)：卡片内 `h3` 子区块与设置行标签使用同一字重，靠语义与位置区分，不额外加粗。
 - **Body / 正文与表单标签** (400–500, `0.875rem` / `1.5`)：描述、输入标签、普通按钮；多行正文使用 `leading-6` 或 `1.6`。
 - **Caption / 辅助说明** (400, `0.75rem` / `1.5`)：元数据、提示、筛选标签。
 - **Meta / 微标签** (500, `0.6875rem` / `1.4`)：序号、时间戳、短 ID；`11px` 是正文类文字的下限。
@@ -265,137 +261,190 @@ Tailwind 的 8 个圆角档位被压缩为应用的 5 个命名档位：`rounded
 
 **The 11px Floor Rule.** `8px` 至 `10px` 不得承载中文正文、操作名或重要状态；`11px` 仅用于序号、时间戳和短元数据。
 
+**The Row Label Rule.** 设置行统一单行：标签在左、控件在右；标签使用 `text-sm font-medium text-foreground`。卡片内 `h3` 子区块（如设备连接、自动更新、MaaCore、MAA CLI）沿用同一字号与字重。不要标签在上、控件在下，也不要在不同卡片混用 muted、foreground 或额外加粗的标签。
+
 ## Layout
 
-布局模型是“固定工作台 + 弹性内容区”。`app-shell` 负责最大宽度和左右留白，页面内部不再嵌套同用途的 `max-w-*` 或水平 padding。
+布局模型是“固定工作台 + 弹性内容区”。横向宽度与留白只由布局 token 控制，`.la-pluma-content` 与 `.la-pluma-navbar-inner` 共用同一份最大宽度、居中与左右 padding；页面内部不再嵌套同用途的 `max-w-*` 或水平 padding。
 
-- 内容最大宽度 `1600px`（`--app-content-max: 100rem`）；桌面左右留白通常 `32px`，`1600px` 以上为 `40px`，移动端为 `14px`。
-- 基础节奏为 4px：`--app-space-1` 至 `--app-space-6` 分别为 4、8、12、16、20、24px。页面外层用 `app-page`，区块之间用 `app-stack-section` / `app-grid-section`，卡片内部用 `app-stack-card` / `app-grid-card`。
-- 卡片内边距 `16px`（`--app-space-panel`）；卡片内部紧密间距 `14px`；区块间距 `18px`；页面外层 `20px`，移动端 `14px`。不要用大量 `space-y-6`、`gap-6`、`p-6` 手写版式基准。
+页面根统一由 `shared/components` 的 `PageShell` 提供：根节点输出 `data-region="page"` 与 `data-page-kind`，工作台页追加 `data-page-layout="workspace"`，无边框卡片页追加 `data-page-surface="borderless"`；`PageShell` 内部固定一个 `app-stack-section`，页面只提供内容，不自建标题或页头。布局、视觉与浏览器测试通过 `data-region` / `data-page-*` 定位，不依赖实现类名。
+
+- 应用壳的稳定 region 锚点：`page`、`page-header`、`page-title`、`page-content`、`scroll`、`monitor`、`toolbar`、`navbar`、`sidebar`、`tabbar`；滚动宿主固定为 `[data-region="scroll"]`。
+- 工作区设备画面布局由 `DeviceMonitorLayout` 输出 `data-device-monitor-layout="standard|workbench|mode"` 与 `data-monitor-area` 区域锚点；共享设备画面类名为 `device-monitor-surface`，`workbench`/`mode` 的 monitor 列与面板为 `device-monitor-column` / `device-monitor-panel`，工具栏使用 shared `Button` / `Tooltip`，不提供玻璃材质类；`data-region="monitor"` 仍只由 `DeviceMonitorPanel` 卡片输出，每页恰好一个。
+- 内容最大宽度 `112rem`（`--layout-content-max`），两侧对称居中。
+- 页面左右留白由 `--layout-page-gutter` 提供：桌面（`1024px` 及以上）`32px`；平板（`640px` 及以上且小于 `1024px`）`20px`；移动（小于 `640px`）`14px`。安全区取 `max(gutter, env(safe-area-inset-*))`，不叠加第二份 inset。
+- 基础节奏为 4px。页面外层用 `app-page`，区块之间用 `app-stack-section` / `app-grid-section`，卡片内部用 `app-stack-card` / `app-grid-card`。
+- 卡片内边距 `16px`；卡片内部紧密间距 `14px`（`gap-3.5`）；区块间距 `18px`（`gap-4.5`）；页面外层 `20px`，移动端 `14px`。不要用大量 `space-y-6`、`gap-6`、`p-6` 手写版式基准。
 - 常规信息卡片使用 `repeat(2, minmax(0, 1fr))`；主次栏建议保持约 `1.1–1.75 : 0.9–1`，工具/筛选窄栏最小约 `16rem`。每一列都要有 `minmax(0, ...)` 或 `min-w-0`，避免长文本横向溢出。
-- 阅读型长文本在自己的内容区单独限制行宽；不要把整页内容压成一条窄栏，也不要用 `max-w-7xl` 在 `app-shell` 内重复收窄。
+- 阅读型长文本在自己的内容区单独限制行宽；不要把整页内容压成一条窄栏，也不要在内容容器内重复收窄整页宽度。
+- 页内目录用于长表单页（当前为设置页）：`xl` 及以上在右侧使用 `13rem` sticky 目录，小于 `xl` 隐藏；目录不设可见标题、图标、描述或胶囊底，当前项使用 2px 主色左引导线与 foreground 文字，其余为 muted。高亮由滚动位置驱动，跳转复用 `--layout-content-sticky-top` 偏移。
+- 带页内目录的页面允许在内容区使用 `max-w-6xl` 的局部宽度，确保表单行与目录不被拉满；普通工作台页仍不嵌套同用途的 `max-w-*`。
+- 设置页区块之间使用 `2.5rem`，区块标题与卡片之间 `0.75rem`，目录与内容列之间 `2.5rem`。区块标题在卡片外，使用 Headline；卡片不再重复标题。卡片内子区块使用 Subsection，设置行遵循 The Row Label Rule。
 
 ### Responsive Shell
 
-应用使用原生 `.la-pluma-app` 根节点。Navbar、页面区域、移动 tabbar 和 Sheet 等 chrome 与交互统一由 `Layout` 及 `shared/ui` 通用组件提供；`styles/ios-theme.css` 负责 iOS 26 材质、应用 chrome、安全区和品牌适配，不要在页面中另起一套导航或 modal 基础样式。
+应用使用原生 `.la-pluma-app` 根节点。Navbar、侧栏、页面区域、移动 tabbar 和 Sheet 等 chrome 与交互统一由 `Layout` 及 `shared/components` 通用组件提供；`styles/layout.css` 提供主题无关的布局几何与安全区 token，`styles/chrome.css` 提供默认主题下的应用 chrome 视觉（实色表面、发丝线与移动端布局），不要在页面中另起一套导航或 modal 基础样式。液态玻璃是后续可选主题能力，不属于默认 chrome。
 
-- 桌面端（`lg` 及以上）显示 `17rem` 左侧工作台导航：一条跨越顶栏与导航区的连续圆角玻璃边界、可用搜索、单列导航和 28px 语义色图标底座；导航项从面板顶部开始排列，干员身份区固定在面板底部。当前项使用整行系统强调色和白色文字；品牌入口属于侧栏右侧的工作区顶栏，不能进入或遮挡侧栏圆角区。
-- 移动端使用悬浮的 iOS 风格底部胶囊导航，右侧搜索/更多入口承载次要页面。两端必须复用 `Layout` 的 URL 路由和 active 状态，不要按 viewport 建立第二份导航状态。
-- 主题由 `useUIStore` 的 `light`、`dark`、`system` 管理，并同步到文档根节点和 `.la-pluma-app`。组件或页面不要直接操作 `.dark`，也不要创建局部主题开关。
+- 桌面端（`1024px` 及以上）显示 `17rem` 左侧工作台：顶部是侧栏品牌头（普通非交互标识，不是按钮或链接），其下是单列工作区导航，底部固定干员身份区与每日语录。当前项使用侧栏强调背景与中等字重，不使用整行实心蓝。
+- 顶栏固定为两列：页面标题在左（唯一 `h1`，来自当前工作区名称并可截断），操作区在右。页面不再渲染自己的标题、副标题或页头操作区。
+- 移动端隐藏侧栏与品牌，顶栏仍保留页面标题与操作区；底部使用悬浮胶囊导航，右侧“更多”入口承载次要页面。两端必须复用 `Layout` 的 URL 路由和 active 状态，不要按 viewport 建立第二份导航状态。
+- 页面内提供 skip links：`跳到主要内容` 指向 `#main-content`；`跳到主导航` 在桌面（`1024px` 及以上）指向侧栏 `#app-sidebar-navigation`，在移动/平板指向 tabbar `#app-tabbar-navigation`。链接默认移出视口，`:focus` 时固定显示在左上角并避开安全区；未聚焦时不占布局，不可用的那一个在对应断点 `display: none`，不进入焦点顺序。
+- 路由 pathname 变化后，焦点移到 `<main id="main-content" tabIndex="-1">`，并通过常驻的 `#page-announcement`（`role="status"`、`aria-live="polite"`、`aria-atomic="true"`）播报 `已切换到<页面名>`。首次挂载不聚焦、不播报；启动期 URL 归一化（replace）同样不触发。当前焦点位于 `role="dialog"` / `role="alertdialog"` 内时不抢焦点。`document.title` 继续使用同一页面标题源。
+- 移动 tabbar 的 `<footer>` 保持在 `<main>` 之后，以维持 landmark 与阅读顺序；不要为了 DOM 顺序把 footer 移到 main 之前，直达导航由 `跳到主导航` skip link 提供。
+- 明暗与主题由 `ThemeProvider` / `lpn-ui` 管理：顶栏 `ThemeToggle` 只切换 `light`、`dark`、`system`；主题（`themeId`）由设置页「外观」卡片切换。两者都同步到文档根节点和 `.la-pluma-app`。组件或页面不要直接操作 `.dark`，也不要创建局部主题开关。
 - `apps/web/index.html` 使用 `viewport-fit=cover`。`Layout` 通过统一 token 管理 navbar、移动 tabbar 和对应安全区高度；自定义 fixed/sticky 层只有在不属于这些 chrome 时才使用 `env(safe-area-inset-*)`，内容区不要重复叠加顶部或底部 inset。
-- 页面边缘留白统一由 `Layout` 的 `.la-pluma-content` 提供，内部 `.app-page` 不重复增加上下内边距。桌面底部使用 `--app-space-3`（12px）；移动端由外层预留底部导航、安全区和页面间距。
-- 新页面按 mobile-first 编写：`sm` (640px) 用于显示次级信息或恢复横向工具栏，`md` (768px) 用于中等宽度布局，`lg` (1024px) 与 `xl` (1280px) 才扩展为双栏或多栏。不要新增 `899px`、`1023px` 这类页面级断点；日常页三栏等既有组件可保留自身的专用断点。
+- `--layout-navbar-safe-height` 等于 navbar 高度加顶部安全区，是 navbar 最小高度、内容顶部留白与滚动遮罩的共同来源；页面样式不要手写 navbar 高度或重新拼接 `env(safe-area-inset-top)`。
+- 两端壳层的 navbar 都覆盖在滚动宿主之上：滚动宿主占满视口高度，顶栏只保留标题与操作区，正文从 navbar 与安全区之下开始并可从顶栏后方滚过；桌面不为顶栏单独保留网格行。
+- 内容 sticky 顶部偏移统一使用 `--layout-content-sticky-top`，取 `calc(var(--layout-navbar-safe-height) + 1rem)`；sticky 内容从 navbar 与安全区之下开始，移动壳层还保持在 tabbar 预留区域之上，不进入尾部渐隐遮罩。
+- 页面边缘留白统一由 `Layout` 的 `.la-pluma-content` 提供，内部 `.app-page` 不重复增加上下内边距。桌面底部使用 `0.75rem`（12px）；移动端由外层预留底部导航、安全区和页面间距。
+- 浮动内容的底部偏移统一使用 `--layout-floating-bottom-offset`：它等于 `--layout-tabbar-reserved-height`（已包含一次底部安全区）加 `1rem`。移动/平板壳层（小于 `1024px`）的 toast、PWA 安装提示、安装入口与更新条直接消费该 token，不再另加 `env(safe-area-inset-bottom)`，也不用 `5rem` 等固定值近似 tabbar 几何。
+- `apps/web/index.html` 的启动壳在应用 CSS 加载前独立渲染，只绘制主题背景与居中的品牌标识（图标与品牌名），不伪造 navbar、侧栏或内容表面；背景优先使用首帧脚本写入 `html` 的主题背景，`--boot-bg` 只作为脚本执行前的兜底。启动壳不复制 `--layout-*` 几何 token，也不承诺与 React 壳层的布局对齐，避免把过期的壳层结构画进首帧。启动壳位于 `#root` 之外；React 首次提交并完成绘制后由 app 层触发淡出并从 DOM 移除，`prefers-reduced-motion: reduce` 时直接移除。
+- 新页面按 mobile-first 编写：`sm` 用于显示次级信息或恢复横向工具栏，`md` 用于中等宽度布局，`lg` 与 `xl` 才扩展为双栏或多栏。所有视口断点必须来自下方 Breakpoints 表，不要新增未登记阈值；日常页三栏等既有组件使用表中已登记的专用断点。
 - 页面滚动条当前全局隐藏，避免切换页面或列表时因系统滚动条出现导致布局左右跳动。文本和控件要在移动端自然换行，不允许为了保留桌面布局而裁剪有效内容。
+
+#### Viewport Contract
+
+- **应用壳**：普通浏览器使用 `100dvh`，跟随地址栏收放；`display-mode: standalone`、`display-mode: fullscreen` 与 `html.la-pluma-standalone` 使用 `100lvh`，让固定导航贴住物理屏幕边缘。`--layout-viewport-height` 是壳层视口高度的唯一来源，启动壳的 `--boot-viewport-height` 保持同样的分支。
+- **能力兜底**：不支持 `dvh` 时回退到 `100vh`，不支持 `lvh` 时同样回退到 `100vh`；`dvh` 兜底位于 standalone 的 `lvh` 覆盖之前，`lvh` 兜底保留在最后，顺序保证缺少对应能力时仍落到 `vh`。
+- **弹层**：需要限制高度的 Dialog 使用 `--layout-dialog-max-height`（`calc(100dvh - 2rem)`），移动 Sheet 使用 `--layout-sheet-max-height`（`85dvh`）；该 token 只服务于确有高度上限的弹层，不是所有 Dialog 的默认约束。两者都带 `vh` 兜底，弹层不手写裸 `dvh` 高度。
+- **局部例外**：`chrome.css` 的 more-sheet 使用 `min(28rem, 78dvh)` 并前置 `78vh` 兜底；`ScrcpyDeviceView` 沉浸层是已登记的局部例外，使用 `h-dvh w-screen`，按设备画面自身的全屏契约处理，不使用壳层 token。两者都登记在静态契约 allowlist 中，不扩散到其他页面或弹层。
+- **页内固定块**：日志控制台这类随页面滚动的固定高度内容使用 `svh`，并前置 `vh` 兜底，不随地址栏伸缩改变高度；只有壳层和弹层消费 `dvh`/`lvh`。
+- **软键盘**：viewport meta 声明 `interactive-widget=resizes-content`，它是面向移动端软键盘的视口声明；支持范围随渲染引擎与版本变化，桌面 Chrome/Edge/Firefox 不支持该声明，Safari/iOS 与 Firefox for Android 仅部分较新版本支持。仓库未在真机验证软键盘行为，不能视为跨平台生效。改动时保留 `width=device-width`、`initial-scale=1.0` 与 `viewport-fit=cover`。
+
+#### Breakpoints
+
+| 名称 | 阈值 | 用途 |
+| --- | --- | --- |
+| `sm` | 640px | 手机/平板分界；显示次级信息或恢复横向工具栏（Tailwind 默认） |
+| `md` | 768px | 平板中等宽度布局（Tailwind 默认） |
+| `workbench` | 900px | 自动化双列工作台；CSS 与 TSX 共用同一阈值 |
+| `lg` | 1024px | 桌面壳层：显示侧栏、隐藏移动 tabbar（Tailwind 默认） |
+| `flow-card` | 1200px | 自动化流程卡头部转为纵向密度 |
+| `xl` | 1280px | 宽屏内容网格：概览双栏与汇总网格、养成分栏（Tailwind 默认） |
+| `wide` | 1360px | 三列工作台：自动化/作业/肉鸽/设备画面 |
+
+- 同一阈值只用成对区间表达：`width < Npx` 与 `width >= Npx`。禁止用 `max-width: N` 与 `min-width: N` 成对表达同一阈值，也不使用 `max-width: 1279px` 这类补偿值。
+- CSS 使用区间语法，跨区间写 `(768px <= width < 1280px)`；JS `matchMedia` 用 `apps/web/src/shared/lib/breakpoints.ts` 的 `BREAKPOINTS` 生成同样的区间查询。`sm`/`md`/`lg`/`xl` 使用 Tailwind 默认具名变体，`workbench` 由 `@theme` 添加；`flow-card`/`wide` 仅用于 CSS 媒体查询。
+- `apps/web/src/styles/breakpoints.test.ts` 静态审计直接 `matchMedia` 调用（含括号、断言、非空与元素访问写法）；先保存为别名再调用、或字符串内嵌的 `matchMedia` 不在静态审计范围（启动脚本内嵌查询不是宽度断点）。命名 Tailwind 变体只允许 `sm`/`md`/`lg`/`xl`/`workbench` 及其派生；`2xl` 与未登记的 `--breakpoint-*` 由守卫拒绝，唯一登记项 `--breakpoint-workbench` 必须定义在 `styles/index.css` 且值与 `BREAKPOINTS.workbench` 一致。源码文本扫描可能对注释或普通字符串中的 `2xl:` 报错。
+- `@container` 查询由容器内容驱动，不属于视口断点，不受此表约束。
+- 新增专用断点必须先在此表登记用途与内容依据，优先评估容器查询；未登记的 `min-[Npx]` / `max-[Npx]` arbitrary 断点不允许出现。
+- 壳层结构几何断点（内容留白、navbar、tabbar 的切换）由 `styles/layout.css` 拥有；其他全局样式只能复用批准阈值，不得新增壳层阈值。
 
 ## Elevation & Depth
 
-这是混合体系：普通内容面是平的，靠色阶和 1px 发丝线分层；只有 chrome、弹层、浮层和可点击卡片使用阴影或玻璃。深度不是装饰，而是“这一层是否浮在另一层之上”的答案。
+这是混合体系：普通内容面是平的，靠色阶和 1px 发丝线分层；只有 chrome、弹层、浮层和可点击卡片使用阴影。深度不是装饰，而是“这一层是否浮在另一层之上”的答案。默认基线以语义表面与发丝线构成 chrome，液态玻璃材质由后续主题层提供。
 
 ### Shadow Vocabulary
-- **Panel rest (light)** (`0 0 0 1px rgba(60, 60, 67, 0.18), 0 1px 3px rgba(15, 23, 42, 0.05), 0 14px 40px rgba(15, 23, 42, 0.05)`)：`surface-panel` 卡片和大面板的默认抬升。
+- **Panel rest (light)** (`0 0 0 1px rgba(60, 60, 67, 0.18), 0 1px 3px rgba(15, 23, 42, 0.05), 0 14px 40px rgba(15, 23, 42, 0.05)`)：`surface-panel` 召唤层与独立面板的默认抬升。
 - **Panel rest (dark)** (`inset 0 1px 0 rgba(255, 255, 255, 0.06), 0 0 0 1px rgba(235, 235, 245, 0.18), 0 16px 40px rgba(0, 0, 0, 0.28)`)：深色主题的同等层级。
-- **Glass chrome** (`0 12px 32px rgba(60, 60, 67, 0.12)`；深色 `0 14px 34px rgba(0, 0, 0, 0.34)`)：侧栏框、移动 tabbar 和悬浮 chrome。
-- **Summoned layer** (`0 2px 8px rgba(0, 0, 0, 0.1), 0 30px 80px rgba(0, 0, 0, 0.24)`)：Modal、主题菜单、PWA 提示等被召唤的叠加层，配合 `blur(24px) saturate(165%)`。
+- **Glass chrome** (`0 12px 32px rgba(60, 60, 67, 0.12)`；深色 `0 14px 34px rgba(0, 0, 0, 0.34)`)：仅用于液态玻璃主题下的移动 tabbar 与悬浮 chrome，默认基线不启用。设备画面默认扁平，不借用通用 chrome 玻璃材质。
+- **Summoned layer**：Dialog/Sheet、主题菜单、PWA 提示等被召唤的叠加层使用 `surface-panel` 或 shadcn `bg-popover` 的实色表面，阴影复用 Panel rest 或生成原语自带的 ring + shadow；不使用 `backdrop-filter`、半透明背景或玻璃高光。
 - **Control rest** (`inset 0 0 0 1px rgba(60, 60, 67, 0.28), 0 1px 2px rgba(15, 23, 42, 0.025)`)：输入框、选择框和次级按钮的静态边界。
+- **Floating chrome** (`0 1rem 2.25rem rgba(60, 60, 67, 0.18)`；深色 `0 1rem 2.25rem rgba(0, 0, 0, 0.44)`)：移动 tabbar 胶囊与“更多”圆钮的浮起阴影，由 `--shadow-floating` 提供。
 
-通用颜色、背景、阴影和变形过渡保持约 160–180ms；开关 thumb 使用 240ms。新增 CSS 或 Framer Motion 动效必须尊重 `prefers-reduced-motion`；玻璃层与阴影在 `prefers-reduced-transparency: reduce` 时退化为不透明表面；`prefers-contrast: more` 时加深边框和次级文字。
+通用颜色、背景、阴影和变形过渡保持约 160–180ms；开关 thumb 使用 240ms。新增 CSS 或 Framer Motion 动效必须尊重 `prefers-reduced-motion`；默认基线不使用 `backdrop-filter` 作为表面材质（shadcn 生成弹层的遮罩 scrim 除外），未来的玻璃主题必须在自己的皮肤层内提供 `prefers-reduced-transparency: reduce` 的不透明降级；`prefers-contrast: more` 时加深边框和次级文字。
 
 ### Named Rules
 **The Flat-By-Default Rule.** 普通卡片、列表和页面区块在静止状态保持平整。阴影只用于表达层级、可点击性或状态，不要给静态内容卡片加投影闪动或位移。
 
-**The Liquid Glass Exception.** 只有 chrome、Modal、主题菜单、PWA 提示和明确的浮层可以使用 `backdrop-filter` 与深阴影。普通卡片保持不透明，避免整页都是玻璃导致可读性下降。
+**The Liquid Glass Theme.** 液态玻璃是后续独立主题包的能力，不属于默认基线。shell chrome 与召唤层（Dialog/Sheet、主题菜单、PWA 提示等）的玻璃材质只能由该主题包提供，默认基线只使用语义表面、发丝线与实色阴影。分段控件不消费 `--glass-*`，共享 `SegmentedControl` 使用 `control-surface` 容器与品牌动作色选中态。设备画面默认扁平，由 device-mirror 域持有 surface 与控件样式，不随页面 kind 或样式加载顺序变化，也不消费主题玻璃。普通卡片始终不透明，避免整页都是玻璃导致可读性下降。
 
 **The Single Beam Rule.** `status-border-beam` 仅用于启动、连接或执行中的局部状态反馈，并通过 `is-active` 控制；完成、空闲和静态卡片不得常驻光效，也不要叠加第二条可见边框。
 
 ## Shapes
 
-形状语言来自 iOS 连续圆角：圆角足够柔和，但不做成大号“药丸卡片”。普通控件和卡片使用 `--app-radius-lg`（16px），需要 iOS 连续圆角视觉的卡片和面板使用 `SmoothSurface` / `SmoothPanel`（20px，紧凑 16px）。
+基线形状使用普通圆角：圆角足够柔和，但不做成大号“药丸卡片”。卡片和面板使用 `rounded-xl`（16px），Button、Input、Select 等表单控件使用 `rounded-lg`（12px）。连续曲率只由未来的玻璃主题皮肤层以纯 CSS `corner-shape` 提供，不支持的浏览器降级为普通圆角；当前基线不定义、不消费 `--continuous-radius`。
 
-- `--app-radius-xs`（6px）：细小元素、默认边界。
-- `--app-radius-sm`（10px）：checkbox、小控件、紧凑标签。
-- `--app-radius-md`（13px）：紧凑控件、列表项和局部容器。
-- `--app-radius-lg`（16px）：卡片、面板、分段控件、通用按钮和输入。
-- `--app-continuous-radius`（20px）：`SmoothPanel` 的标准连续圆角；紧凑版为 16px。
-- `--app-radius-pill`（9999px）：胶囊、开关、头像和圆形状态点。
+- `rounded-sm`（8px）：细小元素、默认边界。
+- `rounded-[4px]`：Checkbox。
+- `rounded-md`（10px）：小控件、紧凑标签。
+- `rounded-lg`（12px）：Button、Input、Select 等表单控件、紧凑控件、列表项和局部容器。
+- `rounded-xl`（16px）：卡片、面板、分段控件。
+- `rounded-full`：胶囊、开关、头像和圆形状态点。
 
-普通可见边框统一使用 `1px`，颜色使用 `var(--app-border)`；需要更明确分隔时使用 `var(--app-border-strong)`。卡片、输入框、分段控件和普通信息容器不得按页面单独改成 `border-2` 或重色描边。`2px` 只用于复选框外框和勾选符号、层级引导线、加载圈等小尺寸控件的可辨识性；焦点环和阴影不是容器边框。
+普通可见边框统一使用 `1px`，颜色使用 `var(--border)`；需要更明确分隔时使用 `var(--input)`。卡片、输入框、分段控件和普通信息容器不得按页面单独改成 `border-2` 或重色描边。`2px` 只用于复选框外框和勾选符号、层级引导线、加载圈等小尺寸控件的可辨识性；焦点环和阴影不是容器边框。
 
 ## Components
 
 整体气质是**精密而克制**：控件像加工过的系统零件，尺寸和反馈都精确，但不以装饰、渐变或夸张动效吸引注意。
 
 ### Buttons
-- **Shape:** `--app-radius-lg`（16px），无边框；`Button` 和 `IconButton` 共享高度档位。
-- **Sizes:** `sm` 36px、`md` 44px、`lg` 48px；手机断点和粗指针设备把所有标准按钮、图标按钮与表单点击区提升到至少 44px。
-- **Primary:** `brand-action`（`#0066cc` 实心、白字、轻微蓝色投影）；hover 只压暗，不增加渐变或光晕。
-- **Secondary / Outline:** `control-surface` + `text-primary`；hover 使用弱主题背景和轻描边。
-- **Danger / Success:** `status-danger-action` / `status-success-action`，语义必须与操作后果一致。
-- **Ghost:** 透明底 + `text-secondary`；hover 只使用弱主题背景。
-- **Focus:** `outline: 2px solid color-mix(in srgb, var(--app-accent) 62%, transparent)`，`outline-offset: 2px`；所有可点击元素都必须有明确的 `focus-visible` 状态。
-- **Disabled / Loading:** disabled 使用 `opacity-50`、`cursor-not-allowed`，关闭点击与 hover；loading 期间自动禁用，仅显示加载指示器和 `loadingText`。不要在调用处叠加 `h-*`、`px-*`、`py-*` 缩小标准控件。
+- **Shape:** `rounded-lg`（12px），无边框；`Button` 的尺寸档位由 shadcn base-nova 提供。
+- **Sizes:** `xs` 24px、`sm` 28px、`default` 32px、`lg` 36px；图标档 `icon-xs` 24px、`icon-sm` 28px、`icon` 32px、`icon-lg` 36px。手机断点和粗指针设备沿用同一紧凑档位，不额外放大。
+- **Workflow primary action:** 工作流页的页面级主执行/停止按钮允许在调用点使用 `min-h-11`（44px）作为触达高度例外；它不是新的 size 档位，也不得用 `h-*`/`px-*`/`py-*` 改写其他控件度量。
+- **Primary:** shadcn `bg-primary`（浅色 `#007aff`、深色 `#0a84ff`、白字）；hover 使用 `bg-primary/80`，不增加渐变或光晕。
+- **Secondary / Outline:** Secondary 使用 `bg-secondary`；Outline 使用 `border-border bg-background`，hover 使用 `bg-muted`。
+- **Danger:** 使用 `destructive` variant（`bg-destructive/10` + `text-destructive`），语义必须与操作后果一致。
+- **Ghost:** 透明底、文字继承 `foreground`；hover 使用 `bg-muted`。
+- **Focus:** `focus-visible:border-ring` 与 `focus-visible:ring-3 focus-visible:ring-ring/50`；所有可点击元素都必须有明确的 `focus-visible` 状态。
+- **Disabled / Loading:** disabled 使用 `pointer-events-none`、`opacity-50`，关闭点击与 hover；loading 默认由调用点用 `disabled` + `aria-busy` 表达，并以 `LoaderCircle` 和进行中文案替换内容。需要保持文案稳定的局部命令按钮（如设备面板的查找与测试按钮、渠道切换）可只禁用并设置 `aria-busy`，不替换文案、不加图标。不要在调用处叠加 `h-*`、`px-*`、`py-*` 缩小标准控件。
 
 ### Inputs / Fields
-- **Style:** 44px 高、16px 圆角、`app-input control-surface`；静态边界使用 `inset 0 0 0 1px var(--app-border-strong)` 和极轻的投影。
-- **Focus:** `inset 0 0 0 1px var(--app-accent), 0 0 0 3px var(--app-accent-soft)`；不要用高饱和外发光。
-- **Error:** `form-error-surface` 红色内描边，错误文字使用 `form-error-text`；`hint` 只在没有错误时显示。
-- **Controls:** 二元启停使用 `Switch`（51×31px 胶囊，compact 41×25px）；多选或参数组合使用 `Checkbox`；新增表单优先使用 `Input`、`Select`、`Checkbox`、`Switch`，手写原生控件使用 `app-input control-surface`、`app-checkbox`。
+- **Style:** 32px 高（`h-8`）、`rounded-lg`（12px）的 shadcn `Input`；`bg-transparent`、边框与状态色使用 shadcn 语义 token，深色模式由生成物的 `dark:bg-input/30` 叠加。
+- **Focus:** `focus-visible:border-ring` 与 `focus-visible:ring-3 focus-visible:ring-ring/50`；不要用高饱和外发光。
+- **Error:** `aria-invalid` 触发 destructive 边框与 ring，错误文本使用 `form-error-text`；字段说明由 feature field helper 或 `FieldHint` 承担，原语没有 `hint` prop。
+- **Controls:** 二元启停使用 `Switch`（默认 32×18.4px 胶囊，`sm` 24×14px）；多选或参数组合使用 `Checkbox`（16×16px）；新增表单直接使用 `@/shared/ui` 的 `Input`、`Select`、`Checkbox`、`Switch`，字段行由 feature field helper 组合标签、错误与说明。`autoComplete="off"` 由消费点或 field helper 显式传入，生成原语没有该默认值。
 
 ### Cards / Containers
-- **Corner Style:** 普通卡片 16px；需要连续圆角时使用 `SmoothPanel` 的 20px / 16px。
-- **Background:** `surface-panel` 为主要卡片和大面板；`surface-soft` 为弱背景、状态条和次级容器。
-- **Shadow Strategy:** 默认使用 `surface-panel` 的静止阴影；只有卡片本身可点击时才使用 `surface-panel-hover` 或启用 `Card hover`。
+- **Corner Style:** shadcn `Card` 使用 `rounded-xl`（16px）；连续曲率只由玻璃主题皮肤层提供。
+- **Background:** `Card` 的 `bg-card` 为主要卡片与面板；`surface-soft` 为弱背景、状态条和次级容器；`surface-panel` 保留给主题菜单与 PWA 提示等应用自绘召唤层。
+- **Shadow Strategy:** 静止卡片使用 `Card` 的 1px ring；只有卡片本身可点击时才使用 `surface-panel-hover`。召唤层使用 `surface-panel` 的静止阴影。
 - **Border:** 1px 发丝线，不使用 `border-2`。
-- **Internal Padding:** `16px`（`--app-space-panel`）；`CardHeader` 使用 `14px 16px`，`CardContent` 使用 `16px`。
-- 通用组件优先级：能用 `Card`、`CardHeader`、`CardContent`、`SmoothPanel` 时优先使用组件；特殊布局使用 `app-card surface-panel`、`app-card surface-soft`、`app-info-card`；不要把页面区块做成层层嵌套卡片。
+- **Internal Padding:** 卡片使用 shadcn `--card-spacing`（默认 16px，`size="sm"` 为 12px）；分节自持内边距的面板给 `Card` 加 `gap-0 p-0!`。
+- 通用组件优先级：能用 `Card`、`CardHeader`、`CardTitle`、`CardDescription`、`CardAction`、`CardContent`、`CardFooter` 时优先使用组合；特殊布局使用 `surface-soft`；不要把页面区块做成层层嵌套卡片。
 
 ### Navigation
-- **Desktop:** 固定 17rem 侧栏，0.75rem 内缩的连续圆角玻璃框（`blur(28px) saturate(165%)`），单列导航、底部干员身份区和 28px 语义色图标底座；当前项为整行系统蓝和白色文字。
-- **Mobile:** 悬浮 4rem 胶囊 tabbar，底部安全区由 `--la-pluma-tabbar-*` token 统一管理；右侧搜索/更多入口承载次要页面。
+- **Desktop:** 固定 17rem 侧栏；顶部 `SidebarHeader` 承载非交互品牌标识，其下是单列工作区导航，底部固定干员身份区与每日语录。当前项使用侧栏强调背景与中等字重，不使用整行实心蓝；侧栏不使用玻璃框、搜索或图标底座。
+- **Mobile:** 悬浮 4rem 胶囊 tabbar，底部安全区由 `--layout-tabbar-*` token 统一管理；右侧“更多”入口经 Sheet 承载次要页面。移动端隐藏侧栏与品牌，顶栏仍显示页面标题。
 - **Shared State:** 两端复用 `Layout` 的 URL 路由和 active 状态；不要按 viewport 维护第二套导航状态，也不要让桌面侧栏样式扩散到移动底栏或“更多”Sheet。
 
-### Modal / Dialog
-- **Sizes:** `sm` `max-w-md`、`md` `max-w-lg`、`lg` `max-w-2xl`、`xl` `max-w-4xl`。
-- **Surface:** 叠加层使用 `blur(24px) saturate(165%)` 和 summoned-layer 阴影；backdrop 为 `rgba(0, 0, 0, 0.42)` + `blur(10px)`。
-- **Behavior:** 焦点陷阱、背景 `inert`、Esc 关闭、打开时锁定滚动、关闭后归还焦点；这些由 `Modal` 统一处理，页面不要自行实现。
-- **ConfirmDialog:** 删除、清空等不可逆操作必须使用 `ConfirmDialog`，新代码不得使用 `window.confirm`。`onConfirm` 可以返回 Promise；返回 `false` 或抛出错误时弹窗保持打开，错误在弹窗内展示。
+### Dialog / Sheet
+- **Frame:** 高度受限的表单、选择器与发现弹窗使用 `shared/components` 的 `DialogFrame`、`DialogBody` 与 `DialogFrameFooter`，不复制标题栏、关闭按钮、滚动体与页脚壳层；无高度上限的简单弹窗仍直接组合生成原语。
+- **Sizes:** `DialogFrame` 使用 `md`、`lg`、`4xl` 三档宽度；其他生成原语组合按内容选择 `sm:max-w-md`、`sm:max-w-lg`、`sm:max-w-2xl`、`sm:max-w-4xl`，确认框使用 `AlertDialog` 的默认宽度。
+- **Surface:** 使用 shadcn 生成物的 `bg-popover`、ring 与阴影；遮罩由 `DialogOverlay` 或 `Sheet` 原语提供。
+- **Height / Scroll:** 高度受限弹窗的最大高度只取自 `--layout-dialog-max-height`，标题栏与页脚固定在滚动内容之外，只有 `DialogBody` 纵向滚动；不手写视口高度或另建滚动宿主。
+- **Close:** 标题栏关闭按钮统一使用 `size="icon"`、`variant="ghost"`、`aria-label="关闭对话框"` 与 `X size-4`；保存或提交等待期间通过 `closeDisabled` 同时禁用按钮并拒绝 Escape 与遮罩关闭。
+- **Safe area:** 弹层最大高度 token 已预留 2rem 视口边距；移动端软键盘与真机 safe-area 按 Viewport Contract 的声明处理，不在弹窗内再叠 `env(safe-area-inset-*)`。
+- **Behavior:** 焦点陷阱、背景 `aria-hidden`、Esc 关闭、打开时锁定滚动、关闭后归还焦点由 Base UI 原语处理，页面不要自行实现；嵌套弹层按 React 父子关系组合。
+- **AlertDialog:** 删除、清空等不可逆操作必须使用 `AlertDialog` 或应用层 `ConfirmAlertDialog`，新代码不得使用 `window.confirm`。`onConfirm` 可以返回 Promise；返回 `false` 或抛出错误时弹窗保持打开，错误在弹窗内展示。
 
 ### Feedback
 按下面顺序选择反馈方式，不要用空状态伪装错误，也不要为同一结果重复显示多种提示：
 
 | 情况 | 使用方式 |
 | --- | --- |
-| 字段校验失败 | `Input`、`Select` 的 `error` prop；`hint` 只在没有错误时显示 |
+| 字段校验失败 | 字段行由 feature field helper 传 `aria-invalid` 与错误文本；说明由 helper 或 `FieldHint` 承担，错误显示时不叠加说明 |
 | 控制台首次且没有本地缓存 | 控制台内部的 `DashboardSkeleton`；恢复或返回页面时先显示最后一次成功快照并后台刷新，不要重播整页骨架 |
 | 局部内容正在读取 | `Loading` |
 | 列表、流程或卡片无数据 | `EmptyState`，按容器选择 `compact` |
 | 区域读取失败 | 在原区域显示可恢复的错误与重试操作；不要改成空状态 |
-| 全局结果与错误 | `useStatusStore.setMessage`，由 `FloatingStatusIndicator` 展示；错误持续到用户关闭，其他短消息由 store 自动收起，不要自行写清除定时器 |
-| 删除、清空等不可逆操作 | `ConfirmDialog`；新代码不得使用 `window.confirm` |
+| 全局结果与错误 | `notify`（sonner `AppToaster`）；错误常驻到关闭，其他类型按默认时长收起，最多同时显示 3 条。同一流程使用固定 id 复用通知（`execution`、`statistics`、`settings-update`、`settings-update-channel`、`settings-auto-update`、`settings-config:connection`、`settings-config:instance`、`settings-config:resource-source`、`settings-connection-test`、`combat-preview`、`combat-queue-preview`、`combat-paradox-search`、`logs`、`logs-coverage`、`logs-hidden-matches`、`logs-refresh`），进度用 `notifyProgress`；有终态文案时用同一 id 替换，没有终态文案时才 `dismissNotice` |
+| 删除、清空等不可逆操作 | 使用 `AlertDialog` 或应用层 `ConfirmAlertDialog`；新代码不得使用 `window.confirm` |
 
-日志控制台、养成筛选空结果等固定高度或高密度区域可保留专用状态样式。局部表单成功提示、日志提示等需要紧邻操作区或可手动关闭时，也可保留在面板内。项目没有通用 Toast 组件，`FloatingStatusIndicator` 是全局任务状态和短消息载体，不应被当作普通 toast 复刻。
+日志控制台、养成筛选空结果等固定高度或高密度区域可保留专用状态样式。局部表单成功提示、日志提示等需要紧邻操作区或可手动关闭时，也可保留在面板内。全局通知统一走 `shared/notifications` 的 `notify`、`notifyProgress` 与 `dismissNotice`，由应用根挂载的 sonner `AppToaster` 渲染；撤销提示使用 `UndoToastCard`，不要让页面自建第二套 toast。
 
 ### Icons
 - 普通功能图标优先使用已引入的 `lucide-react`；业务身份和概览图标优先复用 `Icons.tsx`。一级工作区标题与控制台一致，不添加装饰图标；不要在普通页面重复手写 SVG。
 - 行内或文字旁图标使用 16px，常规操作和字段图标使用 20px，页面标题或大操作使用 24px。`icon-well` 只用于页面、概览和卡片的内容身份图标，不能包裹普通按钮图标。
-- 无文字操作使用 `IconButton`，调用时必须提供 `title` 和 `aria-label`；有文字的操作使用 `Button icon`，不要在调用处额外覆盖图标与文字间距或按钮尺寸。
+- 无文字操作使用 Button 的 `size="icon"`（`icon-xs`/`icon-sm`/`icon`/`icon-lg`），调用时必须提供 `title` 和 `aria-label`；有文字的操作把图标作为 children 传入并加 `aria-hidden="true"`，图标尺寸由生成组件的内建规则处理，不要在调用处额外覆盖图标与文字间距或按钮尺寸。
 - 装饰图标加 `aria-hidden="true"`；状态和结果必须同时提供可读文字或 `aria-label`，不能只依赖颜色和图标。
 
 ## Do's and Don'ts
 
 ### Do:
-- **Do** 先读 `apps/web/src/styles/index.css` 和 `apps/web/src/styles/ios-theme.css`，再用语义类实现界面；新页面优先使用 `Layout`、`PageHeader`、`Card`、`Button`、`Input` 等现有组件。
-- **Do** 把间距回到 `--app-space-*`、圆角回到 `--app-radius-*`，保持 4px 基线和 1px 发丝线。
+- **Do** 先读 `apps/web/src/styles/index.css`（语义 token）、`apps/web/src/styles/layout.css`（布局几何）和 `apps/web/src/styles/chrome.css`（chrome 视觉例外），再用语义类实现界面；新页面优先使用 `Layout`、`Card`、`Button`、`Input` 等现有组件。
+- **Do** 把间距收敛到 Tailwind 原生档位与组件类、圆角收敛到 `--radius` 派生档位，保持 4px 基线和 1px 发丝线。
 - **Do** 让系统蓝保持稀缺：只用于当前项、主操作、焦点和运行中状态；状态色只表达语义。
-- **Do** 在手机和粗指针设备上保证至少 44px 的点击区域，并检查 light/dark、loading、disabled、empty、error 以及长标题/长操作文案。
+- **Do** 在手机和粗指针设备上沿用 shadcn base-nova 的紧凑控件度量，不额外放大表单控件，并检查 light/dark、loading、disabled、empty、error 以及长标题/长操作文案。
 - **Do** 在 `viewport-fit=cover` 的安全区设备上确认 chrome 与页面内容没有双重留白。
 - **Do** 为所有可点击元素提供 `focus-visible` 状态，装饰图标加 `aria-hidden="true"`。
 
 ### Don't:
 - **Don't** 新增页面级颜色主题或 `from-violet-*`、`text-orange-*`、`bg-cyan-*` 这类随手写的色板；需要新语义时先在 `styles/index.css` 增加 token 或语义类。
-- **Don't** 使用 `rounded-2xl`、`rounded-3xl` 或任意更大的圆角突破 `--app-radius-lg`；需要特殊造型时先确认是否应成为新的语义 token。
+- **Don't** 使用 `rounded-2xl`、`rounded-3xl` 或任意更大的圆角突破 `rounded-xl`；需要特殊造型时先确认是否应成为新的语义 token。
 - **Don't** 给卡片、输入框、分段控件和普通信息容器使用 `border-2` 或重色描边；`2px` 只留给复选框、引导线和加载圈。
 - **Don't** 在页面里重建导航壳层、主题开关、modal 基础样式或第二套组件 DOM。
 - **Don't** 给普通按钮增加亮色渐变、强光晕或重投影；hover 只做主题色压暗或弱背景。
 - **Don't** 把静态内容卡片做成层层嵌套，或为了填满留白硬塞第二张卡；独立工作区、弹窗、空状态和设备预览属于合理例外。
-- **Don't** 使用 `window.confirm`、`8px`–`10px` 的中文正文，或 `899px`、`1023px` 这类页面级断点。
+- **Don't** 使用 `window.confirm`、`8px`–`10px` 的中文正文，或 Breakpoints 表之外的页面级断点与 `min-[Npx]` / `max-[Npx]` arbitrary 断点。
 - **Don't** 让 `status-border-beam` 在完成、空闲或静态卡片上常驻，也不要叠加第二条可见边框。

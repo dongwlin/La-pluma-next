@@ -1,7 +1,5 @@
-import { useEffect, useMemo, useRef, useState, type UIEvent } from 'react'
-import { SearchX } from 'lucide-react'
-import { EmptyState, Loading } from '@/shared/ui'
-import { Modal } from '@/shared/ui/Modal'
+import { useEffect, useMemo, useRef, useState, type ReactNode, type UIEvent } from 'react'
+import { DialogBody, DialogFrame, Loading } from '@/shared/components'
 import { usePanelState } from '../hooks/usePanelState'
 import {
   DEFAULT_COPILOT_SEARCH_LIMIT,
@@ -16,7 +14,7 @@ import {
 } from '../model/copilotDiscoveryPreferences'
 import { normalizeOperatorSelection, type OperatorSelection } from '../model/operatorFilter'
 import type { CopilotSearchItem, CopilotSearchResult, CopilotStageCandidate } from '../types'
-import CombatCopilotDiscoveryCard from './CombatCopilotDiscoveryCard'
+import CombatCopilotDiscoveryResults from './CombatCopilotDiscoveryResults'
 import CombatCopilotMatchDialog from './CombatCopilotMatchDialog'
 import CombatCopilotOperatorFilterDialog from './CombatCopilotOperatorFilterDialog'
 import CombatCopilotSearchBar from './CombatCopilotSearchBar'
@@ -30,6 +28,7 @@ import { filterCopilotSearchItems } from './copilotDiscoveryPresentation'
 
 export interface CombatCopilotDiscoveryDialogProps {
   search: CombatCopilotSearchProjection
+  children?: ReactNode
 }
 
 const EMPTY_ITEMS: readonly CopilotSearchItem[] = []
@@ -40,7 +39,7 @@ type AppendedPageState = { base: CopilotSearchResult; items: readonly CopilotSea
 
 const mergeCopilotItems = (base: readonly CopilotSearchItem[], extra: readonly CopilotSearchItem[]) => [...new Map([...base, ...extra].map(item => [item.uri, item] as const)).values()]
 
-export default function CombatCopilotDiscoveryDialog({ search }: CombatCopilotDiscoveryDialogProps) {
+export default function CombatCopilotDiscoveryDialog({ search, children }: CombatCopilotDiscoveryDialogProps) {
   const [keyword, setKeyword] = usePanelState(search.keywordStore)
   const [level, setLevel] = usePanelState(search.levelStore)
   const [operatorSelection, setOperatorSelection] = usePanelState(search.operatorStore)
@@ -181,79 +180,15 @@ export default function CombatCopilotDiscoveryDialog({ search }: CombatCopilotDi
     setView(nextView)
   }
 
-  const renderResults = () => {
-    if (search.searching) {
-      return (
-        <div className="combat-copilot-discovery-loading">
-          <Loading text="正在搜索作业…" />
-        </div>
-      )
-    }
-
-    if (search.result === null && search.refreshing) {
-      return (
-        <div className="combat-copilot-discovery-loading">
-          <Loading text="正在加载作业…" />
-        </div>
-      )
-    }
-
-    if (copilots.length === 0) {
-      const hasResult = search.result !== null
-      return (
-        <EmptyState
-          compact
-          className="combat-copilot-discovery-empty"
-          icon={<SearchX size={21} strokeWidth={1.8} aria-hidden="true" />}
-          title={hasResult ? '没有匹配结果' : '暂无作业'}
-          description={hasResult
-            ? '换个关键词、关卡或干员再试。'
-            : '暂时没有可展示的作业，换个关键词或稍后重试。'}
-        />
-      )
-    }
-
-    if (visibleItems.length === 0) {
-      return (
-        <EmptyState
-          compact
-          className="combat-copilot-discovery-empty"
-          icon={<SearchX size={21} strokeWidth={1.8} aria-hidden="true" />}
-          title="没有匹配结果"
-          description="没有符合作战条件的作业，放宽匹配模式或关闭匹配后再试。"
-        />
-      )
-    }
-
-    return (
-      <div className={`combat-copilot-discovery-results is-${view}`}>
-        {visibleItems.map(item => (
-          <CombatCopilotDiscoveryCard
-            key={item.id || item.uri}
-            item={item}
-            view={view}
-            recommended={recommendedUri === item.uri}
-            adding={search.addingUri === item.uri}
-            matchEnabled={match.enabled}
-            ownedOperatorNames={search.ownedOperatorNames}
-            onPreview={search.onPreviewUri}
-            onAddToQueue={search.onAddToQueue}
-          />
-        ))}
-      </div>
-    )
-  }
-
   return (
-    <Modal
-      isOpen={search.isOpen}
-      onClose={handleClose}
+    <DialogFrame
+      open={search.isOpen}
+      onOpenChange={open => { if (!open) handleClose() }}
+      id={COPILOT_DISCOVERY_DIALOG_ID}
       title="发现作业"
-      size="xl"
-      dialogId={COPILOT_DISCOVERY_DIALOG_ID}
-      onBodyScroll={handleBodyScroll}
-    >
-      <div className="combat-copilot-discovery">
+      size="4xl"
+      layers={children}
+      toolbar={(
         <CombatCopilotSearchBar
           keyword={keyword}
           level={level}
@@ -276,42 +211,56 @@ export default function CombatCopilotDiscoveryDialog({ search }: CombatCopilotDi
           onViewChange={handleViewChange}
           onRetryData={search.onRetryData}
         />
+      )}
+    >
+      <DialogBody onScroll={handleBodyScroll}>
+        <div className="combat-copilot-discovery">
+          {search.result && !search.error && (
+            <div className="combat-copilot-discovery-summary">
+              <span>共 {total} 条</span>
+              {total > copilots.length && <span>已加载 {copilots.length} 条</span>}
+              {match.enabled && (
+                <span className="combat-copilot-discovery-match-count">匹配 {visibleItems.length} 条</span>
+              )}
+            </div>
+          )}
 
-        {search.result && (
-          <div className="combat-copilot-discovery-summary">
-            <span>共 {total} 条</span>
-            {total > copilots.length && <span>已加载 {copilots.length} 条</span>}
-            {match.enabled && (
-              <span className="combat-copilot-discovery-match-count">匹配 {visibleItems.length} 条</span>
-            )}
-          </div>
-        )}
+          <CombatCopilotDiscoveryResults
+            search={search}
+            copilots={copilots}
+            visibleItems={visibleItems}
+            view={view}
+            match={match}
+            recommendedUri={recommendedUri}
+          />
 
-        {renderResults()}
+          {appended?.loading && <div className="combat-copilot-discovery-loading"><Loading text="正在加载更多…" /></div>}
+        </div>
 
-        {appended?.loading && <div className="combat-copilot-discovery-loading"><Loading text="正在加载更多…" /></div>}
-      </div>
+        <CombatCopilotOperatorFilterDialog
+          isOpen={operatorFilterOpen}
+          selection={operatorSelection}
+          enabled={operatorFilterEnabled}
+          remember={operatorFilterRemember}
+          operators={search.operators}
+          operatorsLoading={search.operatorsLoading}
+          operatorsError={search.operatorsError}
+          onRetryData={search.onRetryData}
+          onConfirm={handleOperatorConfirm}
+          onClose={() => setOperatorFilterOpen(false)}
+        />
 
-      <CombatCopilotOperatorFilterDialog
-        isOpen={operatorFilterOpen}
-        selection={operatorSelection}
-        enabled={operatorFilterEnabled}
-        remember={operatorFilterRemember}
-        operators={search.operators}
-        operatorsLoading={search.operatorsLoading}
-        operatorsError={search.operatorsError}
-        onRetryData={search.onRetryData}
-        onConfirm={handleOperatorConfirm}
-        onClose={() => setOperatorFilterOpen(false)}
-      />
-
-      <CombatCopilotMatchDialog
-        isOpen={matchOpen}
-        settings={match}
-        ownedOperatorNames={search.ownedOperatorNames}
-        onChange={handleMatchChange}
-        onClose={() => setMatchOpen(false)}
-      />
-    </Modal>
+        <CombatCopilotMatchDialog
+          isOpen={matchOpen}
+          settings={match}
+          ownedOperatorNames={search.ownedOperatorNames}
+          operatorsLoading={search.operatorsLoading}
+          operatorsError={search.operatorsError}
+          onRetryData={search.onRetryData}
+          onChange={handleMatchChange}
+          onClose={() => setMatchOpen(false)}
+        />
+      </DialogBody>
+    </DialogFrame>
   )
 }

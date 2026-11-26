@@ -1,13 +1,15 @@
 import { useMemo, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { Search, UserRoundSearch } from 'lucide-react'
+import { UserRoundSearch } from 'lucide-react'
 import {
   operBoxQueryOptions,
   operatorCatalogQueryOptions,
   type OperatorDetailed,
 } from '@/features/game-data'
-import { Button, EmptyState, Input, Loading, Select } from '@/shared/ui'
-import { Modal } from '@/shared/ui/Modal'
+import { Button } from '@/shared/ui/button'
+import { DialogBody, DialogFrame, DialogFrameFooter, EmptyState, Loading, SearchField } from '@/shared/components'
+import { Field, FieldGroup, FieldLabel } from '@/shared/ui/field'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/shared/ui/select'
 import {
   OPERATOR_RENDER_BATCH_SIZE,
   filterOperatorRows,
@@ -47,7 +49,7 @@ function OperatorEmptyState({ title, description }: { title: string; description
   return (
     <EmptyState
       compact
-      className="py-8"
+      className="min-h-60 py-8"
       icon={<UserRoundSearch size={21} strokeWidth={1.8} />}
       title={title}
       description={description}
@@ -158,9 +160,8 @@ export default function OperatorSelectModal({
       level: operator.level,
       action: (
         <Button
-          variant={isSelected ? 'primary' : 'secondary'}
-          size="md"
-          fullWidth
+          variant={isSelected ? 'default' : 'secondary'}
+          className="w-full"
           aria-pressed={isSelected}
           aria-label={`${isSelected ? '已选择' : '选择'}${operator.name}`}
           onClick={() => setPendingSelection(operator)}
@@ -172,47 +173,60 @@ export default function OperatorSelectModal({
   })
 
   return (
-    <Modal
-      isOpen={isOpen}
-      onClose={handleClose}
+    <DialogFrame
+      open={isOpen}
+      onOpenChange={open => { if (!open) handleClose() }}
       title={title}
-      size="xl"
+      size="4xl"
+      toolbar={(
+        <FieldGroup className="flex flex-row items-center gap-2">
+          <Field className="min-w-0 flex-1 gap-0">
+            <FieldLabel htmlFor="training-select-modal-search" className="sr-only">搜索干员名称</FieldLabel>
+            <SearchField
+              id="training-select-modal-search"
+              ariaLabel="搜索干员名称"
+              placeholder="搜索干员"
+              value={searchTerm}
+              onValueChange={handleSearchChange}
+              clearable
+            />
+          </Field>
+          {professionFilterVisible && (
+            <Field className="w-36 shrink-0 gap-0">
+              <FieldLabel htmlFor="training-select-modal-profession" className="sr-only">职业筛选</FieldLabel>
+              <Select
+                items={[...OPERATOR_PROFESSION_FILTERS]}
+                value={professionFilter}
+                onValueChange={(next, details) => { if (details.reason !== 'none' && next !== null) handleProfessionFilterChange(next) }}
+              >
+                <SelectTrigger id="training-select-modal-profession" aria-label="职业筛选" className="w-full">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {[...OPERATOR_PROFESSION_FILTERS].map(item => (
+                    <SelectItem key={item.value} value={item.value}>{item.label}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </Field>
+          )}
+        </FieldGroup>
+      )}
       footer={(
-        <div className="flex w-full flex-wrap items-center justify-between gap-3">
-          <span className="text-sm text-secondary">
+        <DialogFrameFooter align="between">
+          <span className="text-sm text-muted-foreground">
             {selectedOperator ? `已选择 ${selectedOperator.name}` : '选择一名干员'}
           </span>
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-3.5">
             <Button variant="secondary" onClick={handleClose}>取消</Button>
             <Button onClick={handleConfirm} disabled={!selectedOperator}>确认选择</Button>
           </div>
-        </div>
+        </DialogFrameFooter>
       )}
     >
-      <div className="space-y-4">
-        <div className="flex items-center gap-2">
-          <Input
-            type="text"
-            aria-label="搜索干员名称"
-            placeholder="搜索干员"
-            value={searchTerm}
-            onChange={handleSearchChange}
-            icon={<Search size={17} strokeWidth={1.9} aria-hidden="true" />}
-            className="min-w-0 flex-1"
-          />
-          {professionFilterVisible && (
-            <Select
-              aria-label="职业筛选"
-              value={professionFilter}
-              onChange={handleProfessionFilterChange}
-              options={[...OPERATOR_PROFESSION_FILTERS]}
-              className="w-36 shrink-0"
-            />
-          )}
-        </div>
-
+      <DialogBody>
         {loading ? (
-          <div className="flex min-h-65 items-center justify-center">
+          <div className="flex min-h-60 items-center justify-center">
             <Loading text="正在读取干员..." />
           </div>
         ) : hasError ? (
@@ -235,7 +249,7 @@ export default function OperatorSelectModal({
             onShowMore={() => setVisibleLimit(nextOperatorRenderLimit)}
           />
         )}
-      </div>
-    </Modal>
+      </DialogBody>
+    </DialogFrame>
   )
 }

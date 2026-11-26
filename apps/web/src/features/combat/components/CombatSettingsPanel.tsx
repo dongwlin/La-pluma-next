@@ -1,4 +1,6 @@
-import { HintTooltip, Select } from '@/shared/ui'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/shared/ui/select'
+import { Disclosure, FieldHint, SegmentedControl, type SegmentedControlOption } from '@/shared/components'
+import { Field, FieldLabel, FieldTitle } from '@/shared/ui/field'
 import type {
   CombatTask,
   CopilotRaid,
@@ -7,7 +9,6 @@ import type {
 } from '../types'
 import type { AdvancedValues } from '../model/combatCommands'
 import CombatAdvancedFields from './CombatAdvancedFields'
-import CombatSegmentedControl, { type CombatSegmentedOption } from './CombatSegmentedControl'
 
 interface CombatSettingsPanelProps {
   task: CombatTask
@@ -15,13 +16,14 @@ interface CombatSettingsPanelProps {
   raid: CopilotRaid
   setExecutionMode: CopilotSetExecutionMode
   advanced: AdvancedValues
+  showSetExecutionMode?: boolean
   onFormationChange: (mode: FormationMode) => void
   onRaidChange: (raid: CopilotRaid) => void
   onSetExecutionModeChange: (mode: CopilotSetExecutionMode) => void
   onAdvancedChange: (key: string, value: string | number | boolean) => void
 }
 
-const FORMATION_OPTIONS: readonly CombatSegmentedOption<FormationMode>[] = [
+const FORMATION_OPTIONS: readonly SegmentedControlOption<FormationMode>[] = [
   { value: 'auto', label: '自动决定' },
   { value: 'on', label: '自动编队' },
   { value: 'off', label: '保留当前编队' },
@@ -34,10 +36,12 @@ const RAID_OPTIONS: Array<{ value: CopilotRaid; label: string }> = [
   { value: 'both', label: '普通+突袭' },
 ]
 
-const SET_EXECUTION_MODE_OPTIONS: readonly CombatSegmentedOption<CopilotSetExecutionMode>[] = [
+const SET_EXECUTION_MODE_OPTIONS: readonly SegmentedControlOption<CopilotSetExecutionMode>[] = [
   { value: 'cli', label: '连续执行' },
   { value: 'manual', label: '手动逐关' },
 ]
+
+const SINGLE_TASK_HIDDEN_ADVANCED_KEYS = ['executionStrategy'] as const
 
 export default function CombatSettingsPanel({
   task,
@@ -45,6 +49,7 @@ export default function CombatSettingsPanel({
   raid,
   setExecutionMode,
   advanced,
+  showSetExecutionMode = true,
   onFormationChange,
   onRaidChange,
   onSetExecutionModeChange,
@@ -52,72 +57,84 @@ export default function CombatSettingsPanel({
 }: CombatSettingsPanelProps) {
   return (
     <div className="combat-workspace-section">
-      <h5 className="mb-3 flex items-center space-x-2 text-sm font-semibold text-primary">
-        <svg className="w-4 h-4 brand-text" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <h3 className="mb-3 flex items-center space-x-2 text-sm font-semibold text-foreground">
+        <svg aria-hidden="true" className="w-4 h-4 brand-text" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
         </svg>
         <span>执行设置</span>
-      </h5>
+      </h3>
 
-      <div className="mb-3">
-        <div className="mb-1.5 flex items-center gap-1">
-          <span className="text-xs text-secondary">编队</span>
-          <HintTooltip
+      <Field className="mb-3 gap-1.5">
+        <FieldTitle className="gap-1 text-xs font-normal text-muted-foreground">
+          编队
+          <FieldHint
             id="combat-copilot-formation-hint"
             label="编队"
             hint="“自动决定”会在队列执行时启用自动编队，单作业沿用 Maa CLI 的默认设置。"
           />
-        </div>
-        <CombatSegmentedControl
+        </FieldTitle>
+        <SegmentedControl
           ariaLabel="编队"
           value={formationMode}
           options={FORMATION_OPTIONS}
           onChange={onFormationChange}
           fullWidth
         />
-      </div>
+      </Field>
 
-      <div className="mb-3">
-        <label htmlFor="combat-copilot-raid" className="mb-1.5 block text-xs text-secondary">难度</label>
+      <Field className="mb-3 gap-1.5">
+        <FieldLabel htmlFor="combat-copilot-raid" className="text-xs font-normal text-muted-foreground">难度</FieldLabel>
         <Select
-          id="combat-copilot-raid"
           name="maa-copilot-raid"
+          items={RAID_OPTIONS}
           value={raid}
-          options={RAID_OPTIONS}
-          onChange={(value) => onRaidChange(value as CopilotRaid)}
-        />
-      </div>
+          onValueChange={(next, details) => { if (details.reason !== 'none' && next !== null) onRaidChange(next as CopilotRaid) }}
+        >
+          <SelectTrigger id="combat-copilot-raid" className="w-full">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {RAID_OPTIONS.map(item => (
+              <SelectItem key={item.value} value={item.value}>{item.label}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </Field>
 
-      <div>
-        <div className="mb-1.5 flex items-center gap-1">
-          <span className="text-xs text-secondary">执行方式</span>
-          <HintTooltip
-            id="combat-copilot-set-mode-hint"
-            label="执行方式"
-            hint="连续执行会自动开始下一项。手动逐关需要在每个执行步骤后确认。"
+      {showSetExecutionMode && (
+        <Field className="gap-1.5">
+          <FieldTitle className="gap-1 text-xs font-normal text-muted-foreground">
+            执行方式
+            <FieldHint
+              id="combat-copilot-set-mode-hint"
+              label="执行方式"
+              hint="连续执行会自动开始下一项。手动逐关需要在每个执行步骤后确认。"
+            />
+          </FieldTitle>
+          <SegmentedControl
+            ariaLabel="执行方式"
+            value={setExecutionMode === 'app' ? 'cli' : setExecutionMode}
+            options={SET_EXECUTION_MODE_OPTIONS}
+            onChange={onSetExecutionModeChange}
+            fullWidth
           />
-        </div>
-        <CombatSegmentedControl
-          ariaLabel="执行方式"
-          value={setExecutionMode === 'app' ? 'cli' : setExecutionMode}
-          options={SET_EXECUTION_MODE_OPTIONS}
-          onChange={onSetExecutionModeChange}
-          fullWidth
-        />
-      </div>
+        </Field>
+      )}
 
       {task.hasAdvanced && (
-        <details className="combat-advanced-disclosure mt-4">
-          <summary className="flex min-h-11 cursor-pointer list-none items-center px-3 text-sm font-medium text-secondary">
-            高级设置
-          </summary>
+        <Disclosure
+          className="combat-advanced-disclosure mt-4"
+          label="高级设置"
+          contentClassName="mt-0 gap-0 border-t-0 pt-0"
+        >
           <CombatAdvancedFields
             taskId={task.id}
             advanced={advanced}
+            hiddenKeys={showSetExecutionMode ? undefined : SINGLE_TASK_HIDDEN_ADVANCED_KEYS}
             onChange={onAdvancedChange}
           />
-        </details>
+        </Disclosure>
       )}
     </div>
   )

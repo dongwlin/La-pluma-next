@@ -1,23 +1,30 @@
 import { motion } from 'framer-motion'
+import { Checkbox } from '@/shared/ui/checkbox'
+import { Field, FieldLabel } from '@/shared/ui/field'
+import { Input } from '@/shared/ui/input'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/shared/ui/select'
 import { getCombatAdvancedOptions, type AdvancedValues } from '../model/combatCommands'
 
 interface CombatAdvancedFieldsProps {
   taskId: string
   advanced: AdvancedValues
+  hiddenKeys?: readonly string[]
   onChange: (key: string, value: string | number | boolean) => void
 }
 
 export default function CombatAdvancedFields({
   taskId,
   advanced,
+  hiddenKeys,
   onChange,
 }: CombatAdvancedFieldsProps) {
-  const options = getCombatAdvancedOptions(taskId)
+  const hidden = new Set(hiddenKeys)
+  const options = getCombatAdvancedOptions(taskId).filter(option => !hidden.has(option.key))
   if (options.length === 0) return null
 
   return (
     <motion.div
-      className="mt-3 space-y-3 border-t border-(--app-border) pt-3"
+      className="mt-3 space-y-3 border-t border-border pt-3"
       initial={{ opacity: 0, height: 0 }}
       animate={{ opacity: 1, height: "auto" }}
       transition={{ duration: 0.3 }}
@@ -27,35 +34,42 @@ export default function CombatAdvancedFields({
         return (
         <div key={option.key} className="min-w-0">
           {option.type === 'checkbox' ? (
-            <label htmlFor={controlId} className="group flex min-h-11 w-full min-w-0 cursor-pointer items-center gap-2 py-2 text-sm text-secondary">
-              <input
+            <Field orientation="horizontal" className="min-h-11 w-full min-w-0 gap-2 py-2">
+              <Checkbox
                 id={controlId}
-                type="checkbox"
                 checked={advanced[option.key] as boolean || false}
-                onChange={(e) => onChange(option.key, e.target.checked)}
-                className="custom-checkbox h-4 w-4 cursor-pointer"
+                onCheckedChange={(checked) => onChange(option.key, checked)}
               />
-              <span className="min-w-0 truncate transition-colors group-hover:text-(--app-accent)">{option.label}</span>
-            </label>
-          ) : option.type === 'select' && option.options ? (
-            <div className="grid min-w-0 gap-1.5 sm:grid-cols-[7rem_minmax(0,1fr)] sm:items-center">
-              <label htmlFor={controlId} className="text-sm text-secondary">{option.label}</label>
-              <select
-                id={controlId}
-                name={`maa-${taskId}-${option.key}`}
-                value={(advanced[option.key] as string) || (option.options[0]?.value || '')}
-                onChange={(e) => onChange(option.key, e.target.value)}
-                className="app-input app-native-control min-h-11 min-w-0 control-surface"
+              <FieldLabel
+                htmlFor={controlId}
+                className="min-w-0 cursor-pointer truncate text-sm font-normal text-muted-foreground transition-colors hover:text-primary"
               >
-                {option.options.map(opt => (
-                  <option key={opt.value} value={opt.value}>{opt.label}</option>
-                ))}
-              </select>
-            </div>
+                {option.label}
+              </FieldLabel>
+            </Field>
+          ) : option.type === 'select' && option.options ? (
+            <Field orientation="horizontal" className="grid min-w-0 gap-1.5 sm:grid-cols-[7rem_minmax(0,1fr)] sm:items-center">
+              <FieldLabel htmlFor={controlId} className="text-sm font-normal text-muted-foreground">{option.label}</FieldLabel>
+              <Select
+                name={`maa-${taskId}-${option.key}`}
+                items={option.options}
+                value={(advanced[option.key] as string) || (option.options[0]?.value || '')}
+                onValueChange={(next, details) => { if (details.reason !== 'none' && next !== null) onChange(option.key, next) }}
+              >
+                <SelectTrigger id={controlId} className="w-full min-w-0">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {option.options.map(opt => (
+                    <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </Field>
           ) : (
-            <div className="grid min-w-0 gap-1.5 sm:grid-cols-[7rem_minmax(0,1fr)] sm:items-center">
-              <label htmlFor={controlId} className="text-sm text-secondary">{option.label}</label>
-              <input
+            <Field orientation="horizontal" className="grid min-w-0 gap-1.5 sm:grid-cols-[7rem_minmax(0,1fr)] sm:items-center">
+              <FieldLabel htmlFor={controlId} className="text-sm font-normal text-muted-foreground">{option.label}</FieldLabel>
+              <Input
                 id={controlId}
                 type={option.type}
                 name={`maa-${taskId}-${option.key}`}
@@ -66,9 +80,9 @@ export default function CombatAdvancedFields({
                 value={advanced[option.key] as string || ''}
                 onChange={(e) => onChange(option.key, e.target.value)}
                 placeholder={option.placeholder}
-                className="app-input app-native-control min-h-11 min-w-0 control-surface"
+                className="min-w-0"
               />
-            </div>
+            </Field>
           )}
         </div>
         )

@@ -1,9 +1,10 @@
+import { PageShell } from '@/shared/components'
 import { SettingsWorkspace } from '@/features/settings'
 
 export default function ConfigManager() {
   return (
-    <div className="app-page app-stack-section ios-workspace-page ios-borderless-cards" data-page="config">
+    <PageShell pageKind="config" layout="workspace" surface="borderless">
       <SettingsWorkspace />
-    </div>
+    </PageShell>
   )
 }

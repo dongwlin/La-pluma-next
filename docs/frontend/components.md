@@ -6,7 +6,9 @@
 
 ## 概述
 
-为了减少重复代码、统一视觉风格、提升开发效率，项目维护一套通用 UI 组件。组件位于 `apps/web/src/shared/ui/*.tsx`，通过 `apps/web/src/shared/ui/index.ts` 统一导出，页面中统一从 `@/shared/ui` 引入。
+为了减少重复代码、统一视觉风格、提升开发效率，项目维护一套通用 UI 组件。shadcn CLI 生成的上游原语位于 `apps/web/src/shared/ui/`，随上游原样保留；`Button`、`Input`、`Select`、`Checkbox`、`Switch`、`Card` 等控件直接从对应的 `@/shared/ui/*` 模块导入。应用层组合组件位于 `apps/web/src/shared/components/*.tsx`，通过 `apps/web/src/shared/components/index.ts` 统一导出，页面从 `@/shared/components` 引入。本文件记录生成原语的组合用法与必须遵循的应用层约定。
+
+加载占位直接使用 `@/shared/ui/skeleton` 的 `Skeleton`，不要在应用层重写 shimmer 或另建骨架原语。页面根统一使用 `PageShell`，页面标题归 `Layout` 顶栏所有，页面只提供工作区内容。
 
 新增或调整组件时，在本文件补充 API 与用法；颜色、字号、间距、圆角、交互状态等规则不要在组件文档里另写一份。
 
@@ -14,189 +16,566 @@
 
 ## 组件列表
 
-### PageHeader - 页面标题组件
+### Card - 卡片组件
 
-**文件位置**：`apps/web/src/shared/ui/PageHeader.tsx`
+**文件位置**：`apps/web/src/shared/ui/card.tsx`（shadcn 生成物，随上游原文保留）
 
-**适用场景**：所有页面的顶部标题区域。
-
-```typescript
-{
-  icon?: ReactNode
-  title: string
-  subtitle?: string
-  actions?: ReactNode
-  mobileLayout?: 'stack' | 'inline'
-}
-```
+**适用场景**：卡片、信息区块、带标题的内容区域与独立工作区面板。
 
 ```tsx
-import { PageHeader } from '@/shared/ui'
-import { FloatingStatusIndicator } from '@/features/runtime-status'
+import {
+  Card,
+  CardAction,
+  CardContent,
+  CardDescription,
+  CardFooter,
+  CardHeader,
+  CardTitle,
+} from '@/shared/ui/card'
 
-<PageHeader
-  title="自动战斗"
-  mobileLayout="inline"
-  actions={<FloatingStatusIndicator />}
-/>
-```
-
-页面标题统一使用全局品牌色，不再支持页面单独传入渐变色。一级工作区标题不使用 `icon-well`，只有确有身份识别需要的独立页面才传入 `icon`。手机端默认使用 `stack` 保护长标题和多操作；控制台及同级 `ios-workspace-page` 使用 `mobileLayout="inline"`，由右侧状态浮条主动收缩。
-
-`subtitle` 可选，只在需要补充标题与布局无法表达的信息时传入，不用来复述页面用途或铺陈说明。
-
----
-
-### Card - 卡片组件系列
-
-**文件位置**：`apps/web/src/shared/ui/Card.tsx`
-
-**适用场景**：主要面板、信息卡片、带标题的内容区域。
-
-```tsx
-import { Card, CardHeader, CardContent } from '@/shared/ui'
-
-<Card smoothCorners>
-  <CardHeader
-    icon={<Icons.Package />}
-    title="材料掉落统计"
-  />
+<Card>
+  <CardHeader>
+    <CardTitle role="heading" aria-level={3}>材料掉落统计</CardTitle>
+    <CardDescription>最近一次作战的掉落汇总。</CardDescription>
+    <CardAction><Button size="sm">刷新</Button></CardAction>
+  </CardHeader>
   <CardContent>
     <p>卡片内容区域</p>
   </CardContent>
+  <CardFooter>
+    <p>页脚说明</p>
+  </CardFooter>
 </Card>
 
-<div className="app-info-card status-warning">
-  <p>需要用户注意的信息。</p>
-</div>
+<Card className="gap-0 p-0!">
+  <div className="border-b border-border px-4 py-3.5">分节标题</div>
+  <div className="px-4 py-4">自管理内边距的面板内容</div>
+</Card>
 ```
 
-`Card` 支持 `className` 和显式的 `smoothCorners`。静态内容直接渲染，不提供整卡进场动画。`smoothCorners` 使用 Lisse 的 `20px / 80%` 连续曲率，外层仍负责布局和阴影，内部表面负责裁切与材质；只在已经验证内部包裹不会破坏直接子元素布局语义的卡片上启用。不要直接给带外阴影的根元素调用 `useSmoothCorners`，也不要对需要保留原生结构的交互控件使用 `SmoothCorners asChild`。`CardHeader` 可传入 `actions`，`CardContent` 支持 `className`；紧凑提示容器使用语义类 `app-info-card` 配合对应状态类。
+`Card` 使用 shadcn 语义 token（`bg-card`、`ring-foreground/10`、`--card-spacing`）与普通圆角；标题、描述、操作分别使用 `CardTitle`、`CardDescription`、`CardAction`，页脚使用 `CardFooter`。需要分节面板且各分节自持内边距时，给 `Card` 加 `gap-0 p-0!`，不再引入独立面板包装组件。标题需要保留文档层级时，在 `CardTitle` 上使用 `role="heading"` 与 `aria-level`。紧凑提示容器使用 `Alert` 或 `status-*` 语义类组合；`surface-panel` 只用于 PWA 提示等应用自绘召唤层，不用于 `Card`、shadcn 生成弹层或已改用 `DropdownMenu` 的主题菜单。
 
-控制台同类功能页在根节点添加 `ios-workspace-page`，并显式给 `PageHeader` 传 `mobileLayout="inline"`。手机端只有 `Card smoothCorners` 和 `SmoothPanel` 会获得无外描边的柔和阴影；不要给卡内 `surface-soft`、菜单、输入或列表项添加该页面级材质。
+所有页面根统一使用下方的 `PageShell`：工作台页设置 `layout="workspace"`，无边框卡片页再设置 `surface="borderless"`。页面标题由 `Layout` 顶栏统一渲染，页面内不再声明标题或副标题。卡片材质统一由 shadcn 语义 token 控制，不要在页面级另造卡片材质。
 
 ---
 
-### SmoothPanel - 连续圆角面板
+### PageShell - 页面壳
 
-**文件位置**：`apps/web/src/shared/ui/SmoothPanel.tsx`
+**文件位置**：`apps/web/src/shared/components/PageShell.tsx`
 
-**适用场景**：不使用 `Card` 语义的独立面板，例如工作区面板、设备卡片、通知提示和骨架占位。
-
-Props：
-
-- `cornerSize` (`'panel' | 'compact'`) - 连续圆角档位，`panel` 为 20px，`compact` 为 16px，平滑度固定 80%，默认 `'panel'`。
-- `surfaceClassName` (string) - 追加到内部裁切表面的类名，内容的内边距和材质类写在这里。
-- 其余 props 透传给外层 `div`（继承 `HTMLAttributes<HTMLDivElement>`），`className` 追加到外层 shell；`role`、`aria-*` 等语义属性因此落在外层。
+**适用场景**：所有路由页面与主题画廊的根节点。页面只提供内容，标题与页头归 `Layout` 顶栏。
 
 ```tsx
-import { SmoothPanel } from '@/shared/ui'
+import { PageShell } from '@/shared/components'
 
-<SmoothPanel className="roguelike-theme-panel">
-  <p>面板内容</p>
-</SmoothPanel>
+<PageShell pageKind="automation" layout="workspace" surface="borderless">
+  <AutomationWorkspace />
+</PageShell>
+```
 
-<SmoothPanel
-  cornerSize="compact"
-  surfaceClassName="log-notice"
-  role="status"
-  aria-live="polite"
+Props：`pageKind`（`AppTab` 或 `gallery`，必填）、`layout`（工作台页为 `workspace`）、`surface`（无边框卡片页为 `borderless`）、`className`、`children`；其余原生 `div` 属性（如 `aria-busy`、`aria-label`）直接透传。根节点固定输出 `app-page`、`data-region="page"` 与 `data-page-kind`，有值时输出 `data-page-layout` / `data-page-surface`；内部固定一个 `app-stack-section` 承载内容。
+
+页面根只用 `PageShell`，不要恢复页面级 `ios-*` 类或旧 data 属性；布局、视觉与浏览器测试通过 `data-region` / `data-page-*` 定位。
+
+---
+
+### DeviceMonitorLayout - 设备画面布局
+
+**文件位置**：`apps/web/src/features/device-mirror/components/DeviceMonitorPanel.tsx`
+
+**适用场景**：工作区把页面内容与共享设备画面（`DeviceMonitorPanel`）组合为统一网格。页面只提供具名区域，网格、monitor 列与画面渲染由本组件持有；不要在页面另写设备画面网格或重复渲染 `DeviceMonitorPanel`。
+
+```tsx
+import { DeviceMonitorLayout } from '@/features/device-mirror'
+
+// standard：内容主列 + 设备画面（日志、数据、养成、作业）
+<DeviceMonitorLayout variant="standard">
+  <WorkspaceContent />
+</DeviceMonitorLayout>
+
+// standard + support：右列设备画面下方追加该页的辅助内容
+<DeviceMonitorLayout variant="standard" support={<PageSupportPanel />}>
+  <WorkspaceContent />
+</DeviceMonitorLayout>
+
+// workbench：任务流程 / 任务配置 / 支撑列（日常）
+<DeviceMonitorLayout
+  variant="workbench"
+  sequence={<AutomationTaskFlowPanel ... />}
+  editor={<div data-monitor-area="editor">...</div>}
+  support={<><AutomationScheduleCard ... /><NotificationSettings /></>}
+/>
+
+// mode：模式导航 + display: contents 面板（肉鸽）
+<DeviceMonitorLayout
+  variant="mode"
+  mode={<RoguelikeModePanel ... />}
+  content={<SegmentedTabPanel className="contents">...</SegmentedTabPanel>}
+/>
+```
+
+Props 是 discriminated union：`standard` 接收 `children` 与可选 `support`；`workbench` 接收 `sequence`、`editor`、`support`；`mode` 接收 `mode`、`content`。不提供列数、区域、间距或画面位置等通用网格配置。
+
+`standard` 始终渲染右列 `[data-monitor-area="support"]` 容器，容器内先渲染设备画面 `aside[aria-label="设备画面"]`，再渲染可选的 `support` 内容；容器本身不带 landmark role，页面仍只有一个 `data-region="monitor"`。`workbench` 的 monitor 同样使用 `aside[aria-label="设备画面"]`，`mode` 保持既有 `aside`。
+
+根节点输出 `data-device-monitor-layout="standard|workbench|mode"`，区域输出 `data-monitor-area`（`main`、`monitor`、`sequence`、`editor`、`support`、`mode`、`settings`）。`standard` 的 `main`、`monitor` 与 `support` 容器和各 variant 的 `monitor` 由布局渲染；`workbench` 的 `sequence`/`editor`、`mode` 的 `mode` 以及 `main`/`settings` 由页面提供的根节点携带，布局不克隆或包裹这些节点。`mode` 的 `content` 保持页面传入的 `display: contents` 面板，由内部的 `main`/`settings` 参与网格。
+
+`standard` 的 monitor 列与 `support` 容器在视口小于 1360px 且内容宽度超过 48rem 时使用 `max-width: 48rem` 并居中；视口达到 1360px 后改用三列网格并解除该上限。组件持有 grid 根节点 DOM、`monitor` 区域与 monitor 列；`workbench`/`mode` 的页面网格模板与断点仍由对应页面样式（`automation.css` / `roguelike.css`）提供，页面只通过 `data-monitor-area` 提供具名区域。
+
+`data-region="monitor"` 仍只由 `DeviceMonitorPanel` 的卡片输出，每个页面恰好一个。概览页的设备卡片不纳入此布局，不输出 `data-device-monitor-layout`，也不渲染 `data-region="monitor"`。
+
+共享设备画面样式归 `features/device-mirror/styles/device-mirror.css`：画面根节点为 `device-monitor-surface`，`workbench`/`mode` 的 monitor 列与面板为 `device-monitor-column` / `device-monitor-panel`；`standard` 继续使用 `task-monitor-*` 布局类。默认表面扁平，不再提供 `device-preview-glass-button` 或 `--glass-*` 材质；设备画面的状态、模态窗与生命周期契约见[设备画面与预览](domains/device-mirror.md)。页面不得新增 `automation-*` / `roguelike-*` monitor 类，也不得按 `data-page-kind` 切换设备画面样式。
+
+---
+
+### SegmentedTabs - 分段页面导航
+
+**文件位置**：`apps/web/src/shared/components/SegmentedTabs.tsx`（组合 `@/shared/ui/tabs` 的 shadcn Base UI 原语）
+
+**适用场景**：页面内一级视图切换，例如作业类型、肉鸽模式与统计视图。三个同源导出必须一起使用：`SegmentedTabs` 提供受控 Tabs 上下文，`SegmentedTabNav` 渲染分段标签，`SegmentedTabPanel` 渲染对应面板。页面不再手写 tablist、`aria-pressed` 按钮或高亮测量。
+
+```tsx
+import { SegmentedTabs, SegmentedTabNav, SegmentedTabPanel } from '@/shared/components'
+
+<SegmentedTabs value={activeTab} onValueChange={setActiveTab}>
+  <SegmentedTabNav
+    ariaLabel="数据统计视图"
+    value={activeTab}
+    options={options}
+    tabId={id => `data-statistics-tab-${id}`}
+    panelId={id => `data-statistics-panel-${id}`}
+  />
+  <SegmentedTabPanel value="operbox" id="data-statistics-panel-operbox" keepMounted>
+    干员面板
+  </SegmentedTabPanel>
+  <SegmentedTabPanel value="depot" id="data-statistics-panel-depot" keepMounted>
+    仓库面板
+  </SegmentedTabPanel>
+  <SegmentedTabPanel value="drops" id="data-statistics-panel-drops" keepMounted>
+    <DropPanel isActive={activeTab === 'drops'} />
+  </SegmentedTabPanel>
+</SegmentedTabs>
+```
+
+- `SegmentedTabs` 的根节点使用 `display: contents`，不引入额外布局层；tab 导航与面板可以继续作为原网格或弹性布局的直接子项。
+- `SegmentedTabNav` 使用 shadcn `TabsList` / `TabsTrigger` 的默认视觉与语义：列表为 `bg-muted` 圆角容器，选中项为 `bg-background` 文本块，焦点环、禁用态与图标尺寸沿用生成原语。列表保留 `app-workspace-segment-list` 作为页面网格锚点，`listClassName` 与各页面样式可继续覆盖列模板；可选图标继续由 `app-workspace-segment-icon` 承载身份图标壳层。`className` 作用于外层容器，`tabClassName`、`iconClassName` 只承载页面差异。`indicatorClassName` 仅为兼容既有调用点保留，当前不再渲染流体指示器，也没有视觉效果。
+- 标签使用 Base UI 的 tablist/tab 语义，`activateOnFocus` 固定为 `false`：左右方向键、Home、End 只移动 roving focus，Enter、Space 或点击才切换选中项。不要恢复方向键直接激活的旧行为。
+- `tabId` / `panelId` 可选：传入时提供稳定 id 与 `aria-controls`，省略时由 Base UI 生成并注册关联。`panelId` 只能指向当前实际渲染的面板；默认卸载的页面只在当前 tab 上返回 `panelId`，避免 `aria-controls` 指向不存在的元素。`SegmentedTabPanel` 的 `id` 同样可选；输出 `role="tabpanel"` 与 `aria-labelledby`。如果给面板传 `id`，对应 tab 必须传相同的 `panelId`；或者两侧都省略，交给 Base UI 生成。只传一侧会破坏关联。不传 `keepMounted` 时隐藏面板卸载，传 `true` 时保留 DOM 并设置 `hidden`。统计需要保留周期与反馈，使用 `keepMounted`；作业使用默认卸载；肉鸽使用始终打开的单个 `contents` 面板承载跨 grid-area 内容。
+- 无法把整块内容包进面板时（例如肉鸽网格的多个 grid-area），保留原网格，把模式相关区域放进单个 `className="contents"` 的面板，并让所有 tab 指向同一个 `panelId`。
+
+---
+
+### SegmentedControl - 单值分段控件
+
+**文件位置**：`apps/web/src/shared/components/SegmentedControl.tsx`（组合 `@/shared/ui/toggle-group` 的 shadcn Base UI 原语）
+
+**适用场景**：表单内的互斥选项，例如编队与执行方式。不要再写私有的分段按钮组件。
+
+```tsx
+import { SegmentedControl, type SegmentedControlOption } from '@/shared/components'
+
+const FORMATION_OPTIONS: readonly SegmentedControlOption<FormationMode>[] = [
+  { value: 'auto', label: '自动决定' },
+  { value: 'on', label: '自动编队' },
+  { value: 'off', label: '保留当前编队' },
+]
+
+<SegmentedControl
+  ariaLabel="编队"
+  value={formationMode}
+  options={FORMATION_OPTIONS}
+  onChange={onFormationChange}
+  fullWidth
+/>
+```
+
+Props：`ariaLabel`、`value`、`options`（每项 `value`、`label`、可选 `disabled`）、`onChange`、`fullWidth`、`disabled`、`className`、`itemClassName`。`itemClassName` 用于调用点补充分段项的局部尺寸，不改变共享默认档位：设备预览用它把模式分段降到 32px 高、12px 字号（粗指针 36px），同时保留每项 44px 宽度。控件使用 `role="group"` 与 `aria-pressed`，单选且始终保留一个选中项；点击已选项不会清空选择。按钮默认 `min-h-11`，选中态沿用 `brand-action` 视觉。
+
+---
+
+### Button
+
+**文件位置**：`apps/web/src/shared/ui/button.tsx`（shadcn 生成物，随上游原文保留）
+
+**适用场景**：文本按钮、主要操作、危险操作与图标按钮。
+
+```tsx
+import { Button } from '@/shared/ui/button'
+import { LoaderCircle, RefreshCw, Save } from 'lucide-react'
+
+<Button><Save aria-hidden="true" />保存</Button>
+<Button variant="destructive" disabled={deleting} aria-busy={deleting || undefined}>
+  {deleting ? <><LoaderCircle className="animate-spin" aria-hidden="true" />删除中</> : '删除'}
+</Button>
+<Button variant="ghost" size="icon" title="刷新" aria-label="刷新">
+  <RefreshCw aria-hidden="true" />
+</Button>
+```
+
+`Button` 的 `variant` 为 `default`、`secondary`、`outline`、`ghost`、`destructive`、`link`；`size` 为 `xs`、`sm`、`default`、`lg`、`icon-xs`、`icon-sm`、`icon`、`icon-lg`。新增按钮优先使用这些档位，不要在页面里手写一套按钮颜色、阴影和圆角。
+
+图标作为按钮的 children 直接渲染，并添加 `aria-hidden="true"`；图标尺寸由生成组件的内建规则处理，不要在调用处传旧的 `icon` prop 或覆盖图标与文字间距。无文字操作使用 `size="icon"` 档位，调用时必须同时提供 `title` 和 `aria-label`。
+
+loading 不是 `Button` 的 prop：调用点用 `disabled` 阻止重复提交，加 `aria-busy`，并用 `LoaderCircle` 与进行中文案替换原内容；不存在 `loadingText`。同一操作不要叠加第二个旋转图标。需要保持文案稳定的局部命令按钮（如设备面板的查找与测试按钮）可只禁用并设置 `aria-busy`，不替换文案、不加图标。
+
+工作流页的页面级主执行/停止按钮允许在调用点使用 `min-h-11`（44px）作为触达高度例外；它不是新的 `size` 档位，也不得用其它高度工具类改写其他控件度量。规则见[设计规范](../../DESIGN.md#buttons)。
+
+---
+
+### Progress - 进度条
+
+**文件位置**：`apps/web/src/shared/ui/progress.tsx`（shadcn 生成物，随上游原文保留）
+
+**适用场景**：任务、队列与资源同步等进度的只读展示。`Progress` 使用 Base UI 的 progressbar 语义，Root 自动输出 `role="progressbar"`、`aria-valuemin`、`aria-valuemax` 与 `aria-valuenow`；不要再手写 track、填充宽度或进度条 ARIA。
+
+```tsx
+import { Progress, ProgressLabel, ProgressValue } from '@/shared/ui/progress'
+
+<Progress value={completedCount} max={totalCount}>
+  <ProgressLabel>作业集进度</ProgressLabel>
+  <ProgressValue />
+</Progress>
+```
+
+`value` 传 `null` 时表示不确定进度；`max` 省略时按 100 计算。`Progress` 总会渲染默认的 `ProgressTrack` 与 `ProgressIndicator`，不要把它们作为 children 再传入（会重复渲染）；需要完全自定义轨道或填充结构时，改用 `@base-ui/react/progress` 的 Root 自行组合这两个原语，仅调整颜色或尺寸则在调用点用 `className` 覆盖（可配合 `data-slot` 选择器）。`ProgressLabel` / `ProgressValue` 生成可见标签与格式化数值；没有可见标签时用 `aria-label` 提供可访问名称。测试用 `getByRole('progressbar')` 断言 `aria-valuenow`，不要断言内联宽度或 CSS 类名。
+
+---
+
+### Badge - 状态标签
+
+**文件位置**：`apps/web/src/shared/ui/badge.tsx`（shadcn 生成物，随上游原文保留）
+
+**适用场景**：只读的状态、来源与分类 pill。`Badge` 默认渲染非交互的 `span`，不承担筛选、勾选或点击；交互 chip 使用 `Button`、`ToggleGroup` 或 `Checkbox`。
+
+```tsx
+import { Badge } from '@/shared/ui/badge'
+
+<Badge>推荐</Badge>
+<Badge variant="secondary">已拥有</Badge>
+<Badge variant="outline" className="border-success/30 bg-success/10 text-success-text">已完成</Badge>
+```
+
+`variant` 为 `default`、`secondary`、`destructive`、`outline`、`ghost`、`link`；不提供 success/warning 等业务变体。状态色由调用点通过 `className` 覆盖（或搭配无背景冲突的 variant 复用 `status-*` 语义类），不要向共享原语添加 tone prop。Badge 默认作为非交互状态 pill 使用；确需链接语义时用 `render={<a href="..." />}` 渲染为链接，不要用 `onClick` 模拟按钮。图标作为 children 直接渲染，装饰图标加 `aria-hidden="true"`。肉鸽执行进度面板用非交互 `Badge` 展示未开始、启动中、运行中、正在停止、已完成、失败、已停止与已中断；通关/未通关放在独立结果行，不与任务状态混在同一个徽章里。
+
+---
+
+### Separator - 分隔线
+
+**文件位置**：`apps/web/src/shared/ui/separator.tsx`（shadcn 生成物，基于 Base UI Separator）
+
+**适用场景**：区分同一面板内的不同内容区块。需要结构语义时直接使用默认输出（`role="separator"` 与 `aria-orientation`）；纯视觉分隔传 `aria-hidden="true"` 从可访问树中隐藏，不要手写 `<hr>`、`border-*` 分隔线或自定义 role。
+
+```tsx
+import { Separator } from '@/shared/ui/separator'
+
+<Separator aria-hidden="true" className="mb-3.5" />
+```
+
+`orientation` 默认为 `horizontal`；垂直分隔传 `vertical`，并用 `className` 约束高度。肉鸽执行进度面板不再使用装饰性分隔。
+
+---
+
+### Item - 列表项容器
+
+**文件位置**：`apps/web/src/shared/ui/item.tsx`（shadcn 生成物）
+
+**适用场景**：列表、搜索结果的只读或可点击行。组合 `ItemMedia`、`ItemContent`、`ItemTitle`、`ItemDescription`、`ItemActions` 统一行内布局；可点击行通过 `render={<button type="button" />}` 渲染为按钮，不要用 `div` 加 `onClick`。
+
+```tsx
+import { Item, ItemActions, ItemContent, ItemDescription, ItemTitle } from '@/shared/ui/item'
+import { Badge } from '@/shared/ui/badge'
+
+<Item
+  render={<button type="button" onClick={() => selectDevice(device.address)} />}
+  className="text-left"
 >
-  <p>提示内容</p>
-</SmoothPanel>
+  <ItemContent className="min-w-0">
+    <ItemTitle className="block w-full truncate">{device.address}</ItemTitle>
+    <ItemDescription className="line-clamp-1 text-xs">{device.details}</ItemDescription>
+  </ItemContent>
+  <ItemActions>
+    <Badge variant="ghost" className="status-success">已连接</Badge>
+  </ItemActions>
+</Item>
 ```
 
-外层 shell 持有 `surface-panel`，负责布局和阴影；内部 `SmoothSurface` 负责连续圆角裁切，所以内容内边距要通过 `surfaceClassName` 写在表面层。自动化调度面板、肉鸽主题面板和日志通知已使用该组件。
+`ItemGroup` 固定输出 `role="list"`，只适合子项也是列表语义的场景；把 `Item` 渲染成 `button` 时用普通容器包裹，避免 `list` 下出现 `button` 子项。行内有状态标签时使用非交互 `Badge`，不要再用自绘 `span`。
 
 ---
 
-### Button / IconButton
+### Table - 表格
 
-**文件位置**：`apps/web/src/shared/ui/Button.tsx`
+**文件位置**：`apps/web/src/shared/ui/table.tsx`（shadcn 生成物，随上游原文保留）
 
-**适用场景**：文本按钮、主要操作、危险操作、图标按钮。
+**适用场景**：需要真实表头/行语义的二维只读数据，例如养成材料筹备明细。使用 `Table` + `TableHeader` / `TableBody` / `TableRow` / `TableHead` / `TableCell` 组合；表头加 `scope="col"`，数字列右对齐并使用 `tabular-nums`。可点击行用 `Item` 或 `Button` 组合，不要把整行做成伪表格。
+
+---
+
+### Alert - 常驻提示
+
+**文件位置**：`apps/web/src/shared/ui/alert.tsx`（shadcn 生成物，随上游原文保留）
+
+**适用场景**：需要持续显示、直到用户处理或重试的错误与警告块，例如目录加载失败、详情读取失败。`Alert` 是页面内提示，不是弹窗：必须显式确认的操作使用 `AlertDialog`，需要确认流程时使用 `ConfirmAlertDialog`；加载中、筛选无结果等短时提示继续使用 `role="status"`。
 
 ```tsx
-import { Button, IconButton } from '@/shared/ui'
-import { RefreshCw, Save } from 'lucide-react'
+import { Alert, AlertAction, AlertDescription, AlertTitle } from '@/shared/ui/alert'
+import { Button } from '@/shared/ui/button'
 
-<Button variant="primary" icon={<Save />}>保存</Button>
-<Button variant="danger" loading={deleting}>删除</Button>
-<IconButton icon={<RefreshCw />} title="刷新" />
+<Alert variant="destructive">
+  <AlertTitle>干员目录加载失败</AlertTitle>
+  <AlertDescription>请检查连接后重试。</AlertDescription>
+  <AlertAction>
+    <Button size="sm" variant="outline">重试</Button>
+  </AlertAction>
+</Alert>
 ```
 
-`Button` 支持 `primary`、`secondary`、`outline`、`success`、`danger`、`ghost`。`IconButton` 仅支持 `primary`、`secondary`、`danger`、`ghost`。新增按钮优先走 `variant`，不要在页面里手写一套按钮颜色、阴影和圆角。
+根节点固定输出 `role="alert"`，不要改成 `role="status"`，也不要在其中再包一层 alert 角色。`variant` 只有 `default` 与 `destructive`；不提供 success/warning 业务变体，其他状态用 `className` 覆盖。`destructive` variant 的标题与描述文字使用 `--destructive-text`（Tailwind `text-destructive-text`），背景仍为 `bg-card`；这是有意的共享语义修正，会同时影响 combat 等所有 `Alert` 调用点。标题、描述与右上角操作分别使用 `AlertTitle`、`AlertDescription` 与 `AlertAction`。图标作为根节点的直接子元素渲染，装饰图标加 `aria-hidden="true"`。
 
-`Button` 的 loading 状态会显示紧凑的 iOS 活动指示器并保留 `loadingText`；页面不要再给同一操作叠加第二个旋转图标。
+---
+
+### SearchField - 搜索输入
+
+**文件位置**：`apps/web/src/shared/components/SearchField.tsx`（组合 `@/shared/ui/input-group`）
+
+**适用场景**：页面、筛选器与选择弹窗的关键词搜索。统一 Search 图标、`InputGroupAddon` 与可选清除按钮，不要再手写绝对定位图标、`pl-9` 或清除按钮。
+
+```tsx
+import { SearchField } from '@/shared/components'
+
+<SearchField
+  ariaLabel="搜索干员名称"
+  value={query}
+  onValueChange={setQuery}
+  placeholder="搜索干员"
+  clearable
+  onClear={() => resetCursor()}
+/>
+```
+
+`className` 作用于 `InputGroup` 根，输入框自身样式用 `inputClassName`；不要同时传旧的 `pl-9`。`clearable` 且值非空时显示清除按钮；清除时先 `onValueChange('')`，再调用 `onClear`，最后把焦点还给输入框。
+
+---
+
+### NumberField - 数字步进
+
+**文件位置**：`apps/web/src/shared/components/NumberField.tsx`（组合 `@/shared/ui/input-group` 与 `Button`）
+
+**适用场景**：需要 `min` / `max` / `step` 的受控数字输入，例如关卡次数、培养目标、排班方案序号。不要再自绘数字步进按钮。
+
+```tsx
+import { NumberField } from '@/shared/components'
+
+<NumberField
+  id="stage-times"
+  label="关卡次数"
+  value={times}
+  onValueChange={setTimes}
+  min={1}
+  max={99}
+  step={1}
+/>
+```
+
+值以字符串回写；输入时不做 clamp，按钮到达边界时禁用。`controlsClassName` 可控制步进按钮容器的响应式显示（如小屏隐藏）。
+
+---
+
+### Disclosure - 原生折叠
+
+**文件位置**：`apps/web/src/shared/components/Disclosure.tsx`（原生 `<details>/<summary>`）
+
+**适用场景**：高级设置、原始日志、材料详情等轻量折叠区。统一 chevron、`min-h-11` 触达高度与 `focus-visible` 环，并透传原生 `details` 属性（`open`、`onToggle`、`id` 等）。
+
+不要为折叠引入 `Collapsible` 动画；需要紧凑内联时用 `className` / `summaryClassName` / `contentClassName` 覆盖容器装饰，不要复制 summary 结构。
+
+---
+
+### InlineAlert - 紧凑状态提示
+
+**文件位置**：`apps/web/src/shared/components/InlineAlert.tsx`（组合 `Alert`）
+
+**适用场景**：页面内的错误、警告、信息与成功反馈，替代各处手拼的 `status-*` 行。`tone` 支持 `error` / `warning` / `info` / `success`，可传 `title`、`action`、`onRetry` / `retryLabel` / `retrying`。
+
+默认 `role="alert"`；加载中、识别中等非错误状态仍使用 `role="status"`，不要用 `InlineAlert` 冒充。
+
+---
+
+### UnavailableAction - 不可用操作
+
+**文件位置**：`apps/web/src/shared/components/UnavailableAction.tsx`（组合 `Tooltip`）
+
+**适用场景**：动作因前置条件不可用、需要解释原因时包裹触发元素。`action` 与 `reason` 组成可访问名 `动作：原因`；内部触发节点是 `tabIndex=0` 的 span，不要再嵌套第二个可聚焦控件。
+
+```tsx
+<UnavailableAction action="加入队列" reason="请先选择作业">
+  <Button disabled>加入队列</Button>
+</UnavailableAction>
+```
 
 ---
 
 ### Input / Select / Checkbox / Switch
 
-**文件位置**：`apps/web/src/shared/ui/Input.tsx`、`apps/web/src/shared/ui/Switch.tsx`
+**文件位置**：`apps/web/src/shared/ui/input.tsx`、`apps/web/src/shared/ui/select.tsx`、`apps/web/src/shared/ui/checkbox.tsx`、`apps/web/src/shared/ui/switch.tsx`（均为 shadcn 生成物）
 
 **适用场景**：表单输入、选择、错误提示、说明文字与二元设置。
 
 ```tsx
-import { Input, Select, Checkbox, Switch } from '@/shared/ui'
+import { Input } from '@/shared/ui/input'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/shared/ui/select'
+import { Checkbox } from '@/shared/ui/checkbox'
+import { Switch } from '@/shared/ui/switch'
 
-<Input
-  label="ADB 路径"
-  value={adbPath}
-  onChange={setAdbPath}
-  error={adbPathError}
-/>
+<div>
+  <label htmlFor="adb-path" className="mb-2 block text-sm font-medium text-muted-foreground">ADB 路径</label>
+  <Input
+    id="adb-path"
+    autoComplete="off"
+    aria-invalid={Boolean(adbPathError)}
+    aria-errormessage={adbPathError ? 'adb-path-error' : undefined}
+  />
+  {adbPathError && <p id="adb-path-error" role="alert" className="form-error-text">{adbPathError}</p>}
+</div>
 
-<Select
-  label="队列策略"
-  value={strategy}
-  onChange={setStrategy}
-  options={strategyOptions}
-/>
+<Select items={strategyOptions} value={strategy} onValueChange={setStrategy}>
+  <SelectTrigger id="strategy" className="w-full"><SelectValue /></SelectTrigger>
+  <SelectContent>
+    {strategyOptions.map(item => (
+      <SelectItem key={item.value} value={item.value}>{item.label}</SelectItem>
+    ))}
+  </SelectContent>
+</Select>
 
-<Checkbox
-  label="失败后继续下一个"
-  checked={continueOnFailure}
-  onChange={setContinueOnFailure}
-/>
+<label className="group flex min-h-11 cursor-pointer items-center gap-2 text-sm text-muted-foreground">
+  <Checkbox checked={continueOnFailure} onCheckedChange={setContinueOnFailure} />
+  <span className="transition-colors group-hover:text-primary">失败后继续下一个</span>
+</label>
 
-<Switch
-  label="启用定时执行"
-  checked={scheduleEnabled}
-  onChange={setScheduleEnabled}
-/>
+<label className="flex min-h-11 items-center justify-between gap-2 text-sm text-muted-foreground">
+  启用定时执行
+  <Switch checked={scheduleEnabled} onCheckedChange={setScheduleEnabled} aria-label="启用定时执行" />
+</label>
 ```
 
-`Input`、`Select` 均支持 `error` 和 `hint`，`Input` 额外支持前置 `icon`。`hint` 默认显示在控件下方；传 `hintPlacement="tooltip"` 时说明收敛为标签旁的 ⓘ 图标，悬停、聚焦或点击时以提示层显示同一段文字，控件仍通过 `aria-describedby` 关联这段说明。多行文本使用带 `app-input control-surface` 的原生 `textarea`。表单错误态使用 `error` prop，不要在页面里单独手写红色边框和错误文字。
+`Input`、`Select`、`Checkbox`、`Switch` 直接导入 `@/shared/ui/*`，原语不提供 `label`、`error` 或 `hint` props。字段行由各 feature 的 field helper 组合标签、控件与错误态；说明提示使用下方 `FieldHint`，不要给原语另加说明参数。多行文本使用 `@/shared/ui/textarea` 生成物；存量原生 `textarea` 可逐步迁移。
 
-`Input` 默认关闭浏览器自动填充历史（`autoComplete="off"`），避免配置值与搜索词混入输入框下拉提示；确实需要浏览器记住输入时才显式传 `autoComplete`。原生 `input` 同样补上该属性。
+错误态给控件传 `aria-invalid`，需要与错误文本建立关联时再传 `aria-errormessage`；错误文本使用 `form-error-text`，不要在页面里单独手写红色边框。`Select` 由 Root、`SelectTrigger`、`SelectValue`、`SelectContent` 与 `SelectItem` 组合，受控值通过 `value` / `onValueChange` 传递；选项数组传给 Root 的 `items`，`SelectValue` 才能显示当前标签。
+
+`autoComplete="off"` 是消费点（feature field helper 或直接调用处）的契约，不是 `@/shared/ui/input` 原语的默认值。配置值与搜索词在新增输入时显式关闭浏览器自动填充历史，确实需要浏览器记住输入时才改为显式传入其他值。
 
 ---
 
-### HintTooltip - 标签说明提示
+### Field / Label - 表单字段布局
 
-**文件位置**：`apps/web/src/shared/ui/HintTooltip.tsx`
+**文件位置**：`apps/web/src/shared/ui/field.tsx`、`apps/web/src/shared/ui/label.tsx`（shadcn 生成物）
 
-**适用场景**：字段说明需要从控件下方的常驻段落收敛为标签旁的 ⓘ 提示。`Input`、`Select` 的 `hintPlacement="tooltip"` 已内置该组件；自定义标签行时直接复用。
+**适用场景**：组合字段标签、控件、说明与错误。`Field` 提供 `vertical` / `horizontal` / `responsive` 三种方向；`FieldLabel`、`FieldDescription`、`FieldError` 分别承担标签、说明与错误；`Label` 用于包裹单个 `Checkbox` 等控件。
 
 ```tsx
-import { HintTooltip } from '@/shared/ui'
+import { Field, FieldContent, FieldDescription, FieldLabel } from '@/shared/ui/field'
+import { Switch } from '@/shared/ui/switch'
 
-<HintTooltip id="field-hint" label="难度" hint="不切换时沿用游戏内当前难度。" />
+<Field orientation="horizontal" className="min-h-11">
+  <FieldContent className="gap-1">
+    <FieldLabel htmlFor="auto-reconnect" className="text-foreground">自动重连</FieldLabel>
+    <FieldDescription className="text-xs text-muted-foreground">连接中断后自动尝试恢复</FieldDescription>
+  </FieldContent>
+  <Switch id="auto-reconnect" aria-label="自动重连" checked={autoReconnect} onCheckedChange={setAutoReconnect} />
+</Field>
 ```
 
-`id` 同时是提示层元素 id，调用方用它把控件与说明通过 `aria-describedby` 关联；`label` 组成图标按钮的可访问名称（`${label}说明`）。提示层渲染到 `document.body`，避免被面板圆角容器裁切。
+新表单优先用 `Field` 组合，不要再用裸 `<label>` + `<p>` 手写字段行。开关行使用 `orientation="horizontal"`，标签与说明放 `FieldContent`，控件作为兄弟节点；多行字段使用默认纵向布局。`FieldGroup` 的默认间距是 `gap-5`，需要 14px 卡片节奏时在调用点显式覆盖（`gap-3.5!`）。`Field` 的 `gap-*` 同样会与生成物默认值竞争，必要时使用 `!` 明确覆盖。
+
+---
+
+### InputGroup / Textarea / ScrollArea
+
+**文件位置**：`apps/web/src/shared/ui/input-group.tsx`、`apps/web/src/shared/ui/textarea.tsx`、`apps/web/src/shared/ui/scroll-area.tsx`（均为 shadcn 生成物）
+
+**适用场景**：带前后缀或清除按钮的输入、多行文本与需要独立滚动的区域。
+
+```tsx
+import { InputGroup, InputGroupAddon, InputGroupButton, InputGroupInput } from '@/shared/ui/input-group'
+import { ScrollArea } from '@/shared/ui/scroll-area'
+import { Textarea } from '@/shared/ui/textarea'
+
+<InputGroup>
+  <InputGroupAddon align="inline-start"><Search aria-hidden="true" /></InputGroupAddon>
+  <InputGroupInput aria-label="搜索日志内容" autoComplete="off" />
+  <InputGroupAddon align="inline-end">
+    <InputGroupButton size="icon-xs" aria-label="清除搜索">…</InputGroupButton>
+  </InputGroupAddon>
+</InputGroup>
+
+<ScrollArea className="h-64">
+  <div className="p-4">可独立滚动的内容</div>
+</ScrollArea>
+```
+
+`InputGroupInput` 已内置无边框与焦点环处理，不要再套一层原生 `Input`。`ScrollArea` 只负责滚动容器，尺寸和内容留白由调用点提供；不要在页面里再手写 `overflow-y-auto` 的平行滚动宿主。需要由输入内容决定高度上限的多行文本使用 `Textarea`。
+
+---
+
+### DropdownMenu / Popover - 浮层菜单与富内容弹层
+
+**文件位置**：`apps/web/src/shared/ui/dropdown-menu.tsx`、`apps/web/src/shared/ui/popover.tsx`（shadcn 生成物）
+
+**适用场景**：`DropdownMenu` 用于动作列表与选项菜单（`role="menu"`）；`Popover` 用于带搜索框、说明或表单的富内容浮层（`role="dialog"`）。不要为这两类浮层手写 `fixed`/`absolute` 定位、外部点击或 Escape 监听。
+
+```tsx
+import { Popover, PopoverContent, PopoverTrigger } from '@/shared/ui/popover'
+
+<Popover>
+  <PopoverTrigger render={<Button variant="secondary" />}>关卡</PopoverTrigger>
+  <PopoverContent
+    side="bottom"
+    align="start"
+    sideOffset={8}
+    collisionPadding={12}
+    aria-label="选择关卡"
+  >
+    浮层内容
+  </PopoverContent>
+</Popover>
+```
+
+`Popover` 的 Root 默认非模态；`DropdownMenu` 的 Root 默认 `modal=true`，需要保留页面滚动与外部交互时显式传 `modal={false}`。Popup 经 Base UI portal 挂到 `document.body`，层序使用 `--layout-z-portal`，不要为浮层另写 `position: fixed` 或高位 z-index。
+
+`side`、`align`、`sideOffset` 与 `collisionPadding` 交给 Base UI 做翻转与视口夹取；菜单内容宽度默认跟随触发器（`--anchor-width`），需要限制高度时使用 `max-h-[min(<上限>,var(--available-height))]`。触发器的 `aria-haspopup`、`aria-expanded`、`aria-controls`、Escape 回焦与方向键导航由原语提供。非模态菜单若要保留某个点击区域，在 `onOpenChange` 中对该次 outside-press 调用 `eventDetails.cancel()`，不要再注册 document 监听。
+
+`PopoverContent` 默认带 `role="dialog"`，应传 `aria-label` 或组合 `PopoverTitle`/`PopoverDescription`；`DropdownMenuContent` 默认带 `role="menu"`，选项使用 `DropdownMenuItem`、`DropdownMenuRadioItem` 等。本仓库为生成物增加了 `collisionPadding` 透传（`PopoverContent`、`DropdownMenuContent`），其余内容保持上游原样。
+
+---
+
+### FieldHint - 标签说明提示
+
+**文件位置**：`apps/web/src/shared/components/FieldHint.tsx`
+
+**适用场景**：字段说明需要从控件下方的常驻段落收敛为标签旁的 ⓘ 提示。通过 `@/shared/components` 导入，不要在页面里重复拼装触发器。
+
+```tsx
+import { FieldHint } from '@/shared/components'
+
+<FieldHint id="field-hint" label="难度" hint="不切换时沿用游戏内当前难度。" />
+```
+
+组件在打开时才挂载提示内容，内容带 `role="tooltip"`，触发器的 `aria-describedby` 仅在打开时指向内容 id；触发器保留 `${label}说明` 的 `aria-label`，并同时支持悬停、聚焦、点击与触屏点按。粗指针设备忽略 Base UI 合成的 hover 开关，提示由点按、点击或聚焦打开，直到 Escape、外部点按或 blur 关闭。提示内容只承载文本，使用 `pointer-events-none`，根节点设置 `disableHoverablePopup`，避免覆盖相邻控件时吞掉悬停或点击。
+
+自定义触发器时，用 `@/shared/ui/tooltip` 组合 `Tooltip`、`TooltipTrigger`（通过 `render` 承载按钮）与 `TooltipContent`，并保持上述受控 `open`、点击/触屏打开、`role`/`aria-describedby` 与非遮挡约定。肉鸽的字段说明统一放在标签旁的 `FieldHint`；开关说明同时提供 `sr-only` 常驻描述，供 `aria-describedby` 关联。不可用执行入口则用可聚焦的 `Tooltip` 触发器说明原因。
 
 ---
 
 ### EmptyState
 
-**文件位置**：`apps/web/src/shared/ui/EmptyState.tsx`
+**文件位置**：`apps/web/src/shared/components/EmptyState.tsx`
 
-**适用场景**：流程、列表、统计区或数据面板暂时没有内容。通过 `@/shared/ui` 导入，不要在页面中各自拼装“暂无数据”的图标、文案和间距。
+**适用场景**：流程、列表、统计区或数据面板暂时没有内容。通过 `@/shared/components` 导入，不要在页面中各自拼装“暂无数据”的图标、文案和间距。
 
 ```tsx
-import { EmptyState, Button } from '@/shared/ui'
+import { EmptyState } from '@/shared/components'
+import { Button } from '@/shared/ui/button'
+import Icons from '@/shared/components/Icons'
 
 <EmptyState
   compact
@@ -215,22 +594,77 @@ Props：
 - `action` (ReactNode) - 可选操作，如刷新或新建。
 - `compact` (boolean) - 用于卡片内部的紧凑布局，默认 `false`。
 - `className` (string) - 仅在页面结构需要额外布局约束时使用。
+- 其余原生 `div` 属性（如 `role`、`aria-hidden`、`aria-live`）透传到根节点，用于错误空态与覆盖层过渡。
 
-卡片内部使用 `compact`，页面级空状态保留默认尺寸。已有自动化流程和掉落记录页使用该组件。
+卡片内部使用 `compact`，页面级空状态保留默认尺寸。已有自动化流程、掉落记录与设备画面使用该组件；设备画面在宽容器中通过域内 CSS 覆盖为横向布局。
 
 ---
 
-### ConfirmDialog / Loading
+### ConfigLoadCard
 
-**文件位置**：`apps/web/src/shared/ui/Modal.tsx`、`apps/web/src/shared/ui/Loading.tsx`
+**文件位置**：`apps/web/src/shared/components/ConfigLoadCard.tsx`
 
-**适用场景**：需要确认的破坏性操作使用 `ConfirmDialog`；短时局部等待使用 `Loading`。两者都由 `shared/ui` 的 `index.ts` 导出。
+**适用场景**：工作区配置读取中或读取失败时占住主列，同时保留 `DeviceMonitorLayout` 的设备画面。自动化与作业共用同一张加载/失败卡，避免两页各写一份固定高度面板。
 
 ```tsx
-import { ConfirmDialog, Loading } from '@/shared/ui'
+import { ConfigLoadCard } from '@/shared/components'
+
+<DeviceMonitorLayout variant="standard">
+  <ConfigLoadCard
+    failed={loadState === 'failed'}
+    title="自动化配置"
+    loadingMessage="正在读取自动化配置…"
+    failedMessage="自动化配置暂时不可用"
+    error={loadError}
+    onRetry={() => void reload({ force: true })}
+  />
+</DeviceMonitorLayout>
+```
+
+Props：`failed`、`title`（同时作为状态区无障碍名称）、`loadingMessage`、`failedMessage`、`error`、`retryLabel`（默认“重新加载”）与 `onRetry`。读取中输出 `role="status"`，失败输出 `role="alert"`；卡片高度固定，主列内容不因加载态跳变。
+
+---
+
+### DialogFrame / DialogBody / DialogFrameFooter
+
+**文件位置**：`apps/web/src/shared/components/DialogFrame.tsx`
+
+**适用场景**：需要限制在 `--layout-dialog-max-height` 内的表单、选择器与发现弹窗。`DialogFrame` 统一组合 `Dialog`、`DialogContent`、标题栏与关闭按钮，固定最大高度与各区域职责；内容通过 `DialogBody` 滚动，页脚使用 `DialogFrameFooter`。无高度上限的简单弹窗仍可直接组合生成原语。
+
+```tsx
+import { DialogBody, DialogFrame, DialogFrameFooter } from '@/shared/components'
+
+<DialogFrame
+  open={isOpen}
+  onOpenChange={open => { if (!open) onClose() }}
+  title="添加干员"
+  size="4xl"
+  footer={(
+    <DialogFrameFooter align="between">
+      <span>已加入 2 名干员</span>
+      <Button onClick={onClose}>完成选择</Button>
+    </DialogFrameFooter>
+  )}
+>
+  <DialogBody onScroll={handleScroll}>{content}</DialogBody>
+</DialogFrame>
+```
+
+`DialogFrame` 的 props：`open`、`onOpenChange`、`title`、`description`、`toolbar`、`children`、`footer`、`layers`、`size`（`md` 为默认，另有 `lg`、`4xl`）、`closeDisabled`、`closeClassName`、`disablePointerDismissal`、`id`、`className`。`closeClassName` 只给标题栏关闭按钮追加调用点局部尺寸（例如预览模态窗的 44px 触达目标），不改变共享默认档位。`toolbar` 在标题栏与可滚动内容之间渲染固定工具栏（`data-slot="dialog-toolbar"`），不随 `DialogBody` 滚动；发现作业用它固定搜索与筛选条。`closeDisabled` 禁用标题栏关闭按钮，并拒绝 Escape、遮罩点击与关闭请求；保存或提交等待期间使用。`layers` 承载与对话框同一 Base UI root 的嵌套弹层（如发现作业中的详情抽屉），以保持 Escape 顺序与层级关系。`DialogBody` 是唯一可滚动内容区，透传原生 `div` 属性（如 `onScroll`）；`DialogFrameFooter` 透传 `div` 属性，`align` 为 `end`（默认）或 `between`。
+
+---
+
+### ConfirmAlertDialog / Loading
+
+**文件位置**：`apps/web/src/shared/components/ConfirmAlertDialog.tsx`、`apps/web/src/shared/components/Loading.tsx`
+
+**适用场景**：需要确认的破坏性操作使用 `ConfirmAlertDialog`；短时局部等待使用 `Loading`。两者都由 `shared/components` 的 `index.ts` 导出。
+
+```tsx
+import { ConfirmAlertDialog, Loading } from '@/shared/components'
 
 {loading ? <Loading text="正在读取日志..." /> : content}
-<ConfirmDialog
+<ConfirmAlertDialog
   isOpen={confirmOpen}
   onClose={() => setConfirmOpen(false)}
   onConfirm={handleDelete}
@@ -239,45 +673,83 @@ import { ConfirmDialog, Loading } from '@/shared/ui'
 />
 ```
 
-`ConfirmDialog.onConfirm` 可以返回 Promise：返回 `false` 或抛出错误时弹窗保持打开，并在弹窗内展示失败原因。
+`ConfirmAlertDialog.onConfirm` 可以返回 Promise：返回 `false` 或抛出错误时弹窗保持打开，并在弹窗内展示失败原因；确认处理中会禁用取消与确认按钮并阻止 Escape 关闭。组件内部组合 `shared/ui/alert-dialog`，初始焦点落在取消按钮。
 
-`Modal` 的 `placement` 默认为 `center`（既有居中弹层）；传 `sheet` 时改为贴底 Sheet，最大高度 `85dvh`、顶部连续圆角并预留底部安全区，焦点陷阱、背景 `inert`、Esc、滚动锁与焦点归还保持与居中弹层一致。`dialogId` 可选，用于让触发元素的 `aria-controls` 指向对话框根节点。`onBodyScroll` 可选，透传正文滚动事件（滚动发生在正文层），用于滚动加载等场景；它不改变布局、焦点陷阱与背景锁。
+高度受限的表单、选择器与发现弹窗使用 shared `DialogFrame` + `DialogBody` + `DialogFrameFooter`；无高度上限的简单弹窗仍可直接组合生成原语：
 
-`useModalLayer(ref, enabled?)` 由 `shared/ui` 导出，用于把已有 portal 图层登记进同一个 Modal 栈：登记期间按栈序分配 `z-index`，非顶层弹窗自动设为 `inert`/`aria-hidden`，停用后移除内联层级并恢复原样式。它只负责图层栈，不创建弹窗；普通 `Modal` 仍自行管理背景锁与焦点陷阱。桌面端作业详情抽屉叠在“发现作业”弹窗之上时使用该能力，并在叠层期间提供 `aria-modal="true"` 与面板内的 Tab 循环；未叠层时保持非模态抽屉语义，不劫持 Tab。
+- `Sheet` 用于作业详情抽屉：桌面 `side="right"`、移动 `side="bottom"`；需要保留页面可交互时使用 Root 的 `modal={false}` 并自行处理外部点击关闭。仓库的 `SheetContent` 会无条件渲染全屏 `SheetOverlay` 且没有关闭 overlay 的 prop，因此桌面非模态弹层需要组合 `Sheet` + `SheetPrimitive.Popup`，不能直接用 `SheetContent`。
+- `AlertDialog` 用于必须显式确认的操作；`role="alertdialog"` 由原语提供。
+- 嵌套弹层按 React 父子关系组合（如发现弹窗内的筛选弹窗、详情抽屉上的重置确认框），Base UI 依此管理 Escape 层级、焦点归还与滚动锁。
+- 弹层经 Base UI portal 挂到 `document.body`，层序使用 `--layout-z-portal`；应用自绘浮层按 [设计规范](../../DESIGN.md) 的 z-index scale 取 token，不在组件里补高位 z-index。
 
-```tsx
-<Modal
-  isOpen={open}
-  onClose={close}
-  title="作业详情"
-  placement="sheet"
-  dialogId="combat-copilot-detail-panel"
->
-  内容
-</Modal>
-```
-
-`ActivityIndicator` 是供 `Button` 和 `Loading` 内部复用的 iOS 活动指示器，页面不要直接调用或叠加第二个动态指示器。`DashboardSkeleton` 是控制台域专用骨架，位于 `features/dashboard/components/DashboardSkeleton.tsx`，不属于 `shared/ui` 的公共导出。
+`DashboardSkeleton` 是控制台域内唯一的整页骨架，位于 `features/dashboard/components/DashboardSkeleton.tsx`，不属于 `shared/components` 的公共导出；`shared/components` 不提供整页骨架。
 
 ---
 
-### PageSkeleton
+### UndoToastCard / AppToaster
 
-**文件位置**：`apps/web/src/shared/ui/Loading.tsx`，与 `Loading` 同文件导出。
+**文件位置**：`apps/web/src/shared/components/UndoToastCard.tsx`、`apps/web/src/shared/components/AppToaster.tsx`
 
-**适用场景**：懒加载路由的整页骨架占位。按 `variant` 复刻目标工作区的布局比例，减少加载完成后的跳动。
-
-Props：
-
-- `variant` (string, required) - 目标页面标识。内置 `automation`、`combat`、`roguelike`、`training`、`logs`、`statistics`、`config` 七种工作区骨架，其余取值只渲染页头骨架。
+**适用场景**：需要「已移除 + 撤销」语义的应用级提示。`AppToaster` 在应用根挂载一次，主题跟随 `useTheme` 的解析明暗与 `lpn-ui`；提示固定在底部居中，桌面停留 24px，窄屏抬高以避开 tab bar 与安全区。`UndoToastCard` 是提示内容，默认 8 秒后自动关闭，悬停或键盘聚焦时暂停，`pending` 时禁用撤销与关闭并显示恢复中；宽度按内容收缩并居中，窄屏上限为 `calc(100vw - 2rem)`，播报由 sonner 外层 live region 承担。
 
 ```tsx
-import { PageSkeleton } from '@/shared/ui'
+import { toast } from 'sonner'
+import { AppToaster, UndoToastCard } from '@/shared/components'
 
-<PageSkeleton variant="automation" />
+// 应用根：<AppToaster />
+
+toast.custom(() => (
+  <UndoToastCard
+    message="已移除 阿米娅"
+    pending={false}
+    onUndo={handleUndo}
+    onDismiss={handleDismiss}
+  />
+), { id: 'undo-toast', duration: Infinity, dismissible: false })
 ```
 
-输出为 `aria-busy="true"`、`aria-label="页面内容加载中"` 的忙碌区域，内部骨架标记 `aria-hidden="true"`；根节点携带目标页面的页面级类名（`app-page`、`ios-workspace-page` 及各页专属类）。控制台骨架由域内 `DashboardSkeleton` 提供，见上文。
+使用 `toast.custom` 时让卡片自己管理 8 秒计时与暂停，因此传入 `duration: Infinity`；关闭按钮与撤销动作由卡片提供，因此传入 `dismissible: false`。同一提示复用稳定 id，避免重复堆叠。
+
+---
+
+### Notifications - 全局通知
+
+**文件位置**：`apps/web/src/shared/notifications/notify.ts`；渲染由应用根挂载的 `AppToaster`（sonner）承担。
+
+**适用场景**：跨页面结果、错误和执行进度提示。统一从 `@/shared/notifications` 导入，不要在页面里直接调用 sonner 或自建 toast。
+
+```typescript
+notify(message: string, type?: 'success' | 'error' | 'warning' | 'info' | 'default', options?: {
+  id?: string
+  duration?: number
+  description?: string
+  action?: { label: string; onClick: () => void }
+}): string
+
+notifyProgress(message: string, id: string): string
+
+dismissNotice(id?: string): void
+```
+
+同一流程复用固定 id，后续更新会替换原通知而不是堆叠。固定 id：`execution`（自动化、作业、肉鸽与 Dashboard 执行）、`statistics`（识别与材料）、`settings-update`（组件更新）、`settings-update-channel`（更新渠道保存）、`settings-auto-update`（自动更新保存）、`settings-config:connection` / `settings-config:instance` / `settings-config:resource-source`（设置草稿保存）、`settings-connection-test`（设置连接测试）、`combat-preview`（作业预览）、`combat-queue-preview`（搜索作业加入队列）、`combat-paradox-search`（悖论模拟搜索）、`dashboard-connection`（概览连接告警）、`roguelike-config-save`（肉鸽配置保存/恢复）、`automation-config-save`（自动化配置保存/恢复）、`automation-connection-test`（测试连接）、`automation-deleted-task`（删除任务撤销）、`automation-restore-blocked`（运行中拒绝恢复）、`automation-notification-load`（通知配置读取）、`automation-notification-test`（测试通知）、`automation-notification-save`（通知配置保存）。开始用 `notifyProgress(message, id)`；有终态文案时用同一 id 的 `notify(..., { id })` 替换；没有终态文案时才 `dismissNotice(id)` 收起进度。不传 `type` 时按文案推断；错误默认常驻到用户关闭，成功默认约 2.5 秒，警告与信息默认约 4 秒。`duration` 可显式覆盖，进度通知默认不自动消失。`description` 与 `action` 原样传给 sonner，只用于需要补充说明或内联动作的通知。应用最多同时显示 3 条通知；`AppToaster` 为每条通知提供关闭按钮（无障碍名称「关闭通知」）。
+
+概览的连接告警使用常驻 toast：`offline` 时以固定 id `dashboard-connection` 发送 warning 与 `description`，不附带 action；`unavailable` 时发送 error、`description` 与「重试连接」action。连接恢复自动 `dismissNotice`；toast 由应用根渲染，不参与页面布局。
+
+---
+
+### Icons
+
+**文件位置**：`apps/web/src/shared/components/Icons.tsx`
+
+**适用场景**：业务身份与概览图标。组件以默认对象导出，页面从 `@/shared/components/Icons` 导入后按名称使用；普通功能图标优先使用 `lucide-react`，不要在页面重复手写 SVG。
+
+```tsx
+import Icons from '@/shared/components/Icons'
+
+<Icons.TrendingUp />
+```
+
+业务身份图标（Play、Sword、Gift 等）自带 `icon-well` 身份底座，只用于页面、概览和卡片的内容身份，不能包裹普通按钮图标；`TrendingUp`、`Zap`、`Star`、`RefreshCw`、`Crosshair` 等概览/内联图标是裸 SVG。装饰图标加 `aria-hidden="true"`；状态与结果同时提供可读文字或 `aria-label`。
 
 ---
 
@@ -285,44 +757,28 @@ import { PageSkeleton } from '@/shared/ui'
 
 **文件位置**：`apps/web/src/shared/hooks/useFluidTabIndicator.ts`
 
-**适用场景**：带有 Framer Motion 高亮底层的分段标签。它会在切换、容器尺寸变化、标签内容变化和窗口缩放时，把高亮层对齐到当前按钮。不要在每个页面重复维护 `ResizeObserver`、元素 ref 和坐标计算。
+**适用场景**：已有自定义分段按钮组需要复用高亮矩形测量与 roving focus 键盘处理时使用。页面级分段导航统一使用 `SegmentedTabs` / `SegmentedTabNav`，后者已改用 shadcn `Tabs` 默认语义，不再复用本 Hook；不要在新页面复制 `ResizeObserver`、元素 ref 和坐标计算。
 
 ```tsx
-const { containerRef, activeRect, setTabRef } = useFluidTabIndicator(activeTab)
-
-<div ref={containerRef} className="relative">
-  <motion.div
-    className="pointer-events-none absolute"
-    animate={{
-      x: activeRect.x,
-      y: activeRect.y,
-      width: activeRect.width,
-      height: activeRect.height,
-    }}
-  />
-  {tabs.map((tab) => (
-    <button key={tab.id} ref={setTabRef(tab.id)}>{tab.label}</button>
-  ))}
-</div>
+const { containerRef, activeRect, setTabRef, handleTabKeyDown } = useFluidTabIndicator(activeTab)
 ```
 
-标签 ID 需是字符串联合类型，且高亮容器需要 `relative` 定位。作业、养成和肉鸽页面已使用该 Hook。
+Hook 返回高亮容器 ref、当前高亮矩形、标签 ref 设置器与方向键/Home/End 处理函数，并在切换、容器尺寸变化、标签内容变化和窗口缩放时重新测量。标签 ID 需是字符串联合类型，且高亮容器需要 `relative` 定位。当前只有 `OperatorPicker` 的干员范围分段直接使用；页面导航应改用共享的 `SegmentedTabNav`。
 
 ---
 
 ## 组件接入
 
-新增页面或改老页面时，按下面顺序处理：
+页面标题由 `Layout` 顶栏统一提供，页面不接收标题、副标题或页头操作。新增页面或改老页面时，按下面顺序处理：
 
-1. 页面外层使用 `app-page`，主内容使用 `app-stack-section`。
-2. 页面标题使用 `PageHeader`。
-3. 大面板使用 `Card` 或 `app-card surface-panel`。
-4. 表单使用 `Input`、`Select`、`Checkbox`、`Switch`；多行文本复用 `app-input control-surface`。
-5. 没有内容时使用 `EmptyState`，不要重复手写空状态。
-6. 动态分段标签优先使用 `useFluidTabIndicator`，不要复制测量逻辑。
-7. 页面全局执行状态使用 `FloatingStatusIndicator`；局部状态使用既有 `status-*` 语义类并紧邻相关操作。
-8. 操作用 `Button`、`IconButton`。
-9. 如果出现新的颜色、圆角、间距需求，先按根目录 [设计规范](../../DESIGN.md) 判断是否应抽成 token 或语义类。
+1. 页面根使用 `PageShell`；它提供 `app-stack-section` 承载内容，页面内容直接进入工作区。
+2. 大面板使用 `Card` 组合；分节自持内边距时给 `Card` 加 `gap-0 p-0!`。
+3. 表单使用 `@/shared/ui` 的 `Input`、`Select`、`Checkbox`、`Switch` 原语，并用所属 feature 的 field helper 组合标签与错误；多行文本使用 `@/shared/ui/textarea`。
+4. 没有内容时使用 `EmptyState`，不要重复手写空状态。
+5. 页面级分段导航使用 `SegmentedTabs` + `SegmentedTabNav` + `SegmentedTabPanel`；表单内单值分段使用 `SegmentedControl`。不要复制测量逻辑，也不要自建 tablist。
+6. 全局执行结果、错误与进度使用 `notify` / `notifyProgress`；局部状态使用既有 `status-*` 语义类并紧邻相关操作。
+7. 操作用 `@/shared/ui/button` 的 `Button`；无文字操作使用 `size="icon"` 档位并同时提供 `title` 与 `aria-label`。
+8. 如果出现新的颜色、圆角、间距需求，先按根目录 [设计规范](../../DESIGN.md) 判断是否应抽成 token 或语义类。
 
 ### Tailwind 动态类名
 

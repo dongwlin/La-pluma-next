@@ -1,12 +1,113 @@
-import { useCallback, useEffect, useMemo, useReducer, useRef } from 'react'
-import { AlertCircle, ArrowDown, ArrowLeft, FileText, Search } from 'lucide-react'
-import { Button, Card, CardContent, CardHeader, Loading } from '@/shared/ui'
+import { useCallback, useEffect, useMemo, useReducer, useRef, type RefObject } from 'react'
+import { useVirtualizer } from '@tanstack/react-virtual'
+import { AlertCircle, ArrowDown, ArrowLeft, FileText, Filter, History, Search } from 'lucide-react'
+import { Badge } from '@/shared/ui/badge'
+import { Button } from '@/shared/ui/button'
+import { Card, CardAction, CardContent, CardHeader, CardTitle } from '@/shared/ui/card'
+import { Disclosure, FieldHint, Loading } from '@/shared/components'
+import { HISTORY_LOG_LINES } from '../model/historyLogSession'
 import { countAppendedRows, initialLogFollowState, reduceLogFollow } from '../model/logFollow'
-import { getLogIdentity, getLogSourceText, type LogView } from '../model/logModel'
+import { formatLogFileSize } from '../model/logFileSize'
+import { getLogIdentity, getLogSourceText, type LogView, type VisibleLog } from '../model/logModel'
+import { REALTIME_LOG_LINES } from '../model/realtimeLogStream'
 import type { LogEntry, LogFile } from '../types'
 
 /** 距底部小于该值视为仍在底部，吸收取整与吸附误差。 */
 const FOLLOW_BOTTOM_GAP_PX = 4
+
+const LEVEL_BADGE_CLASS: Record<LogEntry['level'], string> = {
+  ERROR: 'bg-destructive/10 text-destructive-text',
+  WARN: 'bg-warning/10 text-warning-text',
+  INFO: 'bg-primary-soft text-primary-strong',
+  DEBUG: 'bg-muted text-muted-foreground',
+}
+
+const VIRTUAL_ROWS_THRESHOLD = 120
+
+function LogRow({ log }: { log: VisibleLog }) {
+  return (
+    <div className="log-row" data-log-row>
+      <div className="log-row-meta">
+        {log.time && <time>{log.time}</time>}
+        <Badge variant="secondary" className={LEVEL_BADGE_CLASS[log.level]}>{log.level}</Badge>
+      </div>
+      <div className="log-message">
+        <span data-log-message>{log.message}</span>
+        {log.count > 1 && (
+          <Badge variant="secondary" className="ml-2 bg-primary-soft px-1.5 text-primary-strong">
+            {`x${log.count}`}
+          </Badge>
+        )}
+        <Disclosure
+          className="log-raw rounded-none border-0 p-0"
+          label={log.count > 1 ? `查看 ${log.count} 条原文` : '原文'}
+          summaryClassName="w-fit min-h-6 text-xs font-semibold text-muted-foreground hover:text-primary-strong max-sm:min-h-11"
+          contentClassName="mt-0 gap-0 border-t-0 pt-0"
+        >
+          {log.members.map((annotation, index) => {
+            const record = annotation.record
+            return (
+              <div key={record.id || `${getLogIdentity(record)}-${index}`} className="log-record-detail">
+                <p>
+                  {log.count > 1 ? `第 ${index + 1} 条 · ` : ''}
+                  {record.timestamp || record.time || '时间未知'} · 源级别 {record.level}
+                  {record.source === 'history' ? ' · 历史文件' : ' · 实时采集'}
+                </p>
+                <p>Run：{record.runId || '未关联'}{record.operationId ? ` · Operation：${record.operationId}` : ''}</p>
+                {annotation.parseStatus === 'malformed' && <p>无法完整解析，已保留原文</p>}
+                <pre>{getLogSourceText(record)}</pre>
+                {record.envelope && <pre>{JSON.stringify(record.envelope, null, 2)}</pre>}
+              </div>
+            )
+          })}
+        </Disclosure>
+      </div>
+    </div>
+  )
+}
+
+function VirtualLogRows({
+  logs,
+  scrollRef,
+}: {
+  readonly logs: readonly VisibleLog[]
+  readonly scrollRef: RefObject<HTMLDivElement | null>
+}) {
+  const virtualizer = useVirtualizer({
+    count: logs.length,
+    getScrollElement: () => scrollRef.current,
+    estimateSize: () => 96,
+    overscan: 8,
+    getItemKey: index => {
+      const record = logs[index]?.members[0]?.record
+      return record ? getLogIdentity(record) : index
+    },
+  })
+
+  return (
+    <div
+      data-log-virtualized="true"
+      style={{ height: `${virtualizer.getTotalSize()}px`, position: 'relative' }}
+    >
+      {virtualizer.getVirtualItems().map(item => (
+        <div
+          key={item.key}
+          data-index={item.index}
+          ref={virtualizer.measureElement}
+          style={{
+            position: 'absolute',
+            top: 0,
+            left: 0,
+            width: '100%',
+            transform: `translateY(${item.start}px)`,
+          }}
+        >
+          <LogRow log={logs[item.index]!} />
+        </div>
+      ))}
+    </div>
+  )
+}
 
 interface LogConsoleProps {
   readonly viewingHistory: boolean
@@ -14,11 +115,15 @@ interface LogConsoleProps {
   readonly loading: boolean
   readonly error: string | null
   readonly logs: readonly LogEntry[]
+  readonly unfilteredLogCount: number
   readonly view: LogView
   readonly autoScroll: boolean
   readonly paused: boolean
   readonly onRetry: () => void
   readonly onBackToRealtime: () => void
+  readonly onClearFilters: () => void
+  readonly onShowAllRuns: () => void
+  readonly onOpenHistory: () => void
   readonly scopeKey?: string
 }
 
@@ -28,11 +133,15 @@ export default function LogConsole({
   loading,
   error,
   logs,
+  unfilteredLogCount,
   view,
   autoScroll,
   paused,
   onRetry,
   onBackToRealtime,
+  onClearFilters,
+  onShowAllRuns,
+  onOpenHistory,
   scopeKey = '',
 }: LogConsoleProps) {
   const containerRef = useRef<HTMLDivElement>(null)
@@ -102,37 +211,61 @@ export default function LogConsole({
   }, [])
 
   const visibleLogs = view.visible
-  const isFilteredEmpty = logs.length > 0 && visibleLogs.length === 0
+  const totalFacts = view.selected.length
+  const countLabel = loading
+    ? '读取中'
+    : visibleLogs.length === totalFacts
+      ? `${totalFacts} 条`
+      : `${totalFacts} 条 · ${visibleLogs.length} 行`
+  const runFilteredEmpty = !viewingHistory && unfilteredLogCount > 0 && logs.length === 0
+  const filteredEmpty = logs.length > 0 && visibleLogs.length === 0
+  const coverageHint = viewingHistory
+    ? `历史文件只读取尾部 ${HISTORY_LOG_LINES} 行；导出仅包含当前筛选结果。`
+    : `实时日志只显示最近 ${REALTIME_LOG_LINES} 条窗口，不代表完整执行日志；Run 筛选仅作用于当前窗口。`
 
   return (
-    <Card className="log-card min-w-0 p-0!" smoothCorners>
-      <CardHeader
-        title={headingTitle}
-        actions={
+    <Card className="log-card min-w-0 gap-0 p-0!">
+      <CardHeader className="border-b py-3.5">
+        <CardTitle role="heading" aria-level={2}>{headingTitle}</CardTitle>
+        <CardAction>
           <div className="log-console-heading-actions">
-            <span className="log-count">{visibleLogs.length} 条</span>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={onOpenHistory}
+              aria-label="历史日志文件"
+              title="历史日志文件"
+            >
+              <History className="h-4 w-4" aria-hidden="true" />
+              <span className="hidden sm:inline">历史日志</span>
+            </Button>
+            <FieldHint id="log-console-coverage" label="日志覆盖范围" hint={coverageHint} />
+            <Badge variant="secondary" className="bg-primary-soft font-semibold tabular-nums text-primary-strong">
+              {countLabel}
+            </Badge>
             {viewingHistory && (
               <Button
                 onClick={onBackToRealtime}
                 variant="outline"
                 size="sm"
-                icon={<ArrowLeft className="h-4 w-4" aria-hidden="true" />}
               >
+                <ArrowLeft className="h-4 w-4" aria-hidden="true" />
                 返回实时
               </Button>
             )}
           </div>
-        }
-      />
+        </CardAction>
+      </CardHeader>
       <CardContent className="log-console-content">
         {viewingHistory && selectedFile && (
-          <div className="surface-soft mb-3 flex min-w-0 items-center gap-2 rounded-xl px-3 py-2 text-xs text-secondary">
+          <div className="surface-soft mb-3 flex min-w-0 items-center gap-2 rounded-xl px-3 py-2 text-xs text-muted-foreground">
             <FileText className="h-4 w-4 shrink-0 text-tertiary" aria-hidden="true" />
-            <span className="min-w-0 flex-1 truncate font-medium text-primary" title={selectedFile.name}>
+            <span className="min-w-0 flex-1 truncate font-medium text-foreground" title={selectedFile.name}>
               {selectedFile.name}
             </span>
             <span className="hidden shrink-0 text-tertiary sm:inline">
-              {(selectedFile.size / 1024).toFixed(2)} KB
+              {formatLogFileSize(selectedFile.size)}
             </span>
           </div>
         )}
@@ -153,11 +286,8 @@ export default function LogConsole({
               aria-live={liveRegionMuted ? 'off' : 'polite'}
               aria-relevant="additions text"
             >
-              {error && (
-                <div
-                  className={`log-console-state is-error flex-wrap ${logs.length > 0 ? 'status-danger m-3 min-h-0! justify-start! p-3! text-left font-sans text-sm' : ''}`}
-                  role="alert"
-                >
+              {error && logs.length === 0 && (
+                <div className="log-console-state is-error flex-wrap" role="alert">
                   <AlertCircle className="h-5 w-5" aria-hidden="true" />
                   <span>{error}</span>
                   <Button
@@ -170,7 +300,7 @@ export default function LogConsole({
                   </Button>
                 </div>
               )}
-              {!error && logs.length === 0 && (
+              {!error && logs.length === 0 && !runFilteredEmpty && (
                 <div className="log-console-state">
                   <FileText className="h-5 w-5" aria-hidden="true" />
                   <span>
@@ -182,53 +312,51 @@ export default function LogConsole({
                   </span>
                 </div>
               )}
-              {!error && isFilteredEmpty && (
-                <div className="log-console-state">
-                  <Search className="h-5 w-5" aria-hidden="true" />
-                  <span>没有符合当前筛选条件的日志</span>
+              {!error && runFilteredEmpty && (
+                <div className="log-console-state flex-wrap">
+                  <Filter className="h-5 w-5" aria-hidden="true" />
+                  <span>当前执行范围内没有日志</span>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={onShowAllRuns}
+                  >
+                    显示全部执行
+                  </Button>
                 </div>
               )}
-              {visibleLogs.map((log, index) => (
-                <div className="log-row" data-log-row key={log.members[0]!.record.id || `${getLogIdentity(log.members[0]!.record)}-${index}`}>
-                  <div className="log-row-meta">
-                    {log.time && <time>{log.time}</time>}
-                    <span className={`log-level is-${log.level.toLowerCase()}`}>{log.level}</span>
-                  </div>
-                  <div className="log-message">
-                    <span data-log-message>{log.message}</span>
-                    {log.count > 1 && <span className="log-repeat">x{log.count}</span>}
-                    <details className="log-raw">
-                      <summary>{log.count > 1 ? `查看 ${log.count} 条原文与详情` : '原文与详情'}</summary>
-                      {log.members.map((annotation, index) => {
-                        const record = annotation.record
-                        return (
-                          <div key={record.id || `${getLogIdentity(record)}-${index}`} className="log-record-detail">
-                            <p>
-                              {log.count > 1 ? `第 ${index + 1} 条 · ` : ''}
-                              {record.timestamp || record.time || '时间未知'} · 源级别 {record.level}
-                              {record.source === 'history' ? ' · 历史文件' : ' · 实时采集'}
-                            </p>
-                            <p>Run：{record.runId || '未关联'}{record.operationId ? ` · Operation：${record.operationId}` : ''}</p>
-                            {annotation.parseStatus === 'malformed' && <p>无法完整解析，已保留原文</p>}
-                            <pre>{getLogSourceText(record)}</pre>
-                            {record.envelope && <pre>{JSON.stringify(record.envelope, null, 2)}</pre>}
-                          </div>
-                        )
-                      })}
-                    </details>
-                  </div>
+              {!error && filteredEmpty && (
+                <div className="log-console-state flex-wrap">
+                  <Search className="h-5 w-5" aria-hidden="true" />
+                  <span>没有符合当前筛选条件的日志</span>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={onClearFilters}
+                  >
+                    清除筛选
+                  </Button>
                 </div>
+              )}
+              {visibleLogs.length > VIRTUAL_ROWS_THRESHOLD ? (
+                <VirtualLogRows logs={visibleLogs} scrollRef={containerRef} />
+              ) : visibleLogs.map((log, index) => (
+                <LogRow
+                  key={log.members[0]!.record.id || `${getLogIdentity(log.members[0]!.record)}-${index}`}
+                  log={log}
+                />
               ))}
             </div>
             {followEligible && follow.paused && (
               <Button
                 type="button"
-                variant="primary"
                 size="sm"
                 className="absolute bottom-3 left-1/2 z-10 -translate-x-1/2 shadow-lg"
-                icon={<ArrowDown className="h-3.5 w-3.5" aria-hidden="true" />}
                 onClick={resumeFollow}
               >
+                <ArrowDown className="h-3.5 w-3.5" aria-hidden="true" />
                 {follow.pendingCount > 0 ? '有新日志' : '回到底部'}
               </Button>
             )}

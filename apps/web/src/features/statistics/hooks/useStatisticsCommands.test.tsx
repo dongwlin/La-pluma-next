@@ -11,18 +11,30 @@ import { useStatisticsCommands, type StatisticsCommands } from './useStatisticsC
 
 const mocks = vi.hoisted(() => {
   const idleState = {
-    kind: null,
-    phase: 'idle',
-    message: null,
-    runId: null,
-    resumeMode: null,
+    kind: null as 'depot' | 'operbox' | 'materials' | null,
+    phase: 'idle' as 'idle' | 'running' | 'waiting' | 'parsing' | 'succeeded' | 'failed' | 'timed-out' | 'cancelled',
+    resumeMode: null as 'parse' | 'command' | null,
   }
   return {
     run: vi.fn(),
     resume: vi.fn(),
     idleState,
+    running: false,
   }
 })
+
+const notifications = vi.hoisted(() => ({
+  notify: vi.fn(),
+  notifyProgress: vi.fn(),
+  dismissNotice: vi.fn(),
+}))
+
+vi.mock('@/shared/notifications', () => ({
+  notify: notifications.notify,
+  notifyProgress: notifications.notifyProgress,
+  dismissNotice: notifications.dismissNotice,
+  STATISTICS_NOTICE_ID: 'statistics',
+}))
 
 vi.mock('../model/commandOwner', () => ({
   statisticsCommandOwner: {
@@ -31,7 +43,7 @@ vi.mock('../model/commandOwner', () => ({
     getState: () => mocks.idleState,
     subscribe: () => () => {},
   },
-  isStatisticsCommandRunning: () => false,
+  isStatisticsCommandRunning: () => mocks.running,
 }))
 
 const depot = {
@@ -62,6 +74,66 @@ async function flush() {
   })
 }
 
+async function renderHarness() {
+  await act(async () => root.render(
+    <QueryClientProvider client={queryClient}>
+      <Harness />
+    </QueryClientProvider>,
+  ))
+}
+
+describe('useStatisticsCommands action labels', () => {
+  beforeEach(async () => {
+    queryClient = createQueryClient()
+    container = document.createElement('div')
+    document.body.appendChild(container)
+    root = createRoot(container)
+    commands = null
+    mocks.running = false
+    mocks.idleState.kind = null
+    mocks.idleState.phase = 'idle'
+    mocks.idleState.resumeMode = null
+    await renderHarness()
+  })
+
+  afterEach(async () => {
+    await act(async () => root.unmount())
+    container.remove()
+    queryClient.clear()
+  })
+
+  it('labels every recognition button as 识别, 重新识别 or 继续解析', async () => {
+    expect(commands!.actionLabel('operbox')).toBe('识别')
+    expect(commands!.actionLabel('depot')).toBe('识别')
+
+    mocks.idleState.kind = 'operbox'
+    mocks.idleState.resumeMode = 'command'
+    await renderHarness()
+    expect(commands!.actionLabel('operbox')).toBe('重新识别')
+    expect(commands!.actionLabel('depot')).toBe('识别')
+
+    mocks.idleState.resumeMode = 'parse'
+    await renderHarness()
+    expect(commands!.actionLabel('operbox')).toBe('继续解析')
+
+    mocks.running = true
+    await renderHarness()
+    expect(commands!.actionLabel('operbox')).toBe('识别')
+  })
+
+  it('labels a resumable depot recognition the same way as an operator one', async () => {
+    mocks.idleState.kind = 'depot'
+    mocks.idleState.resumeMode = 'command'
+    await renderHarness()
+    expect(commands!.actionLabel('depot')).toBe('重新识别')
+    expect(commands!.actionLabel('operbox')).toBe('识别')
+
+    mocks.idleState.resumeMode = 'parse'
+    await renderHarness()
+    expect(commands!.actionLabel('depot')).toBe('继续解析')
+  })
+})
+
 describe('useStatisticsCommands snapshot writes', () => {
   beforeEach(async () => {
     queryClient = createQueryClient()
@@ -69,13 +141,16 @@ describe('useStatisticsCommands snapshot writes', () => {
     document.body.appendChild(container)
     root = createRoot(container)
     commands = null
+    mocks.running = false
+    mocks.idleState.kind = null
+    mocks.idleState.phase = 'idle'
+    mocks.idleState.resumeMode = null
     mocks.run.mockReset()
     mocks.resume.mockReset()
-    await act(async () => root.render(
-      <QueryClientProvider client={queryClient}>
-        <Harness />
-      </QueryClientProvider>,
-    ))
+    notifications.notify.mockReset()
+    notifications.notifyProgress.mockReset()
+    notifications.dismissNotice.mockReset()
+    await renderHarness()
   })
 
   afterEach(async () => {
@@ -109,6 +184,7 @@ describe('useStatisticsCommands snapshot writes', () => {
       queryKey: ['game-data', 'depot'],
     })
     expect(queryClient.setQueryData).toHaveBeenCalledWith(['game-data', 'depot'], depot)
+    expect(notifications.notify).toHaveBeenCalledWith('识别完成', 'success', { id: 'statistics' })
   })
 
   it('writes the operbox snapshot through the same cancel-then-write path', async () => {
@@ -133,5 +209,31 @@ describe('useStatisticsCommands snapshot writes', () => {
 
     expect(order).toEqual(['cancel', 'set'])
     expect(queryClient.setQueryData).toHaveBeenCalledWith(['game-data', 'operbox'], operBox)
+  })
+
+  it('reports command progress under the statistics notice id', async () => {
+    mocks.run.mockImplementation(async (_kind, options) => {
+      options.onProgress?.('正在识别仓库物品...')
+      return { status: 'succeeded', kind: 'depot', message: '识别完成', depot }
+    })
+
+    await act(async () => {
+      commands!.startRecognition('depot')
+    })
+    await flush()
+
+    expect(notifications.notifyProgress).toHaveBeenCalledWith('正在识别仓库物品...', 'statistics')
+  })
+
+  it('dismisses the progress notice when a terminal result has no message', async () => {
+    mocks.run.mockResolvedValue({ status: 'failed', kind: 'depot', message: '' })
+
+    await act(async () => {
+      commands!.startRecognition('depot')
+    })
+    await flush()
+
+    expect(notifications.dismissNotice).toHaveBeenCalledWith('statistics')
+    expect(notifications.notify).not.toHaveBeenCalled()
   })
 })

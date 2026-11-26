@@ -1,6 +1,12 @@
 import { useQueryClient } from '@tanstack/react-query'
 import { gameDataKeys } from '@/features/game-data'
-import { useStatusStore } from '@/features/runtime-status'
+import {
+  dismissNotice,
+  notify,
+  notifyProgress,
+  STATISTICS_NOTICE_ID,
+  type NoticeType,
+} from '@/shared/notifications'
 import {
   isStatisticsCommandRunning,
   statisticsCommandOwner,
@@ -24,7 +30,6 @@ export interface StatisticsCommands {
 
 export function useStatisticsCommands(): StatisticsCommands {
   const commandState = useStatisticsCommandState()
-  const setMessage = useStatusStore(state => state.setMessage)
   const queryClient = useQueryClient()
   const isRunning = isStatisticsCommandRunning(commandState)
 
@@ -41,14 +46,31 @@ export function useStatisticsCommands(): StatisticsCommands {
     )
   }
 
+  const settleNotice = (message: string, type: NoticeType) => {
+    if (message) notify(message, type, { id: STATISTICS_NOTICE_ID })
+    else dismissNotice(STATISTICS_NOTICE_ID)
+  }
+
   const applyCommandResult = (result: StatisticsCommandResult) => {
-    if (result.status === 'busy' || result.status === 'idle') {
-      setMessage(result.message)
+    switch (result.status) {
+      case 'succeeded':
+        settleNotice(result.message, 'success')
+        return
+      case 'failed':
+        settleNotice(result.message, 'error')
+        return
+      case 'timed-out':
+      case 'cancelled':
+        settleNotice(result.message, 'warning')
+        return
+      case 'busy':
+      case 'idle':
+        notify(result.message)
     }
   }
 
   const progressOptions = {
-    onProgress: setMessage,
+    onProgress: (message: string) => notifyProgress(message, STATISTICS_NOTICE_ID),
     applyRecognitionSnapshot,
   }
 
@@ -70,8 +92,8 @@ export function useStatisticsCommands(): StatisticsCommands {
   }
 
   const actionLabel = (kind: StatisticsRecognitionKind) => {
-    if (isRunning || commandState.kind !== kind || !commandState.resumeMode) return '立即执行'
-    return commandState.resumeMode === 'parse' ? '继续解析' : '重试识别'
+    if (isRunning || commandState.kind !== kind || !commandState.resumeMode) return '识别'
+    return commandState.resumeMode === 'parse' ? '继续解析' : '重新识别'
   }
 
   // 材料刷新是统计域持有的脚本命令，不进入 Query，也不读一次目录当作完成条件。

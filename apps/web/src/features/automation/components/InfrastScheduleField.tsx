@@ -1,6 +1,9 @@
 import { useState } from 'react'
 import { FileJson } from 'lucide-react'
-import { Button } from '@/shared/ui'
+import { NumberField } from '@/shared/components'
+import { Button } from '@/shared/ui/button'
+import { FieldDescription, FieldLabel } from '@/shared/ui/field'
+import { Input } from '@/shared/ui/input'
 import { normalizeInfrastPlanIndex } from '../model/infrastScheduleEditing'
 import InfrastScheduleEditor from './InfrastScheduleEditor'
 
@@ -26,9 +29,9 @@ export default function InfrastScheduleField({
   return (
     <div className="space-y-3">
       <div className="automation-field-row">
-        <label htmlFor={filenameId} className="automation-field-label">排班文件</label>
+        <FieldLabel htmlFor={filenameId} className="text-muted-foreground">排班文件</FieldLabel>
         <div className="flex min-w-0 flex-1 items-center gap-2">
-          <input
+          <Input
             id={filenameId}
             type="text"
             autoComplete="off"
@@ -36,39 +39,39 @@ export default function InfrastScheduleField({
             placeholder="schedules/base.json"
             onChange={event => onChange('filename', event.target.value)}
             disabled={disabled}
-            className="automation-text-control min-w-0 flex-1"
+            className="min-w-0 flex-1"
           />
           <Button
             variant="secondary"
             size="sm"
-            icon={<FileJson size={15} />}
             disabled={disabled}
             onClick={() => setIsOpen(true)}
           >
+            <FileJson size={15} aria-hidden="true" />
             编辑排班
           </Button>
         </div>
       </div>
 
       <div className="automation-field-row">
-        <label htmlFor={planId} className="automation-field-label">方案序号</label>
-        <div className="number-input-wrapper flex-1">
-          <input
-            id={planId}
-            type="number"
-            min={0}
-            value={planIndex === '' ? '' : normalizeInfrastPlanIndex(planIndex)}
-            onChange={event => onChange('plan_index', normalizeInfrastPlanIndex(event.target.value))}
-            disabled={disabled}
-            className="automation-number-control"
-          />
-        </div>
+        <FieldLabel htmlFor={planId} className="text-muted-foreground">方案序号</FieldLabel>
+        <NumberField
+          id={planId}
+          label="方案序号"
+          value={planIndex === '' ? '' : normalizeInfrastPlanIndex(planIndex)}
+          onValueChange={value => onChange('plan_index', normalizeInfrastPlanIndex(value))}
+          min={0}
+          disabled={disabled}
+          autoComplete="off"
+          className="min-w-0"
+          controlsClassName="hidden workbench:flex"
+        />
       </div>
 
-      <p className="text-xs leading-5 text-secondary">
+      <FieldDescription className="text-xs leading-5">
         排班文件位于 MAA 配置目录的 infrast 文件夹，相对路径与 maa-cli 解析 filename 的规则一致。
         路径留空或文件不存在时，可在编辑器中新建并保存；方案序号从 0 开始，超出方案数会导致执行失败。
-      </p>
+      </FieldDescription>
 
       {isOpen && (
         <InfrastScheduleEditor

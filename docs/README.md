@@ -11,8 +11,8 @@ docs/
 ├── api/             # Agent 接口使用
 ├── server/          # 服务端架构与运行时
 ├── frontend/        # 前端架构、兼容与组件 API
-│   └── domains/     # 八个领域各维护一份文档
-└── development/     # 开发、检查、集成与维护
+│   └── domains/     # 页面领域与跨页共享域各维护一份文档
+└── development/     # 开发、检查与维护
 ```
 
 ## 使用与部署
@@ -49,7 +49,7 @@ docs/
 
 ## 前端与领域
 
-先读[前端架构与所有权](frontend/README.md)，了解分层、状态所有者、URL 与 Activity。旧入口消费者及移除规则见[兼容约束](frontend/compatibility.md)，组件 API 见[通用组件库](frontend/components.md)。界面规范统一维护在根 [DESIGN.md](../DESIGN.md)。
+先读[前端架构与所有权](frontend/README.md)，了解分层、状态所有者、URL 与 Activity。旧入口消费者及移除规则见[兼容约束](frontend/compatibility.md)，组件 API 见[通用组件库](frontend/components.md)，主题注册与新增主题契约见[主题系统](frontend/themes.md)。界面规范统一维护在根 [DESIGN.md](../DESIGN.md)。
 
 领域内的面板、模型、命令和回归入口合并在同一文档：
 
@@ -63,14 +63,14 @@ docs/
 | [养成](frontend/domains/training.md) | 队列、候选/计数、设置提交与计划有效期 |
 | [日志](frontend/domains/logs.md) | 页面交互、实时流、历史会话与清理 |
 | [设置](frontend/domains/settings.md) | 配置编辑、设备命令、系统资源与组件更新 |
+| [设备画面与预览](frontend/domains/device-mirror.md) | 共享设备画面的入口、状态模型、生命周期、预览设置模态窗与扁平表面 |
 
 ## 开发与维护
 
 | 文档 | 内容 |
 | --- | --- |
 | [开发指南](development/README.md) | 样式/测试治理、文件类型与常用检查 |
-| [依赖与职责护栏](development/guardrails.md) | 分层、公开面、页面职责、规模预算与限制 |
-| [跨页一致性集成测试](development/integration.md) | Chromium 场景、复现方法、观察结果与覆盖边界 |
+| [依赖与职责护栏](development/guardrails.md) | 分层、公开面、页面职责、布局/样式/测试护栏与限制 |
 | [维护说明](development/maintaining.md) | 分支、发布、运行时依赖与文档归属 |
 
 性能采样的方法与指标限制随工具维护在 [apps/web/tests/performance/README.md](../apps/web/tests/performance/README.md)。任务过程和一次性证据不加入现行文档索引。

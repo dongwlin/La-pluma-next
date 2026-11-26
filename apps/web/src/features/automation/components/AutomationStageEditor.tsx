@@ -1,12 +1,13 @@
 import { useState } from 'react'
-import { CircleMinus, CirclePlus, GraduationCap, ListPlus, Minus, Pin, Plus, Trash2 } from 'lucide-react'
-import { Button, HintTooltip, IconButton } from '@/shared/ui'
+import { CircleMinus, CirclePlus, GraduationCap, ListPlus, LoaderCircle, Pin, Trash2 } from 'lucide-react'
+import { Button } from '@/shared/ui/button'
+import { Input } from '@/shared/ui/input'
+import { FieldHint, NumberField } from '@/shared/components'
 import { generateTrainingPlan } from '@/features/training'
 import { loadUserConfig } from '@/features/user-config'
 import type { StageConfig, TaskFlowItem, TaskParamField } from '../types'
 import {
   buildSmartStages,
-  countConfiguredStages,
   findTrainingOperators,
   insertSmartStages,
   isSmartStage,
@@ -15,7 +16,6 @@ import {
   resolveStageList,
   setStageName,
   setStageTimes,
-  stepStageTimes,
   toggleStagePinned,
 } from '../model/stageEditing'
 
@@ -26,7 +26,7 @@ interface AutomationStageEditorProps {
   taskIndex: number
   isRunning: boolean
   hint?: string
-  onUpdate: (taskIndex: number, key: string, value: Array<string | StageConfig>) => void
+  onUpdate: (taskIndex: number, key: 'stages', value: Array<string | StageConfig>) => void
   onSuccess: (message: string) => void
   onError: (message: string) => void
 }
@@ -66,7 +66,6 @@ export default function AutomationStageEditor({
   const stageControlsDisabled = controlsDisabled || isSmartStageLoading
   const smartStages = stages.filter(isSmartStage)
   const hasSmartStages = smartStages.length > 0
-  const validStageCount = countConfiguredStages(stages)
   const trainingOperators = findTrainingOperators(stages)
   const smartStageDescription = hasSmartStages
     ? trainingOperators.length > 0
@@ -90,10 +89,6 @@ export default function AutomationStageEditor({
 
   const updateStageTimes = (stageIndex: number, times: string) => {
     updateStages(setStageTimes(stages, stageIndex, times))
-  }
-
-  const adjustStageTimes = (stageIndex: number, delta: number) => {
-    updateStages(stepStageTimes(stages, stageIndex, delta))
   }
 
   const deleteStage = (stageIndex: number) => {
@@ -147,8 +142,7 @@ export default function AutomationStageEditor({
       <div className="automation-stage-editor-header">
         <div className="automation-stage-editor-title">
           <label htmlFor={`${fieldId}-0`}>{field.label}计划</label>
-          <span>{validStageCount > 0 ? `${validStageCount} 个关卡` : '尚未配置'}</span>
-          {hint && <HintTooltip id={`${fieldId}-hint`} label={`${field.label}计划`} hint={hint} />}
+          {hint && <FieldHint id={`${fieldId}-hint`} label={`${field.label}计划`} hint={hint} />}
         </div>
       </div>
 
@@ -173,19 +167,20 @@ export default function AutomationStageEditor({
                     <GraduationCap size={17} strokeWidth={1.9} aria-hidden="true" />
                   </span>
                 ) : (
-                  <IconButton
-                    icon={<Pin size={16} strokeWidth={1.9} aria-hidden="true" />}
+                  <Button
+                    size="icon"
                     variant="ghost"
-                    size="md"
                     onClick={() => togglePinned(stageIndex)}
                     disabled={stageControlsDisabled}
-                    className={`automation-stage-pin min-h-11 min-w-11${isPinnedStage ? ' is-active' : ''}`}
+                    className={`automation-stage-pin${isPinnedStage ? ' is-active' : ''}`}
                     title={isPinnedStage ? '取消置顶' : '置顶'}
                     aria-label={`${isPinnedStage ? '取消置顶' : '置顶'}：${field.label} ${stageIndex + 1}`}
-                  />
+                  >
+                    <Pin size={16} strokeWidth={1.9} aria-hidden="true" />
+                  </Button>
                 )}
 
-                <input
+                <Input
                   id={`${fieldId}-${stageIndex}`}
                   type="text"
                   autoComplete="off"
@@ -195,7 +190,7 @@ export default function AutomationStageEditor({
                   onChange={event => updateStageName(stageIndex, event.target.value)}
                   placeholder={field.placeholder}
                   disabled={stageControlsDisabled || isSmartStageRow}
-                  className="automation-stage-name-input"
+                  className={`min-w-0 flex-1${isSmartStageRow ? ' disabled:opacity-100 disabled:text-foreground' : ''}`}
                   data-automation-stage-name
                 />
                 <datalist id={suggestionsId}>
@@ -205,51 +200,37 @@ export default function AutomationStageEditor({
                 </datalist>
 
                 <div className="automation-stage-times">
-                  <input
+                  <NumberField
                     id={`${fieldId}-${stageIndex}-times`}
-                    type="number"
-                    aria-label={`${field.label} ${stageIndex + 1} 执行次数`}
+                    label={`${field.label} ${stageIndex + 1} 执行次数`}
                     value={stageTimes}
-                    onChange={event => updateStageTimes(stageIndex, event.target.value)}
+                    onValueChange={value => updateStageTimes(stageIndex, value)}
                     placeholder="0"
                     disabled={stageControlsDisabled || isSmartStageRow}
                     min="0"
+                    autoComplete="off"
+                    aria-label={`${field.label} ${stageIndex + 1} 执行次数`}
+                    className="w-16 shrink-0 workbench:w-32"
+                    inputClassName={`min-w-0 text-center${isSmartStageRow ? ' disabled:opacity-100 disabled:text-foreground' : ''}`}
+                    controlsClassName={isSmartStageRow ? 'hidden' : 'hidden workbench:flex'}
                   />
                   <span aria-hidden="true">次</span>
                 </div>
 
-                {!isSmartStageRow && (
-                  <div className="automation-stage-stepper hidden min-[900px]:flex">
-                    <button
-                      type="button"
-                      onClick={() => adjustStageTimes(stageIndex, -1)}
-                      disabled={stageControlsDisabled || Number(stageTimes) <= 0}
-                      aria-label={`减少${field.label} ${stageIndex + 1} 的执行次数`}
-                    >
-                      <Minus size={14} strokeWidth={2.1} aria-hidden="true" />
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => adjustStageTimes(stageIndex, 1)}
-                      disabled={stageControlsDisabled}
-                      aria-label={`增加${field.label} ${stageIndex + 1} 的执行次数`}
-                    >
-                      <Plus size={14} strokeWidth={2.1} aria-hidden="true" />
-                    </button>
-                  </div>
-                )}
-
-                {canDeleteStage && (
-                  <IconButton
-                    icon={<Trash2 size={16} strokeWidth={1.9} aria-hidden="true" />}
+                {canDeleteStage ? (
+                  <Button
+                    size="icon"
                     variant="ghost"
-                    size="md"
                     onClick={() => deleteStage(stageIndex)}
                     disabled={stageControlsDisabled}
-                    className="automation-stage-delete min-h-11 min-w-11"
+                    className="text-destructive hover:bg-destructive/10 hover:text-destructive"
                     title="删除此关卡"
                     aria-label={`删除${field.label} ${stageIndex + 1}`}
-                  />
+                  >
+                    <Trash2 size={16} strokeWidth={1.9} aria-hidden="true" />
+                  </Button>
+                ) : (
+                  <span aria-hidden="true" className="size-8 shrink-0" />
                 )}
               </div>
             </div>
@@ -258,13 +239,11 @@ export default function AutomationStageEditor({
 
         <Button
           variant="ghost"
-          size="md"
-          fullWidth
-          icon={<ListPlus size={17} strokeWidth={1.9} aria-hidden="true" />}
           onClick={() => updateStages([...stages, { stage: '', times: '' }])}
           disabled={stageControlsDisabled}
-          className="automation-stage-add"
+          className="automation-stage-add w-full justify-start"
         >
+          <ListPlus size={17} strokeWidth={1.9} aria-hidden="true" />
           添加关卡
         </Button>
       </div>
@@ -279,19 +258,23 @@ export default function AutomationStageEditor({
         </div>
         <Button
           variant={hasSmartStages ? 'ghost' : 'secondary'}
-          size="md"
-          icon={hasSmartStages
-            ? <CircleMinus size={16} strokeWidth={1.9} aria-hidden="true" />
-            : <CirclePlus size={16} strokeWidth={1.9} aria-hidden="true" />}
           onClick={() => void toggleSmartStages()}
-          disabled={controlsDisabled}
-          loading={isSmartStageLoading}
-          loadingText={hasSmartStages ? '移除中' : '同步中'}
+          disabled={controlsDisabled || isSmartStageLoading}
+          aria-busy={isSmartStageLoading || undefined}
           aria-pressed={hasSmartStages}
           aria-label={hasSmartStages ? '移除智能养成关卡' : '加入智能养成关卡'}
           className="automation-smart-stage-action"
         >
-          {hasSmartStages ? '移除' : '加入'}
+          {isSmartStageLoading
+            ? <><LoaderCircle className="animate-spin" aria-hidden="true" />{hasSmartStages ? '移除中' : '同步中'}</>
+            : (
+              <>
+                {hasSmartStages
+                  ? <CircleMinus size={16} strokeWidth={1.9} aria-hidden="true" />
+                  : <CirclePlus size={16} strokeWidth={1.9} aria-hidden="true" />}
+                {hasSmartStages ? '移除' : '加入'}
+              </>
+            )}
         </Button>
       </div>
     </fieldset>

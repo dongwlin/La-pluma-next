@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion'
-import { Download, RefreshCw, Share2, SquarePlus } from 'lucide-react'
+import { Download, LoaderCircle, RefreshCw, Share2, SquarePlus } from 'lucide-react'
 import { useRegisterSW } from 'virtual:pwa-register/react'
-import { useStatusStore } from '@/features/runtime-status'
-import { Button, IconButton } from '@/shared/ui'
+import { notify } from '@/shared/notifications'
+import { BREAKPOINTS } from '@/shared/lib/breakpoints'
+import { Button } from '@/shared/ui/button'
 import { hasDocumentBuildChanged } from './pwaUpdate'
 
 interface BeforeInstallPromptEvent extends Event {
@@ -34,7 +35,7 @@ const canOfferInstallation = () =>
   || ['localhost', '127.0.0.1', '[::1]'].includes(window.location.hostname)
 
 const isCompactInstallViewport = () =>
-  window.matchMedia('(max-width: 639px)').matches
+  window.matchMedia(`(width < ${BREAKPOINTS.sm}px)`).matches
 
 const shouldRemindAboutInstall = () => {
   try {
@@ -77,15 +78,14 @@ export default function PWAInstallPrompt() {
   const serviceWorkerRegistrationRef = useRef<ServiceWorkerRegistration | null>(null)
   const lastUpdateCheckRef = useRef(0)
   const shouldReduceMotion = useReducedMotion()
-  const setStatusMessage = useStatusStore(state => state.setMessage)
 
   const handleOfflineReady = useCallback(() => {
-    setStatusMessage('界面已准备好；自动化操作仍需连接服务', 'success')
-  }, [setStatusMessage])
+    notify('界面已准备好；自动化操作仍需连接服务', 'success')
+  }, [])
 
   const handleRegisterError = useCallback(() => {
-    setStatusMessage('应用安装服务启动失败，请刷新页面重试', 'error')
-  }, [setStatusMessage])
+    notify('应用安装服务启动失败，请刷新页面重试', 'error')
+  }, [])
 
   const handleRegisteredSW = useCallback((
     _swScriptUrl: string,
@@ -157,7 +157,7 @@ export default function PWAInstallPrompt() {
       setDeferredPrompt(null)
       setShowInstallPrompt(false)
       setIsInstallExpanded(false)
-      setStatusMessage('La Pluma Next 已安装', 'success')
+      notify('La Pluma Next 已安装', 'success')
     }
 
     window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt)
@@ -167,7 +167,7 @@ export default function PWAInstallPrompt() {
       window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt)
       window.removeEventListener('appinstalled', handleAppInstalled)
     }
-  }, [setStatusMessage])
+  }, [])
 
   const handleInstall = async () => {
     if (!deferredPrompt) return
@@ -181,7 +181,7 @@ export default function PWAInstallPrompt() {
       setShowInstallPrompt(false)
       setIsInstallExpanded(false)
     } catch {
-      setStatusMessage('未能打开安装窗口，请稍后重试', 'error')
+      notify('未能打开安装窗口，请稍后重试', 'error')
     }
   }
 
@@ -196,7 +196,7 @@ export default function PWAInstallPrompt() {
     try {
       await updateServiceWorker(true)
     } catch {
-      setStatusMessage('更新失败，请检查连接后重试', 'error')
+      notify('更新失败，请检查连接后重试', 'error')
     } finally {
       setIsUpdating(false)
     }
@@ -227,19 +227,19 @@ export default function PWAInstallPrompt() {
             aria-busy={showUpdateCard && isUpdating}
             initial={shouldReduceMotion
               ? { opacity: 0 }
-              : { opacity: 0, y: 24, scale: 0.98, backdropFilter: 'blur(0px) saturate(100%)' }}
+              : { opacity: 0, y: 24, scale: 0.98 }}
             animate={shouldReduceMotion
               ? { opacity: 1 }
-              : { opacity: 1, y: 0, scale: 1, backdropFilter: 'blur(24px) saturate(165%)' }}
+              : { opacity: 1, y: 0, scale: 1 }}
             exit={shouldReduceMotion
               ? { opacity: 0 }
-              : { opacity: 0, y: 16, scale: 0.98, backdropFilter: 'blur(0px) saturate(100%)' }}
+              : { opacity: 0, y: 16, scale: 0.98 }}
             transition={shouldReduceMotion
               ? { duration: 0.08 }
               : { type: 'spring', stiffness: 390, damping: 35, mass: 0.8 }}
-            className="pwa-install-prompt surface-panel fixed z-50 rounded-xl p-4 sm:w-96"
+            className="pwa-install-prompt surface-panel fixed z-(--layout-z-raised) rounded-xl p-4 sm:w-96"
           >
-            <div className="flex items-start gap-3">
+            <div className="flex items-start gap-3.5">
               <img
                 src={logoUrl}
                 alt=""
@@ -247,10 +247,10 @@ export default function PWAInstallPrompt() {
                 className="h-11 w-11 shrink-0"
               />
               <div className="min-w-0 flex-1">
-                <h2 id="pwa-prompt-title" className="text-base font-semibold text-primary">
+                <h2 id="pwa-prompt-title" className="text-base font-semibold text-foreground">
                   {showUpdateCard ? '发现新版本' : '安装 La Pluma Next'}
                 </h2>
-                <p className="mt-1 text-sm leading-6 text-secondary">
+                <p className="mt-1 text-sm leading-6 text-muted-foreground">
                   {showUpdateCard
                     ? '刷新页面后即可使用最新版本。'
                     : isIos
@@ -259,7 +259,7 @@ export default function PWAInstallPrompt() {
                 </p>
 
                 {showInstallCard && isIos && (
-                  <ol className="surface-soft mt-3 space-y-2 rounded-lg p-3 text-xs leading-5 text-secondary">
+                  <ol className="surface-soft mt-3 space-y-2 rounded-lg p-3 text-xs leading-5 text-muted-foreground">
                     <li className="flex items-center gap-2">
                       <Share2 className="h-4 w-4 shrink-0 brand-text" aria-hidden="true" />
                       在 Safari 工具栏中点击“分享”
@@ -273,18 +273,22 @@ export default function PWAInstallPrompt() {
 
                 <div className="mt-4 grid grid-cols-2 gap-2">
                   <Button
-                    variant="primary"
                     size="sm"
-                    loading={showUpdateCard && isUpdating}
-                    loadingText="更新中..."
-                    icon={showUpdateCard
-                      ? <RefreshCw className="h-4 w-4" aria-hidden="true" />
-                      : <Download className="h-4 w-4" aria-hidden="true" />}
+                    disabled={showInstallCard && isIos || (showUpdateCard && isUpdating)}
+                    aria-busy={showUpdateCard && isUpdating || undefined}
                     onClick={showUpdateCard ? handleUpdate : handleInstall}
-                    disabled={showInstallCard && isIos}
                     className={showInstallCard && isIos ? 'hidden' : ''}
                   >
-                    {showUpdateCard ? '立即更新' : '安装'}
+                    {showUpdateCard && isUpdating
+                      ? <><LoaderCircle className="animate-spin" aria-hidden="true" />更新中...</>
+                      : (
+                        <>
+                          {showUpdateCard
+                            ? <RefreshCw className="h-4 w-4" aria-hidden="true" />
+                            : <Download className="h-4 w-4" aria-hidden="true" />}
+                          {showUpdateCard ? '立即更新' : '安装'}
+                        </>
+                      )}
                   </Button>
                   <Button
                     variant="secondary"
@@ -308,18 +312,19 @@ export default function PWAInstallPrompt() {
           initial={shouldReduceMotion ? { opacity: 0 } : { opacity: 0, y: 12, scale: 0.96 }}
           animate={{ opacity: 1, y: 0, scale: 1 }}
           transition={{ duration: shouldReduceMotion ? 0.08 : 0.18, ease: 'easeOut' }}
-          className="pwa-install-entry fixed z-50"
+          className="pwa-install-entry fixed z-(--layout-z-raised)"
         >
-          <IconButton
+          <Button
+            size="icon"
             variant="secondary"
-            size="md"
-            icon={<SquarePlus className="h-5 w-5" aria-hidden="true" />}
             onClick={() => setIsInstallExpanded(true)}
             className="pwa-install-entry-button"
             title="安装 La Pluma Next"
             aria-label="安装 La Pluma Next"
             aria-expanded="false"
-          />
+          >
+            <SquarePlus className="h-5 w-5" aria-hidden="true" />
+          </Button>
         </motion.div>
       )}
 
@@ -329,14 +334,14 @@ export default function PWAInstallPrompt() {
             initial={shouldReduceMotion ? { opacity: 0 } : { opacity: 0, y: 12 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0 }}
-            className="pwa-update-chip fixed z-50"
+            className="pwa-update-chip fixed z-(--layout-z-raised)"
           >
             <Button
               variant="secondary"
               size="sm"
-              icon={<RefreshCw className="h-4 w-4 brand-text" aria-hidden="true" />}
               onClick={() => setIsUpdateCollapsed(false)}
             >
+              <RefreshCw className="h-4 w-4 brand-text" aria-hidden="true" />
               应用更新
             </Button>
           </motion.div>

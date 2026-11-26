@@ -129,7 +129,7 @@ waiting ──stop──> stopped
 | 战斗结束后停止（延后受理） | 200 | `stopRequested: true`、`deviceStopRequested: false`、`pendingStop`，`data.run.state=running`；重复请求带 `alreadyPending: true` |
 | Run 持久化不可用 | 503 | `AGENT_RUN_PERSISTENCE_FAILED`（可重试）或 `AGENT_RUN_STORE_INVALID`（不可重试） |
 
-`enrichAgentRun` 会为活动 run 追加 `progress`：日常流程只有在自己持有 `schedule.runId` 时读取 `schedule.scheduleId/currentStep/totalSteps/currentTask/shouldStop/message`；尚未获得执行权时显示 `等待执行权`，流程状态尚未发布时显示 `等待流程状态`。作业集 run 读取服务端会话：`setId`、`mode`、`phase`（`starting`/`running`/`waiting_for_next`）、`currentStep`/`totalSteps`、`currentTask`、`nextEntry`、`shouldStop` 与逐项 `taskResults`；`waiting` 阶段显示 `等待开始下一关`，会话在服务重启后不存在时按状态回退为等待提示。Core/CLI/资源更新 run 读取 taskStatus 的受管更新子进程：`currentTask` 为受管任务名，`message` 区分等待执行权、执行中、停止中与收尾阶段；更新 run 没有步骤进度，不能把子进程 idle 读成更新完成。其他执行读任务进程的 `taskName` 与 `stopRequested`。肉鸽/生息演算的延后停止在等待期间额外带 `stopIntent`（`mode`、`requestedAt`、`deadline`、`combat`），`message` 为 `等待战斗结束后终止`；停止真正下发、run 进入 `stopping` 后不再包含 `stopIntent`。终态不追加进度。
+`enrichAgentRun` 会为活动 run 追加 `progress`：日常流程只有在自己持有 `schedule.runId` 时读取 `schedule.scheduleId/currentStep/totalSteps/currentTask/shouldStop/message`；尚未获得执行权时显示 `等待执行权`，流程状态尚未发布时显示 `等待流程状态`。作业集 run 读取服务端会话：`setId`、`mode`、`phase`（`starting`/`running`/`waiting_for_next`）、`currentStep`/`totalSteps`、`currentTask`、`nextEntry`、`shouldStop` 与逐项 `taskResults`；`waiting` 阶段显示 `等待开始下一关`，会话在服务重启后不存在时按状态回退为等待提示。Core/CLI/资源更新 run 读取 taskStatus 的受管更新子进程：`currentTask` 为受管任务名，`message` 区分等待执行权、执行中、停止中与收尾阶段；更新 run 没有步骤进度，不能把子进程 idle 读成更新完成。其他执行读任务进程的 `taskName` 与 `stopRequested`。肉鸽/生息演算的延后停止在等待期间额外带 `stopIntent`（`mode`、`requestedAt`、`deadline`、`combat`），`message` 为 `等待战斗结束后终止`；停止真正下发、run 进入 `stopping` 后不再包含 `stopIntent`。肉鸽/生息演算的 `run_task` 在捕获日志检查点后注册进度跟踪器，活动的 `progress` 额外带 `roguelike` 快照（`command`、`theme`、`mode`、`phase`、当前/目标局数、已开始/结束/结算/通关计数、`settlementSupported`、当前动作、最近事件、战斗数、投资、最近 5 局、`blackflow`、`degraded` 与 `observed`）；`blackflow` 只在观察到 `BlackFlow*` 回调时非空，携带楼层、当前节点、行动力、最近路由与节点完成、里程碑与策略结果。`message` 为“集成战略执行中”或“生息演算执行中”，`stopping` 期间仍可读取；终态不追加进度，最终快照并入 `result.summary.progress` 或 `error.details.summary.progress`。
 
 ### 幂等与重试
 
@@ -373,4 +373,4 @@ Run 存储当前使用 `version: 1`，只接受该版本并严格校验记录；
 - **作业集与流程**：continuous/manual 的等待、继续与停止语义，占用 409 可重试且不消耗条目，逐项结果归属 `runId`；计划构建与逐项状态分类；可中止的步间等待，完成副作用在租约释放且 Run 结算后消费；cron 产生单个带终态结果的 `run_daily_flow`，占用时 fail-closed；触发源重复配置替换、销毁失败上报、draining 后拒绝注册并丢弃排队回调。
 - **关闭与后台触发源**：draining 后 Run 准入与设备租约 503 且不可绕过；执行器实际结果优先，预算耗尽记为 `interrupted`；子进程 SIGTERM 与预算内升级 SIGKILL；重复信号复用同一次关闭；Telegram 停止后不执行迟到命令；外部预览资源不被停止，网关关闭断开观看连接并清空票据；启动逆序回收、初始化取消与统一关闭截止时间。
 
-客户端控制器、各领域接线与全局投影的回归入口见[执行客户端](execution-client.md#7-回归清单)；跨页场景见[跨页面集成验收](../development/integration.md)。本节只维护服务端身份、状态机、持久化与执行入口的契约测试。
+客户端控制器、各领域接线与全局投影的回归入口见[执行客户端](execution-client.md#7-回归清单)。本节只维护服务端身份、状态机、持久化与执行入口的契约测试。

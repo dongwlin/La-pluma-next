@@ -1,21 +1,22 @@
 import { Cpu, Database, HardDrive, Thermometer } from 'lucide-react'
-import { SmoothPanel } from '@/shared/ui'
+import { cn } from 'cn'
+import { Card } from '@/shared/ui/card'
+import { Progress } from '@/shared/ui/progress'
 import { useDashboardStore } from '../store/dashboardStore'
 import { buildTemperatureSeries, getUsageTone, type UsageTone } from '../model/deviceView'
 
-const labelClass = 'text-secondary'
-const progressTrackClass = 'h-1.5 rounded-full bg-(--app-surface-muted) overflow-hidden'
+const labelClass = 'text-muted-foreground'
 
-const getUsageBarClass = (tone: UsageTone) => {
-  if (tone === 'danger') return 'bg-(--app-danger)'
-  if (tone === 'warning') return 'bg-(--app-warning)'
-  return 'bg-(--app-accent)'
+const getUsageProgressClass = (tone: UsageTone) => {
+  if (tone === 'danger') return '[&_[data-slot=progress-indicator]]:bg-destructive'
+  if (tone === 'warning') return '[&_[data-slot=progress-indicator]]:bg-warning'
+  return '[&_[data-slot=progress-indicator]]:bg-primary'
 }
 
 const getUsageValueClass = (tone: UsageTone) => {
-  if (tone === 'danger') return 'text-(--app-danger)'
-  if (tone === 'warning') return 'text-(--app-warning)'
-  return 'text-primary'
+  if (tone === 'danger') return 'text-destructive'
+  if (tone === 'warning') return 'text-warning-text'
+  return 'text-foreground'
 }
 
 function TemperatureSparkline({ values }: { values: number[] }) {
@@ -29,8 +30,8 @@ function TemperatureSparkline({ values }: { values: number[] }) {
       <svg viewBox="0 0 100 28" preserveAspectRatio="none" aria-hidden="true">
         <defs>
           <linearGradient id="dashboard-temperature-fill" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stopColor="var(--app-accent)" stopOpacity="0.2" />
-            <stop offset="100%" stopColor="var(--app-accent)" stopOpacity="0" />
+            <stop offset="0%" stopColor="var(--primary)" stopOpacity="0.2" />
+            <stop offset="100%" stopColor="var(--primary)" stopOpacity="0" />
           </linearGradient>
         </defs>
         <line x1="0" y1="14" x2="100" y2="14" className="dashboard-temperature-gridline" />
@@ -51,40 +52,31 @@ export default function DashboardDeviceSection() {
   const deviceStats = useDashboardStore(state => state.deviceStats)
   const temperatureHistory = useDashboardStore(state => state.temperatureHistory)
 
-  if (!deviceStats) return null
-
   return (
     <div className="dashboard-device-section">
-      <div className="flex items-center gap-2">
-        <div className="h-0.5 flex-1 bg-(--app-border) rounded-full" />
-        <span className={`text-xs font-medium ${labelClass} uppercase shrink-0`}>设备状态</span>
-        <div className="h-0.5 flex-1 bg-(--app-border) rounded-full" />
-      </div>
       <div className="dashboard-device-grid">
         {([
-          { label: 'CPU', pct: deviceStats.cpuPct, sub: deviceStats.load1m != null ? `负载 ${deviceStats.load1m.toFixed(1)}` : '', Icon: Cpu, value: undefined as string | undefined },
-          { label: '内存', pct: deviceStats.memPct, sub: `${deviceStats.memUsed ?? '--'} / ${deviceStats.memTotal ?? '--'}`, Icon: Database, value: undefined as string | undefined },
-          { label: '磁盘', pct: deviceStats.diskPct, sub: `${deviceStats.diskUsed ?? '--'} / ${deviceStats.diskTotal ?? '--'}`, Icon: HardDrive, value: undefined as string | undefined },
-          { label: '温度', pct: undefined, sub: '', Icon: Thermometer, value: deviceStats.temp != null ? `${deviceStats.temp}°C` : '--' },
+          { label: 'CPU', pct: deviceStats?.cpuPct, sub: deviceStats?.load1m != null ? `负载 ${deviceStats.load1m.toFixed(1)}` : '', Icon: Cpu, value: undefined as string | undefined },
+          { label: '内存', pct: deviceStats?.memPct, sub: `${deviceStats?.memUsed ?? '--'} / ${deviceStats?.memTotal ?? '--'}`, Icon: Database, value: undefined as string | undefined },
+          { label: '磁盘', pct: deviceStats?.diskPct, sub: `${deviceStats?.diskUsed ?? '--'} / ${deviceStats?.diskTotal ?? '--'}`, Icon: HardDrive, value: undefined as string | undefined },
+          { label: '温度', pct: undefined, sub: '', Icon: Thermometer, value: deviceStats?.temp != null ? `${deviceStats.temp}°C` : '--' },
         ] as const).map(({ label, pct, sub, Icon, value }) => {
           const tone = getUsageTone(pct)
           return (
-            <SmoothPanel
+            <Card
               key={label}
-              cornerSize="compact"
-              className="dashboard-device-card-shell group surface-panel-hover transition-colors"
-              surfaceClassName="dashboard-device-card"
+              className="dashboard-device-card-shell dashboard-device-card group surface-panel-hover gap-0 p-3.5! max-sm:p-4! transition-colors"
             >
               <div className="flex items-center gap-2.5 mb-3">
                 <div className="flex h-8 w-8 shrink-0 items-center justify-center text-tertiary">
                   <Icon className={`h-4 w-4 ${labelClass}`} strokeWidth={1.5} />
                 </div>
                 <div className="min-w-0">
-                  <div className="text-xs font-medium text-primary">{label}</div>
+                  <div className="text-xs font-medium text-foreground">{label}</div>
                   <div className={`truncate text-xs ${labelClass}`}>{sub || '实时采样'}</div>
                 </div>
                 {value != null && (
-                  <div className="ml-auto text-sm font-semibold text-primary">{value}</div>
+                  <div className="ml-auto text-sm font-semibold text-foreground">{value}</div>
                 )}
               </div>
               {label === '温度' ? (
@@ -95,12 +87,18 @@ export default function DashboardDeviceSection() {
                     <span className={`text-xs ${labelClass}`}>使用率</span>
                     <span className={`text-xs font-medium ${getUsageValueClass(tone)}`}>{pct}%</span>
                   </div>
-                  <div className={progressTrackClass}>
-                    <div className={`h-full rounded-full transition-all duration-700 ${getUsageBarClass(tone)}`} style={{ width: `${Math.min(pct, 100)}%` }} />
-                  </div>
+                  <Progress
+                    value={Math.min(Math.max(pct, 0), 100)}
+                    max={100}
+                    aria-label={`${label}使用率`}
+                    className={cn(
+                      'gap-0 [&_[data-slot=progress-track]]:h-1.5 [&_[data-slot=progress-indicator]]:duration-700',
+                      getUsageProgressClass(tone),
+                    )}
+                  />
                 </div>
               )}
-            </SmoothPanel>
+            </Card>
           )
         })}
       </div>
