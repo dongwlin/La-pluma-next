@@ -51,6 +51,23 @@
     border-bottom: 1px solid var(--border);
   }
 
+  .la-pluma-app .la-pluma-navbar::before {
+    display: block;
+    position: absolute;
+    z-index: 0;
+    top: 0;
+    right: 0;
+    left: 0;
+    height: 100%;
+    background: linear-gradient(
+      to bottom,
+      var(--background) 0%,
+      transparent 100%
+    );
+    content: '';
+    pointer-events: none;
+  }
+
   .la-pluma-navbar-title {
     min-width: 0;
     overflow: hidden;
@@ -136,8 +153,16 @@
     }
 
     .la-pluma-app .la-pluma-scroll-host {
-      -webkit-mask-image: none;
-      mask-image: none;
+      -webkit-mask-image: linear-gradient(
+        to bottom,
+        transparent 0,
+        #000 var(--layout-navbar-safe-height)
+      );
+      mask-image: linear-gradient(
+        to bottom,
+        transparent 0,
+        #000 var(--layout-navbar-safe-height)
+      );
     }
 
     .la-pluma-app .la-pluma-theme-desktop {
@@ -577,23 +602,6 @@
     .la-pluma-app .la-pluma-navbar {
       background: transparent;
       border-bottom: 0;
-    }
-
-    .la-pluma-app .la-pluma-navbar::before {
-      display: block;
-      position: absolute;
-      z-index: 0;
-      top: 0;
-      right: 0;
-      left: 0;
-      height: 100%;
-      background: linear-gradient(
-        to bottom,
-        var(--background) 0%,
-        transparent 100%
-      );
-      content: '';
-      pointer-events: none;
     }
 
     .la-pluma-app .la-pluma-theme-mobile {

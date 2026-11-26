@@ -293,8 +293,9 @@ La Pluma Next 是一个高密度的本地自动化控制台，不是营销页面
 - 移动 tabbar 的 `<footer>` 保持在 `<main>` 之后，以维持 landmark 与阅读顺序；不要为了 DOM 顺序把 footer 移到 main 之前，直达导航由 `跳到主导航` skip link 提供。
 - 明暗与主题由 `ThemeProvider` / `lpn-ui` 管理：顶栏 `ThemeToggle` 只切换 `light`、`dark`、`system`；主题（`themeId`）由设置页「外观」卡片切换。两者都同步到文档根节点和 `.la-pluma-app`。组件或页面不要直接操作 `.dark`，也不要创建局部主题开关。
 - `apps/web/index.html` 使用 `viewport-fit=cover`。`Layout` 通过统一 token 管理 navbar、移动 tabbar 和对应安全区高度；自定义 fixed/sticky 层只有在不属于这些 chrome 时才使用 `env(safe-area-inset-*)`，内容区不要重复叠加顶部或底部 inset。
-- `--layout-navbar-safe-height` 等于 navbar 高度加顶部安全区，是 navbar 最小高度、滚动宿主高度、内容顶部留白与滚动遮罩的共同来源；页面样式不要手写 navbar 高度或重新拼接 `env(safe-area-inset-top)`。
-- 内容 sticky 顶部偏移统一使用 `--layout-content-sticky-top`：桌面为 `1rem`，移动/平板壳层（小于 `1024px`，navbar 覆盖滚动宿主）为 `calc(var(--layout-navbar-safe-height) + 1rem)`。移动壳层内的 sticky 内容从 navbar 与安全区之下开始，滚动时保持在 tabbar 预留区域之上，不进入尾部渐隐遮罩。
+- `--layout-navbar-safe-height` 等于 navbar 高度加顶部安全区，是 navbar 最小高度、内容顶部留白与滚动遮罩的共同来源；页面样式不要手写 navbar 高度或重新拼接 `env(safe-area-inset-top)`。
+- 两端壳层的 navbar 都覆盖在滚动宿主之上：滚动宿主占满视口高度，顶栏只保留标题与操作区，正文从 navbar 与安全区之下开始并可从顶栏后方滚过；桌面不为顶栏单独保留网格行。
+- 内容 sticky 顶部偏移统一使用 `--layout-content-sticky-top`，取 `calc(var(--layout-navbar-safe-height) + 1rem)`；sticky 内容从 navbar 与安全区之下开始，移动壳层还保持在 tabbar 预留区域之上，不进入尾部渐隐遮罩。
 - 页面边缘留白统一由 `Layout` 的 `.la-pluma-content` 提供，内部 `.app-page` 不重复增加上下内边距。桌面底部使用 `0.75rem`（12px）；移动端由外层预留底部导航、安全区和页面间距。
 - 浮动内容的底部偏移统一使用 `--layout-floating-bottom-offset`：它等于 `--layout-tabbar-reserved-height`（已包含一次底部安全区）加 `1rem`。移动/平板壳层（小于 `1024px`）的 toast、PWA 安装提示、安装入口与更新条直接消费该 token，不再另加 `env(safe-area-inset-bottom)`，也不用 `5rem` 等固定值近似 tabbar 几何。
 - `apps/web/index.html` 的启动壳在应用 CSS 加载前独立渲染，保留 `--boot-navbar-height` 与 `--boot-bottom-clearance` 的本地副本；二者必须分别等于 `--layout-navbar-height` 与 `--layout-tabbar-bottom-clearance`，启动壳 header 使用 navbar 高度加顶部安全区。启动壳与真实 navbar 的几何一致性由 `layout.test.ts` 和浏览器测试守住，React 接管时不得发生首帧高度跳变。
