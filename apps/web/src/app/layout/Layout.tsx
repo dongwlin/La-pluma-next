@@ -5,6 +5,7 @@ import { resolvePageTitle } from '../router/pageTitle'
 import AppNavbar from './AppNavbar'
 import AppSidebar from './AppSidebar'
 import AppTabbar from './AppTabbar'
+import { dismissBootShell } from './bootShell'
 
 interface LayoutProps {
   activeTab: AppTab
@@ -151,6 +152,17 @@ export default function Layout({ activeTab, children }: LayoutProps) {
   useEffect(() => {
     document.title = `${pageTitle} · La Pluma Next`
   }, [pageTitle])
+
+  useEffect(() => {
+    let exitFrame = 0
+    const firstFrame = window.requestAnimationFrame(() => {
+      exitFrame = window.requestAnimationFrame(dismissBootShell)
+    })
+    return () => {
+      window.cancelAnimationFrame(firstFrame)
+      window.cancelAnimationFrame(exitFrame)
+    }
+  }, [])
 
   useEffect(() => {
     if (previousPathname.current === pathname) return

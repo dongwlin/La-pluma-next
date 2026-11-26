@@ -298,7 +298,7 @@ La Pluma Next 是一个高密度的本地自动化控制台，不是营销页面
 - 内容 sticky 顶部偏移统一使用 `--layout-content-sticky-top`，取 `calc(var(--layout-navbar-safe-height) + 1rem)`；sticky 内容从 navbar 与安全区之下开始，移动壳层还保持在 tabbar 预留区域之上，不进入尾部渐隐遮罩。
 - 页面边缘留白统一由 `Layout` 的 `.la-pluma-content` 提供，内部 `.app-page` 不重复增加上下内边距。桌面底部使用 `0.75rem`（12px）；移动端由外层预留底部导航、安全区和页面间距。
 - 浮动内容的底部偏移统一使用 `--layout-floating-bottom-offset`：它等于 `--layout-tabbar-reserved-height`（已包含一次底部安全区）加 `1rem`。移动/平板壳层（小于 `1024px`）的 toast、PWA 安装提示、安装入口与更新条直接消费该 token，不再另加 `env(safe-area-inset-bottom)`，也不用 `5rem` 等固定值近似 tabbar 几何。
-- `apps/web/index.html` 的启动壳在应用 CSS 加载前独立渲染，保留 `--boot-navbar-height` 与 `--boot-bottom-clearance` 的本地副本；二者必须分别等于 `--layout-navbar-height` 与 `--layout-tabbar-bottom-clearance`，启动壳 header 使用 navbar 高度加顶部安全区。启动壳与真实 navbar 的几何一致性由 `layout.test.ts` 和浏览器测试守住，React 接管时不得发生首帧高度跳变。
+- `apps/web/index.html` 的启动壳在应用 CSS 加载前独立渲染，只绘制主题背景与居中的品牌标识（图标与品牌名），不伪造 navbar、侧栏或内容表面；背景优先使用首帧脚本写入 `html` 的主题背景，`--boot-bg` 只作为脚本执行前的兜底。启动壳不复制 `--layout-*` 几何 token，也不承诺与 React 壳层的布局对齐，避免把过期的壳层结构画进首帧。启动壳位于 `#root` 之外；React 首次提交并完成绘制后由 app 层触发淡出并从 DOM 移除，`prefers-reduced-motion: reduce` 时直接移除。
 - 新页面按 mobile-first 编写：`sm` 用于显示次级信息或恢复横向工具栏，`md` 用于中等宽度布局，`lg` 与 `xl` 才扩展为双栏或多栏。所有视口断点必须来自下方 Breakpoints 表，不要新增未登记阈值；日常页三栏等既有组件使用表中已登记的专用断点。
 - 页面滚动条当前全局隐藏，避免切换页面或列表时因系统滚动条出现导致布局左右跳动。文本和控件要在移动端自然换行，不允许为了保留桌面布局而裁剪有效内容。
 

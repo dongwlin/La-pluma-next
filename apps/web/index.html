@@ -14,17 +14,8 @@
     <style id="la-pluma-boot-style">
       :root {
         --boot-bg: #f2f2f7;
-        --boot-chrome: rgba(255, 255, 255, 0.82);
-        --boot-surface: #ffffff;
-        --boot-line: rgba(60, 60, 67, 0.11);
-        --boot-accent: #007aff;
+        --boot-text: #1c1c1e;
         --boot-viewport-height: 100dvh;
-        --boot-navbar-height: 4.75rem;
-        --boot-bottom-clearance: clamp(
-          0.5rem,
-          env(safe-area-inset-bottom, 0px),
-          1.25rem
-        );
       }
       @supports not (height: 100dvh) {
         :root {
@@ -33,10 +24,7 @@
       }
       html.dark {
         --boot-bg: #000000;
-        --boot-chrome: rgba(28, 28, 30, 0.86);
-        --boot-surface: #1c1c1e;
-        --boot-line: rgba(235, 235, 245, 0.13);
-        --boot-accent: #0a84ff;
+        --boot-text: #f2f2f7;
       }
       @media (display-mode: standalone), (display-mode: fullscreen) {
         :root {
@@ -56,11 +44,13 @@
           --boot-viewport-height: 100vh;
         }
       }
-      html,
+      html {
+        min-height: 100%;
+        background-color: var(--boot-bg);
+      }
       body,
       #root {
         min-height: 100%;
-        background-color: var(--boot-bg);
       }
       body {
         margin: 0;
@@ -69,28 +59,41 @@
       .la-pluma-boot {
         position: fixed;
         inset: 0;
+        z-index: 9999;
         display: grid;
-        grid-template-rows: auto minmax(0, 1fr);
-        gap: 0.75rem;
+        place-items: center;
         height: var(--boot-viewport-height);
-        padding: 0 max(0.875rem, env(safe-area-inset-right, 0px))
-          var(--boot-bottom-clearance) max(0.875rem, env(safe-area-inset-left, 0px));
         overflow: hidden;
-        background: var(--boot-bg);
+        background: var(--background, var(--boot-bg));
+        transition: opacity 220ms ease-out;
       }
-      .la-pluma-boot > * {
-        border-radius: 1.25rem;
-        background: var(--boot-surface);
-      }
-      .la-pluma-boot-header {
-        min-height: calc(var(--boot-navbar-height) + env(safe-area-inset-top, 0px));
-        background: var(--boot-chrome);
+      .la-pluma-boot.is-leaving {
+        opacity: 0;
+        pointer-events: none;
       }
       @media (prefers-reduced-motion: reduce) {
-        .la-pluma-boot * {
-          animation: none !important;
-          transition: none !important;
+        .la-pluma-boot {
+          transition: none;
         }
+      }
+      .la-pluma-boot-brand {
+        display: flex;
+        align-items: center;
+        gap: 1rem;
+      }
+      .la-pluma-boot-logo {
+        display: block;
+        width: 4rem;
+        height: 4rem;
+        pointer-events: none;
+      }
+      .la-pluma-boot-name {
+        color: var(--boot-text);
+        font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'SF UI Text', system-ui, sans-serif;
+        font-size: 1.5rem;
+        font-weight: 600;
+        line-height: 1.2;
+        white-space: nowrap;
       }
     </style>
     <!-- 首帧主题脚本与 theme-color / apple-mobile-web-app-status-bar-style 两个 meta
@@ -99,10 +102,23 @@
     <title>La Pluma Next - MAA WebUI</title>
   </head>
   <body>
-    <div id="root">
-      <div class="la-pluma-boot" role="status" aria-label="正在打开 La Pluma Next" aria-busy="true">
-        <div class="la-pluma-boot-header" aria-hidden="true"></div>
-        <div class="la-pluma-boot-main" aria-hidden="true"></div>
+    <div id="root"></div>
+    <div
+      class="la-pluma-boot"
+      data-boot-shell
+      role="status"
+      aria-label="正在打开 La Pluma Next"
+      aria-busy="true"
+    >
+      <div class="la-pluma-boot-brand">
+        <img
+          class="la-pluma-boot-logo"
+          src="%BASE_URL%logo-graphite.svg?v=1"
+          alt=""
+          aria-hidden="true"
+          draggable="false"
+        />
+        <span class="la-pluma-boot-name">La Pluma Next</span>
       </div>
     </div>
     <script type="module" src="/src/main.tsx"></script>
