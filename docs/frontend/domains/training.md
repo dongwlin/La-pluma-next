@@ -35,7 +35,7 @@
 
 - 保持队列、候选、计数三类 Query 的 key、默认读取时机与失效作用域；失败语义按本页规则：计数首次失败可见且可重试、有旧值保留，队列写入失败后由工作区重读权威快照。
 - 不持久化筛选、搜索、分批游标、计划范围或选择器开关；真正卸载/刷新后回到默认值。
-- 保留语义、`id`、`aria-*`、焦点回归与交互契约；面板已改用 `Card` 等结构，组件类名、CSS、布局与默认态视觉可继续演进，视觉基线按实际变化更新。
+- 保留语义、`id`、`aria-*`、焦点回归与交互契约；面板已改用 `Card` 等结构，组件类名、CSS、布局与默认态视觉可继续演进，视觉变更按实际改动在浏览器中人工核对。
 - 不新增页面级 `useTrainingPage` 之类的整页 hook；读取仍由各面板各自的 hook/Query 持有。
 
 ### 2. 组合与状态边界
@@ -163,7 +163,7 @@ OperatorTraining（app-page > app-stack-section > TrainingWorkspace）
 
 - Query key、默认读取时机、失效作用域与 `uncertain` 保旧语义保持；新增失败行为仅限计数首次失败可见/可重试与队列写入失败后的权威重读。选择器关闭不改变候选/计数读取的启动时机。
 - 端点路径与失效发布作用域未变；队列命令 API 未变，设置所有者 `update` 接受字段 patch，计划 basis 扩为四项并新增 context 捕获参数；`training-plan-applied` window 事件仍未恢复。
-- 保留表单 `id` 前缀、`aria-*`、焦点回归与交互契约；工作区已采用四面板 `Card` 与新的布局/间距，组件类名、CSS 与默认态视觉可继续演进并按实际变化更新视觉基线。页面壳统一为 `app-page > app-stack-section > Workspace`；选择器焦点、标签和交互由下列组件/页面回归测试覆盖。
+- 保留表单 `id` 前缀、`aria-*`、焦点回归与交互契约；工作区已采用四面板 `Card` 与新的布局/间距，组件类名、CSS 与默认态视觉可继续演进并按实际改动在浏览器中人工核对。页面壳统一为 `app-page > app-stack-section > Workspace`；选择器焦点、标签和交互由下列组件/页面回归测试覆盖。
 - 材料缺口表、折叠区与字段行分别由 shared `Table`、`Disclosure`、`Field`/`Badge`/`InlineAlert`/`SearchField` 承担；手写 table、原生 details 与队列/计划字段行类已删除，训练页 CSS 只保留工作区、队列、阶段、设置与状态容器布局。
 - `getOpenStagePlan` 归 `planDisplay.ts`；它不是 feature 公开面成员，供渲染层与计划所有者使用。
 
@@ -409,7 +409,7 @@ applyTrainingPlan({ plan: getOpenStagePlan(plan), settings: 所有者当前 sett
 - 端点路径与服务端存储未改变；设置请求体允许只带变更字段，服务端合并后返回完整设置，仍写入训练队列文件中的 `settings` 字段；`PUT /agent/training/settings` 的返回形状不变。应用计划的响应新增可选 `scheduleSync` 字段，其余响应形状不变，旧客户端会忽略新字段。
 - 未新增 localStorage、Query key 或持久化版本；设置 revision 与计划 basis 只存在于模块内存，刷新页面随计划一起丢失；计划不落盘，服务端不保存计划版本。
 - 旧服务端队列快照缺少 `gameDate`/`clientType` 时，前端对应上下文为 `null`，不主动判旧；旧计划缺少 `summary` 时由服务端按 `openStages`/`stages` 重算。队列快照持续不返回 `settings` 时，设置编辑与计划生成/应用入口保持禁用。
-- 默认态已采用四面板 `Card` 与更新后的布局/间距；保留语义 `id`、`aria-*`、焦点与交互契约，视觉基线按实际变化更新。新增的“计划已应用但读取/定时刷新失败”提示条与
+- 默认态已采用四面板 `Card` 与更新后的布局/间距；保留语义 `id`、`aria-*`、焦点与交互契约，视觉变更按实际改动在浏览器中人工核对。新增的“计划已应用但读取/定时刷新失败”提示条与
  “重新加载”入口只在部分成功状态出现；计划失效时隐藏详情是当前行为。
 - 新的应用发布复用既有作用域与 `detail` 可选字段；automation 与 Dashboard 不依赖 window 事件。
   它不跨浏览器标签页，也不替代服务端 revision。

@@ -40,7 +40,7 @@ Tier 3 的红线：不改 DOM、不动交互度量、只动视觉材质（背景
 
 - 主题必须同时提供浅色与深色取值；首帧色卡写入 `ThemeDefinition.boot`。
 - 主题包在自己的皮肤层内处理 `prefers-reduced-motion`、`prefers-reduced-transparency: reduce` 与 `prefers-contrast: more`，不得依赖基线替它降级。
-- 视觉验收使用主题画廊的「主题 × 模式」矩阵与 boot spec；新增主题需要补充对应基线与结构依据说明。
+- 视觉验收使用主题画廊的「主题 × 模式」矩阵与启动首帧；新增主题需要记录结构依据并人工核对深浅模式。
 - 普通卡片始终不透明；玻璃或半透明材质只用于明确的 chrome、浮层或主题声明的表面，避免整页透明导致可读性下降。
 
 ## 新增主题 checklist
@@ -49,7 +49,7 @@ Tier 3 的红线：不改 DOM、不动交互度量、只动视觉材质（背景
 2. 在 `registry.ts` 注册 `ThemeDefinition`，补齐名称、描述、首帧色卡与色卡展示项；`default` 保持零覆盖。
 3. 在 `index.css` 末尾接入导入；确认移除主题包后基线仍完整可用。
 4. 验证设置页「外观」自动出现新主题，`data-theme` 的写入/移除与 `lpn-ui` 恢复正确。
-5. 扩展主题画廊的「主题 × 模式」矩阵与 boot spec，更新视觉基线并记录结构依据。
+5. 在主题画廊核对「主题 × 模式」矩阵与启动首帧，记录结构依据。
 6. 补齐 reduced-motion / reduced-transparency / contrast 降级。
 7. 文档只在此处维护主题契约；视觉规则留在 [设计规范](../../DESIGN.md)，不复制 token 表。
 

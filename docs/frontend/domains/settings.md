@@ -43,7 +43,7 @@
 - 不改变 connection 字段与 wire；保存保持 600ms 防抖自动提交，失焦、Activity 隐藏、卸载与 `pagehide` 立即冲刷。自动更新仍先写 user config 再应用调度。
 - 不改变 Query key、失败/重试、失效作用域与展示文案；三个配置 Query 在页面挂载时一起读取。
 - 不改变设备发现/连接测试的迟到响应与草稿回填语义；查找弹窗关闭会取消在途查找，页面/Activity 则取消两条链；区块可见性与滚动位置不触发取消。
-- 不改变配置面板的字段结构与表单 id；保存保持自动保存，成功静默，失败保留页内 `InlineAlert` 与带重试的 error toast；资源源在 MAA 运行中只读。页内导航使用右侧目录与滚动高亮。页面视觉已按设置页治理调整，视觉基线冻结至后续统一重生成。
+- 不改变配置面板的字段结构与表单 id；保存保持自动保存，成功静默，失败保留页内 `InlineAlert` 与带重试的 error toast；资源源在 MAA 运行中只读。页内导航使用右侧目录与滚动高亮。页面视觉已按设置页治理调整。
 - 设置页的状态组件统一走 shared 原语：页内失败与资源同步提示使用 `InlineAlert`，表单行使用 `Field` 系列，设备列表行使用 `Item`，状态标签与只读 pill 使用 `Badge`。
 
 ### 2. 组合与订阅边界
@@ -274,7 +274,7 @@ ConfigManager（app-page > app-stack-section > SettingsWorkspace）
 - Query 快照只存在于内存，浏览器刷新随缓存丢失；key 与参数清单见[Query 缓存与键规范](../../architecture/query-cache.md)。没有新增 localStorage 数据。
 - 载荷校验比迁移前严格：已知字段类型不合法时整份读取失败并显示错误，而旧页面会把异常值放入受控输入。未知 connection 字段仍原样保留。
 - 已知字段缺失时显示页面默认值，而旧页面会显示空输入；这是归一化模型的要求，正常服务端载荷（`getConfig` 自带默认值）不受影响。
-- 默认渲染结构使用 shadcn `Card` / `Field` / `Item` / `InlineAlert` / `Badge`；失败/`superseded` 提示只在非默认状态出现，行为契约不因结构调整改变。视觉基线冻结至后续统一重生成，本页不在本轮更新截图。
+- 默认渲染结构使用 shadcn `Card` / `Field` / `Item` / `InlineAlert` / `Badge`；失败/`superseded` 提示只在非默认状态出现，行为契约不因结构调整改变。
 
 ## 设备连接与系统资源
 
@@ -386,7 +386,7 @@ ConfigManager（app-page > app-stack-section > SettingsWorkspace）
 - 新增 Query key 只存在于内存，浏览器刷新随缓存丢失；没有新增 localStorage 数据。
 - 查找弹窗使用 `DialogFrame` / `DialogBody` / `DialogFrameFooter`；设备列表行使用 shadcn `Item`（渲染为 button），状态标签使用 `Badge`；空结果显示 `EmptyState compact`，查找失败使用 `InlineAlert`。连接测试结果走 `settings-connection-test` toast；端点、请求体与响应体未改变。
 - 设备发现反馈不再内联在连接卡片中；关闭查找弹窗会取消在途查找。连接测试反馈不再使用卡内 `SettingsFeedback`，改为全局 toast。
-- 视觉基线冻结至后续统一重生成；本页不在本轮更新截图。
+- 视觉按实际改动在浏览器中人工核对。
 - 行为差异：
   - 设备发现与连接测试请求现在在 Activity 隐藏/卸载时 abort；迁移前会继续完成并写页面 state。滚动与目录跳转不取消命令，设备面板常驻。
   - 非数组/坏设备条目被跳过而不是抛错；未知状态/来源回退为“状态未知”/ADB。
@@ -550,7 +550,7 @@ owner 的完整提交语义不变，同一时刻只有一次：
 - 草稿隔离：connection/instance/resource 三个 owner 各自持有草稿与保存状态，三个配置 Query 同时读取；设备/更新/版本状态与全局通知不重渲染连接表单。
 - 页内导航：六个区块标题、右侧目录、滚动高亮、锚点跳转与兼容事件由 `useSettingsSectionNavigation` 的行为测试覆盖；目录项使用 `aria-current="location"`。
 
-视觉基线只覆盖默认 connection 页面；connection 表单新增「连接预设」后曾更新 6 张 config 基线，随后设置页治理（外观卡、Field/Item/InlineAlert 替换、删除 settings.css）冻结基线，留待后续统一重生成。仓库内保留页内导航、草稿保留与保存反馈的行为回归。
+设置页保留页内导航、草稿保留与保存反馈的行为回归；页面视觉按实际改动在浏览器中人工核对。
 
 ### 验证命令
 

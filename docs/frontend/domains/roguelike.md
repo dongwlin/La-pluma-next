@@ -177,7 +177,7 @@ maa-cli 0.7.8 只认识部分主题、模式与参数；MaaCore 新增的黑流�
 
 以下路径相对于 `apps/web/src/`：领域回归在 `features/roguelike/model`；入口命令见[验证命令](#验证命令)。
 
-执行进度回归集中在 `runProgress.test.ts`：快照解析与字段归一、模式过滤、最近 5 局截断、`lastRun` 选择（含 operation/模式/摘要校验与不继承 tracked 标签）、旧服务端回退、黑流块解析与 60/180/300 秒新鲜度、里程碑去重与策略标签；`runSummary.test.ts` 覆盖终态摘要与结算字段回退。任务目录、默认值、归一化、执行计划与校验分别由 `roguelikeTasks.test.ts`、`roguelikeValidation.test.ts`、`roguelikeConfig.test.ts` 与 `executionState.test.ts` 覆盖。面板渲染与宽屏栅格由 `apps/web/tests/visual/roguelike-settings.pw.ts` 的像素基线兜底。
+执行进度回归集中在 `runProgress.test.ts`：快照解析与字段归一、模式过滤、最近 5 局截断、`lastRun` 选择（含 operation/模式/摘要校验与不继承 tracked 标签）、旧服务端回退、黑流块解析与 60/180/300 秒新鲜度、里程碑去重与策略标签；`runSummary.test.ts` 覆盖终态摘要与结算字段回退。任务目录、默认值、归一化、执行计划与校验分别由 `roguelikeTasks.test.ts`、`roguelikeValidation.test.ts`、`roguelikeConfig.test.ts` 与 `executionState.test.ts` 覆盖。面板渲染与宽屏栅格需在浏览器中人工核对。
 
 关键不变量：
 

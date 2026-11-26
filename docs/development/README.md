@@ -57,34 +57,11 @@ pnpm --filter la-pluma-next-client stylelint:baseline  # 违规数下降或有�
 
 `pnpm verify` 包含样式预算检查。CI 将客户端检查、客户端构建与服务端检查拆成并行任务，`stylelint:ratchet` 归客户端检查；服务端保留编译器版本断言和一次 `typecheck`，完整测试通过 `test:coverage` 运行一次，同时检查行为与覆盖率阈值（见 `.github/workflows/ci.yml`）。
 
-CI 在 PR/main 运行浏览器跨页集成和视觉检查，只等待客户端构建，通过 artifact 复用产物；PR 和发布还验证两种原生架构的容器启动。纯文档变更合入 main 时不再重复触发 CI。发布不重复运行浏览器检查。必选的 `verify` 状态是适用任务的汇总结果，详见[工作流说明](../../.github/workflows/README.md)。
-
-### 视觉基线（代表页整页 + 局部表面）
-
-视觉基线用于验收布局、材质与交互层级，harness 在 `apps/web/tests/visual/`，基线截图入库于 `apps/web/tests/visual/__screenshots__/`。
-
-- **环境钉死**：截图生成与比对统一跑在 `mcr.microsoft.com/playwright` 官方镜像内（tag 自动取 client 实际安装的 `@playwright/test` 版本，如 `v1.64.1-noble`），字体与浏览器由此与 CI 完全一致。基线截图是 **Linux/Chromium 专属**：更换镜像、Playwright 版本或操作系统后，必须用 `pnpm visual:update` 重新生成并逐项评审 diff，不要试图跨环境复用。
-- **确定性**：`/api` 请求全部由 `apps/web/tests/visual/fixtures.ts` 的固定数据应答（不依赖真实后端与 MAA 运行状态）；`page.clock` 固定到 2026-10-24 04:00（UTC+8），日期敏感内容（今日开放关卡、资源更新时间等）不随运行当天变化；`reducedMotion: 'reduce'` 加文档级样式禁用 CSS 动画/过渡；主题通过 `lpn-ui` localStorage 预置，首帧即目标主题（旧 `ui-storage` 仅作为升级迁移键读取，不再写入）。公共部分集中在 `harness.ts`。
-- **三个视口**：桌面 1440×900、平板 820×1180、移动 390×844，deviceScaleFactor 1。Playwright 配置为三个 project 都运行 spec，但截图基线按 spec 与用例选择投影，不是每页都有 3 视口 × 双主题：
-  - `app.pw.ts` 的整页基线只覆盖 dashboard 与 automation 两个代表页，仅深色，desktop 与 mobile 各一张，tablet 跳过。同一文件的 `PAGE_SHELL_CONTRACT` 在 desktop 上逐 tab 核对 8 个页面壳的锚点与布局属性，属于行为契约，不是 8 张整页基线。
-  - `overlays.pw.ts` 的 PWA 安装提示在 desktop / tablet / mobile × 深/浅主题各取一张视口截图；固定偏移用例只在 mobile 视口测量。
-  - `boot.pw.ts` 只在 desktop 截启动壳的深/浅基线；`theme-gallery.pw.ts` 的桌面画布与组件组只在 desktop 截图，移动 tab bar、更多弹层与底部 Sheet 只在 mobile 截图，tablet 没有主题画廊基线；`roguelike-settings.pw.ts` 只在 desktop 的 1920×1080 视口截取宽屏设置面板。
-  - 其余 spec 按用例补充局部 locator 基线或几何、焦点、可见性断言。820 落在 `sm`（640）与 `workbench`（900）之间，与桌面一起把 `workbench` 具名断点两侧夹住，同时也是「无侧栏 + 顶栏标题」这个 390 与 1440 都覆盖不到的组合；1024 / 1200 两档只在桌面侧出现，改动时注意同步核对。断点定义见 [设计规范](../../DESIGN.md#breakpoints)。
-- **弹层与固定表面基线**：Dialog、AlertDialog、Sheet、DropdownMenu 由 Base UI portal 渲染到 `document.body`，位于 `.la-pluma-app` 作用域之外，材质、遮罩与定位只由 portal 处的选择器决定；这些弹层按 `data-slot` 做 locator 截图。PWA 安装/更新提示不是 portal：它渲染在 `#app-root.la-pluma-app` 内，是应用根里的 `position: fixed` 表面，样式仍落在应用根作用域，排查时不要把它当作 portal 证据。两类表面都按视口定位，`fullPage` 会把 fixed 元素拉到整页顶部，所以使用视口截图而不是整页截图。
-- **启动壳基线守首帧**：启动壳（`boot.pw.ts`）在 `installDeterministicEnvironment` 之后 abort `assets/index-*.js`，让 React 模块不执行、页面停在 `index.html` 的内联启动壳上；按视口截图验收 safe-area / dvh / standalone 的真实渲染。
-- **锚点定位**：布局与可访问性断言使用 `data-region` / `data-page-*` 锚点，滚动宿主为 `[data-region="scroll"]`，不依赖实现类名。
-
-```bash
-pnpm visual          # 比对模式：与入库基线比对，diff 非零即失败（CI 同款）
-pnpm visual:update   # 有意的视觉改动后重新生成基线截图
-pnpm visual --grep "dashboard"   # 透传 playwright 过滤参数，只跑部分用例
-```
-
-视觉测试的浏览器与静态服务运行在同一 Docker 容器中，使用容器自己的网络，不占用宿主机 4300 端口；不同 worktree 可以同时运行。基线更新只选择实际受影响的用例，例如 `pnpm visual:update --grep dashboard`，更新后审核图片差异。同一 worktree 的构建产物和测试输出仍共用目录，不并发启动多个构建或同类浏览器检查。
+CI 在 PR/main 运行浏览器跨页集成，只等待客户端构建，通过 artifact 复用产物；PR 和发布还验证两种原生架构的容器启动。纯文档变更合入 main 时不再重复触发 CI。发布不重复运行浏览器检查。必选的 `verify` 状态是适用任务的汇总结果，详见[工作流说明](../../.github/workflows/README.md)。
 
 ### README 界面截图
 
-README 的「界面预览」由 `apps/web/tests/screenshots/` 单独生成，只输出浅色主题；它复用视觉基线的固定 fixture、固定时间与 Playwright 镜像，不读取本机配置。
+README 的「界面预览」由 `apps/web/tests/screenshots/` 单独生成，只输出浅色主题；它复用 `apps/web/tests/visual/` 保留的确定性 harness、固定 fixture、固定时间与 Playwright 镜像，不读取本机配置。
 
 ```bash
 pnpm screenshots:readme
@@ -95,7 +72,7 @@ pnpm screenshots:readme
 - 展示用任务流在 `apps/web/tests/screenshots/fixtures.ts` 覆盖；基础接口继续复用 `apps/web/tests/visual/fixtures.ts`
 - 截图展示“无最近执行”的空闲状态，不包含示例执行结果
 - 桌面截图侧栏身份固定为阿米娅；头像使用 `apps/web/tests/screenshots/assets/amiya.png`，不依赖外部图片网络
-- 这是文档资产生成器，不加入 `pnpm visual` / `pnpm verify` 的检查链，也没有 CI 截图门禁；更新后审阅图片差异并随文档提交
+- 这是文档资产生成器，不加入 `pnpm verify` 的检查链，也没有 CI 截图门禁；更新后审阅图片差异并随文档提交
 
 ### Tailwind v4 与样式分层
 
@@ -122,9 +99,9 @@ pnpm screenshots:readme
 
 明确禁止：
 
-- **断言 CSS 类名**（`classList.contains('min-h-11')`、`toHaveClass('surface-soft')`）。Vitest 不做 CSS 处理，样式表根本不参与求值，这类断言只是在核对 JSX 里的字符串字面量：改类名就红，视觉零变化。点按区尺寸、断点显隐、材质层级、层级顺序由 `tests/visual/` 的像素基线守。唯一例外是 `<html>` 上的 `dark` 类——它是 Tailwind `@custom-variant dark` 的契约本体，不是样式细节。
+- **断言 CSS 类名**（`classList.contains('min-h-11')`、`toHaveClass('surface-soft')`）。Vitest 不做 CSS 处理，样式表根本不参与求值，这类断言只是在核对 JSX 里的字符串字面量：改类名就红，视觉零变化。点按区尺寸、断点显隐、材质层级、层级顺序目前没有自动像素门禁，需要在浏览器中人工核对。唯一例外是 `<html>` 上的 `dark` 类——它是 Tailwind `@custom-variant dark` 的契约本体，不是样式细节。
 - **断言 DOM 形状**：子元素顺序、包裹层数量、骨架屏占位块数量。这类断言把 JSX 结构写死在测试里，等价重构（换包裹层、拆组件、调列表结构）都会误报。**业务数量**可以断言（8 个导航目的地、3 个 Tab、2 个开关），但要用语义选择器数（`[role="tab"]`、`[data-app-tab]`、`[role="switch"]`），不要数 `.some-class`。
-- **枚举式 grep CSS 源文件**（“这几个 `@keyframes` 名字必须存在”）：删掉声明不会报错，但枚举清单会随重构腐烂。选择器是否被应用根作用域包住，只有浏览器能判定，交给弹层基线。唯一保留的是 `apps/web/src/styles/animations.test.ts`：它机械核对「每个 `animation` 引用都能在全部样式表里找到对应 `@keyframes` 声明」，不枚举名字，补的是 stylelint `no-unknown-animations` 只解析单文件的缺口。
+- **枚举式 grep CSS 源文件**（“这几个 `@keyframes` 名字必须存在”）：删掉声明不会报错，但枚举清单会随重构腐烂。选择器是否被应用根作用域包住，只有浏览器能判定，需要在浏览器中人工核对。唯一保留的是 `apps/web/src/styles/animations.test.ts`：它机械核对「每个 `animation` 引用都能在全部样式表里找到对应 `@keyframes` 声明」，不枚举名字，补的是 stylelint `no-unknown-animations` 只解析单文件的缺口。
 
 ### 覆盖分工
 
@@ -132,12 +109,12 @@ pnpm screenshots:readme
 | --- | --- | --- |
 | 纯逻辑（解析、格式化、store、URL 生成） | 单元测试 | 直接调函数 |
 | 竞态、轮询、生命周期、WebRTC 状态机 | jsdom 组件/钩子测试 | 假定时器 + 回调断言 |
-| 布局、断点、材质、遮罩层、视觉层级 | 视觉基线 | Playwright 像素比对（代表页整页 + 局部 locator） |
-| Portal 弹层（Dialog、AlertDialog、Sheet、DropdownMenu） | 视觉基线 | 打开状态按 `data-slot` locator 截图 |
-| 应用根固定提示（PWA 安装/更新） | 视觉基线 | 打开状态视口截图 |
+| 布局、断点、材质、遮罩层、视觉层级 | 人工验收 | 浏览器中核对受影响页面、主题与视口 |
+| Portal 弹层（Dialog、AlertDialog、Sheet、DropdownMenu） | 人工验收 | 打开状态核对遮罩、定位与交互 |
+| 应用根固定提示（PWA 安装/更新） | 人工验收 | 打开状态核对固定表面与偏移 |
 | CSS 引用完整性（`@keyframes`） | 单测 | `src/styles/animations.test.ts` |
 
-新增样式约束时先问：这条规则能不能被视觉基线捕获？能就补基线，不能才考虑写测试——且只断言结果（元素实际位置、可见性），不复述选择器。
+新增样式约束时优先写行为断言——只断言结果（元素实际位置、可见性），不复述选择器；视觉效果在浏览器中人工核对。
 
 ### 已知缺陷的预期失败标记
 
@@ -145,7 +122,7 @@ pnpm screenshots:readme
 
 ### 依赖与职责护栏
 
-`apps/web/scripts/check-guardrails.ts` 已作为客户端 `verify` 的第一步，检查功能域依赖环、公开面/深路径、`app → pages → features → shared` 分层方向、`task-execution` 反向依赖、页面文件直接持有传输/存储/轮询原语，以及壳层稳定锚点、全局样式作用域与布局测试细节；不依赖视觉基线。规则明细、允许方向与已知限制见[依赖与职责护栏](guardrails.md)。
+`apps/web/scripts/check-guardrails.ts` 已作为客户端 `verify` 的第一步，检查功能域依赖环、公开面/深路径、`app → pages → features → shared` 分层方向、`task-execution` 反向依赖、页面文件直接持有传输/存储/轮询原语，以及壳层稳定锚点、全局样式作用域与布局测试细节。规则明细、允许方向与已知限制见[依赖与职责护栏](guardrails.md)。
 
 ## 文件类型
 
@@ -180,9 +157,8 @@ pnpm verify
 # 前端快速回路：guardrails + lint + 类型检查 + 相对 origin/main 的改动测试（不含样式预算、构建与服务端）
 pnpm verify:fast
 
-# 样式预算可单独定位；视觉基线需配合 pnpm verify 运行
+# 样式预算可单独定位
 pnpm --filter la-pluma-next-client stylelint:ratchet
-pnpm visual
 ```
 
 `stylelint:ratchet` 复用本地缓存（`.stylelintcache`，已忽略；oxlint 不写缓存）；客户端 Vitest 默认最多 4 个 worker，服务端测试默认最多 4 个并发进程，分别用 `LA_PLUMA_TEST_WORKERS` 与 `LA_PLUMA_TEST_CONCURRENCY` 调整。并发只降低同时运行的进程数，不改变逐文件进程隔离。
