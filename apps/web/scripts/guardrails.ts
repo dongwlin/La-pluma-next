@@ -1475,7 +1475,7 @@ export function checkLayoutRegions(files: readonly SourceFile[]): GuardrailViola
 const GLOBAL_STYLE_FILES = [
   'styles/index.css',
   'styles/layout.css',
-  'styles/ios-theme.css',
+  'styles/chrome.css',
 ] as const
 
 const GLOBAL_STYLE_FORBIDDEN_SELECTORS: readonly RegExp[] = [

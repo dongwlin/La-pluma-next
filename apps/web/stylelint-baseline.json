@@ -29,7 +29,7 @@
       "no-descending-specificity": 5,
       "property-no-vendor-prefix": 6
     },
-    "src/styles/ios-theme.css": {
+    "src/styles/chrome.css": {
       "alpha-value-notation": 1,
       "color-function-alias-notation": 1,
       "color-function-notation": 1,

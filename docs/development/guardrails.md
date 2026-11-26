@@ -23,7 +23,7 @@
 - 依赖检查读取 `apps/web/src/**/*.{ts,tsx}` 的生产源码；`*.test.*` 与 `*.spec.*` 不进入运行时依赖图。测试可以为隔离而接触内部实现，不会进入生产包。
 - 页面检查只针对 `pages/*/*.{ts,tsx}` 生产文件；`components/`、`hooks/`、`model/` 等领域容器不受页面限制。
 - 布局锚点检查读取五个固定壳层文件；文件或锚点缺失即失败，只检查存在性，不声称唯一性。
-- 全局样式检查读取 `src/styles/index.css`、`layout.css`、`ios-theme.css`；剥离注释后只匹配 `{` 前的选择器 prelude，文件缺失即失败。
+- 全局样式检查读取 `src/styles/index.css`、`layout.css`、`chrome.css`；剥离注释后只匹配 `{` 前的选择器 prelude，文件缺失即失败。
 - 布局测试检查读取 `src/**/*.layout.test.tsx`；未发现任何布局测试时跳过细节检查，CLI 会打印提示，壳层锚点仍由布局锚点检查独立核对。
 
 ## 2. 依赖与公开面
@@ -86,7 +86,7 @@
 
 ## 5. 全局样式作用域
 
-`global-style-scope` 检查 `src/styles/index.css`、`src/styles/layout.css` 与 `src/styles/ios-theme.css` 的选择器 prelude（`{` 之前、剥离 CSS 注释后）。禁止：
+`global-style-scope` 检查 `src/styles/index.css`、`src/styles/layout.css` 与 `src/styles/chrome.css` 的选择器 prelude（`{` 之前、剥离 CSS 注释后）。禁止：
 
 - `[data-page-kind` 属性选择器；
 - 领域类前缀：`automation-`、`combat-`、`roguelike-`、`training-`、`statistics-`、`logs-`、`dashboard-`、`settings-`、`config-`。

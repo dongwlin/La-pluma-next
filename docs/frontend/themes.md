@@ -34,7 +34,7 @@ Tier 3 的红线：不改 DOM、不动交互度量、只动视觉材质（背景
 
 卸载契约：删除主题目录、注册项与这两条导入后，应用必须在 shadcn 基线上完整可用。默认基线因此不得引用任何主题私有变量、类名或锚点；主题也不能成为页面结构、交互或数据的前置条件。
 
-默认基线保持实色：不使用 `backdrop-filter` 作为表面材质、半透明玻璃背景或主题私有材质（shadcn 生成弹层的遮罩 scrim 除外）。chrome 与召唤层由语义表面、发丝线和实色阴影构成；`styles/ios-theme.css` 只承载 chrome 视觉，不是主题包。
+默认基线保持实色：不使用 `backdrop-filter` 作为表面材质、半透明玻璃背景或主题私有材质（shadcn 生成弹层的遮罩 scrim 除外）。chrome 与召唤层由语义表面、发丝线和实色阴影构成；`styles/chrome.css` 只承载 chrome 视觉，不是主题包。
 
 ## 视觉与可访问性要求
 
@@ -56,6 +56,6 @@ Tier 3 的红线：不改 DOM、不动交互度量、只动视觉材质（背景
 ## 当前基线
 
 - 仅注册 `default`；默认主题不写 `data-theme`。
-- `apps/web/src/styles/ios-theme.css` 是默认主题的 chrome 视觉样式，不含 `--glass-*`、`backdrop-filter` 或连续曲率。
+- `apps/web/src/styles/chrome.css` 是默认主题的 chrome 视觉样式，不含 `--glass-*`、`backdrop-filter` 或连续曲率。
 - 主题菜单与 PWA 提示使用 `surface-panel` 的实色表面；PWA 安装入口使用 shared `Button` 的 `secondary` 变体。
 - 移动 tabbar 与悬浮控件的抬升使用语义阴影 `--shadow-floating`，不依赖玻璃材质。

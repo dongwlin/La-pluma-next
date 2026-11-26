@@ -38,12 +38,12 @@
 - 页面设备画面布局统一使用 `@/features/device-mirror` 的 `DeviceMonitorLayout`（`standard`/`workbench`/`mode`）：页面只提供具名区域，不新建页面级设备网格或自行渲染 `DeviceMonitorPanel`。
 - 共享设备画面样式归 `features/device-mirror`：使用 `device-monitor-*` / `device-preview-*` 命名（不新增玻璃材质类），不在页面样式或组件中使用 `automation-*` / `roguelike-*` monitor 类，也不以 `data-page-kind` 作为设备画面样式开关。
 - 避免不必要的辅助标签与说明。让布局本身发挥解释作用。
-- 全局语义 token 与层序归 `src/styles/`；`index.css`、`layout.css`、`ios-theme.css` 不接收页面选择器。领域样式置于 `features/<domain>/styles/`，由域入口导入并收进 `@layer page`。
+- 全局语义 token 与层序归 `src/styles/`；`index.css`、`layout.css`、`chrome.css` 不接收页面选择器。领域样式置于 `features/<domain>/styles/`，由域入口导入并收进 `@layer page`。
 - 默认基线保持实色：不在 `styles/`、领域 CSS 或组件内联样式中使用 `backdrop-filter`、`--glass-*` 或玻璃材质类（弹层遮罩 scrim 的模糊除外）；这类材质只允许出现在未来的独立主题包中，并满足可整体卸载契约（见 `docs/frontend/themes.md`）。
 - 保持 `theme, base, components, page, utilities` 层序，使用现有语义 token 和 Tailwind v4 canonical 类名；动态状态使用完整类名映射，不拼接 Tailwind 类名。
 - 层序 token 只从 `--layout-z-*` 取；不在组件中新增裸 z-index 层（局部 0/1/2 等仍可）。
 - Dialog、Sheet、筛选菜单等 Base UI 弹层走 `document.body` portal，不受应用根作用域包裹；PWA 安装/更新提示是 `#app-root.la-pluma-app` 内的固定表面，不是 portal，样式按应用根作用域核对。样式改动同时核对弹层、深浅主题和响应式断点。
-- 视口高度契约：应用壳与启动壳只通过 `--layout-viewport-height` / `--boot-viewport-height` 的 dvh → lvh → vh 分支取高；需要限制高度的 Dialog 与移动 Sheet 复用 `--layout-dialog-max-height` / `--layout-sheet-max-height`；页内固定高度块用 `svh`。生产代码不新增裸视口高度；静态 allowlist 按文件登记，除 `ios-theme.css` more-sheet 与 `ScrcpyDeviceView` 沉浸层两个局部例外外，还包含 token owner 与既有 fallback（`index.html`、`layout.css`、`index.css`、`automation.css`、`logs.css`）；新增使用裸视口单位的文件必须登记。
+- 视口高度契约：应用壳与启动壳只通过 `--layout-viewport-height` / `--boot-viewport-height` 的 dvh → lvh → vh 分支取高；需要限制高度的 Dialog 与移动 Sheet 复用 `--layout-dialog-max-height` / `--layout-sheet-max-height`；页内固定高度块用 `svh`。生产代码不新增裸视口高度；静态 allowlist 按文件登记，除 `chrome.css` more-sheet 与 `ScrcpyDeviceView` 沉浸层两个局部例外外，还包含 token owner 与既有 fallback（`index.html`、`layout.css`、`index.css`、`automation.css`、`logs.css`）；新增使用裸视口单位的文件必须登记。
 - 视口断点只使用 DESIGN 批准集合（`sm`/`md`/`workbench`/`lg`/`flow-card`/`xl`/`wide`），成对边界写 `width < Npx` / `width >= Npx`；JS 媒体查询由 `@/shared/lib/breakpoints` 的 `BREAKPOINTS` 生成，不新增 arbitrary `min-[...]`/`max-[...]` 断点。
 - 修改分包或 PWA 配置时确保所有 JS chunk 进入预缓存；新增 chunk 同步 `createWorkboxConfig` 的匹配规则。保留 API、health、信令路由的导航回退排除，以及启动主题和静态启动壳行为。
 
