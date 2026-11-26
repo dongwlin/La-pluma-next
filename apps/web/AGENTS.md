@@ -39,6 +39,7 @@
 - 共享设备画面样式归 `features/device-mirror`：使用 `device-monitor-*` / `device-preview-*` 命名（不新增玻璃材质类），不在页面样式或组件中使用 `automation-*` / `roguelike-*` monitor 类，也不以 `data-page-kind` 作为设备画面样式开关。
 - 避免不必要的辅助标签与说明。让布局本身发挥解释作用。
 - 全局语义 token 与层序归 `src/styles/`；`index.css`、`layout.css`、`ios-theme.css` 不接收页面选择器。领域样式置于 `features/<domain>/styles/`，由域入口导入并收进 `@layer page`。
+- 默认基线保持实色：不在 `styles/`、领域 CSS 或组件内联样式中使用 `backdrop-filter`、`--glass-*` 或玻璃材质类（弹层遮罩 scrim 的模糊除外）；这类材质只允许出现在未来的独立主题包中，并满足可整体卸载契约（见 `docs/frontend/themes.md`）。
 - 保持 `theme, base, components, page, utilities` 层序，使用现有语义 token 和 Tailwind v4 canonical 类名；动态状态使用完整类名映射，不拼接 Tailwind 类名。
 - 层序 token 只从 `--layout-z-*` 取；不在组件中新增裸 z-index 层（局部 0/1/2 等仍可）。
 - Dialog、Sheet、筛选菜单等 Base UI 弹层走 `document.body` portal，不受应用根作用域包裹；PWA 安装/更新提示是 `#app-root.la-pluma-app` 内的固定表面，不是 portal，样式按应用根作用域核对。样式改动同时核对弹层、深浅主题和响应式断点。

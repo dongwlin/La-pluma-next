@@ -1,48 +1,4 @@
 @layer base {
-  :root {
-    --glass-page-bg: #f2f2f7;
-    --glass-bg: rgba(255, 255, 255, 0.68);
-    --glass-border: rgba(60, 60, 67, 0.18);
-    --glass-shadow: 0 12px 32px rgba(60, 60, 67, 0.12);
-    --glass-tabbar-active-bg: rgba(118, 118, 128, 0.16);
-    --glass-tabbar-active-edge: inset 0 0 0 0.5px var(--glass-border);
-    --glass-tabbar-shadow: 0 1rem 2.25rem rgba(60, 60, 67, 0.18);
-    --glass-tabbar-fade-color: #ffffff;
-    --glass-navbar-fade-color: #ffffff;
-    --glass-liquid-surface-lift: rgba(255, 255, 255, 0.04);
-    --glass-edge-light: rgba(255, 255, 255, 0.48);
-    --glass-edge-clear: rgba(255, 255, 255, 0);
-    --glass-edge-high: color-mix(
-      in srgb,
-      var(--glass-edge-light) 75%,
-      var(--glass-edge-clear)
-    );
-    --glass-edge-mid: color-mix(
-      in srgb,
-      var(--glass-edge-light) 50%,
-      var(--glass-edge-clear)
-    );
-    --glass-edge-faint: color-mix(
-      in srgb,
-      var(--glass-edge-light) 25%,
-      var(--glass-edge-clear)
-    );
-  }
-
-  html.dark,
-  #app-root.dark {
-    --glass-page-bg: #000000;
-    --glass-bg: rgba(28, 28, 30, 0.72);
-    --glass-border: rgba(235, 235, 245, 0.18);
-    --glass-shadow: 0 14px 34px rgba(0, 0, 0, 0.34);
-    --glass-tabbar-active-bg: rgba(118, 118, 128, 0.3);
-    --glass-tabbar-shadow: 0 1rem 2.25rem rgba(0, 0, 0, 0.44);
-    --glass-tabbar-fade-color: #000000;
-    --glass-navbar-fade-color: #000000;
-    --glass-liquid-surface-lift: rgba(255, 255, 255, 0.05);
-    --glass-edge-light: rgba(255, 255, 255, 0.18);
-  }
-
   html,
   body,
   button,
@@ -55,7 +11,7 @@
   html,
   body {
     /* 无需 !important，base 层内本规则位于 index.css 之后。 */
-    background: var(--glass-page-bg);
+    background: var(--background);
   }
 
   body {
@@ -404,7 +360,7 @@
     border: 1px solid var(--border);
     border-radius: 999px;
     background: var(--card);
-    box-shadow: var(--glass-tabbar-shadow);
+    box-shadow: var(--shadow-floating);
   }
 
   .la-pluma-app :where(.la-pluma-tabbar-link[data-app-tab='dashboard'].is-active) svg {
@@ -417,7 +373,7 @@
     border-radius: 50%;
     background: var(--card);
     color: var(--foreground);
-    box-shadow: var(--glass-tabbar-shadow);
+    box-shadow: var(--shadow-floating);
     transition: transform 180ms ease, background 180ms ease, color 180ms ease;
   }
 
@@ -464,9 +420,9 @@
   }
 
   .la-pluma-app .la-pluma-tabbar-link.is-active {
-    background: var(--glass-tabbar-active-bg);
+    background: var(--muted);
     color: var(--primary-strong);
-    box-shadow: var(--glass-tabbar-active-edge);
+    box-shadow: inset 0 0 0 0.5px var(--border);
   }
 
   .la-pluma-app .la-pluma-tabbar-link:hover {
@@ -584,9 +540,9 @@
   }
 
   .la-pluma-more-sheet .la-pluma-more-sheet-nav .la-pluma-tabbar-link.is-active {
-    background: var(--glass-tabbar-active-bg);
+    background: var(--muted);
     color: var(--primary-strong);
-    box-shadow: var(--glass-tabbar-active-edge);
+    box-shadow: inset 0 0 0 0.5px var(--border);
   }
 
   .la-pluma-more-sheet .la-pluma-more-sheet-nav .la-pluma-tabbar-link:focus-visible {
@@ -605,16 +561,6 @@
     border: 1px solid var(--border);
     border-radius: var(--radius-xl);
     background: var(--card);
-    box-shadow:
-      0 1px 3px rgba(60, 60, 67, 0.05),
-      0 14px 40px rgba(60, 60, 67, 0.05);
-    -webkit-backdrop-filter: none;
-    backdrop-filter: none;
-  }
-
-  .la-pluma-app .app-info-card {
-    border: 1px solid var(--border);
-    border-radius: 0.875rem;
   }
 
   .la-pluma-app .app-empty-state-icon {
@@ -643,7 +589,7 @@
       height: 100%;
       background: linear-gradient(
         to bottom,
-        var(--glass-navbar-fade-color) 0%,
+        var(--background) 0%,
         transparent 100%
       );
       content: '';
@@ -661,65 +607,6 @@
       pointer-events: auto;
     }
 
-    .la-pluma-app .pwa-install-entry-button {
-      --glass-liquid-surface: color-mix(
-        in srgb,
-        var(--glass-bg) 42%,
-        transparent
-      );
-      position: relative;
-      isolation: isolate;
-      border-color: transparent;
-      background:
-        linear-gradient(
-          var(--glass-liquid-surface-lift),
-          var(--glass-liquid-surface-lift)
-        ),
-        var(--glass-liquid-surface);
-      -webkit-backdrop-filter: blur(6px) saturate(140%);
-      backdrop-filter: blur(6px) saturate(140%);
-    }
-
-    .la-pluma-app .pwa-install-entry-button::before {
-      position: absolute;
-      inset: 0;
-      padding: 0.5px;
-      border-radius: inherit;
-      background: conic-gradient(
-        from 0deg,
-        var(--glass-edge-light) 0deg,
-        var(--glass-edge-light) 26deg,
-        var(--glass-edge-high) 32deg,
-        var(--glass-edge-mid) 38deg,
-        var(--glass-edge-faint) 44deg,
-        var(--glass-edge-clear) 50deg,
-        var(--glass-edge-faint) 56deg,
-        var(--glass-edge-mid) 62deg,
-        var(--glass-edge-high) 68deg,
-        var(--glass-edge-light) 74deg,
-        var(--glass-edge-light) 206deg,
-        var(--glass-edge-high) 212deg,
-        var(--glass-edge-mid) 218deg,
-        var(--glass-edge-faint) 224deg,
-        var(--glass-edge-clear) 230deg,
-        var(--glass-edge-faint) 236deg,
-        var(--glass-edge-mid) 242deg,
-        var(--glass-edge-high) 248deg,
-        var(--glass-edge-light) 254deg,
-        var(--glass-edge-light) 360deg
-      );
-      -webkit-mask:
-        linear-gradient(#000 0 0) content-box,
-        linear-gradient(#000 0 0);
-      mask:
-        linear-gradient(#000 0 0) content-box,
-        linear-gradient(#000 0 0);
-      -webkit-mask-composite: xor;
-      mask-composite: exclude;
-      content: '';
-      pointer-events: none;
-    }
-
     .la-pluma-app .la-pluma-tabbar::before {
       display: block;
       position: absolute;
@@ -733,7 +620,7 @@
       background: linear-gradient(
         to bottom,
         transparent 0%,
-        color-mix(in srgb, var(--glass-tabbar-fade-color) 20%, transparent) 100%
+        color-mix(in srgb, var(--background) 20%, transparent) 100%
       );
       content: '';
       transform: none;
@@ -771,21 +658,7 @@
     }
   }
 
-  @media (prefers-reduced-transparency: reduce) {
-    .la-pluma-app .la-pluma-tabbar,
-    .la-pluma-app .la-pluma-tabbar-pill,
-    .la-pluma-app .la-pluma-tabbar-more,
-    .la-pluma-app .la-pluma-theme-desktop,
-    .la-pluma-app .la-pluma-theme-trigger,
-    .la-pluma-app .la-pluma-github-link,
-    .la-pluma-app .surface-panel {
-      background: var(--card);
-      -webkit-backdrop-filter: none;
-      backdrop-filter: none;
-    }
-  }
-
-  /* Native business controls use the same iOS touch target and glass surface as
+  /* Native business controls use the same iOS touch target and filled surface as
      the shared controls. Opt-in semantics keep compact, specialized controls
      (time pickers, sliders, and task editors) unchanged. */
   .la-pluma-app .la-pluma-content .app-native-control {
@@ -883,23 +756,6 @@
 }
 
 @layer page {
-  /* Only summoned, overlapping layers receive Liquid Glass. Ordinary cards and
-     grouped content remain opaque so the material hierarchy stays legible. */
-  :is(
-    .la-pluma-app .theme-menu-popover,
-    .la-pluma-app .pwa-install-prompt
-  ) {
-    border-width: 1px;
-    border-style: solid;
-    border-color: color-mix(in srgb, var(--input) 72%, transparent);
-    background: color-mix(in srgb, var(--card) 78%, transparent);
-    -webkit-backdrop-filter: blur(24px) saturate(165%);
-    backdrop-filter: blur(24px) saturate(165%);
-    box-shadow:
-      0 2px 8px rgba(0, 0, 0, 0.1),
-      0 30px 80px rgba(0, 0, 0, 0.24);
-  }
-
   @media (width < 640px) {
     .la-pluma-app [data-page-layout="workspace"] {
       padding-top: 0;
@@ -917,22 +773,9 @@
     box-shadow: none;
   }
 
-  .la-pluma-app [data-page-surface="borderless"] .app-info-card:not(
-    .status-info,
-    .status-warning,
-    .status-danger,
-    .status-success
-  ) {
-    border: 0;
-  }
-
   @media (prefers-contrast: more) {
-    :is(
-      .la-pluma-app .theme-menu-popover,
-      .la-pluma-app .pwa-install-prompt
-    ) {
+    .la-pluma-app .pwa-install-prompt {
       border-color: var(--input);
-      background: var(--card);
     }
   }
 
